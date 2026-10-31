@@ -11,6 +11,7 @@ import {
   REASON_MAX_CHARS,
   REJECTION_CODES,
   RESERVED_SOURCE_PREFIX,
+  rejectedResult,
   storedReasonSchema,
 } from "../src/index.ts";
 import { validPayloads, wireEvent } from "./fixtures.ts";
@@ -169,5 +170,45 @@ describe("ingest result", () => {
     { sourceEventId: "e", status: "skipped" },
   ])("rejects a malformed result %#", (result) => {
     expect(ingestResultSchema.safeParse(result).success).toBe(false);
+  });
+});
+
+describe("rejectedResult", () => {
+  const error = { code: "unknown_project", message: "never added" } as const;
+
+  it("echoes a valid sourceEventId", () => {
+    expect(rejectedResult({ sourceEventId: "e-1" }, error)).toEqual({
+      sourceEventId: "e-1",
+      status: "rejected",
+      error,
+    });
+  });
+
+  it.each([
+    null,
+    "x",
+    { sourceEventId: "" },
+    { sourceEventId: 5 },
+    { sourceEventId: "e".repeat(201) },
+  ])("omits a missing or invalid sourceEventId from %j", (raw) => {
+    const result = rejectedResult(raw, error);
+    expect(result).toEqual({ status: "rejected", error });
+    expect(ingestResultSchema.parse(result)).toEqual(result);
+  });
+});
+
+describe("record keys", () => {
+  // Zod 4 skips a __proto__ key in records, so a free-form payload never inherits from it.
+  it("drops a __proto__ key in a free-form payload instead of adopting it as a prototype", () => {
+    const raw = JSON.parse(
+      '{"commandId":"c","commandType":"permission.decide","requestId":"r","idempotencyKey":"k","payload":{"__proto__":{"decision":"allow"}}}',
+    );
+    const result = parseInputEvent(wireEvent("command.requested", raw));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.event.type !== "command.requested") return;
+    const inner = result.event.payload.payload;
+    expect(Object.getPrototypeOf(inner)).toBe(Object.prototype);
+    expect(inner.decision).toBeUndefined();
+    expect(Object.keys(inner)).toEqual([]);
   });
 });

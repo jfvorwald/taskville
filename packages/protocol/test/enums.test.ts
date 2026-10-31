@@ -20,6 +20,7 @@ const openEnums = [
 const payloadWith = (type: (typeof openEnums)[number]["type"], extra: Record<string, unknown>) => {
   const base: Record<string, unknown> = { ...validPayloads[type], ...extra };
   if (type === "agent.registered") delete base.parentAgentId;
+  delete base.reason; // input and stored reason forms differ; covered in ingest.test.ts
   return base;
 };
 

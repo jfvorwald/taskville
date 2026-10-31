@@ -3,11 +3,18 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { exportJsonSchemas } from "../scripts/export-json-schema.ts";
 import { buildJsonSchemas, EVENT_TYPES } from "../src/index.ts";
 
 const script = join(import.meta.dirname, "..", "scripts", "export-json-schema.ts");
 const outDir = mkdtempSync(join(tmpdir(), "taskville-protocol-schema-"));
-afterAll(() => rmSync(outDir, { recursive: true, force: true }));
+const inProcessDir = mkdtempSync(join(tmpdir(), "taskville-protocol-schema-"));
+afterAll(() => {
+  rmSync(outDir, { recursive: true, force: true });
+  rmSync(inProcessDir, { recursive: true, force: true });
+});
+
+type MemberSchema = { properties: { type: { const: string } } };
 
 describe("JSON Schema export", () => {
   it("builds a schema per public document", () => {
@@ -26,13 +33,41 @@ describe("JSON Schema export", () => {
   });
 
   it("describes every event type in the input event schema, in wire (input) form", () => {
-    const input = buildJsonSchemas()["input-event"] as {
-      oneOf: { properties: { type: { const: string } } }[];
-    };
+    const input = buildJsonSchemas()["input-event"] as unknown as { oneOf: MemberSchema[] };
     const types = input.oneOf.map((member) => member.properties.type.const);
     expect(types.sort()).toEqual([...EVENT_TYPES].sort());
     const status = input.oneOf.find((m) => m.properties.type.const === "task.status_changed");
     expect(JSON.stringify(status)).toContain('"sourceValue"');
+  });
+
+  it("lists the envelope IDs each type requires", () => {
+    for (const name of ["input-event", "stored-envelope"] as const) {
+      const doc = buildJsonSchemas()[name] as unknown as {
+        oneOf: (MemberSchema & { required: string[] })[];
+      };
+      const required = (type: string) =>
+        doc.oneOf.find((m) => m.properties.type.const === type)?.required ?? [];
+      expect(required("session.started")).toEqual(expect.arrayContaining(["agentId", "sessionId"]));
+      expect(required("task.created")).toContain("taskId");
+      expect(required("git.commit")).not.toContain("agentId");
+    }
+  });
+
+  it("states code-point limits as maxLength", () => {
+    const input = JSON.stringify(buildJsonSchemas()["input-event"]);
+    expect(input).toContain('"maxLength":4000');
+    expect(input).toContain('"maxLength":2000');
+    expect(JSON.stringify(buildJsonSchemas()["stored-envelope"])).toContain('"maxLength":280');
+  });
+
+  it("exports in process to the given directory", () => {
+    const written = exportJsonSchemas(inProcessDir);
+    expect(written).toHaveLength(Object.keys(buildJsonSchemas()).length);
+    expect(readdirSync(inProcessDir)).toContain("input-event.schema.json");
+  });
+
+  it("exits with usage when no output directory is given", () => {
+    expect(() => execFileSync(process.execPath, [script], { stdio: "pipe" })).toThrow(/Usage/);
   });
 
   it("runs as a script and writes one JSON file per schema", () => {
