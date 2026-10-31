@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-15: Zod refinements and field transforms do not survive schema export
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #5 · **Recorded by:** domain teammate (M1.05)
+- **What happened:** Keeping a raw enum value as a sibling `sourceValue` needed an object-level transform (a field-level transform loses it), and per-type requirements in `superRefine` do not reach `z.toJSONSchema`, so the exported documents showed required IDs as optional (a roborev low finding).
+- **Lesson:** Keep stored schemas transform-free (split input and stored payload maps) and add refinement-only requirements to exported JSON Schema by hand, with a test.
+- **Action:** Done in PR #123.
+
 ### L-14: A synchronous open of an untrusted path can hang the test worker
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #7 · **Recorded by:** engine teammate (M1.10)
 - **What happened:** `openSync` on a FIFO at the token path blocked the whole Vitest worker, so the per-test timeout never fired and the red run had to be killed by hand. roborev also flagged the FIFO hang in the code.
