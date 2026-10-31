@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-33: Same-session closure means a producer must hold the whole session
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #14 · **Recorded by:** domain teammate (M1.15)
+- **What happened:** Requests close as `answered_elsewhere` on the next event from the same session, and subagents and in-process teammates share their parent's session (S-2), so they closed the demo's needs-you moment early. The review also found three identity gaps across repeated runs of one seed (core bots, transient agents and tasks, a run tag only to the second).
+- **Lesson:** A producer that wants a request to stay open must quiet the whole session; decide repeated-run identity up front (stable core bots, per-run transient IDs, a millisecond run tag).
+- **Action:** Done in PR #146; relates to decision #135 D2.
+
 ### L-32: Masking can make a field longer than its limit
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #13 · **Recorded by:** storage teammate (M1.12)
 - **What happened:** A 6-character secret becomes a 20-plus character marker, so valid input could turn into an invalid stored envelope. Also, a credential-less POST without `Origin` is refused 403 by the Origin check before the 401 credential check, which broke a test expectation.
