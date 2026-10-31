@@ -5,5 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run --root ../.. --project @taskville/protocol"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
   }
 }
