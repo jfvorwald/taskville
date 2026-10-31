@@ -179,7 +179,20 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6))
 
-  apps/cli: {}
+  apps/cli:
+    dependencies:
+      '@taskville/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@taskville/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@taskville/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      pino:
+        specifier: 10.4.0
+        version: 10.4.0
 
   apps/engine:
     dependencies:

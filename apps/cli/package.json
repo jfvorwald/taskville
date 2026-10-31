@@ -3,7 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "taskville": "src/main.ts"
+  },
   "scripts": {
     "test": "vitest run --root ../.. --project @taskville/cli"
+  },
+  "dependencies": {
+    "@taskville/domain": "workspace:*",
+    "@taskville/engine": "workspace:*",
+    "@taskville/protocol": "workspace:*",
+    "pino": "10.4.0"
   }
 }
