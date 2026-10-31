@@ -6,6 +6,10 @@ import type { EntitiesState, ToolCall } from "./types.ts";
 // Tool calls, bounded for SC-006: the projection keeps each agent's open calls (at most
 // MAX_OPEN_TOOL_CALLS_PER_AGENT, oldest dropped first) plus its latest finished call. Dropped
 // calls stay in the event log for the feed (M5); the counters on the agent carry the rest.
+//
+// A call is counted when its start is seen, never at its finish, so a finish for a call that
+// was dropped from the projection cannot count it twice. A finish that arrives before its start
+// is recorded as is, and the start fills in its name, paths, and start time when it comes.
 
 /**
  * Open calls kept per agent. A PreToolUse with no PostToolUse is real (S-2: internal helper
@@ -19,24 +23,38 @@ export function applyToolCallStarted(
   agentId: string,
 ): EntitiesState {
   const p = e.payload;
-  if (Object.hasOwn(s.toolCalls, p.toolCallId)) return s; // repeated start: already recorded
-  const call: ToolCall = {
-    id: p.toolCallId,
-    agentId,
-    ...optional("sessionId", e.sessionId),
-    toolName: p.toolName,
-    phase: "running",
-    filePaths: p.filePaths ?? [],
-    ...optional("summary", p.summary),
-    evidenceIds: appendUnique([], e.evidenceIds),
-    startedAt: e.occurredAt,
-    startSeq: e.ingestSequence,
-  };
+  const existing = getOwn(s.toolCalls, p.toolCallId);
+  if (existing?.startedAt !== undefined) return s; // repeated start: already recorded
+  const call: ToolCall =
+    existing === undefined
+      ? {
+          id: p.toolCallId,
+          agentId,
+          ...optional("sessionId", e.sessionId),
+          toolName: p.toolName,
+          phase: "running",
+          filePaths: p.filePaths ?? [],
+          ...optional("summary", p.summary),
+          evidenceIds: appendUnique([], e.evidenceIds),
+          startedAt: e.occurredAt,
+          startSeq: e.ingestSequence,
+        }
+      : {
+          // Its finish arrived first: fill in what the start reports, keep the outcome.
+          ...existing,
+          ...optional("sessionId", existing.sessionId ?? e.sessionId),
+          toolName: p.toolName,
+          filePaths: existing.filePaths.length > 0 ? existing.filePaths : (p.filePaths ?? []),
+          ...optional("summary", existing.summary ?? p.summary),
+          evidenceIds: appendUnique(e.evidenceIds, existing.evidenceIds),
+          startedAt: e.occurredAt,
+        };
+  const owner = call.agentId;
   const withCall = { ...s, toolCalls: put(s.toolCalls, call.id, call) };
-  const counted = updateAgent(withCall, agentId, (agent) =>
+  const counted = updateAgent(withCall, owner, (agent) =>
     clearLastTurn({ ...agent, toolCallCount: agent.toolCallCount + 1 }, "tool"),
   );
-  return capOpenCalls(counted, agentId);
+  return call.phase === "running" ? capOpenCalls(counted, owner) : counted;
 }
 
 export function applyToolCallFinished(
@@ -83,7 +101,6 @@ export function applyToolCallFinished(
   return updateAgent({ ...s, toolCalls }, owner, (agent) => {
     const counted = {
       ...agent,
-      toolCallCount: agent.toolCallCount + (existing === undefined ? 1 : 0),
       consecutiveToolFailures: p.phase === "failed" ? agent.consecutiveToolFailures + 1 : 0,
     };
     return clearLastTurn(counted, p.phase === "succeeded" ? "tool_succeeded" : "tool");
