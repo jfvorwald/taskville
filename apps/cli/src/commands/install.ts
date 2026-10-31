@@ -273,6 +273,19 @@ export async function install(io: Io, args: string[]): Promise<number> {
   return EXIT.ok;
 }
 
+/** The command of the first Taskville handler in `settings`, if any. */
+function installedCommand(settings: JsonObject): string | undefined {
+  const hooks = settings.hooks;
+  if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) return undefined;
+  for (const groups of Object.values(hooks)) {
+    for (const group of groups as Record<string, unknown>[]) {
+      const handler = (Array.isArray(group.hooks) ? group.hooks : []).find(isTaskvilleHook);
+      if (handler !== undefined) return String((handler as Record<string, unknown>).command);
+    }
+  }
+  return undefined;
+}
+
 export async function uninstall(io: Io, args: string[]): Promise<number> {
   const p = plan(io, args, UNINSTALL_USAGE);
   const { state, settings } = readSettings(p.target);
@@ -291,7 +304,14 @@ export async function uninstall(io: Io, args: string[]): Promise<number> {
     how = "install created this file, so it is removed";
   } else if (backup !== undefined && backup !== "") {
     try {
-      if (JSON.stringify(parseSettings(backup)) === JSON.stringify(stripped)) {
+      // Only when the file is exactly what install wrote from the backup: a formatting-only edit
+      // since then must survive (roborev 5210).
+      const command = installedCommand(settings);
+      const written =
+        command === undefined
+          ? undefined
+          : serialize(addTaskvilleHooks(parseSettings(backup), command), detectIndent(backup));
+      if (written === state.text) {
         next = backup;
         how = "restoring the original from the backup, byte for byte";
       }

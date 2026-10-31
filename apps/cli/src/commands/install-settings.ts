@@ -83,6 +83,12 @@ export function parseSettings(text: string): JsonObject {
     throw new SettingsError(`is not valid JSON (${(error as Error).message})`);
   }
   if (!isObject(value)) throw new SettingsError("is not a JSON object");
+  const duplicate = duplicateKey(text);
+  if (duplicate !== undefined) {
+    // JSON.parse keeps only the last one, so a rewrite would silently drop data, and the diff could
+    // not know an earlier value was secret (roborev 5210). The key name is not printed either.
+    throw new SettingsError("has a duplicate key in one object");
+  }
   if (Object.hasOwn(value, "hooks")) {
     const hooks = value.hooks;
     if (!isObject(hooks)) throw new SettingsError(`has "hooks" that is not an object`);
@@ -96,6 +102,41 @@ export function parseSettings(text: string): JsonObject {
     }
   }
   return value;
+}
+
+/**
+ * The first key that appears twice in one object of `text`, which must already be valid JSON.
+ * A small scanner: strings are skipped as literals, and only object keys are compared, decoded.
+ */
+export function duplicateKey(text: string): string | undefined {
+  const stack: { object: boolean; keys: Set<string>; expectKey: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      const top = stack.at(-1);
+      if (top?.expectKey) {
+        const key = JSON.parse(text.slice(i, j + 1)) as string;
+        if (top.keys.has(key)) return key;
+        top.keys.add(key);
+        top.expectKey = false;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === "{") stack.push({ object: true, keys: new Set(), expectKey: true });
+    else if (ch === "[") stack.push({ object: false, keys: new Set(), expectKey: false });
+    else if (ch === "}" || ch === "]") stack.pop();
+    else if (ch === ",") {
+      const top = stack.at(-1);
+      // Only an object's own comma means a key comes next; an array's never does.
+      if (top?.object === true) top.expectKey = true;
+    }
+    i += 1;
+  }
+  return undefined;
 }
 
 /** Own-property copy that never invokes a `__proto__` setter (L-18). */
