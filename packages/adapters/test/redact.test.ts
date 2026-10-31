@@ -774,6 +774,100 @@ describe("redactText false positives", () => {
   });
 });
 
+// M2.14 (#185): a token glued to an identifier by `_` (an MCP tool name such as
+// `mcp__<server>__<token>`, an env-style name such as `MY_TOKEN_<token>`) is still a token.
+// The token lookbehinds excluded `_`. A random token was still caught by the high-entropy
+// rule over the whole word, but not one with a low-entropy body, nor one in a word longer than
+// the 256 characters that rule looks at.
+describe("tokens after an underscore (M2.14)", () => {
+  const lowEntropy = (n: number) => "a1B2".repeat(Math.ceil(n / 4)).slice(0, n);
+  const tokens: Array<[string, string, string, MaskKind]> = [
+    ["GitHub classic", fake.githubClassic, ["gh", "p_", lowEntropy(36)].join(""), "github-token"],
+    ["GitHub OAuth", fake.githubOauth, ["gh", "o_", lowEntropy(36)].join(""), "github-token"],
+    [
+      "GitHub fine-grained",
+      fake.githubFineGrained,
+      ["github", "_pat_", lowEntropy(24)].join(""),
+      "github-token",
+    ],
+    [
+      "Anthropic",
+      fake.anthropic,
+      ["sk", "-ant-", "api03-", lowEntropy(24)].join(""),
+      "anthropic-key",
+    ],
+    ["OpenAI project", fake.openaiProject, ["sk", "-proj-", lowEntropy(24)].join(""), "openai-key"],
+    ["OpenAI legacy", fake.openaiLegacy, ["sk", "-", lowEntropy(24)].join(""), "openai-key"],
+    ["Stripe live", fake.stripeLive, ["sk", "_live_", lowEntropy(20)].join(""), "stripe-key"],
+    [
+      "Stripe restricted",
+      fake.stripeRestricted,
+      ["rk", "_test_", lowEntropy(20)].join(""),
+      "stripe-key",
+    ],
+  ];
+  const prefixes = [
+    "_",
+    ["mcp", "__", "github", "__"].join(""),
+    ["MY", "_TOKEN_"].join(""),
+    "a_b_",
+  ];
+  const longPrefix = "ab_".repeat(100);
+
+  // The token rule alone: nothing else masks these, so the prefix stays and the kind is exact.
+  it.each(
+    tokens.flatMap(([name, , low, kind]) =>
+      prefixes.map((prefix) => ({
+        name: `${name} (low entropy) after "${prefix}"`,
+        prefix,
+        low,
+        kind,
+      })),
+    ),
+  )("masks $name, keeping the prefix", ({ prefix, low, kind }) => {
+    const input = `run ${prefix}${low} now`;
+    const result = redactText(input);
+    expect(result.text).toBe(`run ${prefix}${maskMarker(kind)} now`);
+    expectWellFormed(input, result);
+  });
+
+  it.each(tokens.map(([name, random, , kind]) => ({ name, random, kind })))(
+    "masks a random $name at the end of a word longer than 256 characters",
+    ({ random, kind }) => {
+      const input = `run ${longPrefix}${random} now`;
+      const result = redactText(input);
+      expect(result.text).toBe(`run ${longPrefix}${maskMarker(kind)} now`);
+      expectWellFormed(input, result);
+    },
+  );
+
+  it.each(
+    tokens.flatMap(([name, random]) =>
+      prefixes.map((prefix) => ({ name: `${name} after "${prefix}"`, prefix, random })),
+    ),
+  )("still masks a random $name in full", ({ prefix, random }) => {
+    const input = `run ${prefix}${random} now`;
+    const result = redactText(input);
+    expect(result.text).not.toContain(random);
+    const start = input.indexOf(random);
+    expect(result.spans.some((s) => s.start <= start && s.end >= start + random.length)).toBe(true);
+    expectWellFormed(input, result);
+  });
+
+  it.each([
+    ["a short ghp_ identifier", ["load", "_gh", "p_", "config"].join("")],
+    ["a short github_pat_ identifier", ["my", "_github", "_pat_", "helper"].join("")],
+    ["a snake_case name ending in sk-", ["task", "_sk-", "list"].join("")],
+    ["sk- without a digit after _", ["x", "_sk-", "abcdefghijklmnopqrstuvwxyz"].join("")],
+    ["a Stripe-like word that is too short", ["read", "_sk", "_live_", "mode"].join("")],
+    ["live mode in snake case", ["work", "_live_", "abcdefghijklmnopqrstuv"].join("")],
+  ])("leaves %s alone", (_name, input) => {
+    const result = redactText(input);
+    expect(result.spans).toEqual([]);
+    expect(result.text).toBe(input);
+  });
+});
+
 describe("redactJson", () => {
   it("masks strings at any depth and reports a path per masked string", () => {
     const value: JsonValue = {
@@ -900,6 +994,13 @@ describe("adversarial input", () => {
     ["JWT dots", `${"eyJa.".repeat(n / 5)}`],
     ["sk- prefixes", "sk-".repeat(n / 3)],
     ["ghp_ prefixes", "ghp_".repeat(n / 4)],
+    ["_ghp_ prefixes", "_ghp_".repeat(n / 5)],
+    ["_github_pat_ prefixes", ["_github", "_pat_"].join("").repeat(n / 12)],
+    ["_sk- prefixes", "_sk-".repeat(n / 4)],
+    ["_sk-ant- prefixes", "_sk-ant-".repeat(n / 8)],
+    ["_sk_live_ prefixes", "_sk_live_".repeat(n / 9)],
+    ["sk- then letters", `_sk-${"a".repeat(n)}`],
+    ["_eyJ prefixes", "_eyJ".repeat(n / 4)],
     ["AKIA prefixes", "AKIA".repeat(n / 4)],
     ["unclosed quotes", 'x="'.repeat(n / 3)],
     ["escaped quotes", `PASSWORD="${"\\".repeat(n)}`],

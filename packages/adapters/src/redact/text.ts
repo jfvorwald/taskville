@@ -37,7 +37,12 @@ interface Candidate {
 
 // Token formats. Each pattern starts with a lookbehind so a match can only begin
 // at the start of a token, never inside one. That keeps every scan linear: a long
-// run of token characters is tried from its first character only.
+// run of token characters is tried from its first character only. A known prefix may
+// follow `_` (`mcp__server__ghp_...`, `MY_TOKEN_sk-...`, M2.14): those patterns either
+// stop at `_` or consume the whole run greedily, so a start after `_` still scans each
+// character a bounded number of times. The JWT pattern keeps `_` in its lookbehind,
+// because its body must reach a `.`, and a run of `_eyJ` with no dot would be rescanned
+// from every start.
 const TOKEN_PATTERNS: ReadonlyArray<{
   kind: MaskKind;
   pattern: RegExp;
@@ -45,19 +50,22 @@ const TOKEN_PATTERNS: ReadonlyArray<{
   /** Extra evidence the match must show, for patterns that also match prose. */
   accept?: (match: RegExpMatchArray) => boolean;
 }> = [
-  { kind: "anthropic-key", pattern: /(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{20,}/dg },
+  { kind: "anthropic-key", pattern: /(?<![A-Za-z0-9-])sk-ant-[A-Za-z0-9_-]{20,}/dg },
   {
+    // The digit is checked after the match rather than with a lookahead: the greedy body
+    // consumes the whole run, so a digit-free run is scanned once, not once per `_sk-` in it.
     kind: "openai-key",
-    pattern: /(?<![A-Za-z0-9_-])sk-(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]{20,}/dg,
+    pattern: /(?<![A-Za-z0-9-])sk-[A-Za-z0-9_-]{20,}/dg,
+    accept: (match) => /[0-9]/.test(match[0].slice(3)),
   },
-  { kind: "github-token", pattern: /(?<![A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{36,}/dg },
-  { kind: "github-token", pattern: /(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{22,}/dg },
+  { kind: "github-token", pattern: /(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36,}/dg },
+  { kind: "github-token", pattern: /(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{22,}/dg },
   {
     kind: "aws-access-key",
     pattern: /(?<![A-Za-z0-9+/])(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}(?![A-Za-z0-9])/dg,
   },
   { kind: "slack-token", pattern: /(?<![A-Za-z0-9-])(?:xox[abposre]|xapp)-[A-Za-z0-9-]{10,}/dg },
-  { kind: "stripe-key", pattern: /(?<![A-Za-z0-9_])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/dg },
+  { kind: "stripe-key", pattern: /(?<![A-Za-z0-9])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/dg },
   {
     kind: "jwt",
     pattern: /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/dg,
