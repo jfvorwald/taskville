@@ -194,6 +194,28 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
     expect(out).toContain("resnapshot (cursor_ahead_of_head): resuming from cursor 13");
   });
 
+  it("rejects an event too large for one request by line, and still ingests the rest", async () => {
+    const event = (n: number, extra = "") =>
+      JSON.stringify({
+        schemaVersion: 1,
+        projectId: "demo",
+        sourceId: "adapter:big",
+        sourceEventId: `big-${n}`,
+        occurredAt: "2026-10-30T09:01:00Z",
+        type: "agent.connected",
+        agentId: `big-agent-${n}`,
+        payload: {},
+        provenance: "live",
+        ...(extra === "" ? {} : { correlationId: "c", evidenceIds: [], late: false, x: extra }),
+      });
+    const file = join(home.path, "big.jsonl");
+    writeFileSync(file, [event(1), event(2, "y".repeat(6 * 1024 * 1024)), event(3)].join("\n"));
+    const result = await at("events", "ingest", "--file", file);
+    expect(result.code).toBe(4);
+    expect(result.stdout).toContain("accepted 2 / duplicate 0 / conflict 0 / rejected 1");
+    expect(result.stdout).toMatch(/^line 2: event_too_large/m);
+  });
+
   it("revokes browser pairings", async () => {
     const result = await at("unpair");
     expect(result.code).toBe(0);

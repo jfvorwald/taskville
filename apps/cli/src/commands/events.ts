@@ -27,10 +27,12 @@ export async function events(io: Io, args: string[]): Promise<number> {
   throw new CliError(EXIT.failure, `Unknown events command\nUsage: ${INGEST}\n       ${FOLLOW}`);
 }
 
-type LineResult = { line: number } & (
-  | IngestResult
-  | { status: "rejected"; error: { code: "invalid_envelope"; message: string } }
-);
+/** Rejections the CLI makes before sending: a line that is not JSON, or one too large to post. */
+type LocalRejection = {
+  status: "rejected";
+  error: { code: "invalid_envelope" | "event_too_large"; message: string };
+};
+type LineResult = { line: number } & (IngestResult | LocalRejection);
 
 async function ingest(io: Io, args: string[]): Promise<number> {
   const { values, context } = parseCommand(io, args, { file: { type: "string" } }, INGEST);
@@ -54,7 +56,21 @@ async function ingest(io: Io, args: string[]): Promise<number> {
           },
         ],
   );
-  const valid = lines.flatMap((l) => (l.ok ? [{ line: l.line, value: l.value }] : []));
+  const valid: { line: number; value: unknown }[] = [];
+  for (const l of lines) {
+    if (!l.ok) continue;
+    // An event that alone exceeds a batch would get 413 and stop the whole file; reject it here.
+    if (Buffer.byteLength(JSON.stringify(l.value)) + 1 > BATCH_BYTES) {
+      results.push({
+        line: l.line,
+        status: "rejected",
+        error: {
+          code: "event_too_large",
+          message: `Larger than ${BATCH_BYTES} bytes, the most one request can carry`,
+        },
+      });
+    } else valid.push({ line: l.line, value: l.value });
+  }
   const client = valid.length === 0 ? undefined : context.client();
   for (const batch of batches(valid, BATCH_EVENTS, BATCH_BYTES)) {
     const response = await client?.json<EventBatchResponse>("POST", "/v1/events/batch", {
