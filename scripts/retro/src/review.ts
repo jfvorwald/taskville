@@ -5,8 +5,9 @@
 // measured") otherwise:
 // - an explicit `**Review outcome:**` field wins;
 // - escalation words (escalated, debugger, decision ticket) mean escalated;
-// - a counted medium, high, or critical finding ("1 medium", "one high") means one fix round, or
-//   more than one when both the first review and the re-review report such findings;
+// - a counted, fixed medium, high, or critical finding ("1 medium ... fixed") means one fix round,
+//   or more than one when both the first review and the re-review report such findings; a
+//   finding with no recorded fix is not measured;
 // - "pass" with nothing "fixed" means passed first review;
 // - anything else (for example findings fixed with no severity given) is not measured.
 
@@ -17,7 +18,8 @@ const field = (text: string, name: string): string | null => {
   return match === null ? null : (match[1] ?? "").trim();
 };
 
-const SEVERE_FINDING = /\b(\d+|one|two|three|four|five|a|an)\s+(critical|high|medium)\b/i;
+// A positive count: "0 high" is not a finding.
+const SEVERE_FINDING = /\b([1-9]\d*|one|two|three|four|five|a|an)\s+(critical|high|medium)\b/i;
 
 export function classifyReview(report: string | undefined): ReviewOutcome | null {
   if (report === undefined) return null;
@@ -34,9 +36,13 @@ export function classifyReview(report: string | undefined): ReviewOutcome | null
   const reReview = roborev.search(/re-?review/i);
   const first = reReview === -1 ? roborev : roborev.slice(0, reReview);
   const second = reReview === -1 ? "" : roborev.slice(reReview);
-  if (SEVERE_FINDING.test(first) && SEVERE_FINDING.test(second)) return "multiple_fix";
-  if (SEVERE_FINDING.test(roborev)) return "one_fix";
-  if (/\bpass\b/i.test(roborev) && !/\bfixed\b/i.test(roborev)) return "first_pass";
+  const fixed = /\bfixed\b/i.test(roborev);
+  if (SEVERE_FINDING.test(roborev)) {
+    // A fix round needs a recorded fix; a finding only answered with evidence is not one.
+    if (!fixed) return null;
+    return SEVERE_FINDING.test(first) && SEVERE_FINDING.test(second) ? "multiple_fix" : "one_fix";
+  }
+  if (/\bpass\b/i.test(roborev) && !fixed) return "first_pass";
   return null;
 }
 

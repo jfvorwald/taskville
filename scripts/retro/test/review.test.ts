@@ -47,6 +47,19 @@ describe("classifyReview", () => {
     expect(classifyReview(report(line))).toBeNull();
   });
 
+  it.each(["pass (job 9, 0 high, 0 medium)", "pass (job 9, zero high findings)"])(
+    "does not count zero findings: %s",
+    (line) => {
+      expect(classifyReview(report(line))).toBe("first_pass");
+    },
+  );
+
+  it("is not measured when a finding was reported but nothing says it was fixed", () => {
+    expect(
+      classifyReview(report("panel job 9 (1 medium) answered with evidence; pass")),
+    ).toBeNull();
+  });
+
   it("does not read 'no findings at or above medium' as a medium finding", () => {
     expect(classifyReview(report("pass (job 1, no findings at or above medium)"))).toBe(
       "first_pass",

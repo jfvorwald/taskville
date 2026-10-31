@@ -91,6 +91,15 @@ describe("mergeWrittenSections", () => {
     expect(mergeWrittenSections(generated, existing)).toContain("Prompt text from the template.");
   });
 
+  it("keeps a written section whose code block contains ## lines and other fence markers", () => {
+    const body =
+      "\nSee:\n\n```text\n~~~\n## not a heading\n```\n\n````md\n```\n## inner\n```\n````\n\nAfter the blocks.\n\n";
+    const existing = `# Retro: M1\n\n## What went well *(written)*\n${body}## What hurt *(written)*\n\nRebases.\n`;
+    const merged = mergeWrittenSections(generated, existing);
+    expect(merged).toContain(`## What went well *(written)*\n${body}`);
+    expect(merged).toContain("## What hurt *(written)*\n\nRebases.\n");
+  });
+
   it("never drops a written section whose heading the template no longer has", () => {
     const existing = "# Retro: M1\n\n## Old notes *(written)*\n\nKeep me.\n";
     const merged = mergeWrittenSections(generated, existing);

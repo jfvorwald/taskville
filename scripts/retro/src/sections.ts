@@ -11,9 +11,24 @@ function split(markdown: string): { preamble: string; sections: Section[] } {
   const lines = markdown.split("\n");
   let preamble = "";
   const sections: Section[] = [];
-  let inFence = false;
+  // CommonMark fences: a fence closes only with the same character, at least as long, and
+  // nothing after it, so a ~~~ line inside a ``` block (or a shorter fence) does not close it.
+  let fence: { char: string; length: number } | null = null;
   for (const line of lines) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (marker !== null) {
+      const run = marker[1] ?? "";
+      const char = run[0] ?? "";
+      if (fence === null) fence = { char, length: run.length };
+      else if (
+        char === fence.char &&
+        run.length >= fence.length &&
+        (marker[2] ?? "").trim() === ""
+      ) {
+        fence = null;
+      }
+    }
+    const inFence = fence !== null || marker !== null;
     const current = sections.at(-1);
     if (!inFence && line.startsWith("## ")) {
       sections.push({ heading: line, body: "" });
