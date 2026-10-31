@@ -101,6 +101,15 @@ describe("parentDirProblem (injected stat)", () => {
     expect(problem("/shared/.taskville", view(dirs, {}, { "/shared": ME }))).toBeUndefined();
   });
 
+  it("applies the same rule to the filesystem root", () => {
+    expect(problem("/.taskville", view({ "/": 0o40777 }))).toMatch(/^\/ is writable by/);
+    expect(problem("/.taskville", view({ "/": 0o40755 }, {}, { "/": 2000 }))).toMatch(
+      /^\/ is owned by another user/,
+    );
+    expect(problem("/.taskville", view({ "/": 0o41777 }, {}, { "/": 0 }))).toBeUndefined();
+    expect(problem("/.taskville", view({ "/": 0o40755 }, {}, { "/": 0 }))).toBeUndefined();
+  });
+
   it("refuses a parent another user owns even without write bits for others", () => {
     const v = view({ "/": 0o40755, "/srv": 0o40755 }, {}, { "/srv": 2000 });
     expect(problem("/srv/.taskville", v)).toMatch(/\/srv is owned by another user/);

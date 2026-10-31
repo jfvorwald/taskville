@@ -256,8 +256,19 @@ export function parentDirProblem(
   let rest = split(path);
   let current = "/";
   let hops = 0;
+  // An ancestor directory is unsafe when someone else owns it or can write it without the sticky bit.
+  const dirProblem = (dir: string, stat: StatLike) => {
+    if (!trusted(stat)) return `${dir} is owned by another user, who could replace ${path}`;
+    if ((stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
+      return `${dir} is writable by other accounts and is not sticky, so one of them could replace ${path}; run chmod go-w ${dir} first`;
+    }
+    return undefined;
+  };
   const rootStat = view.lstat("/");
-  if (rootStat !== undefined && !trusted(rootStat)) return `/ is owned by another user`;
+  if (rootStat !== undefined && rest.length > 0) {
+    const problem = dirProblem("/", rootStat);
+    if (problem !== undefined) return problem;
+  }
   while (rest.length > 0) {
     const [name, ...after] = rest;
     // `.` and `..` are applied where the walk is, never folded into the text first: `link/..` is
@@ -280,10 +291,8 @@ export function parentDirProblem(
       continue;
     }
     if (after.length > 0) {
-      if (!trusted(stat)) return `${next} is owned by another user, who could replace ${path}`;
-      if ((stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
-        return `${next} is writable by other accounts and is not sticky, so one of them could replace ${path}; run chmod go-w ${next} first`;
-      }
+      const problem = dirProblem(next, stat);
+      if (problem !== undefined) return problem;
     }
     current = next;
     rest = after;
