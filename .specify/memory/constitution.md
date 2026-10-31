@@ -1,6 +1,7 @@
 <!--
 Sync Impact Report
-- Version: 1.1.0 -> 1.2.0 (2026-10-30): Principle I gains one owner-approved exception: answering agent permission prompts is browser-only.
+- Version: 1.2.0 -> 1.3.0 (2026-10-31): Development Workflow allows roadmap tickets with explicit contracts in place of a spec-kit feature per milestone (owner decision #176, D2 default).
+- Earlier: 1.1.0 -> 1.2.0 (2026-10-30): Principle I gains one owner-approved exception: answering agent permission prompts is browser-only.
 - Earlier: 1.0.0 -> 1.1.0 (2026-10-30): added the lessons and retrospective rule to Development Workflow at the owner's request.
 - Earlier: 0.1.0 (draft) -> 1.0.0 (ratified by the owner 2026-10-30, no content changes)
 - Source: derived from ARCHITECTURE.md (October 30, 2026) and the parent
@@ -88,10 +89,12 @@ the plan's Complexity Tracking table.
 
 ## Development Workflow
 
-- Work is cut into spec-kit features under `specs/NNN-name/`, each following
-  specify, clarify, plan, tasks, implement.
+- Each milestone is cut into a spec-kit feature under `specs/NNN-name/` (specify,
+  clarify, plan, tasks, implement), or into roadmap tickets with explicit contracts.
+  A contract a ticket adds is written into the spec contracts by that ticket.
 - Each feature's plan MUST pass the Constitution Check before research and again
-  after design.
+  after design. A milestone cut into tickets gets its Constitution Check against
+  the tickets in its retrospective.
 - Task tier per change: the tests touched, the package's unit tests, lint,
   typecheck, and the fast check. The full suite runs once per multi-task push.
 - One review round per task; a second only to confirm a serious fix.
@@ -108,4 +111,4 @@ the same change. Amendments bump the version (MAJOR: principle removed or redefi
 MINOR: principle or section added; PATCH: wording) and update the Sync Impact Report.
 Every plan's Constitution Check and every review verifies compliance.
 
-**Version**: 1.2.0 | **Ratified**: 2026-10-30 | **Last Amended**: 2026-10-30
+**Version**: 1.3.0 | **Ratified**: 2026-10-30 | **Last Amended**: 2026-10-31

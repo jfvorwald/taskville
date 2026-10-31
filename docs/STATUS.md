@@ -2,7 +2,7 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-10-31, 16:25 EDT. **Main:** 7c4d228. **State:** M2 complete, stopped at gate G2 [#40](https://github.com/jfvorwald/taskville/issues/40) (`waiting:user`). Agents must not close it. M3 has not started.
+**Updated:** 2026-10-31, 19:10 EDT. **Main:** 982d7e3. **State:** G2 [#40](https://github.com/jfvorwald/taskville/issues/40) closed by the owner ("looks good"). M3 started: M3.01 #26 assigned (batch 1, runs alone). Owner direction: M3 only this session.
 
 ## Done in wave 2 (M2)
 
@@ -40,7 +40,7 @@ Workers this session (all stopped after handoff, branches frozen, worktrees kept
 
 ## Remaining decisions
 
-Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206. Defaults remain in force; none blocks M2. Closed on the owner's "accept defaults": #213 (CLI token keeps root registration; residual risk in the G2 summary) and #223 (#219 merged; targeted linear rules, #222 after G2).
+Open owner decision issues: #178, #190, #198. Defaults remain in force; none blocks M3. Closed on the owner's "accept defaults" on 2026-10-31 19:02 EDT: #174, #176 (D2 applied: constitution 1.3.0 allows roadmap tickets with explicit contracts per milestone; M3 Constitution Check runs in its retro), #184, #187, #202, #206. Earlier: #213 (CLI token keeps root registration; residual risk in the G2 summary) and #223 (#219 merged; targeted linear rules, #222 after G2).
 
 SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16's overlap invalid). The 1x eight-hour run remains M7 work.
 
@@ -78,8 +78,7 @@ SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16'
 
 Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskville/issues?q=is%3Aopen+label%3Awaiting%3Auser).
 
-- [#174](https://github.com/jfvorwald/taskville/issues/174) how a running `serve` issues a fresh pairing link (default: keypress in the `serve` terminal; alternative: `taskville pair` over a CLI-token route). Blocks nothing; #173 builds on the default.
-- [#176](https://github.com/jfvorwald/taskville/issues/176) milestones after M1 have no spec-kit feature, which the constitution's workflow expects (default: tickets plus ARCHITECTURE.md and the spec 001 contracts are M2's contract; alternative: pause and write spec 002). Blocks nothing.
+- [#178](https://github.com/jfvorwald/taskville/issues/178), [#190](https://github.com/jfvorwald/taskville/issues/190), [#198](https://github.com/jfvorwald/taskville/issues/198): engine, protocol and installer decisions on their defaults. None touches `apps/web`.
 
 Items there are blocking only if the ticket says so; everything else proceeds on its stated default.
 
@@ -162,4 +161,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Stopped at G2 #40 for the owner; do not close it or start M4, M5 or the M2 follow-ups. M3 is blocked only by G1 (closed; ROADMAP wave 2) and starts from [handoffs/M3-START.md](handoffs/M3-START.md) in a fresh lead session. Follow-ups for scheduling: #214, #215, #222 (targeted linear rules per #223), and the M4 residuals listed in the G2 summary.
+M3 Live city runs from [handoffs/M3-START.md](handoffs/M3-START.md). Batch 1: M3.01 #26 (Claude Sonnet 5.5, high) in `.worktrees/M3.01`, stop 22:30 EDT. Batch 2 (#30, #32, #31, #33) starts after M3.01 merges, two workers at a time. Usage at resume: 15%, reset 20:00 EDT; provisional cutoff for the following window 01:00 EDT (no new assignments after 00:00). M4, M5 and the follow-ups #214, #215, #222 are unblocked by G2 but not scheduled this session.
