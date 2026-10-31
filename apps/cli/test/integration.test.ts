@@ -27,6 +27,7 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
   const home = tempDir();
   let serve: Awaited<ReturnType<typeof startServe>>;
   let url = "";
+  let browserSession = "";
   const at = (...args: string[]) =>
     cli([...args, "--home", home.path, "--url", url], { cwd: home.path });
 
@@ -49,7 +50,9 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
         headers: { "Content-Type": "application/json", Origin: url },
         body: JSON.stringify({ code: match?.[2] }),
       });
-    expect((await pair()).status).toBe(200);
+    const first = await pair();
+    expect(first.status).toBe(200);
+    browserSession = ((await first.json()) as { session: string }).session;
     expect((await pair()).status).toBe(401);
     expect(serve.errors()).not.toContain(match?.[2]);
   });
@@ -236,10 +239,24 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
     expect(result.code).toBe(0);
   });
 
-  it("revokes browser pairings", async () => {
+  it("revokes browser pairings, ending the paired browser's open stream", async () => {
+    const stream = await fetch(`${url}/v1/projects/demo/events?after=0`, {
+      headers: { "X-Taskville-Session": browserSession },
+    });
+    expect(stream.status).toBe(200);
+    const reader = stream.body?.getReader();
     const result = await at("unpair");
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Revoked 1 browser session");
+    // serve gives bootEngine the same PairingStore as createApp (M1.18-F1), so the stream ends.
+    for (;;) {
+      const chunk = await reader?.read().catch(() => ({ done: true }));
+      if (chunk === undefined || chunk.done) break;
+    }
+    const again = await fetch(`${url}/v1/projects`, {
+      headers: { "X-Taskville-Session": browserSession },
+    });
+    expect(again.status).toBe(401);
   });
 
   it("exits 5 with the wrong token and 3 when the engine is unreachable", async () => {
