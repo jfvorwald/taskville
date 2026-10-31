@@ -286,13 +286,14 @@ describe("telemetry request closure, decision #184 D1 default (d)", () => {
     },
   );
 
-  it("a bridge-held request keeps the any-agent rule (#135 D2)", () => {
+  it("a bridge-held request is not closed by another agent's tool result either (#116 D3)", () => {
     const emit = eventStream();
     const state = run([
       opened(emit, "b1", LEAD, "taskville:bridge"),
       start(emit, "t1", SUB),
       finish(emit, "t1", SUB, "succeeded"),
     ]);
-    expect(state.requests.b1?.state).toBe("answered_elsewhere");
+    expect(state.requests.b1?.state).toBe("open");
+    expect(state.requests.b1?.answerable).toBe(true);
   });
 });
