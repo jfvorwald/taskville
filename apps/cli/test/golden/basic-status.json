@@ -1,0 +1,38 @@
+{
+  "projectId": "demo",
+  "cursor": 13,
+  "stateHash": "<stateHash>",
+  "agents": [
+    {
+      "connection": "connected",
+      "consecutiveToolFailures": 0,
+      "displayName": "Builder",
+      "firstSeenAt": "2026-10-30T09:00:00Z",
+      "id": "agent-a",
+      "kind": "session",
+      "lastSeenAt": "2026-10-30T09:00:11Z",
+      "registered": true,
+      "registeredSeq": 2,
+      "role": "implementer",
+      "sourceAgentId": "builder",
+      "sourceId": "adapter:generic",
+      "toolCallCount": 1
+    },
+    {
+      "connection": "connected",
+      "consecutiveToolFailures": 0,
+      "displayName": "Reviewer",
+      "firstSeenAt": "2026-10-30T09:00:01Z",
+      "id": "agent-b",
+      "kind": "session",
+      "lastSeenAt": "2026-10-30T09:00:05Z",
+      "registered": true,
+      "registeredSeq": 3,
+      "role": "reviewer",
+      "sourceAgentId": "reviewer",
+      "sourceId": "adapter:generic",
+      "toolCallCount": 0
+    }
+  ],
+  "attention": []
+}

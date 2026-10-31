@@ -11,6 +11,7 @@ export type ErrorCode =
   | "not_found"
   | "not_implemented"
   | "payload_too_large"
+  | "project_exists"
   | "unauthorized"
   | "unknown_project";
 

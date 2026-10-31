@@ -158,6 +158,20 @@ describe("renderStatus", () => {
     expect(out.indexOf("archivist")).toBeLessThan(out.indexOf("explorer"));
   });
 
+  it("does not count an agent whose activity is unknown as active (constitution IV)", () => {
+    const unknown = {
+      ...snapshot,
+      state: {
+        ...state,
+        agents: { ...state.agents, new: agent("new", "Nell", "session") },
+        activity: { ...state.activity, new: activity("new", "unknown") },
+      } as unknown as ProjectState,
+    };
+    const out = renderStatus(unknown, { projectName: "Demo", all: false });
+    expect(out.split("\n")[0]).toBe("Demo · 4 active · 1 needs you · 2 trouble · 2 waiting");
+    expect(out).toContain("Nell · connected · unknown");
+  });
+
   it("prints a line for an empty project", () => {
     const empty = {
       ...snapshot,

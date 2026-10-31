@@ -2,7 +2,7 @@
 export type CredentialKind = "cli" | "bridge" | "session";
 
 /** What a route needs. */
-export type Scope = "read" | "ingest" | "bridge" | "command" | "unpair";
+export type Scope = "read" | "ingest" | "bridge" | "command" | "unpair" | "projects";
 
 /**
  * The full grant table. Commands are reachable only from a paired browser
@@ -10,7 +10,7 @@ export type Scope = "read" | "ingest" | "bridge" | "command" | "unpair";
  * user and can read the token files, so a token must never approve anything.
  */
 const GRANTS: Record<CredentialKind, readonly Scope[]> = {
-  cli: ["read", "ingest", "unpair"],
+  cli: ["read", "ingest", "unpair", "projects"],
   bridge: ["bridge"],
   session: ["read", "command"],
 };
