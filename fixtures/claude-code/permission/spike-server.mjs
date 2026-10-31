@@ -43,7 +43,11 @@ http
         id,
         path: url.pathname,
         method: req.method,
-        headers: req.headers,
+        // Mask credentials before anything reaches the log.
+        headers: {
+          ...req.headers,
+          ...(req.headers.authorization ? { authorization: "<redacted>" } : {}),
+        },
         body: json,
         mode: url.pathname === "/permission" ? mode : undefined,
       });
