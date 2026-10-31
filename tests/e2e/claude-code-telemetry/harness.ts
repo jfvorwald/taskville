@@ -238,3 +238,13 @@ export function loggedToolCalls(home: string, projectId: string): Set<string> {
   }
   return ids;
 }
+
+/** True for a stored evidence body the engine marked as masked. */
+export function isMasked(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    (body as { status?: unknown }).status === "stored" &&
+    (body as { masked?: unknown }).masked === true
+  );
+}

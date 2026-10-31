@@ -20,6 +20,7 @@ import {
   cli,
   type Engine,
   freePort,
+  isMasked,
   logEvents,
   loggedToolCalls,
   type Recorded,
@@ -33,6 +34,8 @@ import {
 import { FAKE_TOKEN, FIXTURES, REDACTED_PROJECT, TOKEN_PLACEHOLDER } from "./redact.ts";
 
 const PROJECT_ID = "e2e";
+/** The team scenario's tasks, for the known-bug check that follows it. */
+let teamTasks: { id: string; title?: string; status: string }[] = [];
 const homes: string[] = [];
 after(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
@@ -156,11 +159,7 @@ function checkToolCalls(home: string, hooks: Recorded[]): void {
       const seeded = toolHooks.some(
         (r) => r.input.tool_use_id === id && payloadText(r).includes(FAKE_TOKEN),
       );
-      if (seeded)
-        assert.ok(
-          ev.input?.masked === true || ev.output?.masked === true,
-          `${id} not marked masked`,
-        );
+      if (seeded) assert.ok(isMasked(ev.input) || isMasked(ev.output), `${id} not marked masked`);
     }
   } finally {
     store.close();
@@ -271,9 +270,21 @@ describe("Claude Code telemetry, end to end (replayed real sessions)", () => {
       assert.equal(snap.state.teams[teammate?.teamId ?? ""]?.leadAgentId, lead);
       assert.equal(agents.find((a) => a.id === lead)?.kind, "lead");
       checkToolCalls(engine.home, hooks);
+      teamTasks = Object.values(snap.state.tasks);
     } finally {
       await engine.stop();
     }
+  });
+
+  // Found by this run (reported, not fixed here): the lead's TaskCreated has no team_name, so the
+  // crew mapper scopes the task by session (`task:<session_id>:1`); pip's TaskCompleted carries
+  // team_name, so it lands on `task:session-<8 hex>:1`, a different task that was never created.
+  it("team: the lead's TaskCreated and the teammate's TaskCompleted are one task", {
+    todo: "crew mapper task scope mismatch (M2.10 report)",
+  }, () => {
+    const task = teamTasks.find((t) => t.title === "pip says hi");
+    assert.equal(task?.status, "completed", JSON.stringify(teamTasks));
+    assert.equal(teamTasks.length, 1, JSON.stringify(teamTasks));
   });
 
   it("stop failure: a StopFailure becomes a failed turn with the error type", async () => {

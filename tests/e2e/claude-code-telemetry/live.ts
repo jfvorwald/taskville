@@ -30,6 +30,7 @@ import {
   cli,
   type Engine,
   freePort,
+  isMasked,
   logEvents,
   loggedToolCalls,
   REPO,
@@ -277,7 +278,7 @@ function evidenceCheck(lines: RecLine[]): void {
       withBodies += 1;
       const text = JSON.stringify(ev);
       if (text.includes(FAKE_TOKEN)) leaked += 1;
-      if (ev.input?.masked === true || ev.output?.masked === true) masked += 1;
+      if (isMasked(ev.input) || isMasked(ev.output)) masked += 1;
     }
     say(
       `  tool calls in the hooks ${hooks.size}, in the event log ${logged.size} (missing ${missing.length}), with evidence bodies ${withBodies}, bodies marked masked ${masked}, bodies holding the seeded token unmasked ${leaked}`,
@@ -291,7 +292,7 @@ function evidenceCheck(lines: RecLine[]): void {
 
 const ALLOWED = ["--allowedTools", "Bash Read Edit Write Agent TaskCreate TaskUpdate TaskList"];
 
-async function subagents(ref: { engine?: Engine }): Promise<void> {
+async function subagents(ref: { engine?: Engine | undefined }): Promise<void> {
   say(
     "scenario subagents (claude -p): two subagents, tool calls, a seeded token, tasks, a failure",
   );
@@ -316,7 +317,7 @@ async function subagents(ref: { engine?: Engine }): Promise<void> {
   evidenceCheck(lines);
 }
 
-async function downtime(ref: { engine?: Engine }, port: number): Promise<void> {
+async function downtime(ref: { engine?: Engine | undefined }, port: number): Promise<void> {
   say("scenario downtime (claude -p): the engine is killed mid-session and restarted after it");
   const prompt = [
     "Run these Bash commands one at a time, each as its own tool call, in this order:",
@@ -386,7 +387,7 @@ async function waitFor(test: () => boolean, timeoutMs: number): Promise<boolean>
   return false;
 }
 
-async function team(ref: { engine?: Engine }): Promise<void> {
+async function team(ref: { engine?: Engine | undefined }): Promise<void> {
   say("scenario team (interactive, tmux, in-process): one teammate, a task, then shutdown");
   const env = claudeEnv({ CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" });
   const envArgs = Object.entries(env).map(([k, v]) => `${k}=${v}`);
@@ -408,13 +409,29 @@ async function team(ref: { engine?: Engine }): Promise<void> {
   tmux("kill-server");
   tmux("new-session", "-d", "-x", "220", "-y", "50", "-c", PROJ, command);
   const watch = poller(() => ref.engine);
-  // The folder-trust dialog (the accepted side effect: an entry in ~/.claude.json).
-  if (await waitFor(() => /trust/i.test(tmux("capture-pane", "-p")), 20_000)) {
-    tmux("send-keys", "Enter");
-    say("  accepted the folder-trust dialog for the throwaway project");
+  // The folder-trust dialog (the accepted side effect: an entry in ~/.claude.json). Its default
+  // is "No, exit", so move to "Yes, I trust this folder" first.
+  // The dialog ignores keys until it has settled, so check that the selection moved before Enter.
+  if (await waitFor(() => /trust this folder/i.test(tmux("capture-pane", "-p")), 20_000)) {
+    const selected = () => /❯ Yes, I trust this folder/.test(tmux("capture-pane", "-p"));
+    for (let i = 0; i < 10 && !selected(); i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      tmux("send-keys", "Down");
+    }
+    await new Promise((r) => setTimeout(r, 500));
+    if (selected()) {
+      tmux("send-keys", "Enter");
+      say("  accepted the folder-trust dialog for the throwaway project");
+    }
   }
+  // The project's MCP server prompt: the default, "Continue without using this MCP server", is fine.
+  if (await waitFor(() => /New MCP server found/i.test(tmux("capture-pane", "-p")), 10_000)) {
+    await new Promise((r) => setTimeout(r, 1000));
+    tmux("send-keys", "Enter");
+  }
+  await waitFor(() => /Claude Code v/.test(tmux("capture-pane", "-p")), 20_000);
   await waitFor(() => recorded().some((l) => l.input.hook_event_name === "SessionStart"), 20_000);
-  await new Promise((r) => setTimeout(r, 3000));
+  await new Promise((r) => setTimeout(r, 2000));
   const prompt =
     "Create an agent team with exactly one teammate named pip. First use TaskCreate to add a task 'pip says hi' and assign it to pip. Ask pip to run the Bash command `echo hi-from-pip`, mark the task completed, and report back. When pip has reported, shut the team down and reply done. Keep everything short.";
   tmux("send-keys", "-l", prompt);
@@ -483,7 +500,7 @@ async function main(): Promise<void> {
   const version = spawnSync("claude", ["--version"], { encoding: "utf8" }).stdout.trim();
   say(`Claude Code ${version}, model ${MODEL}, ${new Date().toISOString()}`);
   const port = await freePort();
-  const ref: { engine?: Engine } = { engine: await startEngine(HOME, port) };
+  const ref: { engine?: Engine | undefined } = { engine: await startEngine(HOME, port) };
   const engine = ref.engine as Engine;
   const add = await cli([
     "project",

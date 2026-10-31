@@ -1,0 +1,43 @@
+▶ Claude Code telemetry, end to end (replayed real sessions)
+  ✔ subagents: session and two subagents with parents, tool calls, tasks, a failure (5065.867291ms)
+  ✔ downtime: engine killed mid-session; the spool replays late, nothing lost, no needs-you (3582.619417ms)
+  ✔ team: an in-process teammate appears under its lead within a second (5191.931625ms)
+  ⚠ team: the lead's TaskCreated and the teammate's TaskCompleted are one task (1.649541ms) # crew mapper task scope mismatch (M2.10 report)
+  ✔ stop failure: a StopFailure becomes a failed turn with the error type (1783.502458ms)
+  ✔ elicitation: an MCP elicitation opens a request that is closed by the end of the session (2203.860792ms)
+  ✔ fixtures are redacted (5.784583ms)
+✔ Claude Code telemetry, end to end (replayed real sessions) (17837.46525ms)
+ℹ tests 7
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 1
+ℹ duration_ms 28117.124291
+
+✖ failing tests:
+
+test at tests/e2e/claude-code-telemetry/replay.test.ts:282:3
+⚠ team: the lead's TaskCreated and the teammate's TaskCompleted are one task (1.649541ms) # crew mapper task scope mismatch (M2.10 report)
+  AssertionError [ERR_ASSERTION]: [{"assignedAgentIds":[],"createdAt":"2026-10-31T16:57:13.184Z","id":"claude-code:task:b4395a96-fd40-4c5f-8ea3-c5f447a2e4a7:1","relatedTaskIds":[],"status":"queued","title":"pip says hi","updatedAt":"2026-10-31T16:57:13.184Z"},{"assignedAgentIds":[],"id":"claude-code:task:session-b4395a96:1","relatedTaskIds":[],"status":"completed","updatedAt":"2026-10-31T16:57:14.678Z"}]
+  + actual - expected
+  
+  + 'queued'
+  - 'completed'
+  
+      at TestContext.<anonymous> (file:///repo/tests/e2e/claude-code-telemetry/replay.test.ts:286:12)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'queued',
+    expected: 'completed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
