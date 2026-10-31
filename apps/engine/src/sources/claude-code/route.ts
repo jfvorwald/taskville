@@ -1,4 +1,4 @@
-import { idSchema, MAX_BATCH_BYTES } from "@taskville/protocol";
+import { MAX_BATCH_BYTES } from "@taskville/protocol";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { type AppEnv, requireScope } from "../../http/app.ts";
@@ -9,11 +9,19 @@ export const CLAUDE_CODE_HOOKS_PATH = "/v1/sources/claude-code/hooks";
 /** The batch route's byte limit (contracts/http-api.md): one hook is never larger than a batch. */
 export const MAX_HOOK_BODY_BYTES = MAX_BATCH_BYTES;
 /**
- * Longest shim `sourceEventId` accepted. The mapper (M2.03 `MAX_SOURCE_EVENT_ID`) ignores a
- * longer one, because `<sourceEventId>:<event type>` and `claude-code:request:<sourceEventId>`
- * must fit the 200-character protocol ID; the route refuses it with 400 instead of dropping it.
+ * The only `sourceEventId` the route and the spool replay accept: a lowercase UUID v4, exactly
+ * what the shim generates (M2.01). The mappers build event and request IDs from it unmasked, so
+ * anything else (a secret-shaped string, roborev 5161) is refused rather than logged. At 36
+ * characters it is well under the mappers' limit (`MAX_SOURCE_EVENT_ID` in
+ * `@taskville/adapters/claude-code`, the one source of truth). JavaScript's `$` never matches
+ * before a trailing newline (L-41).
  */
-export const MAX_HOOK_SOURCE_EVENT_ID = 170;
+export const SHIM_SOURCE_EVENT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+export function isShimSourceEventId(value: unknown): value is string {
+  return typeof value === "string" && SHIM_SOURCE_EVENT_ID.test(value);
+}
 
 const WRAPPER_KEYS: ReadonlySet<string> = new Set(["sourceEventId", "payload"]);
 
@@ -31,10 +39,9 @@ function parseWrapper(body: unknown): Wrapper | undefined {
   if (!isPlainRecord(body)) return undefined;
   if (!Object.keys(body).every((key) => WRAPPER_KEYS.has(key))) return undefined;
   if (!Object.hasOwn(body, "sourceEventId") || !Object.hasOwn(body, "payload")) return undefined;
-  const id = idSchema.safeParse(body.sourceEventId);
-  if (!id.success || id.data.length > MAX_HOOK_SOURCE_EVENT_ID) return undefined;
+  if (!isShimSourceEventId(body.sourceEventId)) return undefined;
   if (!isPlainRecord(body.payload)) return undefined;
-  return { sourceEventId: id.data, payload: body.payload };
+  return { sourceEventId: body.sourceEventId, payload: body.payload };
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

@@ -8,7 +8,7 @@ import {
   registerClaudeCodeRoutes,
 } from "../../../src/sources/claude-code/index.ts";
 import { bearer, CLI_TOKEN, makeApp, postJson } from "../../http/helpers.ts";
-import { makeSource, useProjects } from "./helpers.ts";
+import { hookId, makeSource, useProjects } from "./helpers.ts";
 
 // Spike S-2 recordings (fixtures/claude-code/{team,subagent}): every hook ran in
 // /tmp/spike-s2/proj. Lines are { seq, offset_ms, input } with `input` the raw hook JSON.
@@ -38,7 +38,7 @@ async function postAll(db: ReturnType<typeof useProjects>, file: string) {
   for (const [i, payload] of payloads.entries()) {
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: `${file}#${i}`, payload }, bearer(CLI_TOKEN)),
+      postJson({ sourceEventId: hookId(`${file}#${i}`), payload }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as HookIngestResponse;
