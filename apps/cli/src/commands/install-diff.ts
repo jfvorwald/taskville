@@ -2,7 +2,7 @@ import { type JsonValue, redactJson, redactText } from "@taskville/adapters/reda
 
 // The settings diff `install` shows before it asks (#29). A plain line diff with three lines of
 // context. Nothing secret in the settings file is printed, even as context: first every string
-// value the JSON redactor masks (it also knows sensitive property names such as `DB_PASSWORD`,
+// (and every number under a sensitive key, #194) the JSON redactor masks (it also knows sensitive property names such as `DB_PASSWORD`,
 // whose value may sit on a later line) is replaced wherever it appears quoted, then every line
 // goes through the text redactor as well (roborev 5200).
 
@@ -45,16 +45,25 @@ function diffLines(a: string[], b: string[]): Op[] {
   return ops;
 }
 
-/** String values in `text` (a JSON document) that redaction would mask, by JSON path or content. */
-function sensitiveValues(text: string | undefined): string[] {
-  if (text === undefined) return [];
+interface Sensitive {
+  strings: Set<string>;
+  numbers: Set<number>;
+}
+
+/**
+ * Values in `text` (a JSON document) that redaction would mask: strings by JSON path or content,
+ * and everything inside a sensitive key's sealed value (#194): strings, numbers and keys.
+ * Booleans are sealed in stored data too but carry one bit, so the diff leaves `true` and `false`
+ * readable.
+ */
+function sensitiveValues(text: string | undefined, into: Sensitive): void {
+  if (text === undefined) return;
   let doc: JsonValue;
   try {
     doc = JSON.parse(text) as JsonValue;
   } catch {
-    return [];
+    return;
   }
-  const values: string[] = [];
   for (const mask of redactJson(doc).masks) {
     let node: unknown = doc;
     for (const step of mask.path) {
@@ -63,27 +72,57 @@ function sensitiveValues(text: string | undefined): string[] {
           ? (node as Record<string | number, unknown>)[step]
           : undefined;
     }
-    if (typeof node === "string" && node !== "") values.push(node);
+    collect(node, into);
   }
-  return values;
+}
+
+/** Every string, number and key inside a masked value: a sealed object hides its keys too. */
+function collect(node: unknown, into: Sensitive): void {
+  if (typeof node === "string") {
+    if (node !== "") into.strings.add(node);
+  } else if (typeof node === "number") {
+    into.numbers.add(node);
+    // A quoted copy of the same digits elsewhere would print it too (roborev 5274).
+    into.strings.add(JSON.stringify(node));
+  } else if (Array.isArray(node)) {
+    for (const item of node) collect(item, into);
+  } else if (node !== null && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== "") into.strings.add(key);
+      collect(value, into);
+    }
+  }
 }
 
 const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/g;
+const NUMBER = /-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/g;
 
 /**
  * Replaces every JSON string literal on the line whose decoded value is sensitive, however it is
- * spelled (escapes included), then runs the text redactor over the line.
+ * spelled (escapes included), and every number outside string literals whose value is sensitive,
+ * then runs the text redactor over the line.
  */
-function maskLine(line: string, sensitive: ReadonlySet<string>): string {
-  const out = line.replace(STRING_LITERAL, (literal) => {
+function maskLine(line: string, sensitive: Sensitive): string {
+  let out = "";
+  let last = 0;
+  const numbers = (segment: string) =>
+    sensitive.numbers.size === 0
+      ? segment
+      : segment.replace(NUMBER, (token) =>
+          sensitive.numbers.has(Number(token)) ? "[REDACTED]" : token,
+        );
+  for (const match of line.matchAll(STRING_LITERAL)) {
+    out += numbers(line.slice(last, match.index));
     let value: unknown;
     try {
-      value = JSON.parse(literal);
+      value = JSON.parse(match[0]);
     } catch {
-      return literal;
+      value = undefined;
     }
-    return typeof value === "string" && sensitive.has(value) ? `"[REDACTED]"` : literal;
-  });
+    out += typeof value === "string" && sensitive.strings.has(value) ? `"[REDACTED]"` : match[0];
+    last = match.index + match[0].length;
+  }
+  out += numbers(line.slice(last));
   return redactText(out).text;
 }
 
@@ -105,6 +144,9 @@ export function settingsDiff(
 ): string {
   if (before === after) return "";
   const ops = diffLines(lines(before), lines(after));
+  const sensitive: Sensitive = { strings: new Set(), numbers: new Set() };
+  sensitiveValues(before, sensitive);
+  sensitiveValues(after, sensitive);
   const keep = ops.map((_op, k) =>
     ops.slice(Math.max(0, k - CONTEXT), k + CONTEXT + 1).some((o) => o.kind !== " "),
   );
@@ -120,12 +162,12 @@ export function settingsDiff(
     }
     if (gap) out.push("@@");
     gap = false;
-    out.push(`${op.kind}${op.line}`);
+    // Masked before the prefix, so "-" never joins a number or a token on the line (roborev 5260).
+    out.push(`${op.kind}${maskLine(op.line, sensitive)}`);
   });
   const missingNewline = (text: string | undefined) =>
     text !== undefined && text !== "" && !text.endsWith("\n");
   if (missingNewline(before) || missingNewline(after))
     out.push("\\ (no newline at end of the original file)");
-  const sensitive = new Set([...sensitiveValues(before), ...sensitiveValues(after)]);
-  return `${out.map((line) => maskLine(line, sensitive)).join("\n")}\n`;
+  return `${out.map((line, k) => (k < 2 ? redactText(line).text : line)).join("\n")}\n`;
 }

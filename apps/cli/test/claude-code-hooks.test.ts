@@ -9,6 +9,8 @@ import { freePort, startServe, tempDir } from "./helpers.ts";
 const STREAM = join(import.meta.dirname, "../../../fixtures/claude-code/subagent/nested.jsonl");
 const BASH_CALL = "toolu_015WFqWypLHXWoXKeUEQmnfh";
 const SECRET_CALL = "toolu_seeded0000000000000000";
+const NESTED_SECRET = "plainnestedsecretvalue";
+const NESTED_PIN = 987654321987;
 
 describe("serve with the Claude Code hooks route", () => {
   const home = tempDir();
@@ -70,7 +72,20 @@ describe("serve with the Claude Code hooks route", () => {
         payload: {
           ...hook,
           tool_use_id: SECRET_CALL,
-          ...(i === 1 ? { tool_response: { stdout: `token ${secret}`, stderr: "" } } : {}),
+          // Also values nested under sensitive keys, in plain words and numbers no text rule
+          // would catch on its own (#194): only the shared "everything under a sensitive key"
+          // rule keeps them out.
+          ...(i === 1
+            ? {
+                tool_response: {
+                  stdout: `token ${secret}`,
+                  stderr: "",
+                  auth: { password: { value: NESTED_SECRET } },
+                  token: NESTED_PIN,
+                  apiKey: [true, { inner: NESTED_SECRET }],
+                },
+              }
+            : {}),
         },
       });
       expect(res.status).toBe(200);
@@ -99,10 +114,15 @@ describe("serve with the Claude Code hooks route", () => {
     } finally {
       store.close();
     }
-    for (const suffix of ["", "-wal", "-shm"]) {
-      const file = `${evidencePath}${suffix}`;
-      if (existsSync(file))
-        expect(readFileSync(file).toString("latin1")).not.toContain("Zq7Xw2Lr9Kd4");
+    for (const db of [evidencePath, join(home.path, "taskville.db")]) {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        const file = `${db}${suffix}`;
+        if (!existsSync(file)) continue;
+        const bytes = readFileSync(file).toString("latin1");
+        expect(bytes, file).not.toContain("Zq7Xw2Lr9Kd4");
+        expect(bytes, file).not.toContain(NESTED_SECRET);
+        expect(bytes, file).not.toContain(String(NESTED_PIN));
+      }
     }
   });
 });
