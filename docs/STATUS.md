@@ -6,20 +6,22 @@ Lead-owned cross-session summary. Teammates never edit this file; they write the
 
 ## Where things stand
 
-The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Event fixtures are in (PR #130): five JSONL fixtures with expected per-line ingest results and a shared loader. Engine storage is in (PR #134): an insert-only, gap-free event log enforced by SQLite triggers, projections with a rebuild helper, and owner-only database files. Attention, requests and commands are in (PR #137): one prompt, one red state; only bridge-held requests answerable; heuristic trouble from an injected clock. Retro tooling is in (PR #141): `pnpm retro M<n>` renders the milestone report from GitHub data with Mermaid charts and "not measured" where it cannot compute. Batch 3 finishes with the domain reducer (#9, PR #139), which also wires the two reducers together.
+The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Event fixtures are in (PR #130): five JSONL fixtures with expected per-line ingest results and a shared loader. Engine storage is in (PR #134): an insert-only, gap-free event log enforced by SQLite triggers, projections with a rebuild helper, and owner-only database files. Attention, requests and commands are in (PR #137): one prompt, one red state; only bridge-held requests answerable; heuristic trouble from an injected clock. Retro tooling is in (PR #141): `pnpm retro M<n>` renders the milestone report from GitHub data with Mermaid charts and "not measured" where it cannot compute. The domain reducer is in (PR #139) and composed with attention and requests: replaying the same events gives the same `stateHash`, and the M1.17 fixtures replay to reviewed snapshots. Batch 3 is complete. Batch 4 is running: the ingest pipeline and the demo producer.
 
 ## In progress
 
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
-| [#9](https://github.com/jfvorwald/taskville/issues/9) M1.07 Domain reducer: agents, sessions, tasks, activity, teams | Domain | domain-hash | in progress |
+| [#13](https://github.com/jfvorwald/taskville/issues/13) M1.12 Ingest pipeline | Engine | storage | in progress |
+| [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 Seeded six-agent demo producer | Domain | domain | in progress |
 
-Ready, waiting for a free teammate: none (storage teammate held for #13, domain teammate held for #14). Blocked: #13 and #14 wait on #9.
+Ready, waiting for a free teammate: none. Blocked: #15 waits on #13; #16 on #15; #17 on #13 and #15; #18 on #16 and #14; #103 on #15 and #18.
 
 ## Done this wave
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#9](https://github.com/jfvorwald/taskville/issues/9) M1.07 Domain reducer and composition with M1.08 | [#139](https://github.com/jfvorwald/taskville/pull/139) | 4818: 5 medium fixed; re-review 4831: 3 fixed, 1 answered; 4838 (third raise of one finding) routed to #138; post-commit 4861 pass | domain 203 tests, `pnpm check` 952 tests on main; fixture replay snapshots ([report](tasks/M1.07.md)) |
 | [#94](https://github.com/jfvorwald/taskville/issues/94) M1.19 Retro tooling: milestone report generator | [#141](https://github.com/jfvorwald/taskville/pull/141) | 4844: 4 medium fixed; re-review 4851: 1 high, 1 medium fixed; post-commit 4852: 1 high, 1 medium fixed; 4853 pass | retro 109 tests incl. golden report and Mermaid validation; `pnpm check` 877 tests ([report](tasks/M1.19.md)) |
 | [#10](https://github.com/jfvorwald/taskville/issues/10) M1.08 Domain attention, requests, and commands | [#137](https://github.com/jfvorwald/taskville/pull/137) | job 4827: 1 medium fixed; re-review 4836 pass | domain 128 tests, `pnpm check` 768 tests on main; mutation check per security rule ([report](tasks/M1.08.md)) |
 | [#11](https://github.com/jfvorwald/taskville/issues/11) M1.09 Engine storage: SQLite event log and projections | [#134](https://github.com/jfvorwald/taskville/pull/134) | job 4815 pass, no findings | engine 173 tests (43 storage), `pnpm check` 703 tests on main; mutation check per safeguard ([report](tasks/M1.09.md)) |
@@ -41,6 +43,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 - [#113](https://github.com/jfvorwald/taskville/issues/113) persisted browser pairings are a same-user write path (default: persist digests per spec; alternative: memory only, re-pair after restart). Blocks nothing; the security review #17 weighs it, and it must be settled before `serve` wires pairings to storage.
 - [#133](https://github.com/jfvorwald/taskville/issues/133) `node:sqlite` on pinned Node 26.8.2 has no `Database`/`Statement` names (default: alias `DatabaseSync`/`StatementSync` in `storage/sqlite.ts`; docs unchanged until approved). Blocks nothing.
 - [#135](https://github.com/jfvorwald/taskville/issues/135) request merge and closure details (defaults: merge on exact tool name, the M2 adapter fills it on Notifications; close on the next same-session event from any agent; bridge record wins a merge). Blocks nothing in M1.
+- [#138](https://github.com/jfvorwald/taskville/issues/138) tool-call count exactness and task graph shortcuts (defaults: bounded projection as specified; task graph literal, so `queued -> completed` is flagged). Blocks nothing.
 - [#110](https://github.com/jfvorwald/taskville/issues/110) where projects are registered (default: engine `projects` table, `project add` via `POST /v1/projects`, config projects registered at start). Blocks nothing.
 - [#114](https://github.com/jfvorwald/taskville/issues/114) ARCHITECTURE.md 7.4 vs 6 on `pending_requests`/`commands` tables (default: projection-only, M4; text unchanged). Blocks nothing.
 - [#116](https://github.com/jfvorwald/taskville/issues/116) S-1: hold window (default 90 s, focus-independent, hook timeout hold + 5 s) and terminal-answer rules that would change ARCHITECTURE.md 8.1 and the `.roborev.toml` bridge invariant. Blocks nothing in M1; feeds M4.02 and M4.03.
@@ -56,6 +59,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 | Redaction, adversarial 100,000-char inputs | at most 27 ms each alone (23 inputs); up to 285 ms under parallel `pnpm check` | adapters test suite | #24 |
 | `pnpm check` wall time (36 files, 768 tests) | 8.1 s | `time pnpm check` (macOS, Node 26.8.2) | #10 |
 | Live `pnpm retro M1` | 7.2 s | `time pnpm retro M1` | #94 |
+| Replay 10,012 events / hash result | 51 ms / 5.9 ms (one run) | throwaway script, Node 26.8.2 | #9 |
 | Hash a 759,588-byte state | about 9.6 ms (mean of 20 runs) | one-off script, not committed (Node 26.8.2) | #6 |
 | Notification `permission_prompt` delay after PermissionRequest | 6.011 to 6.016 s (3 runs) | spike server log, Claude Code 2.1.312 | #3 |
 | Terminal No to hook connection close | 15 ms (1 run) | spike server log | #3 |
@@ -63,6 +67,8 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 Targets in the spec are not measurements until a ticket records them here with the command that produced them.
 
 ## Known follow-ups
+
+- [#143](https://github.com/jfvorwald/taskville/issues/143): the attention reducer orders requests with `Date.parse`, which feeds `stateHash`; switch to `compareTimestamps`. Not on the G1 list; raised for the owner to schedule.
 
 - M1.19: NOT RUN: rendering through real Mermaid (a strict local validator is used) and flake counting on real data (none yet). Re-recording the snapshot needs `biome check --write` on it.
 
@@ -94,4 +100,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Merge batch 2 as it lands; #13 (ingest) once #9, #10 and #11 merge; #14 (demo) once #9 merges; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).
+Merge batch 2 as it lands; #15 (snapshots and SSE) once #13 merges; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).

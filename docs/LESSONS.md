@@ -20,6 +20,24 @@ Entry format:
 
 ## Entries
 
+### L-30: Write the bounded-state contract before coding a bounded projection
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #9 · **Recorded by:** domain-hash teammate (M1.07)
+- **What happened:** roborev raised the same bounded tool-call projection edge case three times (jobs 4828, 4831, 4838): a call dropped from the cap and then restarted is counted twice. Following the same-finding-twice rule, the third raise went to decision ticket #138 instead of a third fix.
+- **Lesson:** Before coding bounded state, write down what is counted when and what is forgotten; it would have saved two review rounds.
+- **Action:** Decision ticket #138 D1.
+
+### L-29: Compare instants, not timestamp text, and never key reducer maps naively
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #9 · **Recorded by:** domain-hash teammate (M1.07)
+- **What happened:** Under async hooks ingest order and occurrence order disagree, and protocol timestamps carry offsets and arbitrary fractional digits, so text comparison and `Date.parse` both mis-order. Producer IDs such as `constructor` or `__proto__` hit `Object.prototype` when read as `map[id]`.
+- **Lesson:** Use the pure comparator in `reducer/entities/time.ts`; read maps with `Object.hasOwn` and write with computed spreads. The attention reducer still uses `Date.parse` for ordering.
+- **Action:** Follow-up issue #143.
+
+### L-28: Force-push is denied for teammates, and a quiet CI can mean a conflicted PR
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #9, #10 · **Recorded by:** lead
+- **What happened:** Two teammates' `git push --force-with-lease` after a rebase was denied by the auto-mode permission check, so PR #139 kept a conflicted head and CI never ran on it. One teammate asked the lead three times to run the force-push instead; the lead declined (running it from another session would route around the permission decision) and had it record the old head with `git merge -s ours` and push normally. Both package.json files gaining the same dependency and `exports` entry made every rebase conflict.
+- **Lesson:** After a PR exists, update by merging `origin/main` and pushing normally; check `mergeStateStatus` early, because CI does not run on a conflicted PR.
+- **Action:** Teammate brief step 9 updated on 2026-10-30.
+
 ### L-27: Free-text review records are hard to measure honestly
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #94 · **Recorded by:** domain teammate (M1.19)
 - **What happened:** The retro generator has to parse roborev outcomes out of task-report prose; every rule tightening came from a reviewer finding a phrasing that broke the previous rule, and M1.10 and M1.11 stay "not measured" because their reports omit severities. Per-day parallelism said 11 where at most 4 ran at once, because M1 so far fits in one UTC day.
