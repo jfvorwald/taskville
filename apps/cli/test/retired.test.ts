@@ -37,7 +37,9 @@ describe("retiredNotes", () => {
   });
 
   it("pins the wording per kind, with the count first", () => {
-    expect(retiredNotes({ agents: 12, tasks: 3, requests: 40 }, ["agents", "tasks", "requests"])).toEqual([
+    expect(
+      retiredNotes({ agents: 12, tasks: 3, requests: 40 }, ["agents", "tasks", "requests"]),
+    ).toEqual([
       "12 older finished agents are in the event log",
       "3 older finished tasks are in the event log",
       "40 older closed requests are in the event log",
@@ -45,7 +47,9 @@ describe("retiredNotes", () => {
   });
 
   it("uses the singular for one", () => {
-    expect(retiredNotes({ agents: 1, tasks: 1, requests: 1 }, ["agents", "tasks", "requests"])).toEqual([
+    expect(
+      retiredNotes({ agents: 1, tasks: 1, requests: 1 }, ["agents", "tasks", "requests"]),
+    ).toEqual([
       "1 older finished agent is in the event log",
       "1 older finished task is in the event log",
       "1 older closed request is in the event log",
@@ -109,7 +113,11 @@ describe("requests --all", () => {
       res.setHeader("content-type", "application/json");
       const match = /^\/v1\/projects\/([^/]+)\/snapshot$/.exec(req.url ?? "");
       if (req.url === "/v1/projects") {
-        res.end(JSON.stringify({ projects: Object.keys(retiredByProject).map((id) => ({ id, name: id })) }));
+        res.end(
+          JSON.stringify({
+            projects: Object.keys(retiredByProject).map((id) => ({ id, name: id })),
+          }),
+        );
       } else if (match?.[1] !== undefined && retiredByProject[match[1]] !== undefined) {
         res.end(JSON.stringify({ ...snapshot(retiredByProject[match[1]]), projectId: match[1] }));
       } else {

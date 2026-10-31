@@ -71,5 +71,10 @@
       "toolCallCount": 0
     }
   ],
-  "attention": []
+  "attention": [],
+  "retired": {
+    "agents": 0,
+    "tasks": 0,
+    "requests": 0
+  }
 }
