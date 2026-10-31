@@ -49,6 +49,10 @@ describe("a team task across the lead and a teammate (recorded hooks)", () => {
     expect(completed?.taskId).toBe(created?.taskId);
   });
 
+  it("pins the ID: a hook without team_name is scoped `session-<first 8 of session_id>`", () => {
+    expect(one(hook("TaskCreated"))?.taskId).toBe("claude-code:task:session-b4395a96:1");
+  });
+
   it("keeps different sessions' tasks apart", () => {
     const created = hook("TaskCreated");
     const other = { ...created, session_id: "0d2f9c11-aaaa-4bbb-8ccc-123456789abc" };

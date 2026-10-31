@@ -388,9 +388,19 @@ function workerPermissionPrompt(p: unknown, who: Attribution, ctx: CrewContext):
 }
 
 /**
- * TaskCreated and TaskCompleted: the team's shared task list. Not recorded in S-2 (the task tools
- * were unavailable in 2.1.312), so the field names are the documented ones (`task_id`,
- * `task_subject`, `team_name`) and unverified. Tasks are scoped by team, else by session.
+ * The `team_name` Claude Code gives the team a lead starts: `session-` plus the first 8 characters
+ * of the lead's `session_id`. Recorded in every team stream (S-2 and the M2.10 live run). The
+ * lead's own TaskCreated has no `team_name` (it can run before the team exists), so deriving it
+ * here is what lets the lead's and a teammate's hooks for one task share a scope.
+ */
+const teamNameOfLead = (sessionId: string): string => `session-${sessionId.slice(0, 8)}`;
+
+/**
+ * TaskCreated and TaskCompleted: the team's shared task list. Recorded only in the M2.10 live
+ * run: the lead's TaskCreated has no `team_name`, the teammate's TaskCompleted has one. Tasks are
+ * scoped by `team_name`, else by the team the session would lead (`teamNameOfLead`), so both map
+ * to one task. A solo session's tasks get that scope too, keyed by the first 8 characters of its
+ * session ID.
  */
 function teamTask(
   hook: "TaskCreated" | "TaskCompleted",
@@ -399,7 +409,7 @@ function teamTask(
 ): Draft[] | string {
   const taskKey = idToken(own(p, "task_id"), MAX_AGENT_ID);
   if (taskKey === undefined) return `${hook} without task_id`;
-  const scope = idToken(own(p, "team_name"), TEAM_NAME_MAX) ?? who.sessionId;
+  const scope = idToken(own(p, "team_name"), TEAM_NAME_MAX) ?? teamNameOfLead(who.sessionId);
   const taskId = fits(`${TASK_PREFIX}${scope}:${taskKey}`);
   if (taskId === undefined) return `${hook} task ID too long`;
   if (hook === "TaskCreated") {
