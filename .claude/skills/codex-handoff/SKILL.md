@@ -46,7 +46,9 @@ Use this prompt shape:
 
 ```text
 Own <KEY and issue URL> exclusively for this handoff. Integration lead: <lead>.
-Reservation: <path>; read it and the repository instructions first.
+Reservation, recorded by the lead at <path> (it may not exist at your baseline, so it is quoted here):
+<reservation table contents>
+Read the repository instructions first.
 
 Baseline: <branch>, <full SHA>. Workspace: <new isolated T3 worktree, or existing takeover workspace>.
 Expected starting HEAD: <base SHA for new work, or preserved worker HEAD for takeover>.
