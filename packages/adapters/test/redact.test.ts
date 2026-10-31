@@ -964,9 +964,13 @@ describe("redactJson", () => {
     });
   });
 
-  it("masks strings in an array under a sensitive name", () => {
+  it("masks strings in an array under a sensitive name, including objects inside it (#194)", () => {
     expect(redactJson({ password: ["hunter2", ["x1"], { note: "plain" }] }).value).toEqual({
-      password: [maskMarker("sensitive-value"), [maskMarker("sensitive-value")], { note: "plain" }],
+      password: [
+        maskMarker("sensitive-value"),
+        [maskMarker("sensitive-value")],
+        { note: maskMarker("sensitive-value") },
+      ],
     });
   });
 
@@ -982,6 +986,83 @@ describe("redactJson", () => {
   it("returns no masks for clean input", () => {
     const result = redactJson({ title: "Fix the tests", files: ["src/a.ts"], sha });
     expect(result.masks).toEqual([]);
+  });
+});
+
+describe("redactJson: every scalar anywhere under a sensitive key (#194)", () => {
+  const M = maskMarker("sensitive-value");
+  const rows: Array<[string, JsonValue, JsonValue]> = [
+    ["nested object", { password: { value: "hunter2" } }, { password: { value: M } }],
+    [
+      "deeply nested object",
+      { auth: { token: { a: { b: { c: "deep" } } } } },
+      { auth: { token: { a: { b: { c: M } } } } },
+    ],
+    ["array of strings", { apiKey: ["a1", "b2"] }, { apiKey: [M, M] }],
+    ["array of objects", { secret: [{ v: "x" }, { v: "y" }] }, { secret: [{ v: M }, { v: M }] }],
+    ["number", { token: 123456 }, { token: M }],
+    ["number in a nested object", { password: { pin: 4242 } }, { password: { pin: M } }],
+    ["negative and fractional numbers", { secret: [-1, 2.5] }, { secret: [M, M] }],
+    ["boolean", { password: true }, { password: M }],
+    ["booleans in an array", { credentials: [false, true] }, { credentials: [M, M] }],
+    ["null stays null (nothing to hide)", { password: null }, { password: null }],
+    ["nested null", { password: { old: null } }, { password: { old: null } }],
+    ["empty containers", { token: { a: {}, b: [] } }, { token: { a: {}, b: [] } }],
+    [
+      "a sensitive key inside a non-sensitive one",
+      { config: { db: { password: { v: "x" } }, port: 5432 } },
+      { config: { db: { password: { v: M } }, port: 5432 } },
+    ],
+  ];
+  it.each(rows)("masks %s", (_name, input, expected) => {
+    expect(redactJson(input).value).toEqual(expected);
+  });
+
+  const clean: Array<[string, JsonValue]> = [
+    ["numbers under ordinary keys", { count: 3, port: 4807, ratio: 0.5, ok: true }],
+    ["nested objects under ordinary keys", { config: { db: { host: "localhost", port: 5432 } } }],
+    ["arrays of numbers", { durations: [12, 30, 7], flags: [true, false] }],
+    [
+      "keys that only contain a sensitive word",
+      { keyboard: { layout: 1 }, tokenizer: { size: 512 } },
+    ],
+    ["a monkey key", { monkey: { banana: 2 } }],
+  ];
+  it.each(clean)("leaves %s alone", (_name, input) => {
+    const result = redactJson(input);
+    expect(result.value).toEqual(input);
+    expect(result.masks).toEqual([]);
+  });
+
+  it("reports one mask per masked scalar, with its path", () => {
+    const result = redactJson({ password: { pin: 4242, list: [true, "x"] } });
+    expect(result.masks.map((m) => m.path)).toEqual([
+      ["password", "pin"],
+      ["password", "list", 0],
+      ["password", "list", 1],
+    ]);
+    expect(result.masks[0]?.spans[0]).toMatchObject({ kind: "sensitive-value", start: 0, end: 4 });
+  });
+
+  it("keeps complete references readable at any depth under a sensitive key", () => {
+    expect(redactJson({ password: { from: "$DB_PASSWORD" } }).value).toEqual({
+      password: { from: "$DB_PASSWORD" },
+    });
+  });
+
+  it("respects skip at any depth", () => {
+    const result = redactJson(
+      { idempotencyKey: { nested: "keep-me", n: 1 }, token: { v: "mask" } },
+      { skip: (path) => path[0] === "idempotencyKey" },
+    );
+    expect(result.value).toEqual({ idempotencyKey: { nested: "keep-me", n: 1 }, token: { v: M } });
+  });
+
+  it("keeps a __proto__ key under a sensitive key as data", () => {
+    const value = JSON.parse('{"password": {"__proto__": {"x": 1}}}') as JsonValue;
+    const out = redactJson(value).value as { password: object };
+    expect(Object.getPrototypeOf(out.password)).toBe(Object.prototype);
+    expect(JSON.stringify(out)).toBe(`{"password":{"__proto__":{"x":"${M}"}}}`);
   });
 });
 
