@@ -87,7 +87,8 @@ const KEY_QUALIFIERS = new Set([
 
 /**
  * True for names whose value is a secret: `*_TOKEN`, `*_SECRET`, `*_PASSWORD`,
- * `apiKey`, `client_secret`, and so on. Judged by the last word of the name.
+ * `apiKey`, `client_secret`, `PGPASSWORD`, `DB_PASS`, `MYSQL_PWD`, `SECRET_KEY_BASE`, and so
+ * on. Judged by the last word of the name.
  * An all-uppercase environment-style name ending in `_KEY` is always sensitive.
  */
 export function isSensitiveName(name: string): boolean {
@@ -99,6 +100,13 @@ export function isSensitiveName(name: string): boolean {
   const last = words.at(-1);
   if (last === undefined) return false;
   if (SECRET_WORDS.has(last)) return true;
+  // `PGPASSWORD`, `DBPASSWORD`: the word `password` with nothing in front of it to split on.
+  if (last.length > "password".length && last.endsWith("password")) return true;
+  // `DB_PASS`, `MYSQL_PWD`: only with a qualifier, so a bare `pass` counter (`{"pass": 12}`)
+  // and the shell's own `PWD` (the working directory) stay readable.
+  if ((last === "pass" || last === "pwd") && words.length >= 2) return true;
+  // Rails' `SECRET_KEY_BASE`, which ends in `base` rather than `key`.
+  if (last === "base" && words.at(-2) === "key" && words.at(-3) === "secret") return true;
   if (last !== "key" || words.length < 2) return false;
   if (/^[A-Z0-9_]+$/.test(name)) return true;
   return KEY_QUALIFIERS.has(words.at(-2) ?? "");

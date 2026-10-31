@@ -167,6 +167,30 @@ const USER_FLAG = /(?<![A-Za-z0-9_-])(?:-[uU][ \t]*|--(?:proxy-)?user(?:=|[ \t]+
 // after a flag costs a bounded scan per match.
 const MAX_USER = 128;
 
+// Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
+// publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
+// tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
+// `sshpass`, 3 is `docker` or `podman`, which count only when the same command has a whole
+// `login` word after it (see scanLoginSegment). A path in front (`/usr/bin/mysql`) is fine.
+const PASSWORD_COMMAND =
+  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
+
+// Words read after one of those commands, so a long line costs a bounded scan.
+const MAX_COMMAND_WORDS = 256;
+
+// A `{"name": "DB_PASSWORD", "value": "..."}` pair (Kubernetes env, the GitHub API, AWS
+// tags, `docker inspect`) written as text, in either property order and across lines.
+// PAIR_NAME finds the name (group 3); the value is read by hand.
+const PAIR_NAME = /(["'])(?:name|key)\1\s*:\s*(["'])([A-Za-z_][A-Za-z0-9_.-]{0,99})\2/gi;
+const VALUE_KEY_AFTER = /\s*,\s*(["'])value\1\s*:\s*/iy;
+const VALUE_KEY = /(["'])value\1\s*:\s*/gi;
+
+// Work allowed for reading values that come before their name, in characters scanned per
+// call. A `"value":` only counts once the name that follows is known to be sensitive, but
+// each one in front of it is tried; past this budget the text up to the name is masked
+// instead, so a crafted run costs bounded time and never leaves a value readable.
+const PAIR_SCAN_BUDGET = 500_000;
+
 /** Masks secret-looking values in a string. Deterministic and idempotent. */
 export function redactText(input: string): RedactedText {
   const candidates: Candidate[] = [];
@@ -175,6 +199,8 @@ export function redactText(input: string): RedactedText {
   const ends = valueEnds(input);
   findAssignments(input, ends, candidates);
   findFlags(input, ends, candidates);
+  findPasswordFlags(input, candidates);
+  findNameValuePairs(input, ends, candidates);
   findAuthParams(input, candidates);
   findUserFlags(input, candidates);
   findStandaloneTokens(input, candidates);
@@ -294,6 +320,246 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
 }
 
 /**
+ * Masks the password in the short `-p` flag of `mysql`, `mysqldump`, `sshpass`, and
+ * `docker|podman login`, in the rest of that command (up to a newline, `;`, `&`, or `|`).
+ * `mysql` and `mysqldump` read the password only when attached (`-pSECRET`; a bare `-p`
+ * prompts, and the next word is the database). `sshpass` and `login` also take `-p SECRET`.
+ * `sshpass` options end at the first word that is not one, so `sshpass -p x ssh -p 2222 host`
+ * masks `x` and leaves the port. Not masked: no value, or a value that is one complete
+ * reference (`-p"$DB_PASS"`, `-p $TOKEN`).
+ */
+function findPasswordFlags(input: string, out: Candidate[]): void {
+  let scannedUntil = 0;
+  let dockerUntil = 0;
+  for (const match of input.matchAll(PASSWORD_COMMAND)) {
+    if (match[3] !== undefined) {
+      // Its own high-water mark: `docker exec db mysql -pSECRET` must still reach the mysql rule.
+      if (match.index >= dockerUntil) {
+        dockerUntil = scanLoginSegment(input, match.index + match[0].length, out);
+      }
+      continue;
+    }
+    if (match.index < scannedUntil) continue;
+    const spaced = match[1] === undefined; // sshpass takes `-p SECRET` too
+    const sshpass = match[2] !== undefined;
+    let at = match.index + match[0].length;
+    for (let words = 0; words < MAX_COMMAND_WORDS; words++) {
+      at = skipBlanks(input, at);
+      const end = shellWordEnd(input, at);
+      if (end === at) break; // newline, `;`, `&`, `|`, a backtick, or the end of the text
+      scannedUntil = end;
+      if (input.charAt(at) !== "-") {
+        if (sshpass) break; // the command sshpass runs: its own flags are not ours
+        at = end;
+        continue;
+      }
+      const flag = input.charAt(at + 1);
+      if (flag === "p" && end - at > 2) {
+        pushPassword(input, at + 2, end, out);
+      } else if (flag === "p" && end - at === 2 && spaced) {
+        const start = skipBlanks(input, end);
+        const valueEnd = shellWordEnd(input, start);
+        pushPassword(input, start, valueEnd, out);
+        scannedUntil = Math.max(scannedUntil, valueEnd);
+        at = Math.max(end, valueEnd);
+        continue;
+      } else if (sshpass && end - at === 2 && (flag === "f" || flag === "d" || flag === "P")) {
+        // sshpass -f FILE, -d FD, -P PROMPT: the next word belongs to the option.
+        const start = skipBlanks(input, end);
+        at = Math.max(end, shellWordEnd(input, start));
+        scannedUntil = Math.max(scannedUntil, at);
+        continue;
+      }
+      at = end;
+    }
+  }
+}
+
+/**
+ * Reads the rest of a `docker` or `podman` command, up to a newline, `;`, `&`, `|`, or a
+ * backtick, and returns where it ends. If a whole `login` word appears in it, every `-p` and
+ * `--password` value in it is masked. Global options are not parsed (they can be any number,
+ * with quoted or escaped values), so `docker run -p 8080:80 img login` also loses its `8080:80`:
+ * hiding a port costs less than leaking a password. A command with no `login` is left alone.
+ * Each character is read once, and the caller starts the next scan after the returned end.
+ */
+function scanLoginSegment(input: string, from: number, out: Candidate[]): number {
+  const found: Candidate[] = [];
+  let login = false;
+  let at = from;
+  for (;;) {
+    at = skipBlanks(input, at);
+    const end = shellWordEnd(input, at);
+    if (end === at) break;
+    if (end - at === 5 && input.startsWith("login", at)) {
+      login = true;
+    } else if (input.charAt(at) === "-") {
+      const attached = input.startsWith("-p", at) && end - at > 2;
+      const spaced =
+        (input.startsWith("-p", at) && end - at === 2) ||
+        (input.startsWith("--password", at) && end - at === 10);
+      if (attached) {
+        pushPassword(input, at + 2, end, found);
+      } else if (input.startsWith("--password=", at)) {
+        pushPassword(input, at + 11, end, found);
+      } else if (spaced) {
+        const start = skipBlanks(input, end);
+        const valueEnd = shellWordEnd(input, start);
+        pushPassword(input, start, valueEnd, found);
+        at = Math.max(end, valueEnd);
+        continue;
+      }
+    }
+    at = end;
+  }
+  if (login) for (const c of found) out.push(c);
+  return at;
+}
+
+function skipBlanks(input: string, at: number): number {
+  let i = at;
+  while (input.charAt(i) === " " || input.charAt(i) === "\t") i++;
+  return i;
+}
+
+/** Marks a shell word as a password, dropping quotes that wrap all of it. */
+function pushPassword(input: string, from: number, to: number, out: Candidate[]): void {
+  let start = from;
+  let end = to;
+  const first = input.charAt(start);
+  if (
+    (first === '"' || first === "'") &&
+    end - start >= 2 &&
+    quotedEnd(input, start + 1, first) === end - 1
+  ) {
+    start += 1;
+    end -= 1;
+  }
+  if (!isPlaceholder(input, start, end)) out.push({ start, end, kind: "sensitive-value" });
+}
+
+/**
+ * End of an unquoted pair value: at a comma or bracket, except that a marker or reference
+ * (a sealed number leaves `"value":[REDACTED:sensitive-value]}`) ends where it ends, and
+ * anything glued to it (`[REDACTED:x]hunter2`) stays part of the value.
+ */
+function pairValueEnd(input: string, value: Value): number {
+  const ref = referenceLength(input, value.start);
+  if (ref === 0) return value.looseEnd;
+  const after = value.start + ref;
+  return after >= value.end || SYNTAX_STOP.has(input.charAt(after)) ? after : value.end;
+}
+
+/**
+ * End of the `{...}` or `[...]` that opens at `at`, and whether it closed: quote-aware,
+ * counting both bracket kinds. One that never closes runs to the end of `limit`.
+ */
+function balancedEnd(input: string, at: number, limit: number): { end: number; closed: boolean } {
+  const stop = Math.min(input.length, limit);
+  let depth = 0;
+  let quote = "";
+  for (let i = at; i < stop; i++) {
+    const ch = input.charAt(i);
+    if (quote !== "") {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "{" || ch === "[") {
+      depth += 1;
+    } else if ((ch === "}" || ch === "]") && --depth === 0) {
+      return { end: i + 1, closed: true };
+    }
+  }
+  return { end: stop, closed: false };
+}
+
+interface PairValue {
+  /** The span to mask. */
+  start: number;
+  end: number;
+  /** Where the value token ends, quotes included. */
+  next: number;
+  /** False for a string or object that has no closing quote or bracket before `limit`. */
+  closed: boolean;
+}
+
+/**
+ * Reads the value of a pair at `at`: a string, a number, or a whole object or array,
+ * looking no further than `limit`.
+ */
+function readPairValue(input: string, ends: Ends, at: number, limit: number): PairValue | null {
+  const first = input.charAt(at);
+  // `[REDACTED:...]` opens with a bracket too, but it is a marker, read as a plain value.
+  if ((first === "{" || first === "[") && referenceLength(input, at) === 0) {
+    const { end, closed } = balancedEnd(input, at, limit);
+    return { start: at, end, next: end, closed };
+  }
+  const value = readValue(input, at, ends);
+  if (value.quoted) {
+    const closed = input.charAt(value.end) === first && value.end < limit;
+    return { start: value.start, end: value.end, next: closed ? value.end + 1 : value.end, closed };
+  }
+  const end = pairValueEnd(input, value);
+  // JSON `null` carries nothing, and redactJson leaves it.
+  if (input.slice(value.start, end) === "null") return null;
+  return { start: value.start, end, next: end, closed: end <= limit };
+}
+
+/**
+ * Masks the value of a text `{"name": "DB_PASSWORD", "value": ...}` pair, in either
+ * property order. The two properties must sit next to each other, as `JSON.stringify` and
+ * Kubernetes manifests write them; a property in between ends the match.
+ */
+function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
+  // `"value"` after a sensitive name. A value that never closes runs to the end of the text,
+  // so each scan is paid once: what it covers is masked, and the matches inside are skipped.
+  let maskedUntil = 0;
+  const anchors: Array<{ comma: number }> = [];
+  for (const match of input.matchAll(PAIR_NAME)) {
+    if (!isSensitiveName(match[3] ?? "")) continue;
+    const nameEnd = match.index + match[0].length;
+    let comma = match.index;
+    while (comma > 0 && /\s/.test(input.charAt(comma - 1))) comma--;
+    if (input.charAt(comma - 1) === ",") anchors.push({ comma: comma - 1 });
+    if (match.index < maskedUntil) continue;
+    VALUE_KEY_AFTER.lastIndex = nameEnd;
+    if (VALUE_KEY_AFTER.exec(input) === null) continue;
+    const value = readPairValue(input, ends, VALUE_KEY_AFTER.lastIndex, input.length);
+    if (value === null) continue;
+    maskedUntil = value.next;
+    if (!isPlaceholder(input, value.start, value.end)) {
+      out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+    }
+  }
+  if (anchors.length === 0) return;
+  // `"value"` before a sensitive name: the value must close exactly where the comma in front
+  // of the name sits, so a name nested inside the value does not end it early. Candidates are
+  // tried from the earliest, so the outer value wins over any `"value"` inside it.
+  const starts = [...input.matchAll(VALUE_KEY)].map((m) => m.index + m[0].length);
+  let budget = PAIR_SCAN_BUDGET;
+  for (const { comma } of anchors) {
+    for (let k = 0; k < starts.length && (starts[k] ?? 0) < comma; k++) {
+      const at = starts[k] ?? 0;
+      if (budget <= 0) {
+        // Out of budget: mask from the first `"value"` in the text to this name. An outer value
+        // that holds an earlier name starts before it, so nothing later is a safe start.
+        out.push({ start: starts[0] ?? at, end: comma, kind: "sensitive-value" });
+        break;
+      }
+      const value = readPairValue(input, ends, at, comma);
+      budget -= (value?.next ?? comma) - at + 1;
+      if (value === null || !value.closed || !/^\s*$/.test(input.slice(value.next, comma)))
+        continue;
+      if (!isPlaceholder(input, value.start, value.end)) {
+        out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+      }
+      break;
+    }
+  }
+}
+
+/**
  * Masks the password in `-u user:password` style flags: everything after the first
  * colon of the shell word, which joins quoted and unquoted segments
  * (`"$API_USER"suffix:pass`). Not masked: no colon, an empty password, or a password
@@ -386,8 +652,8 @@ function userSeparator(input: string, at: number): { colon: number; quote: strin
 
 /**
  * End of the shell word at `at`: quoted and unquoted segments joined, complete
- * references (`$(id -u)`) taken whole. Ends at whitespace or a command separator
- * outside quotes; an unterminated quote ends it at the line end.
+ * references (`$(id -u)`) taken whole, backslash escapes honored. Ends at whitespace or a
+ * command separator outside quotes; an unterminated quote ends it at the line end.
  */
 function shellWordEnd(input: string, at: number): number {
   let i = at;
@@ -404,10 +670,16 @@ function shellWordEnd(input: string, at: number): number {
       i += ref;
       continue;
     }
+    // A backslash outside quotes escapes the next character: `pa\ ss` is one word, and a
+    // backslash before a line break continues the word on the next line.
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
     if (UNQUOTED_STOP.has(ch) || /\s/.test(ch)) return i;
     i += 1;
   }
-  return i;
+  return Math.min(i, input.length);
 }
 
 /**
