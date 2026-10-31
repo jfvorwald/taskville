@@ -16,6 +16,7 @@
     "@taskville/protocol": "workspace:*"
   },
   "devDependencies": {
+    "@taskville/adapters": "workspace:*",
     "fast-check": "4.10.2"
   }
 }

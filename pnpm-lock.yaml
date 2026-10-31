@@ -249,6 +249,9 @@ importers:
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
+      '@taskville/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       fast-check:
         specifier: 4.10.2
         version: 4.10.2

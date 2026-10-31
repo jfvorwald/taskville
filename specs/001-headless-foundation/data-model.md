@@ -24,8 +24,8 @@ ProjectState
 | --- | --- | --- |
 | Agent | `id`, `sourceId`, `sourceAgentId`, `displayName`, `role`, `kind`, `parentAgentId?`, `teamId?`, `connection`, `lastSeenAt`, `finishedAt?`, `toolCallCount`, `consecutiveToolFailures`, `lastTurn?` | Identity key is `(sourceId, sourceAgentId)`; never merged on `displayName`. `parentAgentId` only for `subagent`; `teamId` only for `lead` and `teammate`. `finishedAt` set by `agent.finished` (finished subagents are hidden by `status` unless `--all`) |
 | Team | `id`, `leadAgentId`, `memberAgentIds[]`, `startedAt`, `endedAt?` | Members are the agents whose `teamId` equals the team ID, ordered by registration |
-| Session | `id`, `agentId`, `sourceId`, `workingDirectory?`, `startedAt`, `endedAt?`, `provenance` | An agent may have several open sessions |
-| ToolCall | `id`, `agentId`, `sessionId?`, `toolName`, `phase`, `filePaths[]`, `summary?`, `evidenceIds[]`, `startedAt`, `durationMs?` | Opened by `tool_call.started`, closed by `tool_call.finished` |
+| Session | `id`, `agentId`, `sourceId`, `workingDirectory?`, `startedAt`, `endedAt?`, `provenance` | An agent may have several open sessions. Owned by the first agent that names it and may own one: a `subagent`, or an agent that runs inside another agent's session (Claude Code ID form `claude-code:<session>:<agent>`, such as in-process teammates and helpers, M2.13), never owns a session |
+| ToolCall | `id`, `agentId`, `sessionId?`, `toolName`, `phase`, `filePaths[]`, `summary?`, `evidenceIds[]`, `startedAt`, `finishedAt?`, `durationMs?` | Opened by `tool_call.started`, closed by `tool_call.finished`, or closed `unfinished` by a later boundary (see "Unfinished tool calls") |
 | Task | `id`, `title`, `status`, `assignedAgentIds[]`, `relatedTaskIds[]`, `updatedAt`, `transitionWarning?` | `assignedAgentIds` ordered by assignment time |
 | AgentActivity | `agentId`, `sessionId?`, `taskId?`, `activity`, `heuristic`, `since`, `latestEvidence?`, `openSessionCount` | Primary activity = most recently started open session's activity |
 | PendingRequest | `id`, `agentId`, `sessionId?`, `kind`, `toolName?`, `inputPreview?`, `reason?`, `answerable`, `openedAt`, `expiresAt?`, `state`, `late` | See "Requests and commands" |
@@ -40,6 +40,29 @@ recent finished ToolCall per agent; older finished calls stay in the event log a
 are served by the agent feed in M5. Counters (`toolCallCount`,
 `consecutiveToolFailures`) carry what the reducer needs from the rest.
 
+**Unfinished tool calls (M2.13).** A `tool_call.started` may never get its
+`tool_call.finished`: a permission denied by a hook or answered No in the terminal
+fires no PostToolUse (spike S-1), and internal helper agents never do (S-2). Such a
+call is closed with phase `unfinished` (never `succeeded` or `failed`) and
+`finishedAt` set to the closing event's time, by the first of:
+
+- the owning agent's own `session.turn_ended`, `session.turn_failed`,
+  `session.prompt_submitted`, or `session.ended` in the call's session (or any of
+  them, for a call with no session), or its `agent.finished`;
+- for a call of an unregistered agent (never seen in `agent.registered`, as with
+  helper agents): the same boundary events from the agent that owns the call's
+  session;
+- `session.ended` of the call's session, from any agent.
+
+A registered agent's running call is never closed by another agent's turn (a
+background subagent keeps running after its parent's Stop). Closing does not change
+`toolCallCount` (counted at start) or `consecutiveToolFailures`, and does not clear
+`lastTurn`. A later `tool_call.finished` for an `unfinished` call is applied: the
+recorded result replaces `unfinished`. Retention is unchanged: an `unfinished`
+call counts as finished, so the projection keeps at most
+`MAX_OPEN_TOOL_CALLS_PER_AGENT` running calls plus the latest finished call per
+agent; when one boundary closes several calls, the latest started one is kept.
+
 ### Enumerations
 
 - `Agent.kind`: `session`, `subagent`, `lead`, `teammate`
@@ -48,7 +71,7 @@ are served by the agent feed in M5. Counters (`toolCallCount`,
   `reviewing`, `completed`, `failed`, `cancelled`, `unknown`
 - `activity`: `idle`, `implementing`, `testing`, `reviewing`, `researching`,
   `documenting`, `dispatching`, `handing_off`, `waiting`, `unknown`
-- `ToolCall.phase`: `running`, `succeeded`, `failed`
+- `ToolCall.phase`: `running`, `succeeded`, `failed`, `unfinished` (domain only: no result was recorded before a boundary closed it; never an input value)
 - `Attention.level`: `needs_you`, `trouble`, `waiting`
 - `Attention.kind`: for `needs_you`, the request kind (`permission`, `elicitation`,
   `input`); for `trouble`, `stop_failure`, `tool_failures`, `silent`; for
@@ -106,7 +129,13 @@ there is no other way to change them (ARCHITECTURE.md section 6).
 - A request closes as `answered_elsewhere` when the next event from the same
   session arrives (`tool_call.finished`, `session.turn_ended`,
   `session.turn_failed`, `session.prompt_submitted`, `session.ended`) and the
-  request was not answered here. `request.resolved` (engine only) closes it as
+  request was not answered here. For a telemetry request (not answerable), decision
+  #184 D1 (default) narrows this: `tool_call.finished` and `session.turn_failed`
+  close it only when they come from the agent that owns the request;
+  `session.turn_ended`, `session.prompt_submitted`, and `session.ended` close it
+  from any agent in the session. Subagents and in-process teammates share their
+  lead's session (S-2), so this keeps a subagent's unrelated tool call from closing
+  its lead's prompt. Bridge-held requests keep the any-agent rule. `request.resolved` (engine only) closes it as
   `answered_here` or `answered_elsewhere`; `request.expired` (engine only, emitted
   for every open request at engine start) closes it as `expired`.
 - A `late` `request.opened` is recorded with `late: true` and state `expired`; it
@@ -128,7 +157,7 @@ stored in reducer state and is not part of `stateHash`.
 | `trouble` | `stop_failure` | `session.turn_failed` is the agent's latest turn event | A later `session.prompt_submitted` or successful `tool_call.finished` | no |
 | `trouble` | `tool_failures` | `consecutiveToolFailures >= 3` | A succeeded tool call resets the counter | no |
 | `trouble` | `silent` | The agent is connected and not finished, holds no `needs_you` or `waiting` record, and `now - lastSeenAt` exceeds the threshold (default 10 min) | Any event from the agent | yes |
-| `waiting` | `turn_ended` | `session.turn_ended` is the agent's latest turn event | Next prompt or tool call | no |
+| `waiting` | `turn_ended` | `session.turn_ended` is the agent's latest turn event, and the agent is not a `teammate` (a teammate's turn ending means idle, not waiting on you; M2.13) | Next prompt or tool call | no |
 | `waiting` | `idle_prompt` | `session.idle_prompt` is the agent's latest turn event | Next prompt or tool call | no |
 
 An agent can hold several records; `needs_you` sorts first, then `trouble`, then
