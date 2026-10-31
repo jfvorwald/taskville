@@ -18,6 +18,11 @@ export interface PendingRequest {
   toolName?: string;
   inputPreview?: string;
   reason?: StoredReason;
+  /**
+   * True when the source guessed which agent the request belongs to (decision #120), for
+   * example a split-pane teammate's prompt shown on its lead. Absent otherwise.
+   */
+  heuristic?: true;
   /** True only for a request held by the permission bridge (`taskville:bridge`). */
   answerable: boolean;
   openedAt: string;

@@ -85,7 +85,8 @@ function attentionText(record: Attention, state: ProjectState): string {
   if (record.level === "needs_you") {
     const request = record.requestId === undefined ? undefined : state.requests[record.requestId];
     const what = [record.kind, request?.toolName].filter(Boolean).join(" ");
-    return `needs you: ${what}${reason === "" ? "" : ` - ${reason}`}`;
+    const label = record.heuristic ? "needs you (heuristic)" : "needs you";
+    return `${label}: ${what}${reason === "" ? "" : ` - ${reason}`}`;
   }
   if (record.heuristic) return `trouble (heuristic): ${reason === "" ? record.kind : reason}`;
   return `trouble: ${record.kind}${reason === "" ? "" : ` - ${reason}`}`;
@@ -107,6 +108,10 @@ function line(agent: Agent, state: ProjectState, attention: Attention[]): string
   if (activity?.taskId !== undefined)
     parts.push(state.tasks[activity.taskId]?.title ?? activity.taskId);
   if (agent.finishedAt !== undefined) parts.push("finished");
+  // A guessed name and kind (#120) is shown as a suggestion, never in place of the recorded one.
+  if (agent.heuristic !== undefined) {
+    parts.push(`maybe ${agent.heuristic.displayName} (${agent.heuristic.kind}, heuristic)`);
+  }
   const record = highest(attention, agent.id);
   if (record !== undefined) parts.push(attentionText(record, state));
   return parts.join(" · ");

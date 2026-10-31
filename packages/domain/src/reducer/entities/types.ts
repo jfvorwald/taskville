@@ -34,6 +34,12 @@ export interface Agent {
   /** Only for `lead` and `teammate` (or `unknown`). */
   readonly teamId?: string;
   readonly registered: boolean;
+  /**
+   * A name and kind guessed by a heuristic registration (decision #120), kept as a suggestion
+   * (constitution IV). Never merged into the recorded fields above, never a link; the next
+   * recorded registration clears it.
+   */
+  readonly heuristic?: { readonly displayName: string; readonly kind: AgentKind };
   /** Ingest sequence of the first registration; orders team members. */
   readonly registeredSeq?: number;
   readonly connection: Connection;

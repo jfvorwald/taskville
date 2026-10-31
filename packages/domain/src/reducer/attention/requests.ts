@@ -63,6 +63,7 @@ function opened(state: RequestsState, event: StoredEnvelopeOf<"request.opened">)
     ...(payload.toolName === undefined ? {} : { toolName: payload.toolName }),
     ...(payload.inputPreview === undefined ? {} : { inputPreview: payload.inputPreview }),
     ...(payload.reason === undefined ? {} : { reason: payload.reason }),
+    ...(payload.heuristic === true ? { heuristic: true as const } : {}),
     answerable: !late && event.sourceId === BRIDGE_SOURCE_ID,
     openedAt: event.occurredAt,
     ...(payload.expiresAt === undefined ? {} : { expiresAt: payload.expiresAt }),
