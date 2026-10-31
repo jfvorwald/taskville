@@ -1,10 +1,10 @@
-import { storedEnvelopeSchemas } from "../../../../packages/protocol/src/index.ts";
 import {
   type DomainEvent,
   projectStateHash,
   REDUCER_VERSION,
   replay,
 } from "../../../../packages/domain/src/reducer/index.ts";
+import { storedEnvelopeSchemas } from "../../../../packages/protocol/src/index.ts";
 import { SESSION_HEADER } from "../../src/pairing/pair.ts";
 
 // A scripted stand-in for the engine's snapshot and SSE routes (contracts/http-api.md), served
@@ -17,7 +17,9 @@ export const SECRET = "s3cret";
 /** A deterministic stored-envelope builder: sequence numbers from 1. */
 export function eventBuilder(projectId = PROJECT) {
   let seq = 0;
-  return <T extends "agent.registered" | "agent.connected" | "agent.disconnected" | "session.turn_failed">(
+  return <
+    T extends "agent.registered" | "agent.connected" | "agent.disconnected" | "session.turn_failed",
+  >(
     type: T,
     agentId: string,
     payload: Record<string, unknown> = {},
@@ -26,7 +28,13 @@ export function eventBuilder(projectId = PROJECT) {
     const at = `2026-10-30T10:00:${String(seq % 60).padStart(2, "0")}Z`;
     const body =
       type === "agent.registered"
-        ? { sourceAgentId: `src-${agentId}`, displayName: agentId, role: "dev", kind: "session", ...payload }
+        ? {
+            sourceAgentId: `src-${agentId}`,
+            displayName: agentId,
+            role: "dev",
+            kind: "session",
+            ...payload,
+          }
         : payload;
     return storedEnvelopeSchemas[type].parse({
       schemaVersion: 1,
@@ -43,6 +51,7 @@ export function eventBuilder(projectId = PROJECT) {
       receivedAt: at,
       ingestSequence: seq,
       agentId,
+      sessionId: `s-${agentId}`,
     }) as DomainEvent;
   };
 }
@@ -136,7 +145,10 @@ export class FakeEngine {
     const path = new URL(url, "http://127.0.0.1").pathname;
     if (path === `/v1/projects/${PROJECT}/snapshot`) return this.snapshot();
     if (path === `/v1/projects/${PROJECT}/events`) {
-      return this.openStream(Number(new URL(url, "http://127.0.0.1").searchParams.get("after")), init);
+      return this.openStream(
+        Number(new URL(url, "http://127.0.0.1").searchParams.get("after")),
+        init,
+      );
     }
     return new Response('{"error":"unknown_project"}', { status: 404 });
   };

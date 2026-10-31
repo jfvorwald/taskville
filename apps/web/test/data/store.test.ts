@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createDataStore } from "../../src/data/store.ts";
-import { eventBuilder, PROJECT, registered, stateHashAt } from "./fake-engine.ts";
 import { initialState, reduce } from "../../src/data/domain.ts";
+import { createDataStore } from "../../src/data/store.ts";
+import { eventBuilder, PROJECT, registered } from "./fake-engine.ts";
 
 const NOW = Date.parse("2026-10-30T10:30:00Z");
 
@@ -35,17 +35,18 @@ describe("data store", () => {
     expect(s.attention.map((a) => [a.agentId, a.level])).toEqual([["a2", "trouble"]]);
   });
 
-  it("keeps agent and attention references while an event leaves them alone", () => {
+  it("keeps the agents reference when attention is refreshed and no agent changed", () => {
     const emit = eventBuilder();
     const store = createDataStore({ now: () => NOW });
     store.getState().reset(PROJECT);
-    store.getState().applySnapshotState(
-      registered(emit, "a1").reduce(reduce, initialState(PROJECT)),
-    );
-    const before = store.getState();
-    store.getState().applyEvent(emit("agent.connected", "a1")); // changes a1, so refs change
-    expect(store.getState().agents).not.toBe(before.agents);
-    expect(stateHashAt([])).toBeTypeOf("string");
+    store
+      .getState()
+      .applySnapshotState(registered(emit, "a1").reduce(reduce, initialState(PROJECT)));
+    const before = store.getState().agents;
+    store.getState().refreshAttention();
+    expect(store.getState().agents).toBe(before);
+    store.getState().applyEvent(emit("agent.connected", "a1"));
+    expect(store.getState().agents).not.toBe(before);
   });
 
   it("selects and clears an agent for navigation", () => {
@@ -74,7 +75,7 @@ describe("data store", () => {
   });
 
   it("refreshAttention recomputes time-based attention with the clock", () => {
-    let now = NOW;
+    let now = Date.parse("2026-10-30T10:05:00Z"); // five minutes after the agent's last event
     const emit = eventBuilder();
     const store = createDataStore({ now: () => now });
     store.getState().reset(PROJECT);

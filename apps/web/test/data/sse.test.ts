@@ -38,7 +38,9 @@ describe("readSseFrames", () => {
 
   it("handles CRLF line endings and several frames in one chunk", async () => {
     const frames = await collect(
-      streamOf("event: heartbeat\r\ndata: {\"head\":1}\r\n\r\nevent: heartbeat\ndata: {\"head\":2}\n\n"),
+      streamOf(
+        'event: heartbeat\r\ndata: {"head":1}\r\n\r\nevent: heartbeat\ndata: {"head":2}\n\n',
+      ),
     );
     expect(frames.map((f) => f.data)).toEqual(['{"head":1}', '{"head":2}']);
   });
