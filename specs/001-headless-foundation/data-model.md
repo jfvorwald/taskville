@@ -95,9 +95,13 @@ there is no other way to change them (ARCHITECTURE.md section 6).
   are always `answerable: false`, so a forged telemetry event can turn an agent red
   but never creates something to approve.
 - **One prompt, one red state.** A `permission` request merges with an open
-  `permission` request that has the same `sessionId` and `toolName`: the existing
-  record is kept, `answerable` becomes true if either is, and no second attention
-  record appears.
+  `permission` request that has the same `sessionId`, `agentId`, and `toolName`:
+  the existing record is kept, `answerable` becomes true if either is, and no
+  second attention record appears. ARCHITECTURE.md section 2.2 keys the merge by
+  session and tool; the agent is part of the key so that two subagents in one
+  session asking for the same tool keep separate records (section 2.9). If spike
+  S-2 shows that a `Notification` carries no subagent attribution, the M2 adapter
+  attributes it before ingest; the reducer never guesses.
 - A request closes as `answered_elsewhere` when the next event from the same
   session arrives (`tool_call.finished`, `session.turn_ended`,
   `session.turn_failed`, `session.prompt_submitted`, `session.ended`) and the

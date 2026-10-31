@@ -67,7 +67,7 @@ is never stored.
 | `activity.ended` | `{}` | Activity returns to `idle` | Any |
 | `tool_call.started` | `{ toolCallId, toolName, filePaths?, summary? }` | ToolCall `running` | Any |
 | `tool_call.finished` | `{ toolCallId, phase: "succeeded" \| "failed", durationMs?, summary? }` | Closes the ToolCall; updates `consecutiveToolFailures` | Any |
-| `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (max 2,000 chars), reason?, expiresAt? }` | PendingRequest `open`; agent `needs_you`. Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session and tool | Any (never answerable); bridge (answerable) |
+| `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (max 2,000 chars), reason?, expiresAt? }` | PendingRequest `open`; agent `needs_you`. Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session, agent, and tool | Any (never answerable); bridge (answerable) |
 | `request.resolved` | `{ requestId, resolution: "answered_here" \| "answered_elsewhere" }` | Closes the request | Engine |
 | `request.expired` | `{ requestId }` | Closes the request as `expired` (emitted at engine start for every open request) | Engine |
 | `command.requested` | `{ commandId, commandType, requestId, payload, idempotencyKey }` | Command `requested` | Engine |
