@@ -1,0 +1,12 @@
+{
+  "sentAt": "2026-10-31T01:18:51.328Z",
+  "status": 200,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow"
+      }
+    }
+  }
+}

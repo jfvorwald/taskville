@@ -1,0 +1,128 @@
+2026-10-31T01:16:38.963Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:16:38.978Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:16:38.979Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:16:38.994Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:16:38.998Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:16:45.014Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/notification
+2026-10-31T01:16:45.017Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:16:45.017Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:16:59.003Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) cancelled:\nHook cancelled"
+2026-10-31T01:17:25.846Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01Vht1XR3ioUBvjrANoTYgWa permissionDecisionMs=46863
+2026-10-31T01:17:26.102Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/posttooluse
+2026-10-31T01:17:26.106Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:17:26.106Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:17:26.808Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:17:26.818Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:17:26.818Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:17:43.349Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:17:43.356Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:17:43.356Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:17:43.365Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:17:43.368Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:17:45.577Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01MnhWRUW18szr7ZgSbByHy9 permissionDecisionMs=2220
+2026-10-31T01:17:45.615Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/posttooluse
+2026-10-31T01:17:45.618Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:17:45.618Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:17:46.335Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:17:46.349Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:17:46.349Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:18:03.373Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) cancelled:\nHook cancelled"
+2026-10-31T01:18:23.488Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:18:23.500Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:18:23.500Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:18:23.509Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:18:23.512Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:18:25.734Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_014KAk5ffbEq44nd77WKTXxN permissionDecisionMs=2233
+2026-10-31T01:18:25.772Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/posttooluse
+2026-10-31T01:18:25.774Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:18:25.774Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:18:26.354Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:18:26.371Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:18:26.371Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:18:29.515Z [DEBUG] Hooks: HTTP hook response status 200, body length 124
+2026-10-31T01:18:29.516Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) success:\n{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"decision\":{\"behavior\":\"deny\",\"message\":\"Late deny from spike\"}}}"
+2026-10-31T01:18:29.516Z [DEBUG] Hook PermissionRequest (http://127.0.0.1:47801/permission) returned permissionDecision: deny
+2026-10-31T01:18:47.286Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:18:47.304Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:18:47.304Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:18:47.319Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:18:47.324Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:18:51.329Z [DEBUG] Hooks: HTTP hook response status 200, body length 92
+2026-10-31T01:18:51.330Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) success:\n{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"decision\":{\"behavior\":\"allow\"}}}"
+2026-10-31T01:18:51.331Z [DEBUG] Hook PermissionRequest (http://127.0.0.1:47801/permission) returned permissionDecision: allow
+2026-10-31T01:18:51.335Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01Lnk53bmA9fNs2cYwE6jJRm permissionDecisionMs=4028
+2026-10-31T01:18:51.382Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/posttooluse
+2026-10-31T01:18:51.384Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:18:51.384Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:18:51.931Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:18:51.941Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:18:51.941Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:19:42.160Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:19:42.204Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:19:42.204Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:19:42.242Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:19:42.265Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:19:45.296Z [DEBUG] Hooks: HTTP hook response status 200, body length 160
+2026-10-31T01:19:45.297Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) success:\n{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"decision\":{\"behavior\":\"deny\",\"message\":\"TASKVILLE-SPIKE-DENY-7Q: the owner said no, do not retry\"}}}"
+2026-10-31T01:19:45.298Z [DEBUG] Hook PermissionRequest (http://127.0.0.1:47801/permission) returned permissionDecision: deny
+2026-10-31T01:19:45.312Z [DEBUG] Bash tool permission denied
+2026-10-31T01:19:46.132Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:19:46.148Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:19:46.148Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:20:11.055Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:20:11.074Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:20:11.074Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:20:11.090Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:20:11.095Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:20:14.098Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:20:14.098Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:20:17.111Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/notification
+2026-10-31T01:20:17.114Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:20:17.114Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:20:28.465Z [DEBUG] Bash tool permission denied
+2026-10-31T01:21:00.440Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/userpromptsubmit
+2026-10-31T01:21:00.458Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:21:00.460Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:21:01.764Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:21:01.771Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:21:01.771Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:21:01.781Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:21:01.784Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:21:04.573Z [DEBUG] Bash tool permission denied
+2026-10-31T01:21:04.574Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) cancelled:\nHook cancelled"
+2026-10-31T01:21:18.406Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/userpromptsubmit
+2026-10-31T01:21:18.415Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:21:18.415Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:21:19.372Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:21:19.379Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:21:19.379Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:21:19.388Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:21:19.389Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:21:22.547Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_019TpUGki1EsAjFyLWXLmKdX permissionDecisionMs=3167
+2026-10-31T01:21:22.750Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/posttooluse
+2026-10-31T01:21:22.753Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:21:22.753Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:21:23.604Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:21:23.613Z [DEBUG] Hooks: HTTP hook response status 200, body length 0
+2026-10-31T01:21:23.613Z [DEBUG] HTTP hook returned empty body, treating as empty JSON object
+2026-10-31T01:21:39.390Z [DEBUG] "Hook PermissionRequest:Bash (PermissionRequest) cancelled:\nHook cancelled"
+2026-10-31T01:22:02.272Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/userpromptsubmit
+2026-10-31T01:22:02.283Z [ERROR] Hooks: HTTP hook error: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:02.283Z [ERROR] "Hook UserPromptSubmit (UserPromptSubmit) error:\nstderr:\nconnect ECONNREFUSED 127.0.0.1:47801"
+2026-10-31T01:22:03.378Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/pretooluse
+2026-10-31T01:22:03.384Z [ERROR] Hooks: HTTP hook error: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:03.384Z [ERROR] "Hook PreToolUse:Bash (PreToolUse) error:\nstderr:\nconnect ECONNREFUSED 127.0.0.1:47801"
+2026-10-31T01:22:03.392Z [DEBUG] executePermissionRequestHooks called for tool: Bash
+2026-10-31T01:22:03.394Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/permission
+2026-10-31T01:22:03.407Z [ERROR] Hooks: HTTP hook error: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:03.407Z [ERROR] "Hook PermissionRequest:Bash (PermissionRequest) error:\nstderr:\nconnect ECONNREFUSED 127.0.0.1:47801"
+2026-10-31T01:22:09.405Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/notification
+2026-10-31T01:22:09.407Z [ERROR] Hooks: HTTP hook error: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:09.407Z [ERROR] Notification:permission_prompt [http://127.0.0.1:47801/notification] failed: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:17.223Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01SXz6wNs7V7Go1h9BMEyPXg permissionDecisionMs=13837
+2026-10-31T01:22:17.265Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/posttooluse
+2026-10-31T01:22:17.268Z [ERROR] Hooks: HTTP hook error: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:17.268Z [ERROR] "Hook PostToolUse:Bash (PostToolUse) error:\nstderr:\nconnect ECONNREFUSED 127.0.0.1:47801"
+2026-10-31T01:22:18.044Z [DEBUG] Hooks: HTTP hook POST to http://127.0.0.1:47801/stop
+2026-10-31T01:22:18.056Z [ERROR] Hooks: HTTP hook error: connect ECONNREFUSED 127.0.0.1:47801
+2026-10-31T01:22:18.056Z [ERROR] "Hook Stop (Stop) error:\nstderr:\nconnect ECONNREFUSED 127.0.0.1:47801"
