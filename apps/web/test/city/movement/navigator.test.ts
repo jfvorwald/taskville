@@ -90,7 +90,10 @@ describe("navigator", () => {
     const nav = createNavigator();
     const clock = { t: 0 };
     const ids = ["a", "b", "c", "d", "e", "f"];
-    nav.sync(ids.map((id) => work(id, "test_lab")), { place: true });
+    nav.sync(
+      ids.map((id) => work(id, "test_lab")),
+      { place: true },
+    );
     nav.tick(clock.t);
 
     const slots = ids.slice(0, 4).map((id) => must(nav, id).slotId);
@@ -209,7 +212,10 @@ describe("navigator", () => {
     expect(must(nav, "a").state).toBe("idle");
 
     // A new agent with nowhere to go idles at the plaza.
-    nav.sync([{ id: "a", area: null, rest: "idle" }, { id: "n", area: null, rest: "idle" }]);
+    nav.sync([
+      { id: "a", area: null, rest: "idle" },
+      { id: "n", area: null, rest: "idle" },
+    ]);
     nav.tick(300);
     const n = must(nav, "n");
     expect(n.state).toBe("idle");
@@ -237,7 +243,6 @@ describe("navigator", () => {
 
   it("spawns a subagent at its parent's building and keeps spacing between walkers", () => {
     const nav = createNavigator();
-    const clock = { t: 0 };
     nav.sync([work("p", "workshop")], { place: true });
     nav.tick(0);
     nav.sync([work("p", "workshop"), work("s", "archives", { parentId: "p" })]);
@@ -273,9 +278,11 @@ describe("navigator", () => {
       const out: string[] = [];
       nav.sync([work("a", "workshop"), work("b", "workshop"), work("c", "security")]);
       for (let t = 0; t <= 20_000; t += 33) {
-        if (t === 4_983) nav.sync([work("a", "archives"), work("b", "workshop"), work("c", "review")]);
+        if (t === 4_983)
+          nav.sync([work("a", "archives"), work("b", "workshop"), work("c", "review")]);
         nav.tick(t);
-        for (const x of nav.list()) out.push(`${x.id}:${x.x.toFixed(6)}:${x.z.toFixed(6)}:${x.state}`);
+        for (const x of nav.list())
+          out.push(`${x.id}:${x.x.toFixed(6)}:${x.z.toFixed(6)}:${x.state}`);
       }
       return out.join("|");
     };

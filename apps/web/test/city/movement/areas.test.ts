@@ -26,14 +26,19 @@ describe("activity to work area table (ARCHITECTURE.md 8.3)", () => {
     expect(areaFor(t, { activity: "researching", agentType: "code-reviewer" })).toBe("review");
     expect(areaFor(t, { activity: "researching", agentType: "Explore" })).toBe("archives");
     // Only a subagent's type picks its area; a top-level agent goes where its activity says.
-    expect(
-      areaFor(t, { activity: "implementing", agentType: "reviewer", kind: "session" }),
-    ).toBe("workshop");
+    expect(areaFor(t, { activity: "implementing", agentType: "reviewer", kind: "session" })).toBe(
+      "workshop",
+    );
   });
 
   it("is data: overrides replace entries, and bad entries are ignored", () => {
     const t = resolveActivityAreas({
-      activities: { implementing: "test_lab", testing: null, reviewing: "nowhere", bogus: "review" },
+      activities: {
+        implementing: "test_lab",
+        testing: null,
+        reviewing: "nowhere",
+        bogus: "review",
+      },
       agentTypes: [{ match: "doc", area: "archives" }, { match: "", area: "review" }, { area: 3 }],
     });
     expect(areaFor(t, { activity: "implementing" })).toBe("test_lab");

@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { AgentLabelEntry, Placement } from "../../../src/city/agents/index.ts";
 import { DEFAULT_ACTIVITY_AREAS } from "../../../src/city/movement/areas.ts";
 import { createLabelStore, labelRows } from "../../../src/city/movement/labels.ts";
-import { agentCounts, buildModels, type ModelInput } from "../../../src/city/movement/models.ts";
-import type { Agent, AgentActivity, Attention } from "../../../src/data/domain.ts";
+import {
+  type AgentActivity,
+  agentCounts,
+  buildModels,
+  type ModelInput,
+} from "../../../src/city/movement/models.ts";
+import type { Agent, Attention } from "../../../src/data/domain.ts";
 
 const T = "2026-10-31T10:00:00.000Z";
 
@@ -101,7 +106,9 @@ describe("store to agents and navigation", () => {
       {
         agents: [agent("a"), agent("b")],
         activity: { a: activity("a", "idle"), b: activity("b", "implementing") },
-        attention: [{ agentId: "b", level: "waiting", kind: "turn_ended", since: T, heuristic: false }],
+        attention: [
+          { agentId: "b", level: "waiting", kind: "turn_ended", since: T, heuristic: false },
+        ],
       },
       DEFAULT_ACTIVITY_AREAS,
       pool(),
@@ -134,8 +141,22 @@ describe("agent labels", () => {
       new Set(["ada"]),
     );
     expect(rows).toEqual([
-      { id: "dee", name: "dee", status: "Testing", onTheWay: true, state: "walking", urgent: false },
-      { id: "ada", name: "ada", status: "Needs you", onTheWay: false, state: "stuck", urgent: true },
+      {
+        id: "dee",
+        name: "dee",
+        status: "Testing",
+        onTheWay: true,
+        state: "walking",
+        urgent: false,
+      },
+      {
+        id: "ada",
+        name: "ada",
+        status: "Needs you",
+        onTheWay: false,
+        state: "stuck",
+        urgent: true,
+      },
     ]);
   });
 
