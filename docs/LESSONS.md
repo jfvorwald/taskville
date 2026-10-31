@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-7: A docs alignment ticket that feeds code tickets makes contract decisions
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #1 · **Recorded by:** docs teammate (M1.01)
+- **What happened:** Aligning spec 001 meant choosing engine-only event types, a reserved source prefix, and the project registry. roborev found two high findings (dedupe hash taken after truncation; masking scope too narrow) and one medium (request merge key missing the agent) that wording-level review would have missed.
+- **Lesson:** Review a contract-alignment docs PR as a design change, and route any choice the architecture does not make to a decision ticket.
+- **Action:** Fixed in PR #112; open choices in decision tickets #110 and #114.
+
 ### L-6: Vitest 5 configures projects in vitest.config.ts, not a workspace file
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #2 · **Recorded by:** infra teammate (M1.02)
 - **What happened:** The plan named `vitest.workspace.ts`, which Vitest 5 no longer uses.
