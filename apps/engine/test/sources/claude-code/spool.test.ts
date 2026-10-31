@@ -505,6 +505,36 @@ describe("replaySpool", () => {
     expect(spoolNames()).toEqual(["claude-code.poison.jsonl"]);
   });
 
+  it("keeps a quarantined hook skipped when its spool file cannot be advanced", async () => {
+    const [p, a, b] = [uuid(), uuid(), uuid()];
+    const file = join(spoolDir, `claude-code.${p}.jsonl`);
+    writeFileSync(
+      file,
+      line({ sourceEventId: p }) + line({ sourceEventId: a }) + line({ sourceEventId: b }),
+      {
+        mode: 0o600,
+      },
+    );
+    // A directory where the offset file would go: every offset write fails (like ENOSPC).
+    mkdirSync(`${file}.offset`);
+    const { source } = makeSource(db());
+    const tries = new Map<string, number>();
+    const throwing = {
+      ingestHook(input: HookInput) {
+        tries.set(input.sourceEventId, (tries.get(input.sourceEventId) ?? 0) + 1);
+        return input.sourceEventId === p
+          ? Promise.reject(new Error("always"))
+          : source.ingestHook(input);
+      },
+    };
+    for (let i = 0; i < 4; i++) await replaySpool({ spoolDir, source: throwing, maxHooks: 2 });
+    // Quarantined on run 3; run 4 rereads the file from the start but does not retry it.
+    expect(tries.get(p)).toBe(3);
+    expect(
+      readFileSync(join(spoolDir, "claude-code.poison.jsonl"), "utf8").split("\n"),
+    ).toHaveLength(2);
+  });
+
   it("does not quarantine a hook that fails once and then succeeds", async () => {
     const id = uuid();
     writeFileSync(main(), line({ sourceEventId: id }), { mode: 0o600 });
