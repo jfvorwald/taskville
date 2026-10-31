@@ -98,6 +98,7 @@ interface Agent {
   readonly topLevel: boolean;
   readonly queue: Task[];
   activity: string;
+  activityTask?: string | undefined;
   waiting: boolean;
   busy: boolean;
   script?: Script;
@@ -202,9 +203,11 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
       { agent: a },
     );
 
+  /** activity.started when the activity or its task changes. */
   const activity = (a: Agent, name: string, task?: string): Beat => {
-    if (a.activity === name) return [];
+    if (a.activity === name && a.activityTask === task) return [];
     a.activity = name;
+    a.activityTask = task;
     return [
       ev(
         "activity.started",
@@ -279,8 +282,10 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
   /** A subagent run (S-2): Agent tool call, SubagentStart without a parent, the parent link once
    * the tool returns, its own work in the parent's session, then finished. */
   function* subagent(parent: Agent, name: string, role: string, work: string): Script {
-    const sub = agent(`sub${++counter}`, name, role, parent.sessionId);
-    const subSourceId = `a${rng.hex(16)}`;
+    // Each run has its own subagents (S-2: one agent_id per run), so a rerun of the same seed in
+    // one project never reuses an identity that already finished.
+    const sub = agent(`${run}-sub${++counter}`, name, role, parent.sessionId);
+    const subSourceId = `a${rng.hex(16)}-${run}`;
     const register = (extra: Record<string, unknown> = {}) =>
       ev(
         "agent.registered",
@@ -320,7 +325,7 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
   function* crew(lead: Agent): Script {
     const teamId = nextId("team");
     const mateName = rng.pick(MATES);
-    const mate = agent(`mate${++counter}`, mateName, mateName, lead.sessionId);
+    const mate = agent(`${run}-mate${++counter}`, mateName, mateName, lead.sessionId);
     const toolCallId = nextId("tc");
     const started = at;
     yield [

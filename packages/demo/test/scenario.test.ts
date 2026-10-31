@@ -222,6 +222,58 @@ describe("scenario content", () => {
     expect(key(DEMO_EPOCH_MS)).toBe(key(DEMO_EPOCH_MS));
   });
 
+  it("gives each run its own subagents and teammates, so a rerun never inherits finishedAt", () => {
+    const crew = (startAtMs: number) => {
+      const regs = generateDemo({ seed: 42, pace: CALM, durationMs: 45 * MIN, startAtMs })
+        .flatMap((s) => s.events)
+        .filter((e) => e.type === "agent.registered") as Extract<
+        InputEvent,
+        { type: "agent.registered" }
+      >[];
+      const transient = regs.filter(
+        (e) => e.payload.kind === "subagent" || e.payload.kind === "teammate",
+      );
+      return {
+        ids: new Set(transient.map((e) => e.agentId)),
+        sources: new Set(transient.map((e) => e.payload.sourceAgentId)),
+        core: new Set(regs.filter((e) => e.payload.kind === "session").map((e) => e.agentId)),
+      };
+    };
+    const first = crew(DEMO_EPOCH_MS);
+    const second = crew(DEMO_EPOCH_MS + 3_600_000);
+    expect(first.ids.size).toBeGreaterThan(0);
+    expect([...first.ids].filter((id) => second.ids.has(id))).toEqual([]);
+    expect([...first.sources].filter((id) => second.sources.has(id))).toEqual([]);
+    // The six core agents are the same bots in every run.
+    expect([...second.core]).toEqual([...first.core]);
+  });
+
+  it("starts the activity again for each new task, even when the activity name is the same", () => {
+    const steps = generateDemo({ seed: 42, pace: CALM, durationMs: 2 * 60 * MIN });
+    let reviews = 0;
+    for (const step of steps) {
+      for (const event of step.events) {
+        if (event.type !== "task.status_changed" || event.payload.status !== "reviewing") continue;
+        reviews += 1;
+        const started = step.events.find(
+          (e) => e.type === "activity.started" && e.agentId === event.agentId,
+        );
+        expect(started?.taskId).toBe(event.taskId);
+      }
+    }
+    expect(reviews).toBeGreaterThan(1);
+    const stored = toStoredEvents(
+      steps.flatMap((s) => s.events),
+      "demo",
+    );
+    const last = new Map<string, string | undefined>();
+    for (const event of stored) {
+      if (event.type === "activity.started") last.set(event.agentId ?? "", event.taskId);
+    }
+    const state = replay("demo", stored);
+    for (const [agentId, taskId] of last) expect(state.activity[agentId]?.taskId).toBe(taskId);
+  });
+
   it("never emits engine-only types", () => {
     expect(
       events.filter(
