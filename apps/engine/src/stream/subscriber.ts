@@ -157,11 +157,12 @@ export class StreamSubscriber implements HubSubscriber {
   #cutOff(reason: ResnapshotReason): void {
     this.#close();
     // `write` hands the frame to the stream writer synchronously (unlike `writeSSE`,
-    // which awaits first), so it is queued behind any frame in flight and before the
-    // close. The client sees it once it reads that far.
+    // which awaits first), so it is queued behind any frame in flight. No `close()`
+    // here: Hono skips aborting on client cancel once a stream is marked closed, so
+    // the route lets streamSSE close after `drained()`, and a disconnect while the
+    // frame waits still aborts the pending writes.
     this.#finalWrite = this.#stream.write(
       `event: resnapshot\ndata: ${JSON.stringify({ reason })}\n\n`,
     );
-    void this.#stream.close();
   }
 }
