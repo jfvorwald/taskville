@@ -42,8 +42,8 @@ const TOKEN_PATTERNS: ReadonlyArray<{
   kind: MaskKind;
   pattern: RegExp;
   group?: number;
-  /** Extra evidence the matched group must show, for patterns that also match prose. */
-  accept?: (value: string) => boolean;
+  /** Extra evidence the match must show, for patterns that also match prose. */
+  accept?: (match: RegExpMatchArray) => boolean;
 }> = [
   { kind: "anthropic-key", pattern: /(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{20,}/dg },
   {
@@ -78,23 +78,48 @@ const TOKEN_PATTERNS: ReadonlyArray<{
     group: 1,
   },
   {
-    // Any other scheme (`Token`, `ApiKey`, `Negotiate`, `SSWS`, ...) in a header or
+    // Any scheme (`Token`, `ApiKey`, `Negotiate`, `SSWS`, ...) in a header or
     // assignment, including `Proxy-Authorization`. Listed after the basic pattern so
     // a Basic credential keeps its own kind when the two overlap.
     kind: "bearer-token",
     pattern:
-      /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+([A-Za-z0-9._~+/=:-]{8,})/dgi,
-    group: 1,
-    accept: hasCredentialShape,
+      /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?([A-Za-z][A-Za-z0-9._-]{0,31})[ \t]+([A-Za-z0-9._~+/=:-]{8,})/dgi,
+    group: 2,
+    accept: isSchemeCredential,
   },
 ];
 
+// Authorization schemes in use by HTTP APIs. After one of these, any run of 8+
+// credential characters is masked, letters-only included.
+const AUTH_SCHEMES = new Set([
+  "aws4-hmac-sha256",
+  "apikey",
+  "api-key",
+  "api_key",
+  "basic",
+  "bearer",
+  "digest",
+  "dpop",
+  "gssapi",
+  "hawk",
+  "kerberos",
+  "mac",
+  "negotiate",
+  "ntlm",
+  "oauth",
+  "sso-key",
+  "ssws",
+  "token",
+]);
+
 /**
- * Evidence that a word after an Authorization scheme is a credential and not
- * prose (`Authorization: handled internally`): a digit, or 16+ characters with
- * both upper and lower case.
+ * Evidence that the word after `Authorization:` and a scheme is a credential and
+ * not prose (`Authorization: handled internally`): a known scheme, or a value
+ * with a digit, or 16+ characters with both upper and lower case.
  */
-function hasCredentialShape(value: string): boolean {
+function isSchemeCredential(match: RegExpMatchArray): boolean {
+  if (AUTH_SCHEMES.has((match[1] ?? "").toLowerCase())) return true;
+  const value = match[2] ?? "";
   return /[0-9]/.test(value) || (value.length >= 16 && /[a-z]/.test(value) && /[A-Z]/.test(value));
 }
 
@@ -154,7 +179,7 @@ function findTokens(input: string, out: Candidate[]): void {
     for (const match of input.matchAll(pattern)) {
       const [start, end] = match.indices?.[group ?? 0] ?? [match.index, match.index];
       if (end <= start || isWholeMarker(input, start, end)) continue;
-      if (accept !== undefined && !accept(input.slice(start, end))) continue;
+      if (accept !== undefined && !accept(match)) continue;
       out.push({ start, end, kind });
     }
   }
@@ -251,9 +276,9 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
 
 /**
  * Masks the password in `-u user:password` style flags. Not masked: no colon, an
- * empty password or a reference (`$API_TOKEN`, `$(id -g)`), a password starting
- * with `/` or `~` (a `host:/path` argument, as in `rsync -u host:/srv`), and a
- * numeric `uid:gid` pair (`docker run -u 1000:1000`).
+ * empty password or a reference (`$API_TOKEN`, `$(id -g)`), and a numeric
+ * `uid:gid` pair (`docker run -u 1000:1000`). Other `-u` uses with a colon, such
+ * as `rsync -u host:/srv`, are masked: hiding a path costs less than a password.
  */
 function findUserFlags(input: string, ends: Ends, out: Candidate[]): void {
   for (const match of input.matchAll(USER_FLAG)) {
@@ -279,8 +304,6 @@ function findUserFlags(input: string, ends: Ends, out: Candidate[]): void {
       : readValue(input, colon + 1, ends);
     const { start, end } = password;
     if (isPlaceholder(input, start, end)) continue;
-    const first = input.charAt(start);
-    if (first === "/" || first === "~") continue;
     if (isNumeric(input, value.start, colon) && isNumeric(input, start, end)) continue;
     out.push({ start, end, kind: "basic-auth" });
   }
