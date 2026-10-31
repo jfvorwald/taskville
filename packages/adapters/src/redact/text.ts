@@ -170,8 +170,8 @@ const MAX_USER = 128;
 // Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
 // publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
 // tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
-// `sshpass`, 3 is `docker` or `podman`, which count only when the subcommand is `login`
-// (see loginStart). A path in front (`/usr/bin/mysql`) is fine.
+// `sshpass`, 3 is `docker` or `podman`, which count only when the same command has a whole
+// `login` word after it (see scanLoginSegment). A path in front (`/usr/bin/mysql`) is fine.
 const PASSWORD_COMMAND =
   /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
 
@@ -330,15 +330,19 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
  */
 function findPasswordFlags(input: string, out: Candidate[]): void {
   let scannedUntil = 0;
+  let dockerUntil = 0;
   for (const match of input.matchAll(PASSWORD_COMMAND)) {
+    if (match[3] !== undefined) {
+      // Its own high-water mark: `docker exec db mysql -pSECRET` must still reach the mysql rule.
+      if (match.index >= dockerUntil) {
+        dockerUntil = scanLoginSegment(input, match.index + match[0].length, out);
+      }
+      continue;
+    }
     if (match.index < scannedUntil) continue;
-    const spaced = match[1] === undefined; // sshpass and login take `-p SECRET` too
+    const spaced = match[1] === undefined; // sshpass takes `-p SECRET` too
     const sshpass = match[2] !== undefined;
     let at = match.index + match[0].length;
-    if (match[3] !== undefined) {
-      at = loginStart(input, at);
-      if (at < 0) continue;
-    }
     for (let words = 0; words < MAX_COMMAND_WORDS; words++) {
       at = skipBlanks(input, at);
       const end = shellWordEnd(input, at);
@@ -372,30 +376,44 @@ function findPasswordFlags(input: string, out: Candidate[]): void {
 }
 
 /**
- * Where the words after `docker` or `podman` continue after `login`, or -1 if the subcommand
- * is something else. Global options come first (`docker --config "/tmp/my dir" login`): a
- * word that starts with `-` is an option, and a word right after one is its value, read
- * as a shell word so quotes and escaped spaces stay inside it.
+ * Reads the rest of a `docker` or `podman` command, up to a newline, `;`, `&`, `|`, or a
+ * backtick, and returns where it ends. If a whole `login` word appears in it, every `-p` and
+ * `--password` value in it is masked. Global options are not parsed (they can be any number,
+ * with quoted or escaped values), so `docker run -p 8080:80 img login` also loses its `8080:80`:
+ * hiding a port costs less than leaking a password. A command with no `login` is left alone.
+ * Each character is read once, and the caller starts the next scan after the returned end.
  */
-function loginStart(input: string, from: number): number {
+function scanLoginSegment(input: string, from: number, out: Candidate[]): number {
+  const found: Candidate[] = [];
+  let login = false;
   let at = from;
-  let afterOption = false;
-  for (let words = 0; words < 9; words++) {
+  for (;;) {
     at = skipBlanks(input, at);
     const end = shellWordEnd(input, at);
-    if (end === at) return -1;
-    if (input.charAt(at) === "-") {
-      afterOption = true;
-    } else if (end - at === 5 && input.startsWith("login", at)) {
-      return end;
-    } else if (afterOption) {
-      afterOption = false;
-    } else {
-      return -1;
+    if (end === at) break;
+    if (end - at === 5 && input.startsWith("login", at)) {
+      login = true;
+    } else if (input.charAt(at) === "-") {
+      const attached = input.startsWith("-p", at) && end - at > 2;
+      const spaced =
+        (input.startsWith("-p", at) && end - at === 2) ||
+        (input.startsWith("--password", at) && end - at === 10);
+      if (attached) {
+        pushPassword(input, at + 2, end, found);
+      } else if (input.startsWith("--password=", at)) {
+        pushPassword(input, at + 11, end, found);
+      } else if (spaced) {
+        const start = skipBlanks(input, end);
+        const valueEnd = shellWordEnd(input, start);
+        pushPassword(input, start, valueEnd, found);
+        at = Math.max(end, valueEnd);
+        continue;
+      }
     }
     at = end;
   }
-  return -1;
+  if (login) for (const c of found) out.push(c);
+  return at;
 }
 
 function skipBlanks(input: string, at: number): number {
