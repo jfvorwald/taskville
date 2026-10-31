@@ -11,12 +11,21 @@
 // read from it committed. A crash at any point leaves the file (and the old
 // offset) for the next start, where the shim's `sourceEventId` makes every
 // already-committed hook a duplicate.
+//
+// Poison hooks: a hook whose ingest throws stops the run and keeps the spool.
+// Its failed attempts are counted per `sourceEventId` across runs; on the
+// MAX_HOOK_ATTEMPTS-th it is moved to `claude-code.poison.jsonl` (0600, never
+// replayed), only the error name is logged, and the run goes on, so one bad
+// hook cannot hold back every hook after it.
 
 import { randomUUID } from "node:crypto";
 import {
+  closeSync,
   constants,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -35,6 +44,12 @@ import type { ClaudeCodeSource } from "./source.ts";
 
 /** The shim's main spool file inside the spool directory. */
 export const SPOOL_FILE = "claude-code.jsonl";
+/** Hooks whose ingest failed MAX_HOOK_ATTEMPTS times; never replayed, kept for a person to look at. */
+export const POISON_FILE = "claude-code.poison.jsonl";
+/** Failed ingest attempts per `sourceEventId`, across runs: `{ "<uuid>": n }`. */
+const ATTEMPTS_FILE = "claude-code.attempts.json";
+/** Failed attempts on one hook, across runs, before it is quarantined in POISON_FILE. */
+export const MAX_HOOK_ATTEMPTS = 3;
 const LOCK = "claude-code.lock";
 const BREAKER = `${LOCK}.break`;
 /** Files to replay: per-event files `claude-code.<uuid>.jsonl` and claimed `claude-code.replay-<uuid>.jsonl`. */
@@ -101,11 +116,13 @@ export interface SpoolReplayReport {
   oversized: number;
   /** Spool entries that are not regular files owned by this user; left alone. */
   unreadableFiles: number;
+  /** Hooks moved to POISON_FILE after MAX_HOOK_ATTEMPTS failed ingests, so the rest can replay. */
+  poisoned: number;
   /** Files deleted after their hooks committed. */
   removedFiles: number;
   /** Files left for the next run by the bound (a partly read file records where to resume in `<file>.offset`). */
   deferredFiles: number;
-  /** An ingest threw; every file read this run was kept for the next start. */
+  /** An ingest threw (below the attempt limit); every file read this run was kept for the next start. */
   failed: boolean;
 }
 
@@ -171,6 +188,8 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
 
   // Ingest order is history order: oldest hook first; ties keep spool order (sort is stable).
   batch.sort((a, b) => compareTimestamps(a.spooledAt, b.spooledAt));
+  const attempts = readAttempts(spoolDir);
+  let attemptsChanged = false;
   for (const entry of batch) {
     try {
       const res = await options.source.ingestHook({
@@ -179,6 +198,7 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
         late: true,
         receivedAt: entry.spooledAt,
       });
+      if (attempts.delete(entry.sourceEventId)) attemptsChanged = true;
       report.hooks += 1;
       if (res.ignored === true) report.ignored += 1;
       for (const r of res.results) {
@@ -188,12 +208,24 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
         else report.rejected += 1;
       }
     } catch (error) {
-      report.failed = true;
       // Name only: an error message can carry payload text.
-      logger?.error({ errName: (error as Error).name }, "spool replay stopped; spool kept");
+      const errName = (error as Error).name;
+      const tries = (attempts.get(entry.sourceEventId) ?? 0) + 1;
+      attempts.set(entry.sourceEventId, tries);
+      attemptsChanged = true;
+      if (tries >= MAX_HOOK_ATTEMPTS && quarantine(spoolDir, entry)) {
+        // Out of the way: its spool file is removed or advanced past it with the rest.
+        attempts.delete(entry.sourceEventId);
+        report.poisoned += 1;
+        logger?.error({ errName, attempts: tries }, "spool hook quarantined");
+        continue;
+      }
+      report.failed = true;
+      logger?.error({ errName, attempts: tries }, "spool replay stopped; spool kept");
       break;
     }
   }
+  if (attemptsChanged) writeAttempts(spoolDir, attempts);
 
   if (!report.failed) {
     for (const plan of plans) {
@@ -231,6 +263,7 @@ function emptyReport(): SpoolReplayReport {
     invalidLines: 0,
     oversized: 0,
     unreadableFiles: 0,
+    poisoned: 0,
     removedFiles: 0,
     deferredFiles: 0,
     failed: false,
@@ -253,7 +286,7 @@ function hasActivity(r: SpoolReplayReport): boolean {
 function spoolFiles(dir: string): string[] {
   const found: { name: string; mtime: number }[] = [];
   for (const name of readdirSync(dir)) {
-    if (!SPOOL_NAME.test(name)) continue;
+    if (!SPOOL_NAME.test(name) || name === POISON_FILE) continue;
     const stats = lstatOrUndefined(join(dir, name));
     if (stats !== undefined) found.push({ name, mtime: stats.mtimeMs });
   }
@@ -436,6 +469,74 @@ function writeOffset(dir: string, path: string, cut: number): void {
   const tmp = join(dir, `${TEMP_PREFIX}offset-${randomUUID()}`);
   writeFileSync(tmp, `${cut}\n`, { mode: 0o600, flag: "wx" });
   renameSync(tmp, offsetPath(path));
+}
+
+// --- Poison hooks ---------------------------------------------------------------------------
+
+/**
+ * Appends the hook, re-serialized in the shim's line format, to POISON_FILE
+ * (0600, never through a symlink, only a regular file of this user's). False if
+ * that fails, so the caller keeps the hook in the spool instead of dropping it.
+ */
+function quarantine(dir: string, entry: Entry): boolean {
+  const text = `{"payload":${JSON.stringify(entry.payload)},"sourceEventId":${JSON.stringify(entry.sourceEventId)},"spooledAt":${JSON.stringify(entry.spooledAt)}}\n`;
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      join(dir, POISON_FILE),
+      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | NOFOLLOW | NONBLOCK,
+      0o600,
+    );
+    const stats = fstatSync(fd);
+    const uid = process.getuid?.();
+    if (!stats.isFile() || (uid !== undefined && stats.uid !== uid)) return false;
+    // writeFileSync on a descriptor loops until every byte is written.
+    writeFileSync(fd, text);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** The attempt counts; anything unreadable or malformed counts as none (L-18, L-39). */
+function readAttempts(dir: string): Map<string, number> {
+  const attempts = new Map<string, number>();
+  try {
+    const path = join(dir, ATTEMPTS_FILE);
+    if (!lstatSync(path).isFile()) return attempts;
+    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (!isPlainRecord(value)) return attempts;
+    for (const key of Object.keys(value)) {
+      const n = value[key];
+      if (isShimSourceEventId(key) && typeof n === "number" && Number.isSafeInteger(n) && n > 0) {
+        attempts.set(key, n);
+      }
+    }
+  } catch {
+    // No file yet, or a torn one: start counting again.
+  }
+  return attempts;
+}
+
+/** Written to a temporary and renamed; removed when no hook has a failed attempt. */
+function writeAttempts(dir: string, attempts: Map<string, number>): void {
+  const path = join(dir, ATTEMPTS_FILE);
+  try {
+    if (attempts.size === 0) {
+      rmSync(path, { force: true });
+      return;
+    }
+    const tmp = join(dir, `${TEMP_PREFIX}attempts-${randomUUID()}`);
+    writeFileSync(tmp, `${JSON.stringify(Object.fromEntries(attempts))}\n`, {
+      mode: 0o600,
+      flag: "wx",
+    });
+    renameSync(tmp, path);
+  } catch {
+    // Counting restarts; a poison hook then takes a few more runs to be quarantined.
+  }
 }
 
 // --- The shim's lock (mkdir protocol, claude-code-shim.sh header) --------------------------
@@ -633,5 +734,6 @@ const COUNT_KEYS = [
   "invalidLines",
   "oversized",
   "unreadableFiles",
+  "poisoned",
   "removedFiles",
 ] as const;
