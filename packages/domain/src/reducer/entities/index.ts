@@ -21,7 +21,7 @@ import {
   applyTaskHandoff,
   applyTaskStatusChanged,
 } from "./tasks.ts";
-import { applyToolCallFinished, applyToolCallStarted } from "./tool-calls.ts";
+import { applyToolCallFinished, applyToolCallStarted, closeUnfinishedCalls } from "./tool-calls.ts";
 import type { DomainEvent, EntitiesState } from "./types.ts";
 
 export { compareTimestamps, laterTimestamp } from "./time.ts";
@@ -75,7 +75,8 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
     }
     case "agent.finished":
       if (agentId === undefined) return s;
-      return updateAgent(s, agentId, (a) => ({ ...a, finishedAt: e.occurredAt }));
+      s = updateAgent(s, agentId, (a) => ({ ...a, finishedAt: e.occurredAt }));
+      return closeUnfinishedCalls(s, e, agentId);
     case "team.started":
       return applyTeamStarted(s, e);
     case "team.ended":
@@ -92,6 +93,7 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       else if (e.type === "session.ended") s = applySessionEnded(s, e, agentId, sessionId);
       else s = applySessionSeen(s, e, agentId, sessionId);
       s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt));
+      if (CLOSES_UNFINISHED.has(e.type)) s = closeUnfinishedCalls(s, e, agentId);
       return refreshActivity(s, e, agentId);
     }
     case "task.created":
@@ -152,6 +154,14 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       return s;
   }
 }
+
+/** Session events that end a turn, so a call still running then never got its result. */
+const CLOSES_UNFINISHED: ReadonlySet<string> = new Set([
+  "session.turn_ended",
+  "session.turn_failed",
+  "session.prompt_submitted",
+  "session.ended",
+]);
 
 function turnEffect<A extends Parameters<typeof clearLastTurn>[0]>(
   agent: A,

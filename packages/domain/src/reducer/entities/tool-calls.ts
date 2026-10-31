@@ -1,7 +1,7 @@
 import type { StoredEnvelopeOf } from "@taskville/protocol";
 import { clearLastTurn, updateAgent } from "./agents.ts";
 import { appendUnique, getOwn, optional, put, removeKeys } from "./maps.ts";
-import type { EntitiesState, ToolCall } from "./types.ts";
+import type { DomainEvent, EntitiesState, ToolCall } from "./types.ts";
 
 // Tool calls, bounded for SC-006: the projection keeps each agent's open calls (at most
 // MAX_OPEN_TOOL_CALLS_PER_AGENT, oldest dropped first) plus its latest finished call. Dropped
@@ -68,7 +68,10 @@ export function applyToolCallFinished(
 ): EntitiesState {
   const p = e.payload;
   const existing = getOwn(s.toolCalls, p.toolCallId);
-  if (existing !== undefined && existing.phase !== "running") return s; // repeated finish
+  // A repeated finish is ignored; a recorded result replaces `unfinished` (M2.13).
+  if (existing !== undefined && existing.phase !== "running" && existing.phase !== "unfinished") {
+    return s;
+  }
   if (existing !== undefined && existing.agentId !== agentId) return s; // another agent's call
   const summary = p.summary ?? existing?.summary;
   const finished: ToolCall =
@@ -111,6 +114,60 @@ export function applyToolCallFinished(
     return clearLastTurn(counted, p.phase === "succeeded" ? "tool_succeeded" : "tool");
   });
 }
+
+/**
+ * Closes running calls that will never get a `tool_call.finished` (data-model.md "Unfinished
+ * tool calls", M2.13). `e` is a boundary event of agent `agentId`:
+ * - its own running calls in the event's session (all of them for `agent.finished`, or for an
+ *   event with no session) close;
+ * - when the agent owns the event's session, running calls there of unregistered agents
+ *   (internal helpers, S-2) close too;
+ * - `session.ended` closes every running call in the session.
+ * Closed calls become `unfinished` at the event's time. No counter or turn changes. For each
+ * affected agent only the latest started of its closed calls is kept as its finished call.
+ */
+export function closeUnfinishedCalls(
+  s: EntitiesState,
+  e: DomainEvent,
+  agentId: string,
+): EntitiesState {
+  const sessionId = e.type === "agent.finished" ? undefined : e.sessionId;
+  const ownsSession = sessionId !== undefined && getOwn(s.sessions, sessionId)?.agentId === agentId;
+  const closes = (c: ToolCall): boolean => {
+    if (c.phase !== "running") return false;
+    if (e.type === "session.ended" && sessionId !== undefined && c.sessionId === sessionId) {
+      return true;
+    }
+    const inScope =
+      sessionId === undefined || c.sessionId === undefined || c.sessionId === sessionId;
+    if (c.agentId === agentId) return inScope;
+    if (!ownsSession || c.sessionId !== sessionId) return false;
+    return getOwn(s.agents, c.agentId)?.registered !== true;
+  };
+  const closing = Object.values(s.toolCalls).filter(closes);
+  if (closing.length === 0) return s;
+
+  // Per agent, keep the latest started closed call as its one finished call.
+  const kept = new Map<string, ToolCall>();
+  for (const call of closing) {
+    const best = kept.get(call.agentId);
+    if (best === undefined || laterStart(call, best)) kept.set(call.agentId, call);
+  }
+  const drop = new Set<string>();
+  for (const c of Object.values(s.toolCalls)) {
+    const keep = kept.get(c.agentId);
+    if (keep === undefined || c.id === keep.id) continue;
+    if (c.phase !== "running" || closing.includes(c)) drop.add(c.id);
+  }
+  let toolCalls = removeKeys(s.toolCalls, drop);
+  for (const call of kept.values()) {
+    toolCalls = put(toolCalls, call.id, { ...call, phase: "unfinished", finishedAt: e.occurredAt });
+  }
+  return { ...s, toolCalls };
+}
+
+const laterStart = (a: ToolCall, b: ToolCall): boolean =>
+  a.startSeq !== b.startSeq ? a.startSeq > b.startSeq : a.id > b.id;
 
 function capOpenCalls(s: EntitiesState, agentId: string): EntitiesState {
   const open = Object.values(s.toolCalls).filter(

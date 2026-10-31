@@ -2,7 +2,7 @@ import { CALM, runOffline } from "@taskville/demo";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cli, freePort, startServe, tempDir } from "./helpers.ts";
 
-const HASH = /2:[0-9a-f]{64}/;
+const HASH = /3:[0-9a-f]{64}/;
 
 describe("demo run --offline (US3-1, quickstart section 4)", () => {
   it("prints the same stateHash twice for the same seed", async () => {

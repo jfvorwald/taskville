@@ -10,7 +10,7 @@ describe("runOffline (cli.md `demo run --offline`)", () => {
     const a = runOffline({ seed: 42, pace: CALM, durationMs: 2 * 60 * MIN });
     const b = runOffline({ seed: 42, pace: CALM, durationMs: 2 * 60 * MIN });
     expect(a.stateHash).toBe(b.stateHash);
-    expect(a.stateHash).toMatch(/^2:[0-9a-f]{64}$/);
+    expect(a.stateHash).toMatch(/^3:[0-9a-f]{64}$/);
     expect(JSON.stringify(a.events)).toBe(JSON.stringify(b.events));
   });
 

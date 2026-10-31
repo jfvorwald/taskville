@@ -1,4 +1,5 @@
 import type {
+  AgentKind,
   Attention,
   AttentionLevel,
   Connection,
@@ -16,6 +17,8 @@ export const SILENT_THRESHOLD_MS = 10 * 60_000;
 /** The agent fields the attention rules read; the entity reducer's Agent satisfies it. */
 export interface AttentionAgent {
   id: string;
+  /** A `teammate`'s ended turn means idle, not waiting on you (M2.13). */
+  kind?: AgentKind;
   connection: Connection;
   finishedAt?: string;
   lastSeenAt: string;
@@ -69,7 +72,11 @@ export function attention(
     }
     const waiting = agent.lastTurn === "ended" || agent.lastTurn === "idle_prompt";
     if (agent.lastTurn === "ended") {
-      records.push(record(agent.id, "waiting", "turn_ended", turnSince));
+      // A teammate's turn ending means it is idle, waiting on its lead, not on you. It still
+      // counts as waiting below, so an idle teammate is never reported as silent trouble.
+      if (agent.kind !== "teammate") {
+        records.push(record(agent.id, "waiting", "turn_ended", turnSince));
+      }
     } else if (agent.lastTurn === "idle_prompt") {
       records.push(record(agent.id, "waiting", "idle_prompt", turnSince));
     }
