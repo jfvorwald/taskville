@@ -1,0 +1,95 @@
+import type { Hono } from "hono";
+import type { Logger } from "pino";
+import type { AppEnv } from "../http/app.ts";
+import { domainReducer, IngestPipeline, registerIngestRoute } from "../ingest/index.ts";
+import {
+  ensureUnsortedProject,
+  openStorage,
+  rebuildStaleProjections,
+  type Storage,
+} from "../storage/index.ts";
+import { StreamHub } from "./hub.ts";
+import { registerStreamRoutes } from "./routes.ts";
+
+export interface BootOptions {
+  /** The app from `createApp`, so every route gets its security middleware. */
+  app: Hono<AppEnv>;
+  /** `$TASKVILLE_HOME/taskville.db` (config `homePaths(home).db`). */
+  dbPath: string;
+  now?: () => Date;
+  logger?: Logger;
+  heartbeatMs?: number;
+  queueLimit?: number;
+}
+
+export interface Engine {
+  storage: Storage;
+  hub: StreamHub;
+  pipeline: IngestPipeline;
+  /** Projects whose projection was rebuilt at boot (missing or another reducer version). */
+  rebuilt: string[];
+  queueLimit: number;
+  /** For `createApp({ health })`: database readable and in WAL mode. */
+  health(): { db: "ok" | "error"; walMode: boolean };
+  /** Ends every open stream, then closes the database. Call before closing the HTTP server. */
+  close(): void;
+}
+
+/**
+ * Engine composition for `taskville serve` (#16), run before the server
+ * listens: open storage (owner-only files, WAL, migrations), make sure the
+ * built-in Unsorted project exists, rebuild every stale projection from the
+ * event log, then register ingest and the read and stream routes on `app`,
+ * with ingest broadcasting to the stream hub only after COMMIT.
+ */
+export function bootEngine(options: BootOptions): Engine {
+  const now = options.now ?? (() => new Date());
+  const storage = openStorage(options.dbPath, { now });
+  let closed = false;
+  try {
+    ensureUnsortedProject(storage, { now });
+    const rebuilt = rebuildStaleProjections(storage, domainReducer);
+    if (rebuilt.length > 0) options.logger?.info({ rebuilt }, "projections rebuilt");
+    const hub = new StreamHub();
+    const pipeline = new IngestPipeline({
+      storage,
+      now,
+      onCommit: hub.publish,
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
+    const queueLimit = options.queueLimit ?? 1000;
+    registerIngestRoute(options.app, pipeline);
+    registerStreamRoutes(options.app, {
+      storage,
+      hub,
+      now,
+      queueLimit,
+      ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
+    });
+    return {
+      storage,
+      hub,
+      pipeline,
+      rebuilt,
+      queueLimit,
+      health: () => {
+        if (closed) return { db: "error", walMode: false };
+        try {
+          const wal = storage.journalMode() === "wal";
+          return { db: "ok", walMode: wal };
+        } catch {
+          return { db: "error", walMode: false };
+        }
+      },
+      close: () => {
+        if (closed) return;
+        closed = true;
+        hub.close();
+        storage.close();
+      },
+    };
+  } catch (error) {
+    storage.close();
+    throw error;
+  }
+}

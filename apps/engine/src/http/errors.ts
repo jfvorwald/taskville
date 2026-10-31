@@ -11,7 +11,8 @@ export type ErrorCode =
   | "not_found"
   | "not_implemented"
   | "payload_too_large"
-  | "unauthorized";
+  | "unauthorized"
+  | "unknown_project";
 
 /** The API error shape: `{ "error": { "code", "message" } }`. Messages never carry request values. */
 export function apiError(
