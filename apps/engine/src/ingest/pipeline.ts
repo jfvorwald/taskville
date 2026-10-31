@@ -55,6 +55,16 @@ export interface IngestOptions {
 interface ProjectWork {
   state: ProjectState;
   head: number;
+  /** Set when this batch wrote the projection. */
+  stateHash?: string;
+}
+
+/** A project's state as last committed by this pipeline, with the stored row it matches. */
+interface CachedProjection {
+  state: ProjectState;
+  head: number;
+  reducerVersion: number;
+  stateHash: string;
 }
 
 /**
@@ -72,6 +82,13 @@ export class IngestPipeline {
   readonly #reducer: ProjectionReducer<ProjectState>;
   readonly #onCommit: ((batch: CommittedBatch) => void) | undefined;
   readonly #logger: Logger | undefined;
+  /**
+   * Parsed projections between batches (#166), so a batch does not read and parse `state_json`.
+   * Updated only after COMMIT. Used only while the stored row still has the same head, reducer
+   * version, and stateHash, so another connection's writes (events, a rebuild) are re-read from
+   * disk. Relies on the reducer being pure (constitution III): states are never mutated.
+   */
+  readonly #cache = new Map<string, CachedProjection>();
 
   constructor(options: IngestOptions) {
     this.#storage = options.storage;
@@ -84,6 +101,7 @@ export class IngestPipeline {
 
   ingest(rawEvents: readonly unknown[]): EventBatchResponse {
     const committed = this.#storage.transaction((tx) => this.#ingestInTransaction(tx, rawEvents));
+    for (const [projectId, written] of committed.written) this.#cache.set(projectId, written);
     if (committed.batch.events.length > 0 && this.#onCommit) {
       try {
         this.#onCommit(committed.batch);
@@ -97,7 +115,11 @@ export class IngestPipeline {
   #ingestInTransaction(
     tx: StorageTransaction,
     rawEvents: readonly unknown[],
-  ): { response: EventBatchResponse; batch: CommittedBatch } {
+  ): {
+    response: EventBatchResponse;
+    batch: CommittedBatch;
+    written: Map<string, CachedProjection>;
+  } {
     const receivedAt = this.#now().toISOString();
     const work = new Map<string, ProjectWork>();
     const touched = new Set<string>();
@@ -114,15 +136,22 @@ export class IngestPipeline {
     const acceptedProjects = new Set(accepted.map((event) => event.projectId));
     const heads: Record<string, number> = {};
     const acceptedHeads: Record<string, number> = {};
+    const written = new Map<string, CachedProjection>();
     for (const projectId of [...touched].sort()) {
       const projectWork = work.get(projectId);
       // Only projects that accepted an event get a projection write and a broadcast head.
       if (projectWork && acceptedProjects.has(projectId)) {
-        tx.writeProjection({
+        const hash = tx.writeProjection({
           projectId,
           reducerVersion: this.#reducer.version,
           head: projectWork.head,
           state: projectWork.state,
+        });
+        written.set(projectId, {
+          state: projectWork.state,
+          head: projectWork.head,
+          reducerVersion: this.#reducer.version,
+          stateHash: hash,
         });
         setOwn(acceptedHeads, projectId, projectWork.head);
       }
@@ -131,6 +160,7 @@ export class IngestPipeline {
     return {
       response: { results, heads },
       batch: { events: accepted, heads: acceptedHeads },
+      written,
     };
   }
 
@@ -209,11 +239,28 @@ export class IngestPipeline {
     };
   }
 
-  /** The project's state at its head: the stored projection if fresh, else a replay of its log. */
+  /**
+   * The project's state at its head: this pipeline's cached state if the stored row is still the
+   * one it wrote, else the stored projection if fresh, else a replay of its log.
+   */
   #workFor(tx: StorageTransaction, projectId: string, work: Map<string, ProjectWork>): ProjectWork {
-    const cached = work.get(projectId);
-    if (cached) return cached;
+    const inBatch = work.get(projectId);
+    if (inBatch) return inBatch;
     const head = tx.head(projectId) ?? 0;
+    const cached = this.#cache.get(projectId);
+    if (cached && cached.head === head && cached.reducerVersion === this.#reducer.version) {
+      const meta = tx.projectionMeta(projectId);
+      if (
+        meta?.head === head &&
+        meta.reducerVersion === cached.reducerVersion &&
+        meta.stateHash === cached.stateHash
+      ) {
+        const fresh = { state: cached.state, head };
+        work.set(projectId, fresh);
+        return fresh;
+      }
+    }
+    this.#cache.delete(projectId);
     const projection = tx.projection<ProjectState>(projectId);
     let state: ProjectState;
     if (

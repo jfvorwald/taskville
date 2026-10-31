@@ -5,16 +5,21 @@ export { LATEST_SCHEMA_VERSION } from "./migrations.ts";
 export { SqlitePairingRecords } from "./pairings.ts";
 export { type ProjectionReducer, rebuildProjection, rebuildStaleProjections } from "./rebuild.ts";
 export {
+  JOURNAL_SIZE_LIMIT_BYTES,
   type NewProject,
   openStorage,
+  PAGE_CACHE_KIB,
+  type ProjectionMeta,
   type ProjectionRecord,
   type ProjectionWrite,
   type ProjectRecord,
   Storage,
   type StorageOptions,
+  type StoragePragma,
   type StorageReads,
   type StorageTransaction,
   type StoredEventRecord,
+  WAL_AUTOCHECKPOINT_PAGES,
 } from "./storage.ts";
 export {
   clientContentHash,

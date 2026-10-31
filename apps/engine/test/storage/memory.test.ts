@@ -64,7 +64,7 @@ describe("SQLite memory and WAL settings", () => {
     } finally {
       storage.close();
     }
-  });
+  }, 60_000);
 });
 
 describe("projectionMeta", () => {

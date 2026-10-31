@@ -1,4 +1,4 @@
-import { canonicalJson, stateHash } from "@taskville/domain/hash";
+import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { PairingRecords } from "../auth/pairing.ts";
 import { StorageError } from "./errors.ts";
@@ -6,6 +6,28 @@ import { secureDatabaseFiles } from "./file-mode.ts";
 import { currentSchemaVersion, migrate } from "./migrations.ts";
 import { SqlitePairingRecords } from "./pairings.ts";
 import { Database, type Statement } from "./sqlite.ts";
+
+/**
+ * SQLite memory and WAL settings (#166), set on every connection the engine opens:
+ * - the page cache is capped at 2 MiB (SQLite's default is about 2,000 KiB; set explicitly so
+ *   native memory has a known bound),
+ * - the WAL is checkpointed every 1,000 pages (SQLite's default, explicit), and
+ * - after a checkpoint the `-wal` file is truncated to at most 4 MiB, so it does not keep the
+ *   largest size it ever reached.
+ */
+export const PAGE_CACHE_KIB = 2048;
+export const WAL_AUTOCHECKPOINT_PAGES = 1000;
+export const JOURNAL_SIZE_LIMIT_BYTES = 4 * 1024 * 1024;
+
+/** The pragmas `Storage.pragma` reads back (tests and diagnostics). */
+export type StoragePragma = "cache_size" | "wal_autocheckpoint" | "journal_size_limit";
+
+/** A projection's stored version, head, and state hash, without its state. */
+export interface ProjectionMeta {
+  reducerVersion: number;
+  head: number;
+  stateHash: string;
+}
 
 export interface StorageOptions {
   /** Clock for bookkeeping timestamps (migrations, pairings). Defaults to the system clock. */
@@ -62,6 +84,8 @@ export interface StorageReads {
   /** The project head, or undefined for an unknown project. */
   head(projectId: string): number | undefined;
   projection<S = unknown>(projectId: string): ProjectionRecord<S> | undefined;
+  /** The stored projection's version, head, and stateHash, without reading or parsing its state. */
+  projectionMeta(projectId: string): ProjectionMeta | undefined;
   findEventBySourceKey(
     projectId: string,
     sourceId: string,
@@ -127,6 +151,9 @@ function prepareStatements(db: Database) {
       "INSERT INTO projects (id, name, created_at, roots_json, builtin) VALUES (?, ?, ?, ?, ?)",
     ),
     projection: prepare("SELECT * FROM projections WHERE project_id = ?"),
+    projectionMeta: prepare(
+      "SELECT reducer_version, head, state_hash FROM projections WHERE project_id = ?",
+    ),
     writeProjection: prepare(
       `INSERT INTO projections (project_id, reducer_version, head, state_hash, state_json)
        VALUES (?, ?, ?, ?, ?)
@@ -210,6 +237,19 @@ export class Storage implements StorageReads {
     };
   }
 
+  projectionMeta(projectId: string): ProjectionMeta | undefined {
+    const row = this.#stmt.projectionMeta.get(projectId) as
+      | { reducer_version: number; head: number; state_hash: string }
+      | undefined;
+    if (!row) return undefined;
+    return { reducerVersion: row.reducer_version, head: row.head, stateHash: row.state_hash };
+  }
+
+  /** Reads back one of the memory and WAL pragmas. */
+  pragma(name: StoragePragma): number {
+    return Number(this.#db.prepare(`PRAGMA ${name}`).get()?.[name]);
+  }
+
   findEventBySourceKey(
     projectId: string,
     sourceId: string,
@@ -250,6 +290,7 @@ export class Storage implements StorageReads {
       projects: () => this.projects(),
       head: (projectId) => this.head(projectId),
       projection: (projectId) => this.projection(projectId),
+      projectionMeta: (projectId) => this.projectionMeta(projectId),
       findEventBySourceKey: (p, s, e) => this.findEventBySourceKey(p, s, e),
       events: (projectId, after) => this.events(projectId, after),
       insertProject: (project) => {
@@ -332,14 +373,15 @@ export class Storage implements StorageReads {
         `projection head ${projection.head} does not match project head ${head}`,
       );
     }
-    const hash = stateHash(projection.reducerVersion, projection.state);
-    this.#stmt.writeProjection.run(
-      projection.projectId,
-      projection.reducerVersion,
-      projection.head,
-      hash,
-      canonicalJson(projection.state),
-    );
+    const version = projection.reducerVersion;
+    if (!Number.isSafeInteger(version) || version < 0) {
+      throw new RangeError("reducerVersion must be a non-negative safe integer");
+    }
+    // stateHash(version, state) is `<version>:<sha256 of canonicalJson(state)>`; serializing once
+    // and hashing the stored text gives the same value without a second full serialization.
+    const json = canonicalJson(projection.state);
+    const hash = `${version}:${sha256Hex(json)}`;
+    this.#stmt.writeProjection.run(projection.projectId, version, projection.head, hash, json);
     return hash;
   }
 }
@@ -361,6 +403,9 @@ export function openStorage(path: string, options: StorageOptions = {}): Storage
     if (mode !== "wal")
       throw new StorageError(`could not enable WAL (journal_mode is ${String(mode)})`);
     db.exec("PRAGMA synchronous = NORMAL");
+    db.exec(`PRAGMA cache_size = -${PAGE_CACHE_KIB}`);
+    db.exec(`PRAGMA wal_autocheckpoint = ${WAL_AUTOCHECKPOINT_PAGES}`);
+    db.exec(`PRAGMA journal_size_limit = ${JOURNAL_SIZE_LIMIT_BYTES}`);
     migrate(db, now().toISOString());
     return new Storage(db, now);
   } catch (error) {
