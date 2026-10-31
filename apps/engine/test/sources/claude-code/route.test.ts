@@ -1,3 +1,4 @@
+import { MAX_SOURCE_EVENT_ID } from "@taskville/adapters/claude-code";
 import pino from "pino";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,7 +7,6 @@ import {
   type HookEvidence,
   type HookIngestResponse,
   MAX_HOOK_BODY_BYTES,
-  MAX_HOOK_SOURCE_EVENT_ID,
   registerClaudeCodeRoutes,
 } from "../../../src/sources/claude-code/index.ts";
 import {
@@ -335,7 +335,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       { sourceEventId: 7, payload: hook() },
       { sourceEventId: "x".repeat(10_000), payload: hook() },
       // Over M2.03's MAX_SOURCE_EVENT_ID the mapper would ignore the hook: a contract error instead.
-      { sourceEventId: "x".repeat(MAX_HOOK_SOURCE_EVENT_ID + 1), payload: hook() },
+      { sourceEventId: "x".repeat(MAX_SOURCE_EVENT_ID + 1), payload: hook() },
       { sourceEventId: hookId("u"), payload: [] },
       { sourceEventId: hookId("u"), payload: null },
       { sourceEventId: hookId("u"), payload: "hook" },

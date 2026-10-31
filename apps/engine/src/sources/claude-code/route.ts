@@ -9,17 +9,12 @@ export const CLAUDE_CODE_HOOKS_PATH = "/v1/sources/claude-code/hooks";
 /** The batch route's byte limit (contracts/http-api.md): one hook is never larger than a batch. */
 export const MAX_HOOK_BODY_BYTES = MAX_BATCH_BYTES;
 /**
- * Longest shim `sourceEventId` accepted. The mapper (M2.03 `MAX_SOURCE_EVENT_ID`) ignores a
- * longer one, because `<sourceEventId>:<event type>` and `claude-code:request:<sourceEventId>`
- * must fit the 200-character protocol ID; the route refuses it with 400 instead of dropping it.
- */
-export const MAX_HOOK_SOURCE_EVENT_ID = 170;
-
-/**
  * The only `sourceEventId` the route and the spool replay accept: a lowercase UUID v4, exactly
  * what the shim generates (M2.01). The mappers build event and request IDs from it unmasked, so
- * anything else (a secret-shaped string, roborev 5161) is refused rather than logged. Well under
- * MAX_HOOK_SOURCE_EVENT_ID. JavaScript's `$` never matches before a trailing newline (L-41).
+ * anything else (a secret-shaped string, roborev 5161) is refused rather than logged. At 36
+ * characters it is well under the mappers' limit (`MAX_SOURCE_EVENT_ID` in
+ * `@taskville/adapters/claude-code`, the one source of truth). JavaScript's `$` never matches
+ * before a trailing newline (L-41).
  */
 export const SHIM_SOURCE_EVENT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
