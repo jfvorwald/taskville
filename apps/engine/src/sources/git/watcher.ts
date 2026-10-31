@@ -250,6 +250,10 @@ export class GitWatcher {
     const tips = parseRefs(refOutput, maxRefs);
     // Every ref event is dated when it was observed: a scan cannot know when a ref moved.
     const now = this.#now().toISOString();
+    // A repository's first scan in this engine run reports history (what happened before the
+    // watcher saw it, or while the engine was down), so its events are late: they are recorded
+    // but must never trigger live reactions such as a merge celebration.
+    const late = repo.tips === undefined;
     const previous = repo.tips ?? this.#recordedTips(repo);
 
     let moves: Array<{ tip: RefTip; from?: string }>;
@@ -302,7 +306,7 @@ export class GitWatcher {
     ];
     if (this.#stopped) return;
     if (events.length > 0) {
-      const response = this.#options.ingest(events);
+      const response = this.#options.ingest(events.map((e) => ({ ...e, late })));
       const rejected = response.results.filter((r) => r.status === "rejected").length;
       if (rejected > 0) this.#options.logger?.warn({ rejected }, "git events rejected at ingest");
     }
@@ -349,7 +353,7 @@ export class GitWatcher {
     return parseLog(output);
   }
 
-  #commitEvents(repo: Repo, c: CommitRecord): unknown[] {
+  #commitEvents(repo: Repo, c: CommitRecord): object[] {
     const commit = this.#event(repo, `commit:${c.sha}`, c.committedAt, "git.commit", {
       repo: repo.path,
       sha: c.sha,
