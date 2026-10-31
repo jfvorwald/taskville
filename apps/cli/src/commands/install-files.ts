@@ -9,12 +9,13 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
   writeSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { CliError, EXIT } from "../errors.ts";
 
 // File handling for `taskville install claude-code` (#29): reading settings without following
@@ -216,54 +217,69 @@ export function privateDirProblem(
 }
 
 export interface ParentView {
-  realpath(path: string): string;
   lstat(path: string): StatLike | undefined;
+  readlink(path: string): string;
 }
 
 const realView: ParentView = {
-  realpath: (path) => realpathSync(path),
-  lstat: lstatOrUndefined,
+  lstat: (path) => {
+    try {
+      return lstatSync(path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+      throw error;
+    }
+  },
+  readlink: (path) => readlinkSync(path),
 };
 
+const MAX_SYMLINK_HOPS = 40;
+
 /**
- * Why a directory above `path` lets another account replace it, or undefined. Whoever can write
- * a directory, or owns it, can rename the Taskville home away and put their own, with their own
- * shim, in its place. So every ancestor, both as written and with symlinks resolved (a link in a
- * shared directory can be re-aimed), must be owned by root or by this user and must not be
- * writable by group or other. A sticky bit (like /tmp) excuses the write bits, never the owner.
- * Ancestors that do not exist yet are skipped; the walk starts at the nearest one that does.
+ * Why a directory above `path` lets another account replace it, or undefined. Whoever can write a
+ * directory, or owns it, can rename the Taskville home away and put their own, with their own
+ * shim, in its place; whoever owns a symlink on the way can re-aim it. So the walk goes component
+ * by component from `/`, following every symlink to its target (and that target's own links), and
+ * requires each directory passed through to be owned by root or this user and not writable by
+ * group or other, and each symlink to be owned by root or this user. A sticky bit (like /tmp)
+ * excuses the write bits, never the owner. The walk stops at the first component that does not
+ * exist yet (the home may be created later); the home itself is judged by `privateDirProblem`.
  */
 export function parentDirProblem(
   path: string,
   view: ParentView = realView,
   uid: number | undefined = process.getuid?.(),
 ): string | undefined {
-  const ancestors = (from: string) => {
-    const list: string[] = [];
-    for (let dir = dirname(from); ; dir = dirname(dir)) {
-      list.push(dir);
-      if (dirname(dir) === dir) return list;
+  const split = (p: string) => p.split("/").filter((part) => part !== "");
+  const trusted = (stat: StatLike) => uid === undefined || stat.uid === uid || stat.uid === 0;
+  let rest = split(path);
+  let current = "/";
+  let hops = 0;
+  const rootStat = view.lstat("/");
+  if (rootStat !== undefined && !trusted(rootStat)) return `/ is owned by another user`;
+  while (rest.length > 0) {
+    const [name, ...after] = rest;
+    const next = join(current, name ?? "");
+    const stat = view.lstat(next);
+    if (stat === undefined) return undefined;
+    if (stat.isSymbolicLink()) {
+      if (!trusted(stat)) return `${next} is a symlink owned by another user, who could re-aim it`;
+      if (++hops > MAX_SYMLINK_HOPS) return `${path} passes through too many symlinks`;
+      const target = view.readlink(next);
+      // `current` is already a real directory, so joining normalizes `..` correctly.
+      rest = [...split(isAbsolute(target) ? target : join(current, target)), ...after];
+      current = "/";
+      continue;
     }
-  };
-  const chains = [ancestors(path)];
-  for (let dir = dirname(path); ; dir = dirname(dir)) {
-    try {
-      chains.push(ancestors(join(view.realpath(dir), "x")));
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || dirname(dir) === dir) throw error;
+    if (after.length > 0) {
+      if (!trusted(stat)) return `${next} is owned by another user, who could replace ${path}`;
+      if ((stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
+        return `${next} is writable by other accounts and is not sticky, so one of them could replace ${path}; run chmod go-w ${next} first`;
+      }
     }
-  }
-  for (const dir of new Set(chains.flat())) {
-    const stat = view.lstat(dir);
-    // A symlink's own mode means nothing; the directory holding it is on the chain.
-    if (stat === undefined || stat.isSymbolicLink()) continue;
-    if (uid !== undefined && stat.uid !== uid && stat.uid !== 0) {
-      return `${dir} is owned by another user, who could replace ${path}`;
-    }
-    if ((stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
-      return `${dir} is writable by other accounts and is not sticky, so one of them could replace ${path}; run chmod go-w ${dir} first`;
-    }
+    current = next;
+    rest = after;
   }
   return undefined;
 }

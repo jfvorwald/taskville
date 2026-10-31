@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -54,70 +54,101 @@ describe("privateDirProblem (injected stat)", () => {
 });
 
 describe("parentDirProblem (injected stat)", () => {
+  const ME = 1000;
+  /** `dirs` are directories by path and mode; `links` map a link path to its target. */
   const view = (
     dirs: Record<string, number>,
     links: Record<string, string> = {},
     owners: Record<string, number> = {},
   ) => ({
-    realpath: (p: string) => {
-      const link = Object.entries(links).find(([from]) => p === from || p.startsWith(`${from}/`));
-      return link === undefined ? p : link[1] + p.slice(link[0].length);
-    },
+    readlink: (p: string) => links[p] ?? "",
     lstat: (p: string) =>
       p in links
-        ? stat({ kind: "link", mode: 0o120777 })
+        ? stat({ kind: "link", mode: 0o120777, uid: owners[p] ?? ME })
         : p in dirs
-          ? stat({ mode: dirs[p] ?? 0, uid: owners[p] ?? 1000 })
+          ? stat({ mode: dirs[p] ?? 0, uid: owners[p] ?? ME })
           : undefined,
   });
-  const ME = 1000;
+  const problem = (path: string, v: ReturnType<typeof view>) => parentDirProblem(path, v, ME);
 
   it("accepts parents that others cannot write, and sticky world-writable ones", () => {
     const v = view({ "/": 0o40755, "/home": 0o40755, "/home/u": 0o40700, "/tmp": 0o41777 });
-    expect(parentDirProblem("/home/u/.taskville", v, ME)).toBeUndefined();
-    expect(parentDirProblem("/tmp/.taskville", v, ME)).toBeUndefined();
+    expect(problem("/home/u/.taskville", v)).toBeUndefined();
+    expect(problem("/tmp/.taskville", v)).toBeUndefined();
   });
 
   it("refuses a parent others can write without the sticky bit", () => {
     const v = view({ "/": 0o40755, "/home": 0o40755, "/home/u": 0o40777 });
-    expect(parentDirProblem("/home/u/.taskville", v, ME)).toMatch(/\/home\/u is writable by/);
+    expect(problem("/home/u/.taskville", v)).toMatch(/\/home\/u is writable by/);
   });
 
   it("refuses a group-writable parent without the sticky bit, and walks above the first parent", () => {
     const v = view({ "/": 0o40755, "/home": 0o40775, "/home/u": 0o40700 });
-    expect(parentDirProblem("/home/u/.taskville", v, ME)).toMatch(/\/home is writable by/);
-  });
-
-  it("refuses a sticky world-writable parent that another user owns, accepts root's and ours", () => {
-    const dirs = { "/": 0o40755, "/shared": 0o41777 };
-    expect(parentDirProblem("/shared/.taskville", view(dirs, {}, { "/shared": 2000 }), ME)).toMatch(
-      /\/shared is owned by another user/,
-    );
-    expect(
-      parentDirProblem("/shared/.taskville", view(dirs, {}, { "/shared": 0 }), ME),
-    ).toBeUndefined();
-    expect(
-      parentDirProblem("/shared/.taskville", view(dirs, {}, { "/shared": ME }), ME),
-    ).toBeUndefined();
-  });
-
-  it("refuses a parent another user owns even without write bits for others", () => {
-    const v = view({ "/": 0o40755, "/srv": 0o40755 }, {}, { "/srv": 2000 });
-    expect(parentDirProblem("/srv/.taskville", v, ME)).toMatch(/\/srv is owned by another user/);
-  });
-
-  it("checks the directories holding a symlink on the way, not only where it points", () => {
-    // /shared/link -> /private/real; /shared is writable by others, /private/real is not.
-    const v = view(
-      { "/": 0o40755, "/shared": 0o40777, "/private": 0o40755, "/private/real": 0o40700 },
-      { "/shared/link": "/private/real" },
-    );
-    expect(parentDirProblem("/shared/link/.taskville", v, ME)).toMatch(/\/shared is writable by/);
+    expect(problem("/home/u/.taskville", v)).toMatch(/\/home is writable by/);
   });
 
   it("starts at the nearest existing ancestor when the home does not exist yet", () => {
     const v = view({ "/": 0o40755, "/home": 0o40755, "/home/u": 0o40777 });
-    expect(parentDirProblem("/home/u/a/b/.taskville", v, ME)).toMatch(/\/home\/u is writable by/);
+    expect(problem("/home/u/a/b/.taskville", v)).toMatch(/\/home\/u is writable by/);
+  });
+
+  it("refuses a sticky world-writable parent that another user owns, accepts root's and ours", () => {
+    const dirs = { "/": 0o40755, "/shared": 0o41777 };
+    expect(problem("/shared/.taskville", view(dirs, {}, { "/shared": 2000 }))).toMatch(
+      /\/shared is owned by another user/,
+    );
+    expect(problem("/shared/.taskville", view(dirs, {}, { "/shared": 0 }))).toBeUndefined();
+    expect(problem("/shared/.taskville", view(dirs, {}, { "/shared": ME }))).toBeUndefined();
+  });
+
+  it("refuses a parent another user owns even without write bits for others", () => {
+    const v = view({ "/": 0o40755, "/srv": 0o40755 }, {}, { "/srv": 2000 });
+    expect(problem("/srv/.taskville", v)).toMatch(/\/srv is owned by another user/);
+  });
+
+  it("checks the directory holding a symlink on the way, not only where it points", () => {
+    const v = view(
+      { "/": 0o40755, "/shared": 0o40777, "/private": 0o40755, "/private/real": 0o40700 },
+      { "/shared/link": "/private/real" },
+    );
+    expect(problem("/shared/link/.taskville", v)).toMatch(/\/shared is writable by/);
+  });
+
+  it("follows chained symlinks, and checks where each one points", () => {
+    const v = view(
+      {
+        "/": 0o40755,
+        "/safe": 0o40700,
+        "/shared": 0o40777,
+        "/private": 0o40755,
+        "/private/real": 0o40700,
+      },
+      { "/safe/link": "/shared/hop", "/shared/hop": "/private/real" },
+    );
+    expect(problem("/safe/link/.taskville", v)).toMatch(/\/shared is writable by/);
+  });
+
+  it("checks the target of a symlink, relative ones included", () => {
+    const dirs = { "/": 0o40755, "/home": 0o40755, "/home/u": 0o40700, "/w": 0o40777 };
+    expect(problem("/home/u/l/.taskville", view(dirs, { "/home/u/l": "/w" }))).toMatch(
+      /\/w is writable by/,
+    );
+    const rel = view({ ...dirs, "/w/x": 0o40700 }, { "/home/u/l": "../../w/x" });
+    expect(problem("/home/u/l/.taskville", rel)).toMatch(/\/w is writable by/);
+  });
+
+  it("refuses a symlink on the way that another user owns, even in a root-owned sticky dir", () => {
+    const v = view(
+      { "/": 0o40755, "/shared": 0o41770, "/private": 0o40700 },
+      { "/shared/link": "/private" },
+      { "/shared": 0, "/shared/link": 2000 },
+    );
+    expect(problem("/shared/link/.taskville", v)).toMatch(/symlink owned by another user/);
+  });
+
+  it("gives up on a symlink loop", () => {
+    const v = view({ "/": 0o40755 }, { "/a": "/b", "/b": "/a" });
+    expect(problem("/a/.taskville", v)).toMatch(/too many symlinks/);
   });
 });
 
@@ -172,6 +203,21 @@ describe("install against a home that is not private", () => {
     sb = sandbox();
     chmodSync(sb.home, 0o777);
     expect(() => checkShim(sb.tv, "s.sh", "#!/bin/sh\n")).toThrow(/writable by/);
+  });
+
+  it("refuses a home reached through a symlink that sits in a directory others can write", async () => {
+    sb = sandbox();
+    const shared = join(sb.root, "shared");
+    const real = join(sb.root, "real");
+    mkdirSync(shared, { mode: 0o700 });
+    mkdirSync(real, { mode: 0o700 });
+    symlinkSync(real, join(shared, "link"));
+    chmodSync(shared, 0o777);
+    const home = join(shared, "link", ".taskville");
+    const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes", "--home", home]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(shared);
+    expect(existsSync(join(real, ".taskville"))).toBe(false);
   });
 
   it("accepts a 0777 parent that has the sticky bit", async () => {
