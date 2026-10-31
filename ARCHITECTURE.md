@@ -297,7 +297,7 @@ PendingRequest states: `open`, `answered_here`, `answered_elsewhere`, `expired`.
 PendingRequest and Command are projections of `request.*` and `command.*` events, like everything else; there are no mutable request tables. Lifecycle rules:
 
 - A telemetry-only request closes as `answered_elsewhere` on the next event from the same session (`PostToolUse`, `PostToolUseFailure`, `Stop`, `UserPromptSubmit`) if Taskville did not answer it.
-- A bridge-held permission request does not follow that rule (decision #116, spike S-1 recommendations 1 and 2). A hook connection closed before any city answer is recorded as answered in the terminal (deny). Exactly one unambiguous matching `PostToolUse` (same session, prompt, tool name and input, with no duplicate request in that prompt) closes it as answered in the terminal (allow). A later `UserPromptSubmit` or `Stop` from the same session closes it as `answered_elsewhere`. Other same-session events, such as a parallel sibling's `PreToolUse` or `PostToolUse`, and Notifications never close it.
+- A bridge-held permission request does not follow that rule (decision #116, spike S-1 recommendations 1 and 2). A hook connection closed before any city answer, and before the hook `timeout`, is recorded as answered in the terminal (deny); a close at the hook `timeout` means the engine missed its own hold window and is recorded as `expired`, never as a deny. Exactly one unambiguous matching `PostToolUse` (same session, prompt, tool name and input, with no duplicate request in that prompt) closes it as answered in the terminal (allow). A later `UserPromptSubmit` or `Stop` from the same session closes it as `answered_elsewhere`. Other same-session events, such as a parallel sibling's `PreToolUse` or `PostToolUse`, and Notifications never close it.
 - A decision sent from the city is recorded as sent, unconfirmed, once it is written to the still-open hook response (decision #116), because writing to an open response does not prove the decision applied: after a terminal Yes the hook stays open and a later city answer is ignored (spike S-1, exp3). Telemetry that a terminal answer could equally explain, such as a matching `PostToolUse` after a city Allow, never upgrades it to succeeded. If the hold window ended first, the command fails as `expired` and the card says so.
 - On engine start, every request still `open` gets a `request.expired` event, because its hook connection died with the old process.
 
@@ -414,7 +414,9 @@ sequenceDiagram
   W->>E: POST /v1/commands {permission.decide, allow}
   E->>E: check: request open, live context, token, not expired
   E-->>CC: hook response: allow
-  E-->>W: SSE: request.resolved, command.succeeded
+  E-->>W: SSE: request.resolved, command.delivered (sent, unconfirmed)
+  CC->>E: PostToolUse (telemetry)
+  E-->>W: SSE: command.succeeded only if no terminal answer could explain it
 ```
 
 ### 9.2 Rules
