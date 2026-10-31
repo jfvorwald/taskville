@@ -69,7 +69,7 @@
   activity.ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
 #27 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
 #28 Notification:permission_prompt
-  request.opened claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"requestId":"claude-code:request:team-split-pane-28","kind":"permission","reason":"Claude needs your permission"}
+  request.opened claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 corr=a5bd897e-ffa4-4fe1-9383-1e804adb6522 {"requestId":"claude-code:request:team-split-pane-28","kind":"permission","reason":"Claude needs your permission"}
 #29 PostToolUse:Bash
   tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01QULpboxZ1kWaJoviNM9oAp","phase":"succeeded","durationMs":286}
   evidence toolu_01QULpboxZ1kWaJoviNM9oAp output

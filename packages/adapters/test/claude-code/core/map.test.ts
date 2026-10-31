@@ -345,6 +345,14 @@ describe("notifications and requests", () => {
     expect(r.events[0]?.sourceId).toBe("claude-code");
   });
 
+  it("carries prompt_id as correlationId, so M4 can match the bridge's request (S-1)", () => {
+    const pid = "03dc4896-8835-47f5-a515-94a1ad4c675c";
+    const r = map(notification("permission_prompt", { prompt_id: pid }));
+    expect(only(r, "request.opened").correlationId).toBe(pid);
+    const bad = map(notification("permission_prompt", { prompt_id: "a:b" }));
+    expect(only(bad, "request.opened").correlationId).toBeUndefined();
+  });
+
   it("a late permission_prompt still maps, marked late so the reducer never opens it", () => {
     const r = map(notification("permission_prompt"), { late: true });
     expect(only(r, "request.opened").late).toBe(true);
@@ -514,18 +522,38 @@ describe("untrusted payloads (L-18, L-29, L-31, L-32)", () => {
     ).not.toEqual([]);
   });
 
-  it("masks secrets in summaries and reasons before they enter an event", () => {
+  it("masks secrets in summaries before they enter an event", () => {
     const key = `sk-ant-${"A1b2C3d4".repeat(5)}`;
     const r = map(pre("Bash", { command: `curl -H "x-api-key: ${key}" https://api` }));
     const text = JSON.stringify(r.events);
     expect(text).not.toContain(key);
     expect(text).toContain("[REDACTED:");
-    const failed = map({
-      ...base,
-      hook_event_name: "StopFailure",
-      error: `auth failed for ${key}`,
-    });
-    expect(JSON.stringify(failed.events)).not.toContain(key);
+  });
+
+  // The engine masks `reason` at ingest and records `masked: true` when it did (FR-017). Masking
+  // it here first would hide that, so a reason within the input limit is left to the engine.
+  it.each([
+    ["StopFailure", { error: "auth failed for KEY" }, "session.turn_failed"],
+    ["Notification", { notification_type: "permission_prompt", message: "KEY" }, "request.opened"],
+    ["Elicitation", { message: "token KEY" }, "request.opened"],
+  ])("leaves a secret in a %s reason for the engine to mask and flag", (hook, extra, type) => {
+    const key = `sk-ant-${"A1b2C3d4".repeat(5)}`;
+    const payload = JSON.parse(
+      JSON.stringify({ ...base, hook_event_name: hook, ...extra }).replaceAll("KEY", key),
+    );
+    const reason = only(map(payload), type).payload.reason as string;
+    expect(reason).toContain(key);
+  });
+
+  it("masks an over-long reason before cutting it, so no secret is split", () => {
+    const key = `sk-ant-${"A1b2C3d4".repeat(5)}`;
+    const error = `${"x".repeat(3990)} ${key} tail`;
+    const reason = only(
+      map({ ...base, hook_event_name: "StopFailure", error }),
+      "session.turn_failed",
+    ).payload.reason as string;
+    expect([...reason].length).toBeLessThanOrEqual(4000);
+    expect(reason).not.toContain("sk-ant-A1b2");
   });
 
   it("masks secrets in tool names, paths, display names, outcomes and working directories", () => {

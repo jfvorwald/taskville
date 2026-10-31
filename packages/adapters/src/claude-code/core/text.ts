@@ -1,3 +1,4 @@
+import { codePointLength, INPUT_REASON_MAX_CHARS } from "@taskville/protocol";
 import { redactText } from "../../redact/index.ts";
 
 /** Max code points of a one-line summary on a ToolCall. */
@@ -17,6 +18,21 @@ export function cleanText(value: unknown, max: number): string | undefined {
   const masked = redactText(value.toWellFormed()).text;
   const cut = cutCodePoints(masked, max);
   return cut === "" ? undefined : cut;
+}
+
+/**
+ * Prepares a `reason`. The engine masks a reason at ingest and stores `masked: true` when it did
+ * (FR-017), so a reason within the input limit is passed on unmasked; masking it here would make
+ * the engine record `masked: false` for masked text. A longer one is masked before it is cut, so
+ * the cut can never split a secret and leave part of it unmasked.
+ */
+export function cleanReason(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.toWellFormed();
+  if (text === "") return undefined;
+  return codePointLength(text) <= INPUT_REASON_MAX_CHARS
+    ? text
+    : cleanText(text, INPUT_REASON_MAX_CHARS);
 }
 
 /** The first line of already cleaned text. */

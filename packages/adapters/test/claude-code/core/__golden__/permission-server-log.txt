@@ -3,7 +3,7 @@
   evidence toolu_01Vht1XR3ioUBvjrANoTYgWa input
 #2 PermissionRequest:Bash  (ignored: PermissionRequest belongs to the permission bridge (M4))
 #3 Notification:permission_prompt
-  request.opened claude-code:eaff5d10-daac-4e32-b35f-87f91ca81c8f eaff5d10-daac-4e32-b35f-87f91ca81c8f {"requestId":"claude-code:request:permission-server-log-3","kind":"permission","reason":"Claude needs your permission"}
+  request.opened claude-code:eaff5d10-daac-4e32-b35f-87f91ca81c8f eaff5d10-daac-4e32-b35f-87f91ca81c8f corr=03dc4896-8835-47f5-a515-94a1ad4c675c {"requestId":"claude-code:request:permission-server-log-3","kind":"permission","reason":"Claude needs your permission"}
 #4 PostToolUse:Bash
   tool_call.finished claude-code:eaff5d10-daac-4e32-b35f-87f91ca81c8f eaff5d10-daac-4e32-b35f-87f91ca81c8f {"toolCallId":"toolu_01Vht1XR3ioUBvjrANoTYgWa","phase":"succeeded","durationMs":254}
   evidence toolu_01Vht1XR3ioUBvjrANoTYgWa output
@@ -52,7 +52,7 @@
   evidence toolu_01QaNAwxH89Gj5TqhRWYdQ5M input
 #22 PermissionRequest:Bash  (ignored: PermissionRequest belongs to the permission bridge (M4))
 #23 Notification:permission_prompt
-  request.opened claude-code:eaff5d10-daac-4e32-b35f-87f91ca81c8f eaff5d10-daac-4e32-b35f-87f91ca81c8f {"requestId":"claude-code:request:permission-server-log-23","kind":"permission","reason":"Claude needs your permission"}
+  request.opened claude-code:eaff5d10-daac-4e32-b35f-87f91ca81c8f eaff5d10-daac-4e32-b35f-87f91ca81c8f corr=714eb34a-23e7-451c-92f5-40c7a704308d {"requestId":"claude-code:request:permission-server-log-23","kind":"permission","reason":"Claude needs your permission"}
 #24 UserPromptSubmit
   session.prompt_submitted claude-code:94a13e7a-bf82-4619-801e-a6bb148446fc 94a13e7a-bf82-4619-801e-a6bb148446fc {}
 #25 PreToolUse:Bash

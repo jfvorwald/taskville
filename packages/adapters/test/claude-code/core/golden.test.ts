@@ -76,7 +76,8 @@ function render(hooks: Hook[], results: MapResult[]): string {
       `#${h.seq} ${label(h.input)}${r.ignored === undefined ? "" : `  (ignored: ${r.ignored})`}`,
     );
     for (const e of r.events) {
-      out.push(`  ${e.type} ${e.agentId} ${e.sessionId} ${JSON.stringify(e.payload)}`);
+      const corr = e.correlationId === undefined ? "" : ` corr=${e.correlationId}`;
+      out.push(`  ${e.type} ${e.agentId} ${e.sessionId}${corr} ${JSON.stringify(e.payload)}`);
     }
     for (const ev of r.evidence ?? []) {
       const keys = ["input", "output"].filter((k) => Object.hasOwn(ev, k));

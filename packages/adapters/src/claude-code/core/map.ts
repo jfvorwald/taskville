@@ -1,14 +1,17 @@
-import {
-  type EventType,
-  INPUT_PREVIEW_MAX_CHARS,
-  INPUT_REASON_MAX_CHARS,
-  type InputEventWire,
-} from "@taskville/protocol";
+import { type EventType, INPUT_PREVIEW_MAX_CHARS, type InputEventWire } from "@taskville/protocol";
 import { activityForTool } from "./activity.ts";
 import { attributeHook } from "./attribution.ts";
 import { isRecord, own, ownString } from "./fields.ts";
 import { isHookId, MAX_SOURCE_EVENT_ID, MAX_TOOL_USE_ID, requestIdFor, SOURCE_ID } from "./ids.ts";
-import { baseName, cleanText, firstLine, NAME_MAX, PATH_MAX, SUMMARY_MAX } from "./text.ts";
+import {
+  baseName,
+  cleanReason,
+  cleanText,
+  firstLine,
+  NAME_MAX,
+  PATH_MAX,
+  SUMMARY_MAX,
+} from "./text.ts";
 import type { HookContext, HookSubject, MapResult, ToolEvidence } from "./types.ts";
 
 // The core Claude Code mapper (M2.03): sessions, prompts, tool calls, notifications, turn ends,
@@ -25,6 +28,9 @@ export const CREW_HOOKS: ReadonlySet<string> = new Set([
   "TaskCreated",
   "TaskCompleted",
 ]);
+
+/** Longest `prompt_id` accepted. Real ones are UUIDs. */
+const MAX_PROMPT_ID = 100;
 
 /** Longest accepted tool duration: 30 days (L-39). */
 const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -136,7 +142,7 @@ function stopFailureReason(payload: Record<string, unknown>): string | undefined
   const error = ownString(payload, "error");
   if (error === undefined) return undefined;
   const details = ownString(payload, "error_details");
-  return cleanText(details === undefined ? error : `${error}: ${details}`, INPUT_REASON_MAX_CHARS);
+  return cleanReason(details === undefined ? error : `${error}: ${details}`);
 }
 
 function notification(m: Mapping): MapResult {
@@ -146,11 +152,16 @@ function notification(m: Mapping): MapResult {
     // Telemetry only: never answerable (only the M4 bridge's requests are). A late payload is
     // marked late, and the reducer records a late request as expired, never as needs-you.
     return result([
-      event(m, "request.opened", {
-        requestId: requestIdFor(m.ctx.sourceEventId),
-        kind: "permission",
-        ...optional("reason", cleanText(own(m.payload, "message"), INPUT_REASON_MAX_CHARS)),
-      }),
+      event(
+        m,
+        "request.opened",
+        {
+          requestId: requestIdFor(m.ctx.sourceEventId),
+          kind: "permission",
+          ...optional("reason", cleanReason(own(m.payload, "message"))),
+        },
+        promptId(m.payload),
+      ),
     ]);
   }
   if (type === "worker_permission_prompt") {
@@ -165,11 +176,16 @@ function elicitation(m: Mapping): MapResult {
   const text =
     server !== undefined && message !== undefined ? `${server}: ${message}` : (message ?? server);
   return result([
-    event(m, "request.opened", {
-      requestId: requestIdFor(m.ctx.sourceEventId),
-      kind: "elicitation",
-      ...optional("reason", cleanText(text, INPUT_REASON_MAX_CHARS)),
-    }),
+    event(
+      m,
+      "request.opened",
+      {
+        requestId: requestIdFor(m.ctx.sourceEventId),
+        kind: "elicitation",
+        ...optional("reason", cleanReason(text)),
+      },
+      promptId(m.payload),
+    ),
   ]);
 }
 
@@ -246,6 +262,16 @@ function toolSummary(toolName: string, input: unknown): string | undefined {
   return cleanText(text, SUMMARY_MAX);
 }
 
+/**
+ * The hook's `prompt_id`, shared by the PermissionRequest, Notification, and PostToolUse of one
+ * prompt (S-1). Carried as `correlationId` on requests so the bridge's request (M4) can be
+ * matched to the telemetry one; matching is not done here.
+ */
+function promptId(payload: Record<string, unknown>): string | undefined {
+  const id = own(payload, "prompt_id");
+  return isHookId(id, MAX_PROMPT_ID) ? id : undefined;
+}
+
 function failureOutput(payload: Record<string, unknown>): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
   for (const key of ["error", "is_interrupt"]) {
@@ -263,7 +289,12 @@ function durationMs(value: unknown): number | undefined {
     : undefined;
 }
 
-function event<T extends EventType>(m: Mapping, type: T, payload: Payload<T>): InputEventWire {
+function event<T extends EventType>(
+  m: Mapping,
+  type: T,
+  payload: Payload<T>,
+  correlationId?: string,
+): InputEventWire {
   return {
     schemaVersion: 1,
     projectId: m.ctx.projectId,
@@ -272,6 +303,7 @@ function event<T extends EventType>(m: Mapping, type: T, payload: Payload<T>): I
     occurredAt: m.ctx.receivedAt,
     agentId: m.subject.agentId,
     sessionId: m.subject.sessionId,
+    ...optional("correlationId", correlationId),
     type,
     payload,
     provenance: "live",

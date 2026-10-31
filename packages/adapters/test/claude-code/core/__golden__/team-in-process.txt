@@ -83,7 +83,7 @@
 #35 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
 #36 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
 #37 Notification:permission_prompt
-  request.opened claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 cf46f41b-8048-4a06-b955-b342dd0c7f31 {"requestId":"claude-code:request:team-in-process-37","kind":"permission","reason":"Claude needs your permission"}
+  request.opened claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 cf46f41b-8048-4a06-b955-b342dd0c7f31 corr=80238651-e080-458a-bf6a-f37c56d1cbe3 {"requestId":"claude-code:request:team-in-process-37","kind":"permission","reason":"Claude needs your permission"}
 #38 PostToolUse:Bash
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01LF8smXc4pqZcPF8xL8QdZW","phase":"succeeded","durationMs":81}
   evidence toolu_01LF8smXc4pqZcPF8xL8QdZW output
