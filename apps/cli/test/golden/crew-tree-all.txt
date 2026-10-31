@@ -1,0 +1,5 @@
+Demo · 0 active · 0 needs you · 0 trouble · 0 waiting
+Main session (lead) · connected · idle
+  tester (teammate) · unknown · idle · finished
+  explorer (subagent) · unknown · researching · finished
+    searcher (subagent) · unknown · unknown · finished

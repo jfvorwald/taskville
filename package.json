@@ -12,7 +12,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",
-    "retro": "node scripts/retro/src/main.ts"
+    "retro": "node scripts/retro/src/main.ts",
+    "taskville": "node apps/cli/src/main.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

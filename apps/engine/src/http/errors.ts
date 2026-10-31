@@ -12,6 +12,7 @@ export type ErrorCode =
   | "not_implemented"
   | "too_many_streams"
   | "payload_too_large"
+  | "project_exists"
   | "unauthorized"
   | "unknown_project";
 
