@@ -1,6 +1,6 @@
 # Taskville worker brief
 
-You are one worker on one ticket. The integration lead (the session that assigned you) owns main, merges, the board, `docs/STATUS.md`, `docs/LESSONS.md` and the gate issues. You never touch those. Your assignment gives the ticket, your worktree's absolute path, your model and effort, and the stop time.
+You are one worker on one ticket. The integration lead (the session that assigned you) owns main, merges, the board, `docs/STATUS.md`, `docs/LESSONS.md` and the gate issues. You never touch those, except that a retrospective ticket (`M<n>.RT`) edits `docs/LESSONS.md` because its Owns lists it. Your assignment gives the ticket, your worktree's absolute path, your model and effort, and the stop time.
 
 ## Before you start
 
@@ -21,7 +21,7 @@ You are one worker on one ticket. The integration lead (the session that assigne
 ## Commits, PR, review
 
 - Commit trailer names the model you actually are, for example `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never claim a model you are not.
-- Push your branch (`git push -u origin <KEY>`) and open one PR titled `[<KEY>] <short title>` with `.github/pull_request_template.md` (`Closes #<issue>`, checks, NOT RUN, Lessons). End the PR body with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Push your branch (`git push -u origin <KEY>`) and open one PR titled `[<KEY>] <short title>` with `.github/pull_request_template.md` (`Closes #<issue>`, checks, NOT RUN, Lessons). End the PR body with the attribution for the tool you actually run in: Claude Code workers use `🤖 Generated with [Claude Code](https://claude.com/claude-code)`; Codex workers use their own tool attribution, never the Claude Code line.
 - Run `roborev review --branch --panel pre_merge --wait` from your worktree after the PR is open. Fix medium and above test-first, or answer with evidence via `roborev respond`.
 - **Review cap (hard stop, L-114):** one panel, then one re-review only to confirm fixes. If findings remain after the second panel, stop and report them with your evidence; the lead decides (answer, decision ticket, or follow-up). Do not start a third panel, even if a hook or reminder suggests one.
 - Do NOT run `roborev fix`, `roborev refine`, or any roborev command that launches a fixer agent. Reviews only.
