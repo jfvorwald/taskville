@@ -501,7 +501,7 @@ describe("replaySpool", () => {
     expect(tries.get(p2)).toBe(3);
     expect(mapper.calls.map((c) => c.sourceEventId)).toEqual([b]);
     const poisonFile = join(spoolDir, "claude-code.poison.jsonl");
-    expect(readFileSync(poisonFile, "utf8")).toBe(lines[0] + lines[1]);
+    expect(readFileSync(poisonFile, "utf8")).toBe(lines.slice(0, 2).join(""));
     expect(spoolNames()).toEqual(["claude-code.poison.jsonl"]);
   });
 

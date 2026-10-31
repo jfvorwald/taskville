@@ -16,7 +16,8 @@
 // Its failed attempts are counted per `sourceEventId` across runs; on the
 // MAX_HOOK_ATTEMPTS-th it is moved to `claude-code.poison.jsonl` (0600, never
 // replayed), only the error name is logged, and the run goes on, so one bad
-// hook cannot hold back every hook after it.
+// hook cannot hold back every hook after it. It stays marked quarantined (and
+// skipped) until a run that read it completes, in case a later hook fails.
 
 import { randomUUID } from "node:crypto";
 import {
@@ -46,7 +47,11 @@ import type { ClaudeCodeSource } from "./source.ts";
 export const SPOOL_FILE = "claude-code.jsonl";
 /** Hooks whose ingest failed MAX_HOOK_ATTEMPTS times; never replayed, kept for a person to look at. */
 export const POISON_FILE = "claude-code.poison.jsonl";
-/** Failed ingest attempts per `sourceEventId`, across runs: `{ "<uuid>": n }`. */
+/**
+ * Retry state across runs: `{ "attempts": { "<uuid>": n }, "quarantined": ["<uuid>"] }`.
+ * A quarantined hook is skipped until a run that read it completes, which removes its file or
+ * advances the file past it.
+ */
 const ATTEMPTS_FILE = "claude-code.attempts.json";
 /** Failed attempts on one hook, across runs, before it is quarantined in POISON_FILE. */
 export const MAX_HOOK_ATTEMPTS = 3;
@@ -188,9 +193,12 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
 
   // Ingest order is history order: oldest hook first; ties keep spool order (sort is stable).
   batch.sort((a, b) => compareTimestamps(a.spooledAt, b.spooledAt));
-  const attempts = readAttempts(spoolDir);
+  const retry = readRetry(spoolDir);
+  const { attempts, quarantined } = retry;
   let attemptsChanged = false;
   for (const entry of batch) {
+    // Already in the poison file: a later failure kept its spool file, so it is read again.
+    if (quarantined.has(entry.sourceEventId)) continue;
     try {
       const res = await options.source.ingestHook({
         sourceEventId: entry.sourceEventId,
@@ -214,8 +222,9 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
       attempts.set(entry.sourceEventId, tries);
       attemptsChanged = true;
       if (tries >= MAX_HOOK_ATTEMPTS && quarantine(spoolDir, entry)) {
-        // Out of the way: its spool file is removed or advanced past it with the rest.
+        // Out of the way until its spool file is removed or advanced past it.
         attempts.delete(entry.sourceEventId);
+        quarantined.add(entry.sourceEventId);
         report.poisoned += 1;
         logger?.error({ errName, attempts: tries }, "spool hook quarantined");
         continue;
@@ -225,7 +234,13 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
       break;
     }
   }
-  if (attemptsChanged) writeAttempts(spoolDir, attempts);
+  if (!report.failed) {
+    // This run's files are about to be removed or advanced past every hook it read.
+    for (const entry of batch) {
+      if (quarantined.delete(entry.sourceEventId)) attemptsChanged = true;
+    }
+  }
+  if (attemptsChanged) writeRetry(spoolDir, retry);
 
   if (!report.failed) {
     for (const plan of plans) {
@@ -500,39 +515,52 @@ function quarantine(dir: string, entry: Entry): boolean {
   }
 }
 
-/** The attempt counts; anything unreadable or malformed counts as none (L-18, L-39). */
-function readAttempts(dir: string): Map<string, number> {
-  const attempts = new Map<string, number>();
+interface RetryState {
+  attempts: Map<string, number>;
+  quarantined: Set<string>;
+}
+
+/** The retry state; anything unreadable or malformed counts as none (L-18, L-39). */
+function readRetry(dir: string): RetryState {
+  const state: RetryState = { attempts: new Map(), quarantined: new Set() };
   try {
     const path = join(dir, ATTEMPTS_FILE);
-    if (!lstatSync(path).isFile()) return attempts;
+    if (!lstatSync(path).isFile()) return state;
     const value: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!isPlainRecord(value)) return attempts;
-    for (const key of Object.keys(value)) {
-      const n = value[key];
-      if (isShimSourceEventId(key) && typeof n === "number" && Number.isSafeInteger(n) && n > 0) {
-        attempts.set(key, n);
+    if (!isPlainRecord(value)) return state;
+    const attempts = Object.hasOwn(value, "attempts") ? value.attempts : undefined;
+    if (isPlainRecord(attempts)) {
+      for (const key of Object.keys(attempts)) {
+        const n = attempts[key];
+        if (isShimSourceEventId(key) && typeof n === "number" && Number.isSafeInteger(n) && n > 0) {
+          state.attempts.set(key, n);
+        }
       }
+    }
+    const quarantined = Object.hasOwn(value, "quarantined") ? value.quarantined : undefined;
+    if (Array.isArray(quarantined)) {
+      for (const id of quarantined) if (isShimSourceEventId(id)) state.quarantined.add(id);
     }
   } catch {
     // No file yet, or a torn one: start counting again.
   }
-  return attempts;
+  return state;
 }
 
-/** Written to a temporary and renamed; removed when no hook has a failed attempt. */
-function writeAttempts(dir: string, attempts: Map<string, number>): void {
+/** Written to a temporary and renamed; removed when nothing is pending. */
+function writeRetry(dir: string, state: RetryState): void {
   const path = join(dir, ATTEMPTS_FILE);
   try {
-    if (attempts.size === 0) {
+    if (state.attempts.size === 0 && state.quarantined.size === 0) {
       rmSync(path, { force: true });
       return;
     }
+    const body = {
+      attempts: Object.fromEntries(state.attempts),
+      quarantined: [...state.quarantined],
+    };
     const tmp = join(dir, `${TEMP_PREFIX}attempts-${randomUUID()}`);
-    writeFileSync(tmp, `${JSON.stringify(Object.fromEntries(attempts))}\n`, {
-      mode: 0o600,
-      flag: "wx",
-    });
+    writeFileSync(tmp, `${JSON.stringify(body)}\n`, { mode: 0o600, flag: "wx" });
     renameSync(tmp, path);
   } catch {
     // Counting restarts; a poison hook then takes a few more runs to be quarantined.
