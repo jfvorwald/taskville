@@ -48,7 +48,9 @@ describe("root reducer", () => {
 
   it("sets head to the last applied ingest sequence", () => {
     const emit = eventStream();
-    const events = [emit("project.created", { name: "p", roots: [], builtin: false })];
+    const events: StoredEnvelope[] = [
+      emit("project.created", { name: "p", roots: [], builtin: false }),
+    ];
     events.push(registered(emit, "a1", "session"));
     expect(run(events).head).toBe(2);
   });
@@ -784,7 +786,7 @@ describe("tool calls", () => {
 
   it("counts consecutive failures and resets on success", () => {
     const emit = eventStream();
-    const events = [registered(emit, "a1", "session")];
+    const events: StoredEnvelope[] = [registered(emit, "a1", "session")];
     for (const [i, phase] of (["failed", "failed", "failed"] as const).entries()) {
       events.push(
         emit("tool_call.started", { toolCallId: `t${i}`, toolName: "Bash" }, { agentId: "a1" }),
@@ -816,7 +818,7 @@ describe("tool calls", () => {
 
   it("caps open calls per agent, dropping the oldest from the projection", () => {
     const emit = eventStream();
-    const events = [];
+    const events: StoredEnvelope[] = [];
     for (let i = 0; i < MAX_OPEN_TOOL_CALLS_PER_AGENT + 5; i++) {
       events.push(
         emit("tool_call.started", { toolCallId: `t${i}`, toolName: "Bash" }, { agentId: "a" }),
