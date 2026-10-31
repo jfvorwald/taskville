@@ -11,6 +11,7 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
+import { settingsOverlay } from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
@@ -20,8 +21,9 @@ const registry = createOverlayRegistry([
   countsHeaderOverlay,
   agentLabelsOverlay,
   cameraControlsOverlay,
+  settingsOverlay,
 ]);
-const ENABLED = ["counts-header", "agent-labels", "camera-controls"];
+const ENABLED = ["counts-header", "agent-labels", "camera-controls", "settings-panel"];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
 

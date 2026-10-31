@@ -1,0 +1,85 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 16px;
+}
+
+.toggle {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.toggle[data-focus-visible],
+.radio[data-focus-visible] {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 240px;
+  padding: 14px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font-size: 0.875rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legend {
+  color: var(--tv-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.radio::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--tv-text-muted);
+  border-radius: 50%;
+}
+
+.radio[data-selected]::before {
+  border-color: var(--tv-accent);
+  background: var(--tv-accent);
+  box-shadow: inset 0 0 0 2px var(--tv-surface);
+}
+
+.switch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.switch[data-disabled] {
+  opacity: 0.6;
+}
+
+.note {
+  color: var(--tv-text-muted);
+  font-size: 0.75rem;
+}
