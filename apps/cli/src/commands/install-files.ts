@@ -9,12 +9,13 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
   writeSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { CliError, EXIT } from "../errors.ts";
 
 // File handling for `taskville install claude-code` (#29): reading settings without following
@@ -182,16 +183,138 @@ export function readBackup(settingsPath: string): string | undefined {
   return readState(path).text;
 }
 
-/** A private directory: created 0700 if missing; a symlink or non-directory is refused. */
-function privateDir(path: string, create: boolean): void {
-  const stat = lstatOrUndefined(path);
-  if (stat === undefined) {
-    if (!create) return;
-    mkdirSync(path, { recursive: true, mode: 0o700 });
-    return;
+/** The part of `fs.Stats` the private-directory rule reads (injectable in tests). */
+export interface StatLike {
+  uid: number;
+  mode: number;
+  isDirectory(): boolean;
+  isSymbolicLink(): boolean;
+}
+
+const GROUP_OTHER_WRITE = 0o022;
+const STICKY = 0o1000;
+
+/**
+ * Why `path` may not be used as a private Taskville directory, or undefined when it may. The
+ * engine's rule (`ensurePrivateDir` in apps/engine/src/config/home.ts: no symlink, a directory,
+ * owned by this user) plus no group or other write. The engine tightens a loose mode with chmod;
+ * the installer only refuses, because a refusal must change nothing. That, and the parent check
+ * below, is why this mirrors the engine's check rather than importing it: the engine's function
+ * creates, chmods and throws `HomeError`, and is not exported.
+ */
+export function privateDirProblem(
+  path: string,
+  stat: StatLike,
+  uid: number | undefined,
+): string | undefined {
+  if (stat.isSymbolicLink()) return `${path} is a symlink; refusing to use it`;
+  if (!stat.isDirectory()) return `${path} is not a directory`;
+  if (uid !== undefined && stat.uid !== uid) return `${path} is owned by another user`;
+  if ((stat.mode & GROUP_OTHER_WRITE) !== 0) {
+    return `${path} is writable by group or other (mode ${(stat.mode & 0o777).toString(8)}); run chmod 700 ${path} first`;
   }
-  if (stat.isSymbolicLink()) fail(`${path} is a symlink; refusing to use it`);
-  if (!stat.isDirectory()) fail(`${path} is not a directory`);
+  return undefined;
+}
+
+export interface ParentView {
+  lstat(path: string): StatLike | undefined;
+  readlink(path: string): string;
+}
+
+const realView: ParentView = {
+  lstat: (path) => {
+    try {
+      return lstatSync(path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+      throw error;
+    }
+  },
+  readlink: (path) => readlinkSync(path),
+};
+
+const MAX_SYMLINK_HOPS = 40;
+
+/**
+ * Why a directory above `path` lets another account replace it, or undefined. Whoever can write a
+ * directory, or owns it, can rename the Taskville home away and put their own, with their own
+ * shim, in its place; whoever owns a symlink on the way can re-aim it. So the walk goes component
+ * by component from `/`, following every symlink to its target (and that target's own links), and
+ * requires each directory passed through to be owned by root or this user and not writable by
+ * group or other, and each symlink to be owned by root or this user. A sticky bit (like /tmp)
+ * excuses the write bits, never the owner. The walk stops at the first component that does not
+ * exist yet (the home may be created later); the home itself is judged by `privateDirProblem`.
+ */
+export function parentDirProblem(
+  path: string,
+  view: ParentView = realView,
+  uid: number | undefined = process.getuid?.(),
+): string | undefined {
+  const split = (p: string) => p.split("/").filter((part) => part !== "");
+  const trusted = (stat: StatLike) => uid === undefined || stat.uid === uid || stat.uid === 0;
+  let rest = split(path);
+  let current = "/";
+  let hops = 0;
+  // An ancestor directory is unsafe when someone else owns it or can write it without the sticky bit.
+  const dirProblem = (dir: string, stat: StatLike) => {
+    if (!trusted(stat)) return `${dir} is owned by another user, who could replace ${path}`;
+    if ((stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
+      return `${dir} is writable by other accounts and is not sticky, so one of them could replace ${path}; run chmod go-w ${dir} first`;
+    }
+    return undefined;
+  };
+  const rootStat = view.lstat("/");
+  if (rootStat !== undefined && rest.length > 0) {
+    const problem = dirProblem("/", rootStat);
+    if (problem !== undefined) return problem;
+  }
+  while (rest.length > 0) {
+    const [name, ...after] = rest;
+    // `.` and `..` are applied where the walk is, never folded into the text first: `link/..` is
+    // the parent of what the link points at, not of the directory holding the link. `current` is
+    // always a real directory here, so its dirname is its true parent.
+    if (name === "." || name === "..") {
+      if (name === "..") current = dirname(current);
+      rest = after;
+      continue;
+    }
+    const next = join(current, name ?? "");
+    const stat = view.lstat(next);
+    if (stat === undefined) return undefined;
+    if (stat.isSymbolicLink()) {
+      if (!trusted(stat)) return `${next} is a symlink owned by another user, who could re-aim it`;
+      if (++hops > MAX_SYMLINK_HOPS) return `${path} passes through too many symlinks`;
+      const target = view.readlink(next);
+      rest = [...split(target), ...after];
+      if (isAbsolute(target)) current = "/";
+      continue;
+    }
+    if (after.length > 0) {
+      const problem = dirProblem(next, stat);
+      if (problem !== undefined) return problem;
+    }
+    current = next;
+    rest = after;
+  }
+  return undefined;
+}
+
+/**
+ * A private directory: created 0700 if missing (`create`); a symlink, a non-directory, another
+ * owner or group/other write is refused, as is a parent others can write. Never changes a mode.
+ */
+function privateDir(path: string, create: boolean, checkParents: boolean): void {
+  const stat = lstatOrUndefined(path);
+  const problem =
+    stat === undefined
+      ? checkParents
+        ? parentDirProblem(path)
+        : undefined
+      : (privateDirProblem(path, stat, process.getuid?.()) ??
+        (checkParents ? parentDirProblem(path) : undefined));
+  if (problem !== undefined) fail(problem);
+  if (stat === undefined && create) mkdirSync(path, { recursive: true, mode: 0o700 });
 }
 
 /**
@@ -203,9 +326,9 @@ export function checkShim(
   name: string,
   source: string,
 ): { path: string; changes: boolean } {
-  privateDir(home, false);
+  privateDir(home, false, true);
   const hooks = join(home, "hooks");
-  privateDir(hooks, false);
+  privateDir(hooks, false, false);
   const path = join(hooks, name);
   const stat = lstatOrUndefined(path);
   if (stat?.isSymbolicLink()) fail(`${path} is a symlink; refusing to replace it`);
@@ -217,9 +340,9 @@ export function checkShim(
 
 /** Copies the shim into `<home>/hooks` (0700) as a 0755 file, atomically. */
 export function installShim(home: string, name: string, source: string): string {
-  privateDir(home, true);
+  privateDir(home, true, true);
   const hooks = join(home, "hooks");
-  privateDir(hooks, true);
+  privateDir(hooks, true, false);
   const { path } = checkShim(home, name, source);
   writeAtomic(path, source, 0o755);
   return path;

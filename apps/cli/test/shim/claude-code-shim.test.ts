@@ -373,6 +373,39 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(readdirSync(target)).toEqual([]);
   });
 
+  describe.each([
+    ["the home", (h: Home) => h.home],
+    ["the spool directory", (h: Home) => h.spoolDir],
+  ])("when %s is writable by group or other (M2.23)", (_name, pick) => {
+    it.each([0o770, 0o707, 0o777])("does not spool, post or print (mode %o)", async (dirMode) => {
+      chmodSync(pick(home), dirMode);
+      const run = await runShim({
+        shell,
+        input: JSON.stringify(hookPayload(30)),
+        env: shimEnv(home, server.url),
+      });
+      chmodSync(pick(home), 0o700);
+      expect(run.code).toBe(0);
+      expect(run.stdout).toBe("");
+      expect(run.stderr).toBe("");
+      expect(server.received).toHaveLength(0);
+      expect(spoolFiles(home).size).toBe(0);
+      expect(readdirSync(home.spoolDir)).toEqual([]);
+    });
+  });
+
+  it("still spools into a home that others can read but not write", async () => {
+    chmodSync(home.home, 0o755);
+    chmodSync(home.spoolDir, 0o755);
+    const run = await runShim({
+      shell,
+      input: JSON.stringify(hookPayload(31)),
+      env: shimEnv(home, await deadUrl()),
+    });
+    expect(run.code).toBe(0);
+    expect(spoolLines(home)).toHaveLength(1);
+  });
+
   it("starts a fresh line after a torn last line", async () => {
     writeFileSync(home.spoolFile, '{"payload":{"torn', { mode: 0o600 });
     await runShim({
