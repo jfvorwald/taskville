@@ -35,11 +35,21 @@ function seedOf(values: Values, usage: string): number {
 }
 
 function paceOf(values: Values, usage: string): Pace {
+  let pace: Pace;
   try {
-    return parsePace(typeof values.pace === "string" ? values.pace : "calm");
+    pace = parsePace(typeof values.pace === "string" ? values.pace : "calm");
   } catch (error) {
     throw new CliError(EXIT.failure, `${(error as Error).message}\nUsage: ${usage}`);
   }
+  // A custom interval with hundreds of digits parses to Infinity, and the virtual clock would
+  // never advance; every interval must be a finite number of milliseconds.
+  if (![pace.changeMinMs, pace.changeMaxMs, pace.needsYouMs].every(Number.isSafeInteger)) {
+    throw new CliError(
+      EXIT.failure,
+      `Invalid pace "${pace.name}": intervals must be finite\nUsage: ${usage}`,
+    );
+  }
+  return pace;
 }
 
 /** A simulated duration above zero that a run can actually reach (a huge number parses to Infinity). */
@@ -132,8 +142,11 @@ async function start(io: Io, args: string[]): Promise<number> {
   const seed = seedOf(values, START);
   const pace = paceOf(values, START);
   const speed = typeof values.speed === "string" ? Number(values.speed) : 1;
-  if (typeof values.speed === "string" && (!/^\d+(\.\d+)?$/.test(values.speed) || !(speed > 0))) {
-    throw new CliError(EXIT.failure, `--speed must be a number above zero\nUsage: ${START}`);
+  if (
+    typeof values.speed === "string" &&
+    (!/^\d+(\.\d+)?$/.test(values.speed) || !Number.isFinite(speed) || !(speed > 0))
+  ) {
+    throw new CliError(EXIT.failure, `--speed must be a finite number above zero\nUsage: ${START}`);
   }
   const durationMs =
     typeof values.duration === "string" ? durationOf(values.duration, START) : undefined;
