@@ -221,7 +221,11 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
-  packages/adapters: {}
+  packages/adapters:
+    dependencies:
+      '@taskville/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/demo:
     dependencies:
