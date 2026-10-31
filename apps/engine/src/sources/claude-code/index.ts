@@ -11,9 +11,11 @@ export {
 } from "./resolve-project.ts";
 export {
   CLAUDE_CODE_HOOKS_PATH,
+  isShimSourceEventId,
   MAX_HOOK_BODY_BYTES,
   MAX_HOOK_SOURCE_EVENT_ID,
   registerClaudeCodeRoutes,
+  SHIM_SOURCE_EVENT_ID,
 } from "./route.ts";
 export {
   CLAUDE_CODE_SOURCE_ID,

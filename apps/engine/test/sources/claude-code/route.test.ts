@@ -390,7 +390,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       body: raw,
     });
     expect(res.status).toBe(400);
-    const inPayload = `{"sourceEventId":"u-12","payload":{"__proto__":{"cwd":"/work/repo"},"session_id":"s"}}`;
+    const inPayload = `{"sourceEventId":"${hookId("u-12")}","payload":{"__proto__":{"cwd":"/work/repo"},"session_id":"s"}}`;
     const res2 = await app.request(URL, {
       method: "POST",
       headers: { ...bearer(CLI_TOKEN), "Content-Type": "application/json" },

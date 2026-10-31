@@ -28,9 +28,9 @@ import {
 import { type FileHandle, open } from "node:fs/promises";
 import { join } from "node:path";
 import { compareTimestamps } from "@taskville/domain/reducer";
-import { idSchema, timestampSchema } from "@taskville/protocol";
+import { timestampSchema } from "@taskville/protocol";
 import type { Logger } from "pino";
-import { MAX_HOOK_BODY_BYTES, MAX_HOOK_SOURCE_EVENT_ID } from "./route.ts";
+import { isShimSourceEventId, MAX_HOOK_BODY_BYTES } from "./route.ts";
 import type { ClaudeCodeSource } from "./source.ts";
 
 /** The shim's main spool file inside the spool directory. */
@@ -396,8 +396,8 @@ function spoolEntry(value: unknown): Entry | "oversized" | undefined {
   if (!Object.hasOwn(value, "sourceEventId") || !Object.hasOwn(value, "spooledAt"))
     return undefined;
   if (!Object.hasOwn(value, "payload")) return undefined;
-  const id = idSchema.safeParse(value.sourceEventId);
-  if (!id.success || id.data.length > MAX_HOOK_SOURCE_EVENT_ID) return undefined;
+  // The shim's lowercase UUID v4 only, as on the route (roborev 5161).
+  if (!isShimSourceEventId(value.sourceEventId)) return undefined;
   const at = timestampSchema.safeParse(value.spooledAt);
   if (!at.success) return undefined;
   const hasSize = Object.hasOwn(value, "payloadBytesAtLeast");
@@ -408,7 +408,7 @@ function spoolEntry(value: unknown): Entry | "oversized" | undefined {
       : undefined;
   }
   if (hasSize || !isPlainRecord(value.payload)) return undefined;
-  return { sourceEventId: id.data, payload: value.payload, spooledAt: at.data };
+  return { sourceEventId: value.sourceEventId, payload: value.payload, spooledAt: at.data };
 }
 
 /**

@@ -324,7 +324,7 @@ describe("replaySpool", () => {
       }),
       JSON.stringify({
         payload: hook(),
-        sourceEventId: uuid().toUpperCase(),
+        sourceEventId: "3F2B8C1E-9A4D-4E7F-B6A1-0C5D2E8F7A93",
         spooledAt: SPOOLED_AT,
       }),
       JSON.stringify({ payload: hook(), sourceEventId: "u-1", spooledAt: SPOOLED_AT }),
