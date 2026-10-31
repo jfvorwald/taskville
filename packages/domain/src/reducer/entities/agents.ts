@@ -115,7 +115,8 @@ function moveTeamMember(
   if (to !== undefined) {
     const team = getOwn(teams, to);
     if (team !== undefined && !team.memberAgentIds.includes(agentId)) {
-      teams = put(teams, to, { ...team, memberAgentIds: [...team.memberAgentIds, agentId] });
+      const memberAgentIds = byRegistration(s, [...team.memberAgentIds, agentId]);
+      teams = put(teams, to, { ...team, memberAgentIds });
     }
   }
   return teams === s.teams ? s : { ...s, teams };
@@ -132,13 +133,12 @@ export function applyTeamStarted(
     return { ...s, teams: put(s.teams, teamId, team) };
   }
   // Agents may register with this team before team.started arrives (async hooks race).
-  const memberAgentIds = Object.values(s.agents)
-    .filter((agent) => agent.teamId === teamId)
-    .sort(
-      (a, b) =>
-        (a.registeredSeq ?? 0) - (b.registeredSeq ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    )
-    .map((agent) => agent.id);
+  const memberAgentIds = byRegistration(
+    s,
+    Object.values(s.agents)
+      .filter((agent) => agent.teamId === teamId)
+      .map((agent) => agent.id),
+  );
   const team: Team = {
     id: teamId,
     leadAgentId,
@@ -147,6 +147,12 @@ export function applyTeamStarted(
     startedAt: e.occurredAt,
   };
   return { ...s, teams: put(s.teams, teamId, team) };
+}
+
+/** Agent IDs ordered by first registration, then by ID. */
+function byRegistration(s: EntitiesState, ids: readonly string[]): string[] {
+  const seq = (id: string): number => getOwn(s.agents, id)?.registeredSeq ?? 0;
+  return [...ids].sort((a, b) => seq(a) - seq(b) || (a < b ? -1 : a > b ? 1 : 0));
 }
 
 export function applyTeamEnded(s: EntitiesState, e: StoredEnvelopeOf<"team.ended">): EntitiesState {

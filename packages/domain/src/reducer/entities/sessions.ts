@@ -1,4 +1,5 @@
 import { getOwn, omit, optional, put } from "./maps.ts";
+import { compareTimestamps } from "./time.ts";
 import type {
   ActivityEntry,
   AgentActivity,
@@ -98,20 +99,25 @@ export function applySessionEnded(
 /** Any other session event: proves the session exists, so record it if new. */
 export const applySessionSeen = ensureSession;
 
-/** The agent's most recently started open session. */
+/**
+ * The agent's most recently started open session, by start time (`startedAt`, or `firstSeenAt`
+ * for a session whose start was never reported), then by the order it was opened, then by ID.
+ * Start time, not arrival order, because a start can arrive after other events (S-2).
+ */
 function primarySession(s: EntitiesState, agentId: string): Session | undefined {
   let primary: Session | undefined;
   for (const session of Object.values(s.sessions)) {
     if (session.agentId !== agentId || session.endedAt !== undefined) continue;
-    if (
-      primary === undefined ||
-      session.startSeq > primary.startSeq ||
-      (session.startSeq === primary.startSeq && session.id > primary.id)
-    ) {
-      primary = session;
-    }
+    if (primary === undefined || startsAfter(session, primary)) primary = session;
   }
   return primary;
+}
+
+function startsAfter(a: Session, b: Session): boolean {
+  const byTime = compareTimestamps(a.startedAt ?? a.firstSeenAt, b.startedAt ?? b.firstSeenAt);
+  if (byTime !== 0) return byTime > 0;
+  if (a.startSeq !== b.startSeq) return a.startSeq > b.startSeq;
+  return a.id > b.id;
 }
 
 /**

@@ -104,8 +104,9 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       if (e.type === "task.assigned") return applyTaskAssigned(s, e, taskId);
       if (e.type === "task.status_changed") return applyTaskStatusChanged(s, e, taskId);
       s = applyTaskHandoff(s, e, taskId);
+      // The sender acted, so it counts as seen; the recipient did not, so it is not touched.
       const from = e.payload.fromAgentId;
-      if (!Object.hasOwn(s.agents, from)) return s;
+      if (from !== agentId) s = touchAgent(s, e, from);
       s = setActivity(s, e, from, {
         activity: "handing_off",
         heuristic: false,

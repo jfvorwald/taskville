@@ -41,6 +41,7 @@ export interface Agent {
   readonly firstSeenAt: string;
   readonly lastSeenAt: string;
   readonly finishedAt?: string;
+  /** Tool calls whose start was seen. A finish whose start never arrives is not counted. */
   readonly toolCallCount: number;
   readonly consecutiveToolFailures: number;
   /** The agent's latest turn event, until a prompt or tool call clears it. */
@@ -75,7 +76,7 @@ export interface Session {
   readonly firstSeenAt: string;
   /** Set by `session.started`; absent for a session first heard of from another event. */
   readonly startedAt?: string;
-  /** Ingest sequence at which the session was opened; the latest open one is primary. */
+  /** Ingest sequence at which the session was opened; breaks start-time ties for primary. */
   readonly startSeq: number;
   readonly endedAt?: string;
   readonly workingDirectory?: string;
@@ -96,7 +97,7 @@ export interface ToolCall {
   readonly startedAt?: string;
   readonly finishedAt?: string;
   readonly durationMs?: number;
-  /** Ingest sequence at which the call was first seen; orders eviction. */
+  /** Ingest sequence at which the call was first seen (start or finish); orders eviction. */
   readonly startSeq: number;
 }
 
