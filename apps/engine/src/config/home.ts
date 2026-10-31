@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, statSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync } from "node:fs";
 import { homedir as osHomedir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadOrCreateToken } from "../auth/token-file.ts";
@@ -84,7 +84,13 @@ function ensurePrivateDir(dir: string): void {
   } catch (err) {
     throw new HomeError(`cannot create directory ${dir}: ${(err as Error).message}`);
   }
-  const stats = statSync(dir);
+  // lstat, not stat: a symlink would make the chmod below change some other folder.
+  const stats = lstatSync(dir);
+  if (stats.isSymbolicLink()) {
+    throw new HomeError(
+      `${dir} is a symlink; set TASKVILLE_HOME or --home to the real folder instead`,
+    );
+  }
   if (!stats.isDirectory()) throw new HomeError(`${dir} exists but is not a directory`);
   const uid = process.getuid?.();
   if (uid !== undefined && stats.uid !== uid) {

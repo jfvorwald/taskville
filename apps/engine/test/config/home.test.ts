@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -96,6 +104,22 @@ describe("ensureHome", () => {
     const home = join(scratch, "tv");
     writeFileSync(home, "not a directory");
     expect(() => ensureHome(home)).toThrow(HomeError);
+  });
+
+  it("refuses a symlinked home or spool without touching the target's mode", () => {
+    const target = join(scratch, "elsewhere");
+    mkdirSync(target);
+    chmodSync(target, 0o755);
+    const home = join(scratch, "tv");
+    symlinkSync(target, home);
+    expect(() => ensureHome(home)).toThrow(HomeError);
+    expect(mode(target)).toBe(0o755);
+
+    const realHome = join(scratch, "real");
+    mkdirSync(realHome);
+    symlinkSync(target, join(realHome, "spool"));
+    expect(() => ensureHome(realHome)).toThrow(HomeError);
+    expect(mode(target)).toBe(0o755);
   });
 
   it("refuses a CLI token file equal to the bridge token file", () => {
