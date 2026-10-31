@@ -16,6 +16,7 @@ import {
   registerClaudeCodeRoutes,
   replaySpool,
 } from "@taskville/engine/src/sources/claude-code/index.ts";
+import { GitWatcher } from "@taskville/engine/src/sources/git/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
 import pino from "pino";
 import packageJson from "../../package.json" with { type: "json" };
@@ -63,6 +64,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
   const logger = pino({ level: "info" }, { write: (line: string) => io.stderr(line) });
   let engine: Engine | undefined;
   let evidence: EvidenceStore | undefined;
+  let gitWatcher: GitWatcher | undefined;
   const stopDrain = new AbortController();
   let draining: Promise<unknown> = Promise.resolve();
   try {
@@ -102,11 +104,21 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
         throw new CliError(EXIT.failure, `Config file project "${project.id}": ${error.message}`);
       }
     }
+    // Live Git watcher (ARCHITECTURE.md 8.2): read-only, over every project's roots, through the
+    // same ingest pipeline as producers.
+    const pipeline = engine.pipeline;
+    gitWatcher = new GitWatcher({
+      storage: engine.storage,
+      ingest: (events) => pipeline.ingest(events),
+      now,
+      logger,
+    });
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
     const spool = { spoolDir: prepared.paths.spoolDir, source: claudeCode, logger };
     const first = await replaySpool(spool);
     const server = await startServer({ app, port: config.port });
+    gitWatcher.start();
     if (!first.failed && (first.deferredFiles > 0 || first.mainFile === "busy")) {
       draining = drainSpool({ ...spool, signal: stopDrain.signal }).catch((error: unknown) => {
         logger.error({ errName: (error as Error).name }, "spool drain failed");
@@ -125,6 +137,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     });
     stopDrain.abort();
     await draining;
+    await gitWatcher.stop();
     engine.close();
     evidence.close();
     await server.close();
@@ -133,6 +146,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
   } catch (error) {
     stopDrain.abort();
     await draining;
+    await gitWatcher?.stop();
     engine?.close();
     evidence?.close();
     if (error instanceof CliError) throw error;
