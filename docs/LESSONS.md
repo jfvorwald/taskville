@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-16: Grep Unicode tests for literal non-ASCII after writing them
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #6 · **Recorded by:** domain-hash teammate (M1.06)
+- **What happened:** The agent file-write tool saved `\uXXXX` escapes as the literal characters, including invisible U+FFFF and U+2028. Tests still passed, so it was nearly missed; it was caught in a diff. Separately, TypeScript 7 only accepts `Uint8Array<ArrayBuffer>` for `crypto.subtle.digest`.
+- **Lesson:** After writing tests with Unicode escapes, grep the file for non-ASCII bytes and rewrite escapes with a script if needed.
+- **Action:** Fixed in PR #124.
+
 ### L-15: Zod refinements and field transforms do not survive schema export
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #5 · **Recorded by:** domain teammate (M1.05)
 - **What happened:** Keeping a raw enum value as a sibling `sourceValue` needed an object-level transform (a field-level transform loses it), and per-type requirements in `superRefine` do not reach `z.toJSONSchema`, so the exported documents showed required IDs as optional (a roborev low finding).
