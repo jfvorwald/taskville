@@ -240,13 +240,15 @@ describe("install --scope user", () => {
     // The token value sits alone at column 0, so its removed line reads "-424242" in the diff.
     write(
       sb.userSettings,
-      `{"env": {"DB_PASSWORD": 987654321987}, "token":\n424242\n, "auth": {"password": {"hunter2key": {"pin": 31337}}}}\n`,
+      `{"env": {"DB_PASSWORD": 987654321987}, "token":\n424242\n, "auth": {"password": {"hunter2key": {"pin": 31337}}}, "secret": 777888999, "note": "777888999"}\n`,
     );
     const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--dry-run"]);
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toContain("-424242".replace("424242", "[REDACTED]"));
     expect(r.stdout).not.toContain("987654321987");
     expect(r.stdout).not.toContain("424242");
+    // A quoted copy of a sensitive number elsewhere is masked too (roborev 5274).
+    expect(r.stdout).not.toContain("777888999");
     // A sealed object hides its keys and inner numbers too.
     expect(r.stdout).not.toContain("hunter2key");
     expect(r.stdout).not.toContain("31337");
