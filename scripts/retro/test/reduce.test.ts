@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   milestoneKeyOf,
+  redactSnapshot,
   reduceBoard,
   reduceIssue,
   reduceMilestone,
@@ -8,6 +9,7 @@ import {
   reduceRun,
   ticketKeyOf,
 } from "../src/reduce.ts";
+import { example } from "./example-snapshot.ts";
 
 // Trimmed GitHub API responses in the shapes `gh api` returns, with personal fields redacted to
 // placeholders. Reduction must drop every field the report does not use.
@@ -196,5 +198,24 @@ describe("reducers", () => {
       fieldValues: { nodes: [{ name: "S", field: { name: "Size" } }] },
     };
     expect(reduceBoard([other], "o/taskville")).toEqual({});
+  });
+});
+
+describe("redactSnapshot", () => {
+  it("replaces given words in every string, case-insensitively, without touching the input", () => {
+    const snapshot = {
+      ...example,
+      taskReports: { "M9.01": "See https://github.com/Owner-Login/repo/issues/1 by owner-login." },
+    };
+    const redacted = redactSnapshot(snapshot, ["owner-login"]);
+    expect(redacted.taskReports["M9.01"]).toBe(
+      "See https://github.com/redacted/repo/issues/1 by redacted.",
+    );
+    expect(snapshot.taskReports["M9.01"]).toContain("owner-login");
+    expect(redacted.issues).toEqual(example.issues);
+  });
+
+  it("ignores empty words", () => {
+    expect(redactSnapshot(example, [""])).toEqual(example);
   });
 });

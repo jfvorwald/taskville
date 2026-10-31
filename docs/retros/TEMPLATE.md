@@ -23,6 +23,8 @@ gantt
   {{/lanes}}
 ```
 
+{{timeline_note}}
+
 ## Burn-down
 
 ```mermaid
@@ -40,9 +42,11 @@ xychart-beta
 xychart-beta
   title "Tickets in progress per day"
   x-axis [{{day_labels}}]
-  y-axis "In progress" 0 --> {{peak_parallel}}
+  y-axis "In progress" 0 --> {{parallel_axis_max}}
   bar [{{in_progress_per_day}}]
 ```
+
+{{parallel_note}}
 
 ## Cycle time by size
 
@@ -54,6 +58,8 @@ xychart-beta
   bar [{{cycle_s}}, {{cycle_m}}, {{cycle_l}}]
 ```
 
+{{cycle_note}}
+
 ## Review outcomes
 
 ```mermaid
@@ -62,6 +68,8 @@ pie title Reviews
   "One fix round" : {{one_fix}}
   "Escalated" : {{escalated}}
 ```
+
+{{review_note}}
 
 ## Quality signals
 

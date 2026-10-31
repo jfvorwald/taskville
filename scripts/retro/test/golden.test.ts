@@ -35,6 +35,10 @@ describe("M1 golden report", () => {
 
   it("keeps no personal data in the recorded snapshot", () => {
     const raw = readFileSync(join(dir, "m1-snapshot.json"), "utf8");
-    expect(raw).not.toMatch(/login|email|avatar|@gmail|\/Users\//i);
+    // No API user fields, no email addresses, no owner login, no real home paths.
+    expect(raw).not.toMatch(/"(login|email|avatar_url|name)":/);
+    expect(raw).not.toMatch(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+    expect(raw).not.toMatch(/jfvorwald/i);
+    expect(raw).not.toMatch(/\/Users\/(?!dev\b)[A-Za-z]/);
   });
 });

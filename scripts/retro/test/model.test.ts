@@ -49,6 +49,25 @@ describe("buildModel", () => {
     expect(model.peakParallel).toBe(2);
   });
 
+  it("finds the most tickets in progress at one moment, not counting back-to-back work", () => {
+    expect(model.peakConcurrent).toEqual({ count: 2, at: "2026-01-02T10:00:00.000Z" });
+    const backToBack = buildModel(
+      {
+        ...example,
+        pulls: example.pulls.map((p) =>
+          p.number === 11 ? { ...p, firstCommitAt: "2026-01-02T12:00:00Z" } : p,
+        ),
+      },
+      NOW,
+    );
+    expect(backToBack.peakConcurrent.count).toBe(2);
+    expect(backToBack.peakConcurrent.at).toBe("2026-01-03T08:00:00.000Z");
+    expect(buildModel({ ...example, pulls: [] }, NOW).peakConcurrent).toEqual({
+      count: 0,
+      at: null,
+    });
+  });
+
   it("averages cycle hours by size and leaves sizes with no merged ticket unmeasured", () => {
     expect(model.cycleHours).toEqual({ S: 26, M: 24, L: null });
   });

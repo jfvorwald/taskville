@@ -40,6 +40,10 @@ describe("renderRetro", () => {
     expect(md).toContain("Not started: M9.05.");
   });
 
+  it("notes the most tickets in progress at one moment under the parallelism chart", () => {
+    expect(md).toContain("Most in progress at one moment: 2 (2026-01-02T10:00 UTC).");
+  });
+
   it("prints not measured instead of estimating", () => {
     expect(md).toContain("Not measured: L (no merged L tickets).");
     expect(md).toContain("not measured / not measured / not measured");

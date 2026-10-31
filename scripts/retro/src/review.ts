@@ -1,0 +1,56 @@
+// Review outcome and NOT RUN, read from a ticket's task report (docs/tasks/<KEY>.md).
+//
+// roborev results are recorded as text in the report's `**roborev:**` field, not as GitHub
+// reviews. The rules below classify only what the text states plainly and return null ("not
+// measured") otherwise:
+// - an explicit `**Review outcome:**` field wins;
+// - escalation words (escalated, debugger, decision ticket) mean escalated;
+// - a counted medium, high, or critical finding ("1 medium", "one high") means one fix round,
+//   since the re-review-once rule allows at most one re-review after fixes;
+// - "pass" with nothing "fixed" means passed first review;
+// - anything else (for example findings fixed with no severity given) is not measured.
+
+export type ReviewOutcome = "first_pass" | "one_fix" | "escalated";
+
+const field = (text: string, name: string): string | null => {
+  const match = new RegExp(`\\*\\*${name}:\\*\\*([^\\n]*)`, "i").exec(text);
+  return match === null ? null : (match[1] ?? "").trim();
+};
+
+const SEVERE_FINDING = /\b(\d+|one|two|three|four|five|a|an)\s+(critical|high|medium)\b/i;
+
+export function classifyReview(report: string | undefined): ReviewOutcome | null {
+  if (report === undefined) return null;
+  const explicit = field(report, "Review outcome")?.toLowerCase();
+  if (explicit !== undefined) {
+    if (explicit.startsWith("passed first")) return "first_pass";
+    if (explicit.startsWith("one fix")) return "one_fix";
+    if (explicit.startsWith("escalated")) return "escalated";
+  }
+  const roborev = field(report, "roborev");
+  if (roborev === null) return null;
+  if (/escalat|debugger|decision ticket|needs:decision/i.test(roborev)) return "escalated";
+  if (SEVERE_FINDING.test(roborev)) return "one_fix";
+  if (/\bpass\b/i.test(roborev) && !/\bfixed\b/i.test(roborev)) return "first_pass";
+  return null;
+}
+
+/**
+ * Whether the report's `**NOT RUN:**` field lists anything (true) or says "none" (false); null
+ * when there is no report or no such field. The field may continue on indented lines.
+ */
+export function listsNotRun(report: string | undefined): boolean | null {
+  if (report === undefined) return null;
+  const lines = report.split(/\r?\n/);
+  const index = lines.findIndex((line) => /^\s*-\s*\*\*NOT RUN:\*\*/i.test(line));
+  if (index === -1) return null;
+  const first = (lines[index] ?? "").replace(/^\s*-\s*\*\*NOT RUN:\*\*/i, "").trim();
+  const continuation: string[] = [];
+  for (const line of lines.slice(index + 1)) {
+    if (!/^\s+\S/.test(line)) break;
+    continuation.push(line.trim());
+  }
+  const content = [first, ...continuation].join(" ").trim();
+  if (content === "") return null;
+  return !/^none\b/i.test(content);
+}
