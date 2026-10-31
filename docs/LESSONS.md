@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-32: Masking can make a field longer than its limit
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #13 · **Recorded by:** storage teammate (M1.12)
+- **What happened:** A 6-character secret becomes a 20-plus character marker, so valid input could turn into an invalid stored envelope. Also, a credential-less POST without `Origin` is refused 403 by the Origin check before the 401 credential check, which broke a test expectation.
+- **Lesson:** Cut every length-limited field again after masking. Tests for "no credential" must send an allowed `Origin`. Worker threads under Vitest can load `.ts` files, so real multi-connection SQLite concurrency tests are cheap.
+- **Action:** Done in PR #145.
+
+### L-31: Check producer text for lone surrogates before hashing it
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #13 · **Recorded by:** storage teammate (M1.12)
+- **What happened:** JSON parsing and Zod accept lone surrogates, but canonical JSON refuses them, so one bad string crashed the content hash and failed the whole batch with a 500 (roborev medium, job 4872).
+- **Lesson:** Validate well-formed UTF-16 per event before any hash, and reject only that event.
+- **Action:** Fixed in PR #145 (abd0a38).
+
 ### L-30: Write the bounded-state contract before coding a bounded projection
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #9 · **Recorded by:** domain-hash teammate (M1.07)
 - **What happened:** roborev raised the same bounded tool-call projection edge case three times (jobs 4828, 4831, 4838): a call dropped from the cap and then restarted is counted twice. Following the same-finding-twice rule, the third raise went to decision ticket #138 instead of a third fix.
