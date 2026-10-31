@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-27: Free-text review records are hard to measure honestly
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #94 · **Recorded by:** domain teammate (M1.19)
+- **What happened:** The retro generator has to parse roborev outcomes out of task-report prose; every rule tightening came from a reviewer finding a phrasing that broke the previous rule, and M1.10 and M1.11 stay "not measured" because their reports omit severities. Per-day parallelism said 11 where at most 4 ran at once, because M1 so far fits in one UTC day.
+- **Lesson:** Record review outcomes in a structured field, and count overlap at an instant, not presence in a bucket. Also: pnpm 12 rejects `pnpm -s`.
+- **Action:** Proposed for the M1 retro: add a `**Review outcome:**` line to the docs/tasks/README.md format (the generator already reads it).
+
+### L-26: Teammates must never edit the lead's main checkout
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #9 · **Recorded by:** lead
+- **What happened:** After merging #141, `pnpm check` failed in the lead's main checkout on a typecheck error in `packages/domain/test/attention/requests.test.ts`. A clean checkout of the same commit passed: the file had an uncommitted 43-line edit made in the main checkout instead of a teammate worktree.
+- **Lesson:** Verify merges in a clean checkout (or check `git status` first), and have teammates confirm their working directory before editing.
+- **Action:** Patch saved and the owning teammate asked; the brief already says never to work in the main checkout.
+
 ### L-25: Merge rules that combine trusted and untrusted sources need a direction test
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #10 · **Recorded by:** domain-attn teammate (M1.08)
 - **What happened:** Read literally, "the existing record is kept" on a merge would let a forged telemetry request that arrives before the bridge's supply the preview on an answerable card. roborev (job 4827, medium) also found that a succeeded `session.open` command counted as an answer.
