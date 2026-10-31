@@ -10,6 +10,7 @@
     "test": "vitest run --root ../.. --project @taskville/cli"
   },
   "dependencies": {
+    "@taskville/adapters": "workspace:*",
     "@taskville/demo": "workspace:*",
     "@taskville/domain": "workspace:*",
     "@taskville/engine": "workspace:*",

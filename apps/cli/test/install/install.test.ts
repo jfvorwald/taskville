@@ -65,7 +65,7 @@ describe("install --scope user", () => {
     const r = await tv(sb, ["install", "claude-code", "--scope", "user"]);
     expect(r.code).toBe(1);
     expect(r.stdout).toContain(sb.userSettings);
-    expect(r.stdout).toContain(`+      "SessionStart": [`);
+    expect(r.stdout).toContain(`+    "SessionStart": [`);
     expect(r.stderr).toMatch(/--yes/);
     expect(existsSync(sb.userSettings)).toBe(false);
     expect(existsSync(sb.shim)).toBe(false);
@@ -363,7 +363,7 @@ describe("uninstall", () => {
     await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
     const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user"]);
     expect(r.code).toBe(1);
-    expect(r.stdout).toContain(`-      "SessionStart": [`);
+    expect(r.stdout).toContain(`-    "SessionStart": [`);
     expect(ours(sb.userSettings)).toHaveLength(EVENTS.length);
   });
 });

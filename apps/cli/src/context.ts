@@ -13,6 +13,8 @@ export interface Io {
   signal?: AbortSignal | undefined;
   /** Engine clock for `serve` (tests); defaults to the system clock. */
   now?: (() => Date) | undefined;
+  /** Asks a yes/no question on the terminal; absent when stdin is not a TTY (`install`). */
+  confirm?: ((question: string) => Promise<boolean>) | undefined;
 }
 
 type Options = NonNullable<ParseArgsConfig["options"]>;
