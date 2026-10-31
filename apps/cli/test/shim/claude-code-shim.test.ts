@@ -234,25 +234,20 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
 
   it("keeps the token out of the process list", async () => {
     server.setMode({ kind: "hang" });
-    let shimPid = 0;
     const running = runShim({
       shell,
       input: JSON.stringify(hookPayload(11)),
       env: shimEnv(home, server.url),
-      onSpawn: (pid) => {
-        shimPid = pid;
-      },
     });
     // Wait until the request is in flight, so curl is running.
     for (let i = 0; i < 100 && server.received.length === 0; i++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(server.received).toHaveLength(1);
-    const { stdout } = await exec("ps", ["-ww", "-A", "-o", "pid=,ppid=,args="]);
-    const children = stdout
-      .split("\n")
-      .filter((row) => row.trim().split(/\s+/)[1] === String(shimPid));
-    expect(children.some((row) => row.includes("curl"))).toBe(true);
+    const { stdout } = await exec("ps", ["-ww", "-A", "-o", "args="]);
+    // curl may be a grandchild (command substitution), so match it by its URL.
+    const curl = stdout.split("\n").filter((row) => row.includes(`127.0.0.1:${server.port}/v1/`));
+    expect(curl.some((row) => row.includes("curl"))).toBe(true);
     expect(stdout).not.toContain(TOKEN);
     await running;
   });
@@ -409,8 +404,8 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
   it("does not corrupt the spool under concurrent invocations", async () => {
     const url = await deadUrl();
     const count = 24;
-    // 150 KB each: larger than a pipe buffer, so unlocked appends would interleave.
-    const payloads = Array.from({ length: count }, (_, i) => hookPayload(100 + i, 150_000));
+    // 900 KB each: larger than one cat(1) write, so unlocked appends interleave (seen with the lock removed).
+    const payloads = Array.from({ length: count }, (_, i) => hookPayload(100 + i, 900_000));
     const runs = await Promise.all(
       payloads.map((payload) =>
         runShim({ shell, input: JSON.stringify(payload), env: shimEnv(home, url) }),

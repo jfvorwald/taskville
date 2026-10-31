@@ -59,8 +59,6 @@ export interface ShimOptions {
   shell: string;
   input: string | Buffer;
   env: Record<string, string>;
-  /** Called with the child's PID once it is running. */
-  onSpawn?: (pid: number) => void;
 }
 
 /** Runs the shim once, piping `input` to its stdin. */
@@ -83,7 +81,6 @@ export function runShim(options: ShimOptions): Promise<ShimRun> {
     child.on("close", (code) => {
       resolve({ code, stdout, stderr, ms: performance.now() - started });
     });
-    if (child.pid !== undefined) options.onSpawn?.(child.pid);
     // The shim may stop reading early (oversized input); that is not an error.
     child.stdin.on("error", () => {});
     child.stdin.end(options.input);
