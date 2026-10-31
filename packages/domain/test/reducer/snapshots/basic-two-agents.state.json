@@ -115,5 +115,6 @@
     }
   },
   "requests": {},
-  "commands": {}
+  "commands": {},
+  "retired": { "agents": 0, "tasks": 0, "requests": 0 }
 }

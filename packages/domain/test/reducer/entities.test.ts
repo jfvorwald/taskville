@@ -45,6 +45,7 @@ describe("root reducer", () => {
       activity: {},
       requests: {},
       commands: {},
+      retired: { agents: 0, tasks: 0, requests: 0 },
     });
   });
 
