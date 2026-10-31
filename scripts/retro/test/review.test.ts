@@ -54,6 +54,16 @@ describe("classifyReview", () => {
     },
   );
 
+  it("needs a recorded fix in each round to count it", () => {
+    expect(
+      classifyReview(
+        report(
+          "panel job 1 (1 medium) fixed in abc; re-review job 2: 1 medium answered with evidence; pass",
+        ),
+      ),
+    ).toBe("one_fix");
+  });
+
   it("is not measured when a finding was reported but nothing says it was fixed", () => {
     expect(
       classifyReview(report("panel job 9 (1 medium) answered with evidence; pass")),

@@ -46,6 +46,8 @@ const join = (preamble: string, sections: Section[]): string =>
 
 export function mergeWrittenSections(generated: string, existing: string | undefined): string {
   if (existing === undefined) return generated;
+  // A report saved with CRLF endings would hide fence markers and headings; read it as LF.
+  existing = existing.replace(/\r\n?/g, "\n");
   const fresh = split(generated);
   const old = new Map(
     split(existing)

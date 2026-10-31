@@ -33,14 +33,16 @@ export function classifyReview(report: string | undefined): ReviewOutcome | null
   const roborev = field(report, "roborev");
   if (roborev === null) return null;
   if (/escalat|debugger|decision ticket|needs:decision/i.test(roborev)) return "escalated";
+  // Split at the re-review; each part is one review round. A round counts as a fix round only
+  // when it reports a counted finding and records a fix in that same part.
   const reReview = roborev.search(/re-?review/i);
-  const first = reReview === -1 ? roborev : roborev.slice(0, reReview);
-  const second = reReview === -1 ? "" : roborev.slice(reReview);
+  const rounds =
+    reReview === -1 ? [roborev] : [roborev.slice(0, reReview), roborev.slice(reReview)];
   const fixed = /\bfixed\b/i.test(roborev);
   if (SEVERE_FINDING.test(roborev)) {
-    // A fix round needs a recorded fix; a finding only answered with evidence is not one.
-    if (!fixed) return null;
-    return SEVERE_FINDING.test(first) && SEVERE_FINDING.test(second) ? "multiple_fix" : "one_fix";
+    const fixRounds = rounds.filter((r) => SEVERE_FINDING.test(r) && /\bfixed\b/i.test(r)).length;
+    if (fixRounds === 0) return null;
+    return fixRounds > 1 ? "multiple_fix" : "one_fix";
   }
   if (/\bpass\b/i.test(roborev) && !fixed) return "first_pass";
   return null;

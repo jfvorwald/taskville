@@ -100,6 +100,30 @@ describe("mergeWrittenSections", () => {
     expect(merged).toContain("## What hurt *(written)*\n\nRebases.\n");
   });
 
+  it("keeps written sections of an earlier report saved with CRLF line endings", () => {
+    const existing = [
+      "# Retro: M1",
+      "",
+      "## What went well *(written)*",
+      "",
+      "```text",
+      "## inside a block",
+      "```",
+      "",
+      "Kept.",
+      "",
+      "## What hurt *(written)*",
+      "",
+      "Rebases.",
+      "",
+    ].join("\r\n");
+    const merged = mergeWrittenSections(generated, existing);
+    expect(merged).toContain(
+      "## What went well *(written)*\n\n```text\n## inside a block\n```\n\nKept.\n",
+    );
+    expect(merged).toContain("## What hurt *(written)*\n\nRebases.\n");
+  });
+
   it("never drops a written section whose heading the template no longer has", () => {
     const existing = "# Retro: M1\n\n## Old notes *(written)*\n\nKeep me.\n";
     const merged = mergeWrittenSections(generated, existing);
