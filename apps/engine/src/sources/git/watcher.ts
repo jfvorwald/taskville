@@ -61,7 +61,10 @@ interface Repo {
   path: string;
   commonDir: string;
   sourceId: string;
-  /** Branch tips at the last scan; undefined until the first scan restores or reads them. */
+  /**
+   * Branch tips at the last scan, keyed by `refKey` of the raw ref name; undefined until the
+   * first scan restores or reads them.
+   */
   tips: Map<string, string> | undefined;
   /** The scan in progress or last finished; scans of one repository never overlap. */
   running: Promise<void>;
@@ -262,13 +265,13 @@ export class GitWatcher {
         this.#options.initialCommitLimit ?? DEFAULT_INITIAL_COMMIT_LIMIT,
       );
     } else {
-      const changed = tips.filter((tip) => previous.get(tip.ref) !== tip.sha);
+      const changed = tips.filter((tip) => previous.get(refKey(tip.ref)) !== tip.sha);
       if (changed.length === 0) {
-        repo.tips = new Map(tips.map((t) => [t.ref, t.sha]));
+        repo.tips = new Map(tips.map((t) => [refKey(t.ref), t.sha]));
         return;
       }
       moves = changed.map((tip) => {
-        const from = previous.get(tip.ref);
+        const from = previous.get(refKey(tip.ref));
         return from === undefined ? { tip } : { tip, from };
       });
       commits = await this.#gitLog(
@@ -285,7 +288,7 @@ export class GitWatcher {
       ...moves.map(({ tip, from }) =>
         this.#event(
           repo,
-          `ref:${shortHash(tip.ref)}:${from ?? "none"}:${tip.sha}:${Date.parse(now)}`,
+          `ref:${refKey(tip.ref)}:${from ?? "none"}:${tip.sha}:${Date.parse(now)}`,
           now,
           "git.ref_moved",
           {
@@ -303,19 +306,20 @@ export class GitWatcher {
       const rejected = response.results.filter((r) => r.status === "rejected").length;
       if (rejected > 0) this.#options.logger?.warn({ rejected }, "git events rejected at ingest");
     }
-    repo.tips = new Map(tips.map((t) => [t.ref, t.sha]));
+    repo.tips = new Map(tips.map((t) => [refKey(t.ref), t.sha]));
   }
 
   /**
    * Branch tips as last recorded in the project's log for this repository, so a restart reports
-   * only what changed while the engine was down.
+   * only what changed while the engine was down. Read from each move's sourceEventId, which is
+   * stored as written: the payload's ref name may have been masked at ingest, the key was not.
    */
   #recordedTips(repo: Repo): Map<string, string> {
     const tips = new Map<string, string>();
     for (const event of this.#options.storage.events(repo.projectId)) {
-      if (event.type === "git.ref_moved" && event.sourceId === repo.sourceId) {
-        tips.set(event.payload.ref, event.payload.to);
-      }
+      if (event.type !== "git.ref_moved" || event.sourceId !== repo.sourceId) continue;
+      const match = MOVE_ID.exec(event.sourceEventId);
+      if (match?.[1] !== undefined && match[2] !== undefined) tips.set(match[1], match[2]);
     }
     return tips;
   }
@@ -383,6 +387,13 @@ export class GitWatcher {
 }
 
 const unique = (values: string[]): string[] => [...new Set(values)];
+
+/** A ref move's sourceEventId: `ref:<refKey>:<from or none>:<to>:<observed at, ms>`. */
+const MOVE_ID =
+  /^ref:([0-9a-f]{16}):(?:none|[0-9a-f]{40}|[0-9a-f]{64}):([0-9a-f]{40}|[0-9a-f]{64}):\d+$/;
+
+/** Identifies a ref by its raw name, which ingest never masks inside an ID. */
+const refKey = (ref: string): string => shortHash(ref);
 
 /** 16 hex characters of SHA-256: a bounded, stable ID part for a path or a ref name. */
 const shortHash = (text: string): string =>
