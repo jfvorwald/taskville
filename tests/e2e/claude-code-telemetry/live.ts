@@ -460,7 +460,15 @@ async function team(ref: { engine?: Engine | undefined }): Promise<void> {
   }, 240_000);
   tmux("send-keys", "/exit");
   tmux("send-keys", "Enter");
-  await waitFor(() => recorded().some((l) => l.input.hook_event_name === "SessionEnd"), 30_000);
+  const ended = await waitFor(
+    () => recorded().some((l) => l.input.hook_event_name === "SessionEnd"),
+    30_000,
+  );
+  if (!ended) {
+    tmux("kill-server");
+    await watch.stop();
+    throw new Error("team scenario: no SessionEnd within 30 s of /exit; recording not saved");
+  }
   await new Promise((r) => setTimeout(r, 2000));
   writeFileSync(join(OUT, "team-pane.txt"), tmux("capture-pane", "-p", "-S", "-200"));
   tmux("kill-server");

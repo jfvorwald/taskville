@@ -135,6 +135,10 @@ async function replay(
         0,
       );
       assert.notEqual(ms, undefined, `${id} (${hookName(r)}) not in taskville status within 1 s`);
+      assert.ok(
+        shimMs + (ms ?? 0) <= 1000,
+        `${id} appeared ${shimMs + (ms ?? 0)} ms after its hook`,
+      );
       appeared.set(id, shimMs + (ms ?? 0));
     }
   }

@@ -52,6 +52,9 @@ export function redactor(outDir: string): (text: string) => string {
 
 /** What must never be left in a fixture. */
 export function leftovers(text: string, outDir: string): string[] {
+  // A user or host name that is also (part of) a replacement value ("dev", "host") cannot be told
+  // apart from it, so it is not a leftover.
+  const replacements = ["/Users/dev", "dev", "host", REDACTED_ROOT, "/repo", "/tmp/claude-uid"];
   const needles = [
     userInfo().username,
     homedir(),
@@ -60,7 +63,7 @@ export function leftovers(text: string, outDir: string): string[] {
     outDir,
     REPO,
     ["gh", "p_"].join(""),
-  ];
+  ].filter((n) => !replacements.includes(n));
   return needles.filter((n) => n !== "" && text.includes(n));
 }
 
