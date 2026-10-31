@@ -7,13 +7,14 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
+import { settingsOverlay } from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
  * and, to show it, its id to `ENABLED` until presets (Ambient, Operations, History) own that.
  */
-const registry = createOverlayRegistry([countsHeaderOverlay]);
-const ENABLED = ["counts-header"];
+const registry = createOverlayRegistry([countsHeaderOverlay, settingsOverlay]);
+const ENABLED = ["counts-header", "settings-panel"];
 
 /** Placeholder until the M3.02 store is wired in: swap for selectors over the real store. */
 const selectors: OverlaySelectors = (() => {
