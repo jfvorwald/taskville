@@ -25,11 +25,18 @@ engine-assigned fields added. Entity rules are in [data-model.md](../data-model.
 ## Stored envelope (what the engine returns and streams)
 
 Input event plus: `eventId` (UUID), `receivedAt` (engine clock), `ingestSequence`
-(per-project, gap-free, starts at 1). Fields marked **Text** below are stored in
-their normalized form: control characters stripped and secrets masked by the
-redaction module (M1.20). `reason` is additionally cut to 280 characters and
-stored as `{ "text", "masked": boolean, "truncated": boolean }` (FR-017). The
-unmasked input is never stored.
+(per-project, gap-free, starts at 1).
+
+**Masking.** Every string value in `payload`, at any depth, is agent-supplied
+and is stored only in normalized form: control characters stripped and secrets
+masked by the redaction module (M1.20). That covers names and roles
+(`displayName`, `role`, team `name`), titles, reasons, notes, summaries,
+`outcome`, `inputPreview`, `workingDirectory`, `filePaths`, and Git subjects. The
+only exceptions are fields whose schema type is an ID (`*Id`, `*Ids`,
+`requestId`, `toolCallId`, `commandId`, `sha`), an enum, or a timestamp. `reason`
+is additionally cut to 280 characters after masking and stored as
+`{ "text", "masked": boolean, "truncated": boolean }` (FR-017). The unmasked input
+is never stored.
 
 ## Event types in v1
 
@@ -43,31 +50,31 @@ unmasked input is never stored.
 | `project.created` | `{ name, roots: string[], builtin: boolean }` | First event of every project (sequence 1). Emitted by `POST /v1/projects` and once for the built-in Unsorted project | Engine |
 | `agent.registered` | `{ sourceAgentId, displayName, role, kind, parentAgentId?, teamId? }` | Creates or updates the agent. `kind` is `session`, `subagent`, `lead`, or `teammate`; `parentAgentId` only with `subagent`, `teamId` only with `lead` or `teammate`. Identity `(sourceId, sourceAgentId)` never changes | Any |
 | `agent.connected` / `agent.disconnected` | `{}` | Connection state only | Any |
-| `agent.finished` | `{ outcome?, summary? (Text) }` | Sets `finishedAt` (subagent stopped, teammate left). Finished subagents are hidden by `status` unless `--all` | Any |
+| `agent.finished` | `{ outcome?, summary? }` | Sets `finishedAt` (subagent stopped, teammate left). Finished subagents are hidden by `status` unless `--all` | Any |
 | `team.started` | `{ teamId, leadAgentId, name? }` | Creates the team | Any |
 | `team.ended` | `{ teamId }` | Sets `endedAt` | Any |
 | `session.started` | `{ workingDirectory? }` (uses `agentId`, `sessionId`) | Opens a session | Any |
 | `session.ended` | `{ outcome? }` | Closes the session | Any |
 | `session.prompt_submitted` | `{}` | User sent a prompt; clears `waiting` and `stop_failure` | Any |
 | `session.turn_ended` | `{}` | Turn ended (`Stop`); `waiting` / `turn_ended` | Any |
-| `session.turn_failed` | `{ reason? (Text) }` | Turn failed (`StopFailure`); `trouble` / `stop_failure` | Any |
+| `session.turn_failed` | `{ reason? }` | Turn failed (`StopFailure`); `trouble` / `stop_failure` | Any |
 | `session.idle_prompt` | `{}` | Idle notification; `waiting` / `idle_prompt` | Any |
-| `task.created` | `{ title (Text), relatedTaskIds? }` | Task `queued` | Any |
+| `task.created` | `{ title, relatedTaskIds? }` | Task `queued` | Any |
 | `task.assigned` | `{ agentIds }` | Status `assigned` | Any |
-| `task.status_changed` | `{ status, reason? (Text) }` | Any status; unknown values become `unknown` | Any |
-| `task.handoff` | `{ fromAgentId, toAgentId, note? (Text) }` | Reassigns; activity `handing_off` on sender | Any |
+| `task.status_changed` | `{ status, reason? }` | Any status; unknown values become `unknown` | Any |
+| `task.handoff` | `{ fromAgentId, toAgentId, note? }` | Reassigns; activity `handing_off` on sender | Any |
 | `activity.started` | `{ activity, heuristic? }` | Sets primary activity. `heuristic: true` when the activity was guessed (for example a Bash command that looks like a test run) | Any |
 | `activity.ended` | `{}` | Activity returns to `idle` | Any |
-| `tool_call.started` | `{ toolCallId, toolName, filePaths?, summary? (Text) }` | ToolCall `running` | Any |
-| `tool_call.finished` | `{ toolCallId, phase: "succeeded" \| "failed", durationMs?, summary? (Text) }` | Closes the ToolCall; updates `consecutiveToolFailures` | Any |
-| `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (Text, max 2,000 chars), reason? (Text), expiresAt? }` | PendingRequest `open`; agent `needs_you`. Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session and tool | Any (never answerable); bridge (answerable) |
+| `tool_call.started` | `{ toolCallId, toolName, filePaths?, summary? }` | ToolCall `running` | Any |
+| `tool_call.finished` | `{ toolCallId, phase: "succeeded" \| "failed", durationMs?, summary? }` | Closes the ToolCall; updates `consecutiveToolFailures` | Any |
+| `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (max 2,000 chars), reason?, expiresAt? }` | PendingRequest `open`; agent `needs_you`. Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session and tool | Any (never answerable); bridge (answerable) |
 | `request.resolved` | `{ requestId, resolution: "answered_here" \| "answered_elsewhere" }` | Closes the request | Engine |
 | `request.expired` | `{ requestId }` | Closes the request as `expired` (emitted at engine start for every open request) | Engine |
 | `command.requested` | `{ commandId, commandType, requestId, payload, idempotencyKey }` | Command `requested` | Engine |
 | `command.delivered` / `command.succeeded` / `command.expired` / `command.unsupported` | `{ commandId }` | Command status | Engine |
 | `command.failed` | `{ commandId, reason }` | Command `failed` | Engine |
-| `test.result` | `{ passed, failed, skipped, summary? (Text) }` | Recorded as latest evidence on activity | Any |
-| `git.commit` | `{ repo, sha, parents: string[], subject? (Text) }` | Recorded; no state effect in this feature | Any |
+| `test.result` | `{ passed, failed, skipped, summary? }` | Recorded as latest evidence on activity | Any |
+| `git.commit` | `{ repo, sha, parents: string[], subject? }` | Recorded; no state effect in this feature | Any |
 | `git.ref_moved` | `{ repo, ref, from?, to }` | Recorded; no state effect in this feature | Any |
 | `git.merge` | `{ repo, sha, parents: string[] }` | Recorded; drives the merge celebration in M3 | Any |
 

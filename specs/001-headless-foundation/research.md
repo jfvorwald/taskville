@@ -71,7 +71,8 @@ re-validated when the workspace is scaffolded; nothing here was installed yet.
 ## R-6 Content equality for duplicate vs conflict
 
 - **Decision**: store `content_hash = sha256(canonicalJson(clientSuppliedFields))`
-  excluding engine-assigned fields (`eventId`, `receivedAt`, `ingestSequence`).
+  excluding engine-assigned fields (`eventId`, `receivedAt`, `ingestSequence`), with
+  payload strings masked but not yet truncated (R-13).
   Same key + same hash = duplicate (return original ack); same key + different
   hash = conflict.
 - **Canonical JSON**: sorted keys, no insignificant whitespace, UTF-8, numbers as
@@ -150,12 +151,14 @@ re-validated when the workspace is scaffolded; nothing here was installed yet.
 
 ## R-13 Attention reasons and redaction (FR-017)
 
-- **Decision**: agent-supplied text fields pass through the redaction module
-  (`packages/adapters/src/redact`, M1.20) at ingest, before commit. `reason` is then
-  cut to 280 characters and stored as `{ text, masked, truncated }`. The content
-  hash for duplicate detection is computed over the normalized fields, so the
-  unmasked text is never persisted, not even as a hash input. Masking is
-  deterministic, so a retried event still matches as a duplicate.
+- **Decision**: every payload string except IDs, enums, and timestamps passes
+  through the redaction module (`packages/adapters/src/redact`, M1.20) at ingest,
+  before commit. `reason` is then cut to 280 characters and stored as
+  `{ text, masked, truncated }`. The content hash for duplicate detection is
+  computed after masking and before truncation, so reasons that differ only past
+  character 280 are a conflict, and the unmasked text is never persisted, not even
+  as a hash input. Masking is deterministic, so a retried event still matches as a
+  duplicate.
 - **Trade-off**: two different reasons that mask to the same text under the same
   source key count as a duplicate rather than a conflict. That is acceptable: the
   stored record is identical either way.

@@ -202,5 +202,5 @@ pairings(
 | `occurredAt` ISO-8601 with offset | protocol |
 | `provenance` must equal `demo` when `sourceId` starts with `demo:` and vice versa | engine ingest |
 | Batch size <= 5,000 events, body <= 5 MB | engine http |
-| Agent-supplied text fields (marked "Text" in events.md) have control characters stripped and secrets masked before commit; `reason` is then cut to 280 characters and stored as `{ text, masked, truncated }` (FR-017); input `reason` longer than 4,000 characters is rejected as `invalid_payload` | protocol transform, engine ingest (redaction module, M1.20) |
-| `content_hash` is computed over the normalized client-supplied fields (after masking and truncation, before engine-assigned fields), so the unmasked text is never persisted in any form | engine ingest |
+| Every payload string except IDs, enums, and timestamps (events.md "Masking") has control characters stripped and secrets masked before commit; `reason` is then cut to 280 characters and stored as `{ text, masked, truncated }` (FR-017); input `reason` longer than 4,000 characters is rejected as `invalid_payload` | protocol transform, engine ingest (redaction module, M1.20) |
+| `content_hash` is computed over the client-supplied fields after masking but **before** the 280-character truncation (engine-assigned fields excluded). Two reasons that differ only after character 280 therefore hash differently and are a conflict, not a duplicate, while the unmasked text is never persisted in any form, not even as a hash input | engine ingest |
