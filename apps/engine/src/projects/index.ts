@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { redactText } from "@taskville/adapters/redact";
 import {
   type CreateProjectResponse,
   createProjectRequestSchema,
@@ -9,6 +10,7 @@ import { bodyLimit } from "hono/body-limit";
 import { slugify } from "../config/config.ts";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
+import { domainReducer, stripControlCharacters } from "../ingest/index.ts";
 import { clientContentHash, ENGINE_SOURCE_ID, type Storage } from "../storage/index.ts";
 
 // Project registry (FR-011, decision #110 default): the engine's `projects` table is the
@@ -19,6 +21,35 @@ import { clientContentHash, ENGINE_SOURCE_ID, type Storage } from "../storage/in
 /** Same rule as config-file project IDs (config.ts). */
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const MAX_NAME = 100;
+
+/** Project text the engine will not write to the event log. Never carries the text itself. */
+export class ProjectInputError extends Error {
+  override name = "ProjectInputError";
+}
+
+/**
+ * Project names and roots go into `project.created`, which the event log keeps forever, so they
+ * must be well-formed Unicode, free of control characters, and contain nothing the redaction
+ * module would mask (events.md "Masking"). The engine authors this event, so it refuses such
+ * text instead of storing a masked name that differs from the project row.
+ */
+export function projectTextProblem(project: {
+  name: string;
+  roots: readonly string[];
+}): string | undefined {
+  for (const [field, text] of [
+    ["name", project.name],
+    ...project.roots.map((r) => ["root", r] as const),
+  ] as const) {
+    if (!text.isWellFormed()) return `The project ${field} is not well-formed Unicode`;
+    // The same control characters the ingest pipeline strips from producer text.
+    if (stripControlCharacters(text) !== text)
+      return `The project ${field} contains a control character`;
+    if (redactText(text).text !== text)
+      return `The project ${field} looks like it contains a secret`;
+  }
+  return undefined;
+}
 
 export interface NewProjectInput {
   id: string;
@@ -40,6 +71,8 @@ export function createProject(
   const now = (options.now ?? (() => new Date()))().toISOString();
   const eventId = (options.newEventId ?? randomUUID)();
   const roots = [...project.roots];
+  const problem = projectTextProblem(project);
+  if (problem !== undefined) throw new ProjectInputError(problem);
   return storage.transaction((tx) => {
     if (tx.project(project.id)) return false;
     tx.insertProject({ id: project.id, name: project.name, createdAt: now, roots, builtin: false });
@@ -59,6 +92,14 @@ export function createProject(
       late: false,
     };
     tx.appendEvent(created, clientContentHash(created));
+    // Events, head, and projection commit together (data-model.md), so the new project never
+    // sits at head 1 without a projection.
+    tx.writeProjection({
+      projectId: project.id,
+      reducerVersion: domainReducer.version,
+      head: 1,
+      state: domainReducer.apply(domainReducer.initial(project.id), created),
+    });
     return true;
   });
 }
@@ -101,6 +142,8 @@ export function registerProjectRoutes(app: Hono<AppEnv>, options: ProjectRouteOp
         );
       }
       const project = { id, name, roots: parsed.data.roots };
+      const problem = projectTextProblem(project);
+      if (problem !== undefined) return apiError(c, 400, "bad_request", problem);
       if (!createProject(options.storage, project, options)) {
         return apiError(c, 409, "project_exists", "A project with this ID already exists");
       }

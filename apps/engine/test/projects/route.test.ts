@@ -1,9 +1,14 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { projectStateHash, replay } from "@taskville/domain/reducer";
 import { createProjectResponseSchema, storedEnvelopeSchema } from "@taskville/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createProject, registerProjectRoutes } from "../../src/projects/index.ts";
+import {
+  createProject,
+  ProjectInputError,
+  registerProjectRoutes,
+} from "../../src/projects/index.ts";
 import { ensureUnsortedProject, openStorage, type Storage } from "../../src/storage/index.ts";
 import {
   BRIDGE_TOKEN,
@@ -58,6 +63,27 @@ describe("createProject", () => {
       occurredAt: T0,
       payload: { name: "Demo", roots: ["/repo/demo"], builtin: false },
     });
+  });
+
+  it("writes the initial projection in the same transaction, so head and projection agree", () => {
+    createProject(storage, { id: "demo", name: "Demo", roots: [] }, { now });
+    const projection = storage.projection("demo");
+    expect(projection?.head).toBe(1);
+    expect(projection?.stateHash).toBe(projectStateHash(replay("demo", storage.events("demo"))));
+  });
+
+  it.each([
+    [
+      "a secret in the name",
+      { name: "deploy ghp_0123456789abcdefghijklmnopqrstuvwxyzAB", roots: [] },
+    ],
+    ["a secret in a root", { name: "A", roots: ["/repo/sk-proj-0123456789abcdefghijklmnop"] }],
+    ["a control character", { name: "A\u0007B", roots: [] }],
+    ["a lone surrogate", { name: "A\uD800", roots: [] }],
+  ])("refuses %s and writes nothing", (_label, input) => {
+    const project = { id: "x", ...input };
+    expect(() => createProject(storage, project, { now })).toThrow(ProjectInputError);
+    expect(storage.project("x")).toBeUndefined();
   });
 
   it("returns false and changes nothing when the ID exists", () => {
@@ -120,6 +146,21 @@ describe("POST /v1/projects", () => {
     const res = await app().app.request("/v1/projects", postJson(body, bearer(CLI_TOKEN)));
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: { code: "bad_request" } });
+  });
+
+  it.each([
+    ["a secret", '{"id":"x","name":"token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB","roots":[]}'],
+    ["a lone surrogate", '{"id":"x","name":"A\\ud800","roots":[]}'],
+    ["a lone surrogate in a root", '{"id":"x","name":"A","roots":["/repo/\\udc00"]}'],
+  ])("answers 400 for %s, never 500", async (_label, raw) => {
+    const res = await app().app.request("/v1/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...bearer(CLI_TOKEN) },
+      body: raw,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: "bad_request" } });
+    expect(storage.project("x")).toBeUndefined();
   });
 
   it("refuses a browser session and the bridge token, and requires a credential", async () => {

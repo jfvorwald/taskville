@@ -3,7 +3,11 @@ import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { ensureHome } from "@taskville/engine/src/config/home.ts";
 import { createApp } from "@taskville/engine/src/http/app.ts";
 import { LOOPBACK_ADDRESS, startServer } from "@taskville/engine/src/http/server.ts";
-import { createProject, registerProjectRoutes } from "@taskville/engine/src/projects/index.ts";
+import {
+  createProject,
+  ProjectInputError,
+  registerProjectRoutes,
+} from "@taskville/engine/src/projects/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
 import pino from "pino";
 import packageJson from "../../package.json" with { type: "json" };
@@ -66,8 +70,13 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now });
     registerProjectRoutes(app, { storage: engine.storage, now });
     for (const project of config.projects) {
-      if (createProject(engine.storage, project, { now })) {
-        logger.info({ project: project.id }, "project registered from the config file");
+      try {
+        if (createProject(engine.storage, project, { now })) {
+          logger.info({ project: project.id }, "project registered from the config file");
+        }
+      } catch (error) {
+        if (!(error instanceof ProjectInputError)) throw error;
+        throw new CliError(EXIT.failure, `Config file project "${project.id}": ${error.message}`);
       }
     }
     const server = await startServer({ app, port: config.port });
