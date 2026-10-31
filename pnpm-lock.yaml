@@ -186,6 +186,9 @@ importers:
       '@hono/node-server':
         specifier: 2.1.5
         version: 2.1.5(hono@4.13.14)
+      '@taskville/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       hono:
         specifier: 4.13.14
         version: 4.13.14
