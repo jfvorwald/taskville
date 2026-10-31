@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CITY_PALETTE_KEYS, cityPaletteFromTokens, resolveTokens } from "../../../src/themes/core/index.ts";
+import {
+  CITY_PALETTE_KEYS,
+  cityPaletteFromTokens,
+  resolveTokens,
+} from "../../../src/themes/core/index.ts";
 import { cyberpunkTheme } from "../../../src/themes/cyberpunk/index.ts";
 
 describe("cyberpunk theme", () => {

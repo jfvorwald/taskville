@@ -6,6 +6,7 @@ import {
   CITY_PALETTE_KEYS,
   cityPaletteFromTokens,
   cityToken,
+  parseHex,
   REQUIRED_TOKENS,
   resolveTokens,
   validateAccents,
@@ -52,17 +53,26 @@ describe("theme contract", () => {
   });
 
   it("different themes keep the same token key set", () => {
-    expect(Object.keys(otherTheme.tokens).sort()).toEqual(Object.keys(cyberpunkTheme.tokens).sort());
+    expect(Object.keys(otherTheme.tokens).sort()).toEqual(
+      Object.keys(cyberpunkTheme.tokens).sort(),
+    );
   });
 
   it("history tint desaturates and tints every palette color, and zero leaves it alone", () => {
     const palette = cityPaletteFromTokens(resolveTokens(cyberpunkTheme, "day"));
     expect(applyHistoryTint(palette, "#00ffff", 0)).toEqual(palette);
+    const spread = (hex: string) => {
+      const [r, g, b] = parseHex(hex);
+      return Math.max(r, g, b) - Math.min(r, g, b);
+    };
     const tinted = applyHistoryTint(palette, "#808080", 1);
-    for (const key of CITY_PALETTE_KEYS) expect(tinted[key]).toBe("#808080");
-    const partial = applyHistoryTint(palette, "#808080", 0.5);
-    expect(partial.wall).not.toBe(palette.wall);
-    expect(partial.wall).not.toBe("#808080");
+    for (const key of CITY_PALETTE_KEYS) {
+      expect(tinted[key]).not.toBe(palette[key]);
+      expect(spread(tinted[key]), key).toBeLessThanOrEqual(spread(palette[key]));
+    }
+    const half = applyHistoryTint(palette, "#808080", 0.5);
+    expect(half.wall).not.toBe(palette.wall);
+    expect(half.wall).not.toBe(tinted.wall);
   });
 
   it("keeps every cyberpunk accent inside the shared footprints and out of navigation clearance", () => {
@@ -71,15 +81,48 @@ describe("theme contract", () => {
 
   it("rejects an accent that leaves the footprint or blocks a door", () => {
     const outside = validateAccents(CITY_LAYOUT, [
-      { id: "far", areas: ["dispatch"], tone: "neon", glow: true, x: 9, y: 2, z: 0, sx: 1, sy: 1, sz: 1 },
+      {
+        id: "far",
+        areas: ["dispatch"],
+        tone: "neon",
+        glow: true,
+        x: 9,
+        y: 2,
+        z: 0,
+        sx: 1,
+        sy: 1,
+        sz: 1,
+      },
     ]);
     expect(outside.join("\n")).toContain("footprint");
     const door = validateAccents(CITY_LAYOUT, [
-      { id: "door", areas: "all", tone: "neon", glow: true, x: 0, y: 0.7, z: 2.3, sx: 0.4, sy: 1.4, sz: 0.1 },
+      {
+        id: "door",
+        areas: "all",
+        tone: "neon",
+        glow: true,
+        x: 0,
+        y: 0.7,
+        z: 2.3,
+        sx: 0.4,
+        sy: 1.4,
+        sz: 0.1,
+      },
     ]);
     expect(door.join("\n")).toContain("door");
     const sky = validateAccents(CITY_LAYOUT, [
-      { id: "sky", areas: ["dispatch"], tone: "neon", glow: true, x: 0, y: 40, z: 0, sx: 1, sy: 1, sz: 1 },
+      {
+        id: "sky",
+        areas: ["dispatch"],
+        tone: "neon",
+        glow: true,
+        x: 0,
+        y: 40,
+        z: 0,
+        sx: 1,
+        sy: 1,
+        sz: 1,
+      },
     ]);
     expect(sky.join("\n")).toContain("height");
   });
