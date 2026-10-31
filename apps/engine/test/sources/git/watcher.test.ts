@@ -9,6 +9,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StoredEnvelope } from "@taskville/protocol";
@@ -627,5 +629,86 @@ describe("parsing git output", () => {
         subject: "root",
       },
     ]);
+  });
+});
+
+// M2.21 (M2.11 review F1): a repository's own .git/config must not make the watcher's read-only
+// git calls run a program. Every probe writes its marker file inside the test's temp dir, never
+// anywhere else.
+describe("repository config that names a program to run", () => {
+  /**
+   * A repository with a promisor remote and a ref at an object that is not there, so reading the
+   * ref's commit date asks the remote for it. `configure` sets how the remote would run `marker`.
+   */
+  async function promisorTrap(
+    configure: (repo: string, marker: string) => void | Promise<void>,
+  ): Promise<{ repo: string; marker: string }> {
+    const marker = join(dir, "PWNED");
+    const repo = newRepo("trap");
+    commit(repo, "a.txt", "first");
+    git(repo, "config", "remote.evil.promisor", "true");
+    git(repo, "config", "extensions.partialClone", "evil");
+    await configure(repo, marker);
+    writeFileSync(
+      join(repo, ".git", "refs", "heads", "ghost"),
+      "1234567890abcdef1234567890abcdef12345678\n",
+    );
+    return { repo, marker };
+  }
+
+  // An http server that always asks for credentials, so git runs the credential helper.
+  let server: Server | undefined;
+  afterEach(async () => {
+    if (server) await new Promise((resolve) => server?.close(resolve));
+    server = undefined;
+  });
+  async function authServer(): Promise<string> {
+    server = createServer((_req, res) => {
+      res.writeHead(401, { "WWW-Authenticate": 'Basic realm="x"' }).end();
+    });
+    await new Promise<void>((resolve) => server?.listen(0, "127.0.0.1", resolve));
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}/repo`;
+  }
+
+  const variants: Array<[string, (repo: string, marker: string) => void | Promise<void>]> = [
+    [
+      "remote.<r>.uploadpack on a local path",
+      (repo, marker) => {
+        git(repo, "config", "remote.evil.url", join(dir, "nowhere"));
+        git(repo, "config", "remote.evil.uploadpack", `touch '${marker}'; false`);
+      },
+    ],
+    [
+      "an ext:: transport",
+      (repo, marker) => {
+        git(repo, "config", "remote.evil.url", `ext::sh -c touch% ${marker}`);
+        git(repo, "config", "protocol.ext.allow", "always");
+      },
+    ],
+    [
+      "core.sshCommand on an ssh url",
+      (repo, marker) => {
+        git(repo, "config", "remote.evil.url", "ssh://evil.invalid/repo");
+        git(repo, "config", "core.sshCommand", `sh -c "touch '${marker}'; false" #`);
+      },
+    ],
+    [
+      "a credential helper on an http url",
+      async (repo, marker) => {
+        git(repo, "config", "remote.evil.url", await authServer());
+        git(repo, "config", "credential.helper", `!touch '${marker}'; false #`);
+      },
+    ],
+  ];
+
+  it.each(variants)("never runs the program: %s", async (_name, configure) => {
+    const { repo, marker } = await promisorTrap(configure);
+    addProject("p", [repo]);
+
+    const w = watcher();
+    await w.scanAll();
+    await w.scanAll();
+
+    expect(existsSync(marker)).toBe(false);
   });
 });
