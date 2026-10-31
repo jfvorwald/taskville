@@ -170,10 +170,10 @@ const MAX_USER = 128;
 // Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
 // publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
 // tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
-// `sshpass`, 3 is `docker|podman login`, which may follow global options
-// (`docker --config /tmp login`). A path in front (`/usr/bin/mysql`) is fine.
+// `sshpass`, 3 is `docker` or `podman`, which count only when the subcommand is `login`
+// (see loginStart). A path in front (`/usr/bin/mysql`) is fine.
 const PASSWORD_COMMAND =
-  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(?:docker|podman)(?:[ \t]+-[^\s;&|]+(?:[ \t]+[^-\s;&|][^\s;&|]*)?){0,8}[ \t]+(login))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
+  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
 
 // Words read after one of those commands, so a long line costs a bounded scan.
 const MAX_COMMAND_WORDS = 256;
@@ -335,6 +335,10 @@ function findPasswordFlags(input: string, out: Candidate[]): void {
     const spaced = match[1] === undefined; // sshpass and login take `-p SECRET` too
     const sshpass = match[2] !== undefined;
     let at = match.index + match[0].length;
+    if (match[3] !== undefined) {
+      at = loginStart(input, at);
+      if (at < 0) continue;
+    }
     for (let words = 0; words < MAX_COMMAND_WORDS; words++) {
       at = skipBlanks(input, at);
       const end = shellWordEnd(input, at);
@@ -365,6 +369,33 @@ function findPasswordFlags(input: string, out: Candidate[]): void {
       at = end;
     }
   }
+}
+
+/**
+ * Where the words after `docker` or `podman` continue after `login`, or -1 if the subcommand
+ * is something else. Global options come first (`docker --config "/tmp/my dir" login`): a
+ * word that starts with `-` is an option, and a word right after one is its value, read
+ * as a shell word so quotes and escaped spaces stay inside it.
+ */
+function loginStart(input: string, from: number): number {
+  let at = from;
+  let afterOption = false;
+  for (let words = 0; words < 9; words++) {
+    at = skipBlanks(input, at);
+    const end = shellWordEnd(input, at);
+    if (end === at) return -1;
+    if (input.charAt(at) === "-") {
+      afterOption = true;
+    } else if (end - at === 5 && input.startsWith("login", at)) {
+      return end;
+    } else if (afterOption) {
+      afterOption = false;
+    } else {
+      return -1;
+    }
+    at = end;
+  }
+  return -1;
 }
 
 function skipBlanks(input: string, at: number): number {
@@ -466,13 +497,13 @@ function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
   // `"value"` after a sensitive name. A value that never closes runs to the end of the text,
   // so each scan is paid once: what it covers is masked, and the matches inside are skipped.
   let maskedUntil = 0;
-  const anchors: Array<{ comma: number; nameEnd: number }> = [];
+  const anchors: Array<{ comma: number }> = [];
   for (const match of input.matchAll(PAIR_NAME)) {
     if (!isSensitiveName(match[3] ?? "")) continue;
     const nameEnd = match.index + match[0].length;
     let comma = match.index;
     while (comma > 0 && /\s/.test(input.charAt(comma - 1))) comma--;
-    if (input.charAt(comma - 1) === ",") anchors.push({ comma: comma - 1, nameEnd });
+    if (input.charAt(comma - 1) === ",") anchors.push({ comma: comma - 1 });
     if (match.index < maskedUntil) continue;
     VALUE_KEY_AFTER.lastIndex = nameEnd;
     if (VALUE_KEY_AFTER.exec(input) === null) continue;
@@ -489,16 +520,13 @@ function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
   // tried from the earliest, so the outer value wins over any `"value"` inside it.
   const starts = [...input.matchAll(VALUE_KEY)].map((m) => m.index + m[0].length);
   let budget = PAIR_SCAN_BUDGET;
-  let floorAt = 0; // first candidate after the previous name, where the fallback starts
-  for (const [n, { comma }] of anchors.entries()) {
-    const floor = anchors[n - 1]?.nameEnd ?? 0;
-    while (floorAt < starts.length && (starts[floorAt] ?? 0) < floor) floorAt++;
+  for (const { comma } of anchors) {
     for (let k = 0; k < starts.length && (starts[k] ?? 0) < comma; k++) {
       const at = starts[k] ?? 0;
       if (budget <= 0) {
-        // Out of budget: mask from the first `"value"` since the previous name to this one.
-        const from = starts[floorAt] ?? at;
-        out.push({ start: from < comma ? from : at, end: comma, kind: "sensitive-value" });
+        // Out of budget: mask from the first `"value"` in the text to this name. An outer value
+        // that holds an earlier name starts before it, so nothing later is a safe start.
+        out.push({ start: starts[0] ?? at, end: comma, kind: "sensitive-value" });
         break;
       }
       const value = readPairValue(input, ends, at, comma);
