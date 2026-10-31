@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-41: Settle regex-semantics review claims with one line of the target runtime
+- **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** hardening teammate (M1.18 F4, F6)
+- **What happened:** roborev (job 4990, medium) claimed the session-ID regex accepts `"s\n"` because `$` matches before a trailing newline. That is PCRE behavior; in JavaScript `/^...$/.test("s\n")` is false, shown with `node -e` and a passing test row.
+- **Lesson:** Check a reviewer's language-semantics claim on the actual runtime before fixing, and answer with the evidence. Default expiry clocks to a monotonic source (`performance.now()`) and keep them injectable.
+- **Action:** Answered with `roborev respond`; PR #164.
+
 ### L-40: Mask to a robust boundary instead of parsing ever more precisely
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** hardening teammate (M1.18 F3)
 - **What happened:** Fixing two reported credential forms took six roborev rounds and 18 more shapes (12 high findings in total, each fixed test-first); one finding (a space-led quoted Digest value) needed two fixes. Numeric-pair and path exemptions each hid a real password and were removed. A skip-ahead guard added for linear time hid nested input.
