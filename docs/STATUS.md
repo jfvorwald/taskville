@@ -6,23 +6,24 @@ Lead-owned cross-session summary. Teammates never edit this file; they write the
 
 ## Where things stand
 
-The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. Batch 2 is running: engine HTTP core, protocol v1, secret redaction and canonical hashing.
+The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Batch 2 continues with protocol v1, secret redaction, canonical hashing and the config file.
 
 ## In progress
 
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
-| [#7](https://github.com/jfvorwald/taskville/issues/7) M1.10 Engine HTTP core, auth, pairing | Engine | engine | in progress |
+| [#8](https://github.com/jfvorwald/taskville/issues/8) M1.11 Config file and Taskville home | Engine | engine | in progress |
 | [#5](https://github.com/jfvorwald/taskville/issues/5) M1.05 Protocol v1 schemas | Domain | domain | in progress |
 | [#24](https://github.com/jfvorwald/taskville/issues/24) M1.20 Secret redaction module | Adapter | adapter | in progress |
 | [#6](https://github.com/jfvorwald/taskville/issues/6) M1.06 Canonical JSON and state hashing | Domain | domain-hash | in progress |
 
-Ready, waiting for a free teammate: #8 M1.11, #94 M1.19.
+Ready, waiting for a free teammate: #94 M1.19.
 
 ## Done this wave
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#7](https://github.com/jfvorwald/taskville/issues/7) M1.10 Engine HTTP core, auth, pairing | [#119](https://github.com/jfvorwald/taskville/pull/119) | jobs 4701/4704 and 4724 findings fixed; final 4733 pass | engine 87 tests, `pnpm check` 92 tests, CI pass; mutation check per security rule ([report](tasks/M1.10.md)) |
 | [#4](https://github.com/jfvorwald/taskville/issues/4) M1.04 Spike S-2 crews attribution | [#118](https://github.com/jfvorwald/taskville/pull/118) | job 4720: 1 high fixed; re-review 4728 pass (2 low fixed) | `pnpm check` pass; fixtures parse; redaction grep clean; [findings](spikes/S-2-crews.md), [report](tasks/M1.04.md) |
 | [#3](https://github.com/jfvorwald/taskville/issues/3) M1.03 Spike S-1 permission hook | [#111](https://github.com/jfvorwald/taskville/pull/111) | job 4680: 1 high, 2 medium fixed; re-review 4694: fixed or answered with evidence; background 4707 pass | `pnpm check` pass; fixture redaction grep clean; [findings](spikes/S-1-permission-bridge.md), [report](tasks/M1.03.md) |
 | [#1](https://github.com/jfvorwald/taskville/issues/1) M1.01 Align spec 001 with architecture | [#112](https://github.com/jfvorwald/taskville/pull/112) | job 4675: 2 high fixed; re-review 4684: 1 medium fixed; background reviews of fix commits pass | Done-when grep passes; side-by-side table in [report](tasks/M1.01.md); `pnpm check` 6/6 |
@@ -51,6 +52,8 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Known follow-ups
 
+- M1.10: pairing sessions are stored behind an interface, in memory until M1.09 (#11) backs it with the `pairings` table; `/health` reports `db`, `walMode`, `version` once `serve` (#16) passes them in. Pairing codes are 256-bit (contract says 128-bit; stronger).
+
 - S-2 NOT RUN: TaskCreated/TaskCompleted (task tools unavailable in 2.1.312), Elicitation, StopFailure, PermissionDenied, and a recorded payload from a user-settings hook fired by a teammate (steps for the owner in the findings doc).
 - Spike sessions added folder-trust entries to `~/.claude.json` and fired user-level hooks once (L-11); owner to decide whether to clean them.
 
@@ -62,4 +65,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Merge batch 2 as it lands; next free slots go to #8, then #94; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).
+Merge batch 2 as it lands; next free slot goes to #94; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).
