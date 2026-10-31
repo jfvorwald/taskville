@@ -35,6 +35,8 @@ export const API_ERROR_CODES = [
   "payload_too_large",
   "not_found",
   "internal",
+  /** 503: the engine already serves its maximum number of SSE streams (security review F5). */
+  "too_many_streams",
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 

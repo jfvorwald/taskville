@@ -13,6 +13,8 @@ export interface SubscriberOptions {
   after: number;
   queueLimit: number;
   heartbeatMs: number;
+  /** After a cut-off, how long the client may take to read the resnapshot before the stream is aborted. */
+  drainTimeoutMs: number;
 }
 
 /**
@@ -164,5 +166,10 @@ export class StreamSubscriber implements HubSubscriber {
     this.#finalWrite = this.#stream.write(
       `event: resnapshot\ndata: ${JSON.stringify({ reason })}\n\n`,
     );
+    // A client that never reads would hold its socket forever (security review F5):
+    // abort after a bounded wait, which also settles the writes blocked on it.
+    const timer = setTimeout(() => this.#stream.abort(), this.#options.drainTimeoutMs);
+    timer.unref();
+    void this.#finalWrite.finally(() => clearTimeout(timer));
   }
 }
