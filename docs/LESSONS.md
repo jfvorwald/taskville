@@ -20,6 +20,444 @@ Entry format:
 
 ## Entries
 
+### L-117: A usage-limit cutoff mid-wave leaves state that only live GitHub can reconcile
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** none · **Recorded by:** lead (M2.RT)
+- **What happened:** The first M2 lead session hit its usage limit with M2.10 committed but unreported, M2.19 assigned but never started, M2.18's correction unpushed, and STATUS behind seventeen merges. Recovery and this resume reconciled from GitHub, refs and worktrees before assigning anything.
+- **Lesson:** Read the live usage display before assigning, set a stop time in every brief, and have each worker push a checkpoint and hand off before the cutoff, so an interruption leaves pushed branches, not local state.
+- **Action:** Stop times and handoff block in the resume worker brief; usage policy approved by the owner (RECOVERY-2026-10-31).
+
+### L-116: Generic workers inherit the lead's model unless every assignment names one
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** none · **Recorded by:** lead (M2.RT)
+- **What happened:** The first M2 wave spawned general-purpose teammates with no model setting, so they ran on the lead's Opus, and the temporary brief hard-coded Opus attribution.
+- **Lesson:** State provider, model, effort and the reason on every assignment, and attribute commits to the model that wrote them.
+- **Action:** Applied in this resume (Sonnet medium or high for tickets, Haiku low for the lessons copy).
+
+### L-115: Redactor reviews do not converge on hand-parsed command lines
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** lead (M2.RT)
+- **What happened:** M2.22's command-line password rules drew high findings in four rounds (5357, 5377, 5388/5399, 5415/5412), each a new crafted shape, as M1.20 and M1.18 F3 did (L-40). The lead verified the last four also leak on main, merged the strict improvement, and routed the class to a decision.
+- **Lesson:** When a finding class survives two fix attempts, stop, check whether the remaining findings are regressions or pre-existing gaps, and escalate the strategy instead of patching shapes.
+- **Action:** Decision #223; gaps tracked in #222.
+
+### L-114: A worker ran seven review panels on one ticket
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #212 · **Recorded by:** lead (M2.RT)
+- **What happened:** M2.23 ran pre-merge panels 5360 to 5409, each finding a new symlink or ancestor edge case, before a pass. The brief said re-review once; the hook kept prompting fix sessions.
+- **Lesson:** The review-round cap must be in the worker brief as a hard stop with a report to the lead, and the roborev Stop hook prompts do not override it.
+- **Action:** Proposed in docs/retros/M2.md (change 3).
+
+### L-113: Measurements taken while other workers run are not measurements
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #166 · **Recorded by:** lead (M2.RT)
+- **What happened:** M2.18's 28.7% rerun overlapped M2.16's soak and was invalid; the clean replacement read 39.7% with tests and reviews still running. The wave's perf batch and latency runs were taken after every worker had stopped.
+- **Lesson:** Run perf only with the machine reserved, log what else ran, and treat a number taken under contention as invalid rather than as a lower bound.
+- **Action:** Correction posted on #206 and #166; wave perf run with no workers active.
+
+### L-112: Tightening a timing assertion makes a shared-machine e2e load-sensitive (flake F-2)
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** lead (M2.RT)
+- **What happened:** After the one-second visibility check began counting shim time, two replay runs failed 1 and then 3 checks at load average 8 to 12; alone it passed 7/7, and the wave run on main passed 7/7. Failure text was not captured.
+- **Lesson:** Capture failure text on the first failing run, and keep timing e2e runs off a machine that is running other suites.
+- **Action:** Logged as flake F-2; watch the one-second budget.
+
+### L-111: A stateless mapper can only join lead and teammate by what both hooks carry
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #209 · **Recorded by:** lead (M2.RT)
+- **What happened:** Team names are `session-<first 8 hex of the lead session>`, so M2.20 scopes team-less tasks the same way. roborev rated the 32-bit collision high; the worker answered with evidence and the lead accepted it, since team IDs already share the limit.
+- **Lesson:** Record accepted trade-offs on review findings in the gate summary so the owner sees them.
+- **Action:** Listed in the G2 summary.
+
+### L-110: A loop whose awaits never do I/O does not yield, so bound its work per tick
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #35 · **Recorded by:** M2.11 teammate
+- **What happened:** The M2 security review found a loop after `listen` whose awaits never did I/O, so it never gave the event loop a turn.
+- **Lesson:** After `listen`, bound the work each tick does; an await on a value that is already resolved does not hand control back.
+- **Action:** none, awareness only
+
+### L-109: The installer and shim create the Taskville home without the engine's owner and mode checks
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #35 · **Recorded by:** M2.11 teammate
+- **What happened:** The installer and the shim created the same home as the engine but skipped its owner and mode checks (review finding F3).
+- **Lesson:** Any code path that creates the engine's home must run the same owner and mode checks, not a copy of the create step.
+- **Action:** Made in #220 (M2.23)
+
+### L-108: Redacting by the last word of a name misses compound and abbreviated env names
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #35 · **Recorded by:** M2.11 teammate
+- **What happened:** Names such as `PGPASSWORD`, `MYSQL_PWD`, `*_PASS` and `mysql -p<pw>` reached the event log and `evidence.db` unmasked (review finding F2).
+- **Lesson:** Match sensitive names on the whole name, including compound and abbreviated forms, and test them with real examples.
+- **Action:** Made in #219 (M2.22)
+
+### L-107: Blocking one git config key leaves the others open
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #35 · **Recorded by:** M2.11 teammate
+- **What happened:** Blocking `core.fsmonitor` alone left a partial-clone lazy fetch that still ran `remote.<r>.uploadpack` from a read-only `for-each-ref` (review finding F1).
+- **Lesson:** Prefer environment kill switches and a hostile test repository built for the purpose over blocking individual config keys.
+- **Action:** Made in #218 (M2.21)
+
+### L-106: A window limit on a scan is a bypass when the text is attacker-shaped
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** M2.22 teammate
+- **What happened:** A bounded window on a redaction scan let attacker-shaped text get past masking.
+- **Lesson:** Either scan to the real boundary or mask more, never less.
+- **Action:** Made in #219 (M2.22)
+
+### L-105: Do not parse another tool's option grammar when a coarse rule over-masks safely
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** M2.22 teammate
+- **What happened:** A bounded word-walk over `docker` global options leaked at the limit, was quadratic on a crafted word, and took three review rounds to get right.
+- **Lesson:** When a coarse rule can over-mask safely, use it. A segment that contains `login` is linear and cannot be outrun.
+- **Action:** none, awareness only
+
+### L-104: Each rule that reads a value needs its own idempotency check
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** M2.22 teammate
+- **What happened:** A sealed number left `"value":[REDACTED:...]`, and the loose value end cut at the `]` inside the marker, which broke idempotency.
+- **Lesson:** Test every rule that reads a value for idempotency, and do not let a loose value end cut through a redaction marker.
+- **Action:** none, awareness only
+
+### L-103: A pair rule must cover both property orders, line breaks and values of any size, at a cost that does not depend on order
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** M2.22 teammate
+- **What happened:** Masking a name and value pair had to handle either order, line breaks, and values of any size.
+- **Lesson:** Scan forward from a name (an unclosed value masks to the end, paid once). Scan back only to a value that closes exactly at the comma, with a budget and over-masking as the fallback.
+- **Action:** none, awareness only
+
+### L-102: A password flag has to be tied to its command's own option parsing
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** M2.22 teammate
+- **What happened:** `-p` is a port in `ssh`, `psql` and `docker run`, so a flag rule that ignores the command masks the wrong thing. `sshpass` runs another command whose own `-p` must stay readable.
+- **Lesson:** Parse the options of the command the flag belongs to, up to that command, so that `ssh -p 2222` stays readable.
+- **Action:** Made in #219 (M2.22)
+
+### L-101: Mirror a refuse-only check instead of importing a function that mutates
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #212 · **Recorded by:** M2.23 teammate
+- **What happened:** The engine's `ensurePrivateDir` mkdirs and chmods and throws `HomeError`, so the installer's rule, which must only refuse, could not import it.
+- **Lesson:** Export the check with an injectable stat, and mirror it where the rule must only refuse.
+- **Action:** Made in #220 (M2.23)
+
+### L-100: The shim must vet the Taskville home before it creates the spool or reads the token
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #212 · **Recorded by:** M2.23 teammate
+- **What happened:** A home check that runs after the spool is created inside the home, or after the token is read from it, protects nothing.
+- **Lesson:** Run the home check first in every path that writes into or reads from the home.
+- **Action:** Made in #220 (M2.23)
+
+### L-99: Walk path ancestors from `/`, resolving symlinks, and start at the nearest existing ancestor
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #212 · **Recorded by:** M2.23 teammate
+- **What happened:** `realpath` hides writable directories that held a symlink, lexical folding of `..` skips links, `/` itself needs the same check, and a symlink's owner matters even inside a sticky directory. The home may also not exist yet at install time, and macOS `/var` is a symlink to `/private/var`.
+- **Lesson:** Walk the components from `/` and check each one, starting at the nearest existing ancestor.
+- **Action:** Made in #220 (M2.23)
+
+### L-98: Clean up spawned engines on failure paths as well as success
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** M2.10 teammate
+- **What happened:** A leftover engine from a failed end-to-end run kept `node --test` from exiting.
+- **Lesson:** Make teardown stop the engine even when the run fails.
+- **Action:** none, awareness only
+
+### L-97: A tighter timing assertion on a loaded machine makes an end-to-end test load-sensitive
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** M2.10 teammate
+- **What happened:** Tightening a timing assertion on a shared, loaded machine made the end-to-end run load-sensitive.
+- **Lesson:** Capture the failure text on the first failing run, so a load flake can be told apart from a real failure.
+- **Action:** none, awareness only
+
+### L-96: Model and session attribution must describe the agent that actually made each change
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** M2.10 teammate
+- **What happened:** The end-to-end run showed that model and session attribution had to describe the agent that made each change, not a single session.
+- **Lesson:** Attribute each change to the agent that actually made it.
+- **Action:** none, awareness only
+
+### L-95: A process exit of 0 with a TODO is not an acceptance pass
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** M2.10 teammate
+- **What happened:** The real Claude Code session run exited with status 0 while a TODO was still open.
+- **Lesson:** Judge acceptance from the checks themselves, not from the process exit code.
+- **Action:** none, awareness only
+
+### L-94: Terminal async hooks can be dropped when a short-lived Claude process exits
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** M2.10 teammate
+- **What happened:** Async hooks that fire at the very end of a short-lived Claude Code process were not always delivered.
+- **Lesson:** Record synchronously when the last hooks matter.
+- **Action:** none, awareness only
+
+### L-93: A command with no engine-free seam can be tested against a canned HTTP server
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #207 · **Recorded by:** M2.19 teammate
+- **What happened:** The `requests` command had no engine-free seam for its test.
+- **Lesson:** Serve canned snapshots from a small `node:http` server and run the real command against it; no engine or fixtures needed.
+- **Action:** none, awareness only
+
+### L-92: `pnpm --filter ... test -- <file>` ignores the file filter
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #210 · **Recorded by:** M2.21 teammate
+- **What happened:** `pnpm --filter @taskville/engine test -- <file>` ran all 35 test files.
+- **Lesson:** Run one file with `npx vitest run --project @taskville/engine <path>`.
+- **Action:** none, awareness only
+
+### L-91: A sed mutation can leave a dangling `-c` and make a test pass for the wrong reason
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #210 · **Recorded by:** M2.21 teammate
+- **What happened:** A sed mutation left a dangling `-c`, so git failed and a marker-file test passed without testing the guard.
+- **Lesson:** After a mutation, check that the run still gets real git output, such as the rest of the test file passing.
+- **Action:** none, awareness only
+
+### L-90: A blanket `protocol.allow=never` is overridden by the repository's own config
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #210 · **Recorded by:** M2.21 teammate
+- **What happened:** The repository's own `protocol.<name>.allow=always` overrode the blanket setting, and the `ext::` case ran. Only a mutation run showed it.
+- **Lesson:** Override per transport with `-c`, and add an environment kill switch, because a hostile repository config can beat a blanket line.
+- **Action:** Made in #218 (M2.21)
+
+### L-89: A recovery snapshot can lag GitHub and the board
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** none · **Recorded by:** lead
+- **What happened:** A recovery snapshot lagged GitHub and the project board.
+- **Lesson:** Reconcile from live state before assigning work.
+- **Action:** none, awareness only
+
+### L-88: Check the redaction rules before trusting a fixture relation
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #209 · **Recorded by:** M2.20 teammate
+- **What happened:** The `session-<8 hex>` team name matched the lead's session ID. Redaction keeps IDs, so the match is real, and four recordings agree.
+- **Lesson:** Before reading a relation in a fixture as real, check whether the redaction rules keep the values it depends on.
+- **Action:** none, awareness only
+
+### L-87: A stateless mapper must scope by a value that stays derivable later
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #209 · **Recorded by:** M2.20 teammate
+- **What happened:** A lead cannot know it leads a team when its first task hook fires. `team_name` is derived from the lead's `session_id`. Existing task IDs change, so a task created before the upgrade and completed after it lands on a task that was never created.
+- **Lesson:** Scope a stateless mapper by a value that can be derived later from the same stream.
+- **Action:** none, awareness only
+
+### L-86: Derive each retention protection from the reducer rule that will read the record
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #167 · **Recorded by:** M2.16 teammate
+- **What happened:** Each protection (a live child's parent, a team lead, open requests, running calls) was found by asking which reducer rule would later look the record up.
+- **Lesson:** Ask which reducer rule will read a record before deciding that it can be pruned.
+- **Action:** none, awareness only
+
+### L-85: Bounding state did not bound RSS on the calm run
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #167 · **Recorded by:** M2.16 teammate
+- **What happened:** On the lively run RSS growth fell from +20 to +29% down to -26%, but the calm run stayed at +18% with state flat from hour 6.
+- **Lesson:** Measure state size and RSS side by side, so that a bounded state is not read as a bounded RSS.
+- **Action:** none, awareness only
+
+### L-84: A metric's run-to-run spread larger than its threshold cannot be passed by fixing code
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #166 · **Recorded by:** M2.18 teammate
+- **What happened:** SC-006 run-to-run spread (hour 1 alone ranged from 102.6 to 125.5 MiB) is larger than its 10% threshold. The valid after runs gave 14.0% and 39.7% on the same code. Projection state grew by 121 KiB against an RSS difference of 17.6 to 31.1 MiB, so #167 alone will not close it as measured.
+- **Lesson:** Check the noise before reading a pass or a fail; a spread wider than the threshold cannot be fixed in code.
+- **Action:** none, awareness only
+
+### L-83: A perf baseline is valid only if the engines started before the first source edit
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #166 · **Recorded by:** M2.18 teammate
+- **What happened:** The baseline was taken from a worktree that was being edited.
+- **Lesson:** Check the engines' start timestamps against the first source edit, or measure from a clean checkout.
+- **Action:** none, awareness only
+
+### L-82: Engine-assigned event IDs break cross-database equivalence tests
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #166 · **Recorded by:** M2.18 teammate
+- **What happened:** Two engines fed the same events produced different `stateHash` values, because engine-assigned event IDs are part of the state. The first version of the test failed on that, not on the cache.
+- **Lesson:** Use deterministic `newEventId` values in equivalence tests across databases.
+- **Action:** none, awareness only
+
+### L-81: Two parallel tickets that both bump `REDUCER_VERSION` collide
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #143 · **Recorded by:** M2.15 teammate
+- **What happened:** Two parallel tickets both bumped `REDUCER_VERSION`. The second to merge had to bump again after rebasing (3 to 4), and its red pins were dropped as already upstream.
+- **Lesson:** Expect the second ticket to merge to need one more version bump after rebasing.
+- **Action:** none, awareness only
+
+### L-80: Check which payloads can carry a shape before documenting a hash migration
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #194 · **Recorded by:** M2.17 teammate
+- **What happened:** A hash migration was about to be documented, but the strict schemas meant no stored event could change.
+- **Lesson:** Before documenting a migration, check which payloads can actually carry the shape.
+- **Action:** none, awareness only
+
+### L-79: When a diff masks per line, mask the line before adding the `+`/`-` prefix
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #194 · **Recorded by:** M2.17 teammate
+- **What happened:** Masking after the prefix was added made the prefix part of the token being checked. Quoted copies of the same secret also needed masking.
+- **Lesson:** Mask the line first, then add the prefix, and mask quoted copies of the same secret too.
+- **Action:** none, awareness only
+
+### L-78: A rule for a sensitive key must say what happens to non-strings, nested values and nested keys
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #194 · **Recorded by:** M2.17 teammate
+- **What happened:** The rule "mask the value of a sensitive key" did not say what to do with non-strings, with what sits below the key, or with keys below it. Keeping the structure leaked keys.
+- **Lesson:** Seal the whole value. It is simpler and leaks nothing.
+- **Action:** Made in #200 (M2.17)
+
+### L-77: A rebase onto a ticket that edited the same function is new code
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #173 · **Recorded by:** M2.12 teammate
+- **What happened:** Rebasing onto a ticket that edited the same function produced new code, and reviewing the result found a real issue.
+- **Lesson:** Review the rebased result as new code, not as the old change carried forward.
+- **Action:** none, awareness only
+
+### L-76: Raw mode means owning shutdown
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #173 · **Recorded by:** M2.12 teammate
+- **What happened:** Raw mode stops Ctrl-C from being a signal. Two of the three review findings were exit paths that did not restore the terminal.
+- **Lesson:** Every exit path must restore the terminal.
+- **Action:** none, awareness only
+
+### L-75: A single-slot design turns a small feature into a change to a security module
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #173 · **Recorded by:** M2.12 teammate
+- **What happened:** The "a new code replaces the previous one" design made "old codes keep working" a change to a security module.
+- **Lesson:** Add an option whose default keeps the existing behavior, so no existing test has to move.
+- **Action:** none, awareness only
+
+### L-74: A projection rule keyed on an adapter's ID format should be an explicit field
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #183 · **Recorded by:** M2.13 teammate
+- **What happened:** A projection rule keyed on the adapter's ID format worked, but it is a pragmatic seam.
+- **Lesson:** Make it an explicit field that the adapter sets.
+- **Action:** none, awareness only
+
+### L-73: Recorded streams hold surprises that a unit test would not
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #183 · **Recorded by:** M2.13 teammate
+- **What happened:** In the S-1 recording, the last hook of a session (exp6) is the last event of a session that never ends in the recording.
+- **Lesson:** Check "nothing is running after the turn ends" per session, not once for the whole stream.
+- **Action:** none, awareness only
+
+### L-72: Read the review guidelines before narrowing a rule
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #183 · **Recorded by:** M2.13 teammate
+- **What happened:** An invariant written in `.roborev.toml` decided a review, even though the decision ticket spoke only of telemetry requests. Relaxing bridge requests from "any agent" to "owner only" was still wrong.
+- **Lesson:** Read the review guidelines for the rule before narrowing it.
+- **Action:** none, awareness only
+
+### L-71: `FileHandle.write` can write short
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #28 · **Recorded by:** M2.07 teammate
+- **What happened:** A copy loop advanced by `bytesRead`, but `FileHandle.write` can write fewer bytes than it was given.
+- **Lesson:** Advance a copy loop by `bytesWritten`.
+- **Action:** Made in #191 (M2.07)
+
+### L-70: A bounded run that rewrites the unread rest of a file is quadratic on a large backlog
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #28 · **Recorded by:** M2.07 teammate
+- **What happened:** A bounded run that rewrote the unread rest of a file looked crash-safe, but turned a large backlog into quadratic I/O (roborev 5166).
+- **Lesson:** Resume from a byte offset written after commit. It is both cheaper and simpler.
+- **Action:** Made in #191 (M2.07)
+
+### L-69: A CLI that edits user config should take HOME only from its injected environment
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #29 · **Recorded by:** M2.08 teammate
+- **What happened:** The installer read HOME from the process environment, which is unsafe in tests.
+- **Lesson:** Take HOME only from the injected environment; tests are then safe by construction, and a guard on the real file's mtime proves it.
+- **Action:** none, awareness only
+
+### L-68: "Uninstall restores the original" needs a definition and odd-formatting tests
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #29 · **Recorded by:** M2.08 teammate
+- **What happened:** JSON round-trips are not byte-stable, so the installer cannot undo a hook install by a structural edit.
+- **Lesson:** Define "restores the original" as byte-identical when the file is exactly what install wrote, undo through the backup, and test with deliberately odd formatting.
+- **Action:** none, awareness only
+
+### L-67: Hook commands run in the agent's environment, so pin every variable the shim reads
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #29 · **Recorded by:** M2.08 teammate
+- **What happened:** Hook commands run in the agent's environment, not the installer's.
+- **Lesson:** Pin every variable the shim reads instead of relying on defaults.
+- **Action:** none, awareness only
+
+### L-66: An installer's diff is an output channel for secrets
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #29 · **Recorded by:** M2.08 teammate
+- **What happened:** Masking each line separately missed a value on a later line than its key, escaped spellings, and duplicate keys that `JSON.parse` collapses.
+- **Lesson:** Mask by JSON context, and refuse what the parser would hide.
+- **Action:** none, awareness only
+
+### L-65: Dating a first-seen ref at its tip's commit time presents a guess as a fact
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #25 · **Recorded by:** M2.09 teammate
+- **What happened:** Dating a first-seen ref at its tip's commit time made restart dedupe neat, but it presented an unobserved move as a recorded fact (a roborev high finding).
+- **Lesson:** Restore state from the log rather than inventing a date for it.
+- **Action:** none, awareness only
+
+### L-64: Text that ingest may mask is not an identity
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #25 · **Recorded by:** M2.09 teammate
+- **What happened:** Restoring branch tips from the stored `payload.ref` broke for a branch whose name looked like a token.
+- **Lesson:** Restore state from unmasked ID fields such as `sourceEventId`, not from payload text.
+- **Action:** none, awareness only
+
+### L-63: A ref-name injection test with full names cannot fail
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #25 · **Recorded by:** M2.09 teammate
+- **What happened:** A test using full names such as `refs/heads/--output=x` passed with both defenses removed, because a full ref name always starts with `refs/`.
+- **Lesson:** Assert the shape of every argument list the watcher passes to git, instead.
+- **Action:** none, awareness only
+
+### L-62: Leaving out a field the other mapper never sets can merge two prompts into one state
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #23 · **Recorded by:** M2.04 teammate
+- **What happened:** The reducer's request merge keys on tool name. The worker-prompt request leaves `toolName` out, so the lead's `permission_prompt` that follows merged into one red state.
+- **Lesson:** Check what each mapper sets before relying on a merge key.
+- **Action:** none, awareness only
+
+### L-61: An emitted heuristic marker is only half the job
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #23 · **Recorded by:** M2.04 teammate
+- **What happened:** The domain projection dropped the heuristic marker, so the guess would have shown as a fact. Review caught it.
+- **Lesson:** Scope the domain and presentation changes into the ticket that adds the marker.
+- **Action:** none, awareness only
+
+### L-60: Two mappers that register the same agent must agree on `sourceAgentId`
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #23 · **Recorded by:** M2.04 teammate
+- **What happened:** The reducer silently ignores a second `agent.registered` that claims an agent ID under a different `sourceAgentId`.
+- **Lesson:** Agree on `sourceAgentId`, not only on the envelope `agentId`.
+- **Action:** none, awareness only
+
+### L-59: Evidence has to be bound to the recorded hook, not to its key
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #27 · **Recorded by:** M2.06 teammate
+- **What happened:** Events omit bodies, so duplicate or partly conflicting retries could carry bodies that were never recorded.
+- **Lesson:** Bind evidence to the recorded hook; "every event accepted" closes that class of problem.
+- **Action:** none, awareness only
+
+### L-58: `redactJson` masks only strings directly under a sensitive key
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #27 · **Recorded by:** M2.06 teammate
+- **What happened:** Nested objects and numbers under `password` or `token` passed through `redactJson` unmasked. That is fixed for evidence. The same gap exists for event payloads at ingest; it was noted for the lead as its own ticket, because fixing it changes dedupe hashes.
+- **Lesson:** Check nested values and non-string values under sensitive keys, not only direct string values.
+- **Action:** Ingest gap fixed in #200 (M2.17, #194).
+
+### L-57: Masking must run on the whole body before any cut
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #27 · **Recorded by:** M2.06 teammate
+- **What happened:** A tempting pre-cut for speed would have split a private key block, leaving a half that is no longer recognizable.
+- **Lesson:** Mask the whole body first and cut afterwards. The test for it is a key block longer than the cap.
+- **Action:** none, awareness only
+
+### L-56: Widening a lookbehind can make a lookahead quadratic
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #185 · **Recorded by:** M2.14 teammate
+- **What happened:** The lookbehind was what kept the OpenAI digit lookahead linear. Widening it made the lookahead quadratic.
+- **Lesson:** When the body is greedy over the same character class, check after the match (`accept`) rather than ahead of it.
+- **Action:** none, awareness only
+
+### L-55: Check what an unmasked case really is before fixing it
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #185 · **Recorded by:** M2.14 teammate
+- **What happened:** The high-entropy rule already masked random tokens after `_`, so the reported gap was narrower than it looked. The failing cases had to use low-entropy bodies and words over 256 characters to show the real gap.
+- **Lesson:** Reproduce the gap with the inputs that actually escape the existing rules before writing the fix.
+- **Action:** none, awareness only
+
+### L-54: `cmd &` in a non-interactive POSIX shell gets `/dev/null` as stdin
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #20 · **Recorded by:** M2.01 teammate
+- **What happened:** A background drain of the script's stdin read `/dev/null` instead.
+- **Lesson:** Duplicate the descriptor first (`exec 3<&0`), then run `cat <&3 &`.
+- **Action:** none, awareness only
+
+### L-53: Size a concurrency test so that the unlocked version demonstrably fails
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #20 · **Recorded by:** M2.01 teammate
+- **What happened:** On macOS a single `cat >>` of 150 KB from 24 concurrent writers did not interleave, so the test passed with no lock at all. It took 900 KB payloads under dash to show the corruption.
+- **Lesson:** Choose payload sizes for which the unlocked version demonstrably fails.
+- **Action:** none, awareness only
+
+### L-52: A denied permission fires no PostToolUse
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #22 · **Recorded by:** M2.03 teammate
+- **What happened:** A hook deny or a terminal "No" fires no PostToolUse, so a running ToolCall with no Post is the normal path for every denial, not a rare race.
+- **Lesson:** Treat a ToolCall with no Post as a normal outcome for denials.
+- **Action:** none, awareness only
+
+### L-51: Scanning every argument for `test` misreads option values
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #22 · **Recorded by:** M2.03 teammate
+- **What happened:** Scanning every argument for `test` misread option values, such as `pnpm -C test build`.
+- **Lesson:** Parse the command position, not every argument.
+- **Action:** none, awareness only
+
+### L-50: A field with a `masked` flag must reach the engine unmasked
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #22 · **Recorded by:** M2.03 teammate
+- **What happened:** Masking a field before ingest hid the engine's masking metadata, so the flag said false for masked text. Cutting such a field could also split a secret or strip the context after it, such as the `@` after a URL password.
+- **Lesson:** Send the field unmasked and let the engine mask it. Re-run the redactor on the cut text rather than reasoning about span edges.
+- **Action:** none, awareness only
+
+### L-49: Before pushing to an open PR, check that it is still open
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #21 · **Recorded by:** M2.02 teammate
+- **What happened:** A PR was merged while follow-up commits were still being pushed to its branch.
+- **Lesson:** Before pushing to an open PR's branch, check `gh pr view --json state`. After a merge, cut a new branch from `origin/main` and cherry-pick.
+- **Action:** none, awareness only
+
+### L-48: Commit before mutating a file
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #21 · **Recorded by:** M2.02 teammate
+- **What happened:** A `sed` mutation on an uncommitted file, followed by `git checkout`, also discarded the real change when the `sed` pattern silently failed to match.
+- **Lesson:** Commit before mutating, so that a restore cannot take the real change with it.
+- **Action:** none, awareness only
+
+### L-47: A comparison path outside the pipeline needs the pipeline's own guards
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #21 · **Recorded by:** M2.02 teammate
+- **What happened:** Hashing new content under a reused key without `textProblem` turned a lone surrogate into a 500 (the same class as L-31).
+- **Lesson:** Any comparison that bypasses the pipeline must run the pipeline's input guards too.
+- **Action:** none, awareness only
+
+### L-46: Hook payloads have no timestamp, so content hashes must not include engine-clock values
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #21 · **Recorded by:** M2.02 teammate
+- **What happened:** `occurredAt` comes from the engine clock, so it landed in the content hash and turned every retry into a conflict. My first fix skipped the comparison, and review caught it as high.
+- **Lesson:** Compare content with the transport fields put back, rather than skipping the comparison.
+- **Action:** none, awareness only
+
+### L-45: A placeholder mapper is worse than no route
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #21 · **Recorded by:** M2.02 teammate
+- **What happened:** The shim treats a 200 as delivered. Wiring an incomplete source into `serve` would lose hooks that an unmounted route (a spooled 404) keeps.
+- **Lesson:** Do not mount a source route with a placeholder mapper; leave the route unmounted until the real mapper lands.
+- **Action:** none, awareness only
+
 ### L-44: A read-only review agent cannot post its review or reproduce findings
 - **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** lead (M1.RT)
 - **What happened:** The security reviewer for #17 ran as a read-only agent type whose shell allowed only read-only git, so it could not run `gh issue comment`, the engine tests, or loopback probes. Its findings were code traces, its reply was truncated twice, and the lead posted the review. Each fix PR then reproduced its finding with a failing test first.
