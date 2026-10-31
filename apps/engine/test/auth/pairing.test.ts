@@ -130,4 +130,77 @@ describe("PairingStore", () => {
       expect(store.hasSession(session)).toBe(true);
     });
   });
+
+  describe("several outstanding codes (M2.12, maxPendingCodes)", () => {
+    function clocked(maxPendingCodes: number) {
+      let ms = 1_000_000;
+      const store = new PairingStore({ now: () => ms, maxPendingCodes });
+      return {
+        store,
+        advance(by: number) {
+          ms += by;
+        },
+      };
+    }
+
+    it("keeps an earlier unexpired code working after a new one is issued", () => {
+      const { store } = clocked(3);
+      const first = store.issueCode();
+      const second = store.issueCode();
+      expect(store.exchange(first)).not.toBeNull();
+      expect(store.exchange(second)).not.toBeNull();
+    });
+
+    it("accepts each code once", () => {
+      const { store } = clocked(3);
+      const first = store.issueCode();
+      store.issueCode();
+      expect(store.exchange(first)).not.toBeNull();
+      expect(store.exchange(first)).toBeNull();
+    });
+
+    it("expires each code on its own clock, ten minutes after its issue", () => {
+      const { store, advance } = clocked(3);
+      const first = store.issueCode();
+      advance(PAIRING_CODE_TTL_MS - 1000);
+      const second = store.issueCode();
+      advance(1000);
+      expect(store.exchange(first)).toBeNull();
+      advance(PAIRING_CODE_TTL_MS - 1001);
+      expect(store.exchange(second)).not.toBeNull();
+    });
+
+    it("drops the oldest code beyond the cap, so a pasted stream cannot pile up codes", () => {
+      const { store } = clocked(2);
+      const first = store.issueCode();
+      const second = store.issueCode();
+      const third = store.issueCode();
+      expect(store.exchange(first)).toBeNull();
+      expect(store.exchange(second)).not.toBeNull();
+      expect(store.exchange(third)).not.toBeNull();
+    });
+
+    it("unpairAll revokes every outstanding code", () => {
+      const { store } = clocked(3);
+      const first = store.issueCode();
+      const second = store.issueCode();
+      store.unpairAll();
+      expect(store.exchange(first)).toBeNull();
+      expect(store.exchange(second)).toBeNull();
+    });
+
+    it("refuses a cap that is not a whole number from 1 to 16", () => {
+      for (const maxPendingCodes of [0, -1, 1.5, 17, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => new PairingStore({ maxPendingCodes })).toThrow(RangeError);
+      }
+    });
+
+    it("defaults to one code, as before", () => {
+      const store = new PairingStore();
+      const first = store.issueCode();
+      const second = store.issueCode();
+      expect(store.exchange(first)).toBeNull();
+      expect(store.exchange(second)).not.toBeNull();
+    });
+  });
 });

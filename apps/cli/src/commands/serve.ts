@@ -1,4 +1,8 @@
-import { PAIRING_CODE_TTL_MS, PairingStore } from "@taskville/engine/src/auth/pairing.ts";
+import {
+  PAIRING_CODE_TTL_MS,
+  type PairingRecords,
+  PairingStore,
+} from "@taskville/engine/src/auth/pairing.ts";
 import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { ensureHome } from "@taskville/engine/src/config/home.ts";
 import { type EvidenceStore, openEvidenceStore } from "@taskville/engine/src/evidence/index.ts";
@@ -20,7 +24,7 @@ import { GitWatcher } from "@taskville/engine/src/sources/git/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
 import pino from "pino";
 import packageJson from "../../package.json" with { type: "json" };
-import type { Io } from "../context.ts";
+import type { Io, KeyInput } from "../context.ts";
 import { type Context, parseCommand } from "../context.ts";
 import { CliError, EXIT } from "../errors.ts";
 
@@ -33,8 +37,17 @@ const USAGE = "taskville serve --headless [--port N] [--home <dir>]";
  * stale projections, expires open requests, and replays the telemetry spool (bounded; any rest
  * is drained after listening) before listening; prints the one-time pairing URL.
  *
- * Pairings stay in memory (MemoryPairingRecords): decision #113 on persisted pairings is still
- * open, so a restart requires pairing the browser again.
+ * Pairing (M2.12; decisions #113, #163, #174 defaults):
+ * - Paired browsers are persisted as SHA-256 digests in the `pairings` table, so a paired page
+ *   survives a restart against the same home; `taskville unpair` clears them. Codes are never
+ *   persisted.
+ * - On a terminal, pressing `p` prints a fresh one-time link, valid for 10 minutes, to this
+ *   terminal only. No HTTP route, IPC, or signal mints a code. At most one code per second, at
+ *   most five outstanding (the oldest is dropped past that); earlier codes keep working until
+ *   used or expired. Raw mode turns Ctrl-C into a byte, which stops the engine like SIGINT; the
+ *   terminal is restored on every exit path.
+ * - Without a terminal (stdin not a TTY), the one link at startup is all; a new one needs a
+ *   restart, and `serve` says so.
  */
 export async function serve(io: Io, args: string[]): Promise<number> {
   const { values, context } = parseCommand(
@@ -58,20 +71,70 @@ function parsePort(text: string): number {
   return port;
 }
 
-async function run(context: Context, portFlag: number | undefined): Promise<number> {
-  const { io, home } = context;
+/** Keypress codes: at most one per second, however many keys arrive. */
+export const PAIRING_KEY_INTERVAL_MS = 1000;
+/** Unexpired, unused codes `serve` keeps at once; past this the oldest stops working. */
+export const MAX_OUTSTANDING_CODES = 5;
+
+/** What `composeServe` builds, before anything listens. */
+export interface ServeParts {
+  app: ReturnType<typeof createApp>;
+  pairing: PairingStore;
+  port: number;
+  gitWatcher: GitWatcher;
+  /** The Claude Code source and spool folder, for the spool replay (M2.07). */
+  spool: Parameters<typeof replaySpool>[0];
+  /** Stops the Git watcher and closes the databases. */
+  close(): Promise<void>;
+}
+
+/**
+ * The persisted pairing records arrive with storage, which `bootEngine` opens after `createApp`
+ * needs the `PairingStore`. Nothing can pair before the server listens, which is after boot.
+ */
+class DeferredPairingRecords implements PairingRecords {
+  #target: PairingRecords | undefined;
+
+  attach(target: PairingRecords): void {
+    this.#target = target;
+  }
+
+  list(): readonly string[] {
+    return this.#target?.list() ?? [];
+  }
+
+  add(secretHash: string): void {
+    if (this.#target === undefined) throw new Error("pairing records used before storage opened");
+    this.#target.add(secretHash);
+  }
+
+  clear(): number {
+    return this.#target?.clear() ?? 0;
+  }
+}
+
+/**
+ * Builds the engine for `serve` without listening: home, config, app with its security
+ * middleware, storage, every route, the evidence store, and the Git watcher (not started).
+ * Exported so the route table can be tested.
+ */
+export function composeServe(io: Io, home: string, portFlag: number | undefined): ServeParts {
   const now = io.now ?? (() => new Date());
   const logger = pino({ level: "info" }, { write: (line: string) => io.stderr(line) });
   let engine: Engine | undefined;
   let evidence: EvidenceStore | undefined;
   let gitWatcher: GitWatcher | undefined;
-  const stopDrain = new AbortController();
-  let draining: Promise<unknown> = Promise.resolve();
+  const close = async () => {
+    await gitWatcher?.stop();
+    engine?.close();
+    evidence?.close();
+  };
   try {
     const prepared = ensureHome(home);
     const { config, warnings } = loadConfig({ home, port: portFlag });
     for (const warning of warnings) io.stderr(`warning: ${warning}\n`);
-    const pairing = new PairingStore();
+    const records = new DeferredPairingRecords();
+    const pairing = new PairingStore({ records, maxPendingCodes: MAX_OUTSTANDING_CODES });
     const app = createApp({
       port: config.port,
       cliToken: prepared.cliToken,
@@ -82,6 +145,8 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       health: () => engine?.health() ?? { db: "error", walMode: false },
     });
     engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now, pairing });
+    // Persisted pairings (#113 default): digests in the `pairings` table.
+    records.attach(engine.storage.pairingRecords());
     registerProjectRoutes(app, { storage: engine.storage, now });
     // Claude Code telemetry (M2.02, M2.03, M2.06): hooks from the shim, tool bodies to evidence.db.
     evidence = openEvidenceStore(prepared.paths.evidenceDb, { now, logger });
@@ -113,43 +178,143 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       now,
       logger,
     });
+    const spool = { spoolDir: prepared.paths.spoolDir, source: claudeCode, logger };
+    return { app, pairing, port: config.port, gitWatcher, spool, close };
+  } catch (error) {
+    void close();
+    throw error;
+  }
+}
+
+async function run(context: Context, portFlag: number | undefined): Promise<number> {
+  const { io, home } = context;
+  const now = io.now ?? (() => new Date());
+  let parts: ServeParts | undefined;
+  let server: Awaited<ReturnType<typeof startServer>> | undefined;
+  let keys: { restore: () => void } | undefined;
+  const stopDrain = new AbortController();
+  let draining: Promise<unknown> = Promise.resolve();
+  try {
+    parts = composeServe(io, home, portFlag);
+    const { pairing, spool } = parts;
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
-    const spool = { spoolDir: prepared.paths.spoolDir, source: claudeCode, logger };
     const first = await replaySpool(spool);
-    const server = await startServer({ app, port: config.port });
-    gitWatcher.start();
+    server = await startServer({ app: parts.app, port: parts.port });
+    parts.gitWatcher.start();
     if (!first.failed && (first.deferredFiles > 0 || first.mainFile === "busy")) {
       draining = drainSpool({ ...spool, signal: stopDrain.signal }).catch((error: unknown) => {
-        logger.error({ errName: (error as Error).name }, "spool drain failed");
+        spool.logger?.error({ errName: (error as Error).name }, "spool drain failed");
       });
     }
     const base = `http://${LOOPBACK_ADDRESS}:${server.port}`;
     io.stdout(`Taskville engine listening on ${base} (home ${home})\n`);
     const minutes = PAIRING_CODE_TTL_MS / 60_000;
-    io.stdout(
-      `Pair a browser (one-time link, valid for ${minutes} minutes): ${base}/#pair=${pairing.issueCode()}\n`,
-    );
-    await new Promise<void>((resolve) => {
-      if (io.signal === undefined) return;
-      if (io.signal.aborted) resolve();
-      else io.signal.addEventListener("abort", () => resolve(), { once: true });
+    // The code is printed to this terminal only, never logged.
+    const printLink = () =>
+      io.stdout(
+        `Pair a browser (one-time link, valid for ${minutes} minutes): ${base}/#pair=${pairing.issueCode()}\n`,
+      );
+    printLink();
+
+    let interrupt: () => void = () => {};
+    const interrupted = new Promise<void>((resolve) => {
+      interrupt = resolve;
     });
+    let lastKeyCode = Number.NEGATIVE_INFINITY;
+    keys = listenForKeys(io.stdin, {
+      pair: () => {
+        const t = now().getTime();
+        // A clock that went back does not lock the key out.
+        if (t - lastKeyCode < PAIRING_KEY_INTERVAL_MS && t >= lastKeyCode) return;
+        lastKeyCode = t;
+        printLink();
+      },
+      interrupt: () => interrupt(),
+    });
+    io.stdout(
+      keys === undefined
+        ? "For a new pairing link later, restart taskville serve.\n"
+        : `Press p for a new pairing link (valid for ${minutes} minutes); Ctrl-C stops the engine.\n`,
+    );
+    try {
+      await Promise.race([
+        interrupted,
+        new Promise<void>((resolve) => {
+          if (io.signal === undefined) return;
+          if (io.signal.aborted) resolve();
+          else io.signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+      ]);
+    } finally {
+      keys?.restore();
+    }
     stopDrain.abort();
     await draining;
-    await gitWatcher.stop();
-    engine.close();
-    evidence.close();
-    await server.close();
+    await parts.close();
+    const listening = server;
+    server = undefined;
+    await listening.close();
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
+    // Never leave the terminal raw, whatever failed.
+    keys?.restore();
     stopDrain.abort();
     await draining;
-    await gitWatcher?.stop();
-    engine?.close();
-    evidence?.close();
+    await parts?.close();
+    // A failure after listening (a closed terminal, say) must not leave the port open.
+    await server?.close().catch(() => {});
     if (error instanceof CliError) throw error;
     throw new CliError(EXIT.failure, `Cannot start the engine: ${(error as Error).message}`);
   }
+}
+
+/**
+ * Raw-mode keys on a TTY only: `p` (or `P`) asks for a new link, Ctrl-C (a byte in raw mode)
+ * stops. One request per chunk at most, so a pasted run of keys counts once. Returns undefined,
+ * touching nothing, when `stdin` is missing or not a terminal, and undefined after undoing any
+ * partial setup when the terminal refuses raw mode. `restore` leaves raw mode, stops
+ * reading, and is also registered for process exit, so the terminal is never left raw.
+ */
+function listenForKeys(
+  stdin: KeyInput | undefined,
+  handlers: { pair: () => void; interrupt: () => void },
+): { restore: () => void } | undefined {
+  if (stdin === undefined || stdin.isTTY !== true || typeof stdin.setRawMode !== "function") {
+    return undefined;
+  }
+  const onData = (chunk: Buffer | string) => {
+    const keys = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    if (keys.includes("\u0003")) handlers.interrupt();
+    else if (/[pP]/.test(keys)) handlers.pair();
+  };
+  let restored = false;
+  let raw = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    process.off("exit", restore);
+    stdin.off("data", onData);
+    try {
+      if (raw) stdin.setRawMode?.(false);
+    } catch {
+      // The terminal may already be gone; nothing left to restore.
+    } finally {
+      stdin.pause();
+    }
+  };
+  try {
+    stdin.setRawMode(true);
+    raw = true;
+    stdin.on("data", onData);
+    stdin.resume();
+    process.once("exit", restore);
+  } catch {
+    // A terminal that cannot go raw (closed, or not really a TTY): undo what was done and fall
+    // back to the no-terminal behavior instead of failing a running engine.
+    restore();
+    return undefined;
+  }
+  return { restore };
 }
