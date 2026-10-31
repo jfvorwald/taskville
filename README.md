@@ -9,6 +9,7 @@ A minimal 3D city for watching your agents work live. When one gets stuck it sto
 - [Constitution](.specify/memory/constitution.md)
 - [Feature specs](specs/)
 - [Roadmap](docs/ROADMAP.md) and [project board](https://github.com/users/jfvorwald/projects/2)
+- [Status](docs/STATUS.md), [working rules](CLAUDE.md)
 - [Milestone retros](docs/retros/README.md) and [lessons learned](docs/LESSONS.md)
 
 Status: architecture, roadmap, and tickets are ready. Implementation has not started.
