@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type HookContext,
   type MapResult,
-  mapClaudeCodeHook,
+  mapCoreHook,
   sessionAgentId,
   subagentAgentId,
 } from "../../../src/claude-code/index.ts";
@@ -22,7 +22,7 @@ const ctx: HookContext = {
 const base = { session_id: SID, cwd: "/tmp/spike-s2/proj", transcript_path: "/x.jsonl" };
 
 function map(payload: unknown, c: Partial<HookContext> = {}): MapResult {
-  const result = mapClaudeCodeHook(payload, { ...ctx, ...c });
+  const result = mapCoreHook(payload, { ...ctx, ...c });
   for (const event of result.events) {
     const parsed = parseInputEvent(event);
     expect(parsed, JSON.stringify(event)).toMatchObject({ ok: true });

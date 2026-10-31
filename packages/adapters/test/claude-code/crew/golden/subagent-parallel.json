@@ -1,0 +1,286 @@
+[
+  {
+    "seq": 0,
+    "hook": "SessionStart",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 1,
+    "hook": "UserPromptSubmit",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 2,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 3,
+    "hook": "SubagentStart",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-parallel-3:crew:0",
+        "occurredAt": "2026-10-30T12:00:01.394Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "payload": {
+          "sourceAgentId": "afdf84bea07a9064c",
+          "displayName": "general-purpose",
+          "role": "general-purpose",
+          "kind": "subagent"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 4,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-parallel-4:crew:0",
+        "occurredAt": "2026-10-30T12:00:01.414Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "payload": {
+          "sourceAgentId": "afdf84bea07a9064c",
+          "displayName": "general-purpose",
+          "role": "general-purpose",
+          "kind": "subagent",
+          "parentAgentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 5,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 6,
+    "hook": "SubagentStart",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-parallel-6:crew:0",
+        "occurredAt": "2026-10-30T12:00:01.789Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "payload": {
+          "sourceAgentId": "a0b4668e13e056653",
+          "displayName": "general-purpose",
+          "role": "general-purpose",
+          "kind": "subagent"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 7,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-parallel-7:crew:0",
+        "occurredAt": "2026-10-30T12:00:01.798Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "payload": {
+          "sourceAgentId": "a0b4668e13e056653",
+          "displayName": "general-purpose",
+          "role": "general-purpose",
+          "kind": "subagent",
+          "parentAgentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 8,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 9,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 10,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 11,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 12,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 13,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 14,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 15,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 16,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 17,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 18,
+    "hook": "SubagentStop",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-parallel-18:crew:0",
+        "occurredAt": "2026-10-30T12:00:05.167Z",
+        "type": "agent.finished",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "payload": {
+          "summary": "The output of `cat hello.txt` was:\n\n```\nhello from B\n```\n\nI created `hello.txt` in the project directory with the line `hello from B`."
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 19,
+    "hook": "UserPromptSubmit",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 20,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 21,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 22,
+    "hook": "SubagentStop",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-parallel-22:crew:0",
+        "occurredAt": "2026-10-30T12:00:06.331Z",
+        "type": "agent.finished",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "payload": {
+          "summary": "The line count is **3**.\n\nI replaced `beta` with `BETA` in `/tmp/spike-s2/proj/notes.txt` using the Edit tool, then ran `wc -l` on the same file."
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 23,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 24,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 25,
+    "hook": "UserPromptSubmit",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 26,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 27,
+    "hook": "PostToolUseFailure",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 28,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 29,
+    "hook": "SessionEnd",
+    "events": [],
+    "ignored": "not a crew hook"
+  }
+]

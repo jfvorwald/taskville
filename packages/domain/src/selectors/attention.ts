@@ -124,6 +124,7 @@ function openRequestRecords(state: AttentionInput): Attention[] {
       ...record(request.agentId, "needs_you", request.kind, request.openedAt),
       ...(request.reason === undefined ? {} : { reason: request.reason }),
       requestId: request.id,
+      heuristic: request.heuristic === true,
     });
   }
   return records;

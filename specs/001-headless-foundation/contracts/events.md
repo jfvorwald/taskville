@@ -48,11 +48,12 @@ is never stored.
 | Type | Payload | Effect | Sender |
 | --- | --- | --- | --- |
 | `project.created` | `{ name, roots: string[], builtin: boolean }` | First event of every project (sequence 1). Emitted by `POST /v1/projects` and once for the built-in Unsorted project | Engine |
-| `agent.registered` | `{ sourceAgentId, displayName, role, kind, parentAgentId?, teamId? }` | Creates or updates the agent. `kind` is `session`, `subagent`, `lead`, or `teammate`; `parentAgentId` only with `subagent`, `teamId` only with `lead` or `teammate`. Identity `(sourceId, sourceAgentId)` never changes | Any |
+| `agent.registered` | `{ sourceAgentId, displayName, role, kind, parentAgentId?, teamId?, heuristic? }` | Creates or updates the agent. `kind` is `session`, `subagent`, `lead`, or `teammate`; `parentAgentId` only with `subagent`, `teamId` only with `lead` or `teammate`. Identity `(sourceId, sourceAgentId)` never changes. `heuristic: true` when the source guessed the kind or name instead of recording it (decision #120; for example a split-pane teammate named from its first message) | Any |
 | `agent.connected` / `agent.disconnected` | `{}` | Connection state only | Any |
 | `agent.finished` | `{ outcome?, summary? }` | Sets `finishedAt` (subagent stopped, teammate left). Finished subagents are hidden by `status` unless `--all` | Any |
 | `team.started` | `{ teamId, leadAgentId, name? }` | Creates the team | Any |
 | `team.ended` | `{ teamId }` | Sets `endedAt` | Any |
+| `team.message` | `{ to, kind: "message" \| "shutdown_request" \| "shutdown_response" \| "unknown", summary? }` (uses `agentId` = the sender) | Recorded; a message between agents, drawn as an envelope in M5. `to` is the recipient name as written. The body is not in the event; it stays in the tool-call evidence (decision #178) | Any |
 | `session.started` | `{ workingDirectory? }` (uses `agentId`, `sessionId`) | Opens a session | Any |
 | `session.ended` | `{ outcome? }` | Closes the session | Any |
 | `session.prompt_submitted` | `{}` | User sent a prompt; clears `waiting` and `stop_failure` | Any |
@@ -67,7 +68,7 @@ is never stored.
 | `activity.ended` | `{}` | Activity returns to `idle` | Any |
 | `tool_call.started` | `{ toolCallId, toolName, filePaths?, summary? }` | ToolCall `running` | Any |
 | `tool_call.finished` | `{ toolCallId, phase: "succeeded" \| "failed", durationMs?, summary? }` | Closes the ToolCall; updates `consecutiveToolFailures` | Any |
-| `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (max 2,000 chars), reason?, expiresAt? }` | PendingRequest `open`; agent `needs_you`. Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session, agent, and tool | Any (never answerable); bridge (answerable) |
+| `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (max 2,000 chars), reason?, expiresAt?, heuristic? }` | PendingRequest `open`; agent `needs_you`. `heuristic: true` when the source guessed which agent the request belongs to (decision #120). Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session, agent, and tool | Any (never answerable); bridge (answerable) |
 | `request.resolved` | `{ requestId, resolution: "answered_here" \| "answered_elsewhere" }` | Closes the request | Engine |
 | `request.expired` | `{ requestId }` | Closes the request as `expired` (emitted at engine start for every open request) | Engine |
 | `command.requested` | `{ commandId, commandType, requestId, payload, idempotencyKey }` | Command `requested` | Engine |

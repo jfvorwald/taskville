@@ -290,6 +290,61 @@ describe("one prompt, one red state", () => {
   });
 });
 
+describe("heuristic requests (#120)", () => {
+  it("keeps the heuristic marker on the projected request", () => {
+    const emit = eventStream();
+    const state = run([opened(emit, "r1", { heuristic: true, reason: reason("for: pip") })]);
+    expect(state.requests.r1?.heuristic).toBe(true);
+    expect(run([opened(eventStream(), "r1")]).requests.r1).not.toHaveProperty("heuristic");
+  });
+
+  it("merges the lead's own notification into a worker prompt, keeping the worker's label", () => {
+    const emit = eventStream();
+    const state = run([
+      opened(emit, "w1", { heuristic: true, reason: reason("for: pip") }),
+      opened(emit, "n1", { reason: reason("Claude needs your permission") }),
+    ]);
+    expect(Object.keys(state.requests)).toEqual(["w1"]);
+    expect(state.requests.w1).toMatchObject({ heuristic: true, mergedRequestIds: ["n1"] });
+  });
+
+  it("keeps the worker's label when the lead's notification arrived first (async hooks race)", () => {
+    const emit = eventStream();
+    const first = opened(emit, "n1", { reason: reason("Claude needs your permission") });
+    const state = run([first, opened(emit, "w1", { heuristic: true, reason: reason("for: pip") })]);
+    expect(Object.keys(state.requests)).toEqual(["w1"]);
+    expect(state.requests.w1).toMatchObject({
+      heuristic: true,
+      reason: reason("for: pip"),
+      openedAt: first.occurredAt,
+      mergedRequestIds: ["n1"],
+    });
+  });
+
+  it("never merges two worker prompts: each guessed teammate keeps its own red state", () => {
+    const emit = eventStream();
+    const state = run([
+      opened(emit, "w1", { heuristic: true, reason: reason("for: pip") }),
+      opened(emit, "w2", { heuristic: true, reason: reason("for: bo") }),
+      opened(emit, "n1", { reason: reason("Claude needs your permission") }),
+      opened(emit, "n2", { reason: reason("Claude needs your permission") }),
+    ]);
+    expect(Object.keys(state.requests).sort()).toEqual(["w1", "w2"]);
+    expect(state.requests.w1?.mergedRequestIds).toEqual(["n1", "n2"]);
+    expect(state.requests.w2?.reason).toEqual(reason("for: bo"));
+  });
+
+  it("lets the bridge's record win over a worker prompt, as over any telemetry", () => {
+    const emit = eventStream();
+    const state = run([
+      opened(emit, "w1", { heuristic: true, reason: reason("for: pip") }),
+      opened(emit, "b1", {}, { sourceId: BRIDGE }),
+    ]);
+    expect(state.requests.b1).toMatchObject({ answerable: true, mergedRequestIds: ["w1"] });
+    expect(state.requests.b1).not.toHaveProperty("heuristic");
+  });
+});
+
 describe("late request.opened", () => {
   it("is recorded as expired and late, never open and never answerable", () => {
     const emit = eventStream();

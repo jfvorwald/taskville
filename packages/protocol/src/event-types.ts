@@ -8,6 +8,7 @@ export const EVENT_TYPES = [
   "agent.finished",
   "team.started",
   "team.ended",
+  "team.message",
   "session.started",
   "session.ended",
   "session.prompt_submitted",
@@ -83,6 +84,7 @@ export function requiredEnvelopeIds(type: EventType): readonly EnvelopeIdField[]
     case "task":
       return ["taskId"];
     default:
-      return type === "request.opened" ? ["agentId"] : [];
+      // team.message is about its sender.
+      return type === "request.opened" || type === "team.message" ? ["agentId"] : [];
   }
 }

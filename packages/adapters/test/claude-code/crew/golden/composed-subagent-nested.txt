@@ -1,0 +1,41 @@
+#0 SessionStart
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"sourceAgentId":"6effc000-24c8-436e-ae5e-33152b820f83","displayName":"proj","role":"main","kind":"session"}
+  session.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"workingDirectory":"/tmp/spike-s2/proj"}
+#1 UserPromptSubmit
+  session.prompt_submitted claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}
+#2 PreToolUse
+  tool_call.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_015kbKs4zZ8x3ZRDHweh6vfi","toolName":"Agent","summary":"Run nested agent echo test"}
+  activity.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"activity":"dispatching"}
+#3 SubagentStart
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 {"sourceAgentId":"ac5497782768787b9","displayName":"outer","role":"outer","kind":"subagent"}
+#4 PostToolUse
+  tool_call.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_015kbKs4zZ8x3ZRDHweh6vfi","phase":"succeeded","durationMs":17}
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 {"sourceAgentId":"ac5497782768787b9","displayName":"outer","role":"outer","kind":"subagent","parentAgentId":"claude-code:6effc000-24c8-436e-ae5e-33152b820f83"}
+#5 PreToolUse
+  tool_call.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 {"toolCallId":"toolu_01Mr6gWT5vEb7niHeYSi1zBP","toolName":"Agent","summary":"Run nested echo check"}
+  activity.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 {"activity":"dispatching"}
+#6 SubagentStart
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 {"sourceAgentId":"a0c1bc9a2c30e80b6","displayName":"inner","role":"inner","kind":"subagent"}
+#7 MessageDisplay  (ignored)
+#8 Stop
+  session.turn_ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}
+  activity.ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}
+#9 PreToolUse
+  tool_call.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 {"toolCallId":"toolu_015WFqWypLHXWoXKeUEQmnfh","toolName":"Bash","summary":"Echo nested-ok test string"}
+#10 PostToolUse
+  tool_call.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 {"toolCallId":"toolu_015WFqWypLHXWoXKeUEQmnfh","phase":"succeeded","durationMs":202}
+#11 SubagentStop
+  agent.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 {"summary":"The command `echo nested-ok` printed:\n\n```\nnested-ok\n```"}
+#12 PostToolUse
+  tool_call.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 {"toolCallId":"toolu_01Mr6gWT5vEb7niHeYSi1zBP","phase":"succeeded","durationMs":2894}
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 {"sourceAgentId":"a0c1bc9a2c30e80b6","displayName":"inner","role":"inner","kind":"subagent","parentAgentId":"claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9"}
+#13 SubagentStop
+  agent.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 {"summary":"The inner subagent ran `echo nested-ok` and printed:\n\n```\nnested-ok\n```\n\nIts report said: \"The command `echo nested-ok` printed: nested-ok.\""}
+#14 UserPromptSubmit
+  session.prompt_submitted claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}
+#15 MessageDisplay  (ignored)
+#16 Stop
+  session.turn_ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}
+  activity.ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}
+#17 SessionEnd
+  session.ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"outcome":"other"}
