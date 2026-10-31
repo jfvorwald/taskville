@@ -168,6 +168,17 @@ describe("establishSession: a stored session", () => {
     expect(h.storage.getItem(SESSION_KEY)).toBeNull();
   });
 
+  it("does not delete a newer session when an old session's check comes back refused late", async () => {
+    const h = harness({}, () => {
+      // A fresh pairing finished while this check was in flight.
+      h.storage.setItem(SESSION_KEY, "new-secret");
+      return json(401, {});
+    });
+    h.storage.setItem(SESSION_KEY, "old-secret");
+    await establishSession(h.env);
+    expect(h.storage.getItem(SESSION_KEY)).toBe("new-secret");
+  });
+
   it("keeps the session when the engine is merely unreachable", async () => {
     const h = harness({}, () => {
       throw new TypeError("fetch failed");
