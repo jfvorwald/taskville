@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-20: An argv array is not enough to make a configurable launcher safe
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #8 · **Recorded by:** engine teammate (M1.11)
+- **What happened:** A session opener validated only as an `execFile` argument array could still name `sh`, `env`, `osascript` or `python3` as the program, which turns an argument back into code. Separately, `mkdirSync({ mode: 0o700 })` is filtered by the umask and leaves an existing directory alone, and roborev (job 4776) found that tightening a symlinked home would chmod the link target.
+- **Lesson:** Refuse shells, launchers and interpreters as the program and never let a placeholder pick it; tighten existing directories with an explicit `chmod` after an `lstat` that refuses symlinks.
+- **Action:** Fixed in PR #128.
+
 ### L-19: Wall-time bounds in tests should separate linear from quadratic, not measure speed
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #24 · **Recorded by:** adapter teammate (M1.20)
 - **What happened:** Flake F-1: adversarial redaction timing tests with a 250 ms bound took 260 and 285 ms with 21 test files running in parallel under `pnpm check`, and 18 to 19 ms alone. The real regression they exist to catch was a quadratic scan that took 55 s.
