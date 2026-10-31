@@ -354,3 +354,58 @@ describe("ClaudeCodeSource.ingestHook (the spool's entry point)", () => {
     expect(response.projectId).toBe("late-add");
   });
 });
+
+describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)", () => {
+  // Hook payloads carry no timestamp, so the mapper's occurredAt comes from the engine clock,
+  // and a spool replay sets late: both differ on a retry of the same hook.
+  it("reports a spool replay of a hook that already landed live as duplicate, not conflict", async () => {
+    let clock = Date.parse(T0);
+    const { source } = makeSource(db(), { now: () => new Date(clock) });
+    const live = await source.ingestHook({ sourceEventId: "r-1", payload: hook() });
+    clock += 60_000;
+    const replay = await source.ingestHook({ sourceEventId: "r-1", payload: hook(), late: true });
+    const first = live.results[0];
+    expect(replay.results).toEqual([
+      {
+        sourceEventId: "r-1:0",
+        status: "duplicate",
+        ingestSequence: first?.status === "accepted" ? first.ingestSequence : -1,
+        eventId: first?.status === "accepted" ? first.eventId : "",
+      },
+    ]);
+    expect(replay.heads).toEqual({ repo: 2 });
+    expect(storedEvents("repo")).toHaveLength(1);
+    expect(storedEvents("repo")[0]?.late).toBe(false);
+  });
+
+  it("reports a retry at a later engine time as duplicate", async () => {
+    let clock = Date.parse(T0);
+    const { source } = makeSource(db(), { now: () => new Date(clock) });
+    await source.ingestHook({ sourceEventId: "r-2", payload: hook(), late: true });
+    clock += 5_000;
+    const again = await source.ingestHook({ sourceEventId: "r-2", payload: hook(), late: true });
+    expect(again.results.map((r) => r.status)).toEqual(["duplicate"]);
+    expect(storedEvents("repo")).toHaveLength(1);
+  });
+
+  it("still ingests the events of a hook that were not stored before", async () => {
+    let calls = 0;
+    const event = (n: number) => ({
+      schemaVersion: 1,
+      sourceEventId: `r-3:${n}`,
+      occurredAt: T0,
+      type: "agent.connected",
+      agentId: "a",
+      payload: {},
+      provenance: "live",
+    });
+    // The first delivery mapped to one event, the second (a newer mapper) to two.
+    const { source } = makeSource(db(), {
+      mapper: () => ({ events: ++calls === 1 ? [event(0)] : [event(0), event(1)] }),
+    });
+    await source.ingestHook({ sourceEventId: "r-3", payload: hook() });
+    const second = await source.ingestHook({ sourceEventId: "r-3", payload: hook() });
+    expect(second.results.map((r) => r.status)).toEqual(["duplicate", "accepted"]);
+    expect(second.heads).toEqual({ repo: 3 });
+  });
+});
