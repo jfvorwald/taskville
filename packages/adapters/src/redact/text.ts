@@ -143,12 +143,12 @@ const FLAG = /(?<![A-Za-z0-9_-])--([A-Za-z][A-Za-z0-9-]{0,63})(=|[ \t]+)/g;
 
 // `Authorization: <scheme> name=value, name="value", ...`: Digest, AWS SigV4, OAuth
 // 1.0 and other parameterized schemes, whose credential sits in a later parameter.
+// The rest of the line is masked rather than parsed, so no quoting, escaping, or
+// spacing inside the list can end the mask early. The character after `=` must
+// start a value, so a token68 credential with `=` padding (`Basic dXNlcjpw==`) is
+// not taken for a parameter list.
 const AUTH_PARAMS =
-  /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+(?=[A-Za-z0-9_.-]{1,64}=)/gi;
-
-// A parameter list is read this far at most, so each Authorization header costs a
-// bounded scan however many of them the text holds.
-const MAX_AUTH_PARAMS = 4096;
+  /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+(?=[A-Za-z0-9_.-]{1,64}[ \t]*=[ \t]*(?:\\?"(?![\s"]|$)|[A-Za-z0-9_.~+/-]))/gi;
 
 // curl's `-u user:password` (also attached, `-uuser:password`), `--user user:password`,
 // `--user=user:password`, and the proxy forms `-U` and `--proxy-user`.
@@ -167,7 +167,7 @@ export function redactText(input: string): RedactedText {
   findAssignments(input, ends, candidates);
   findFlags(input, ends, candidates);
   findAuthParams(input, candidates);
-  findUserFlags(input, ends, candidates);
+  findUserFlags(input, candidates);
   findStandaloneTokens(input, candidates);
   return applyMasks(input, merge(candidates));
 }
@@ -285,100 +285,112 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
 }
 
 /**
- * Masks the password in `-u user:password` style flags. Not masked: no colon, an
- * empty password or a reference (`$API_TOKEN`, `$(id -g)`). Other `-u` uses with
- * a colon, such as `rsync -u host:/srv` or `docker run -u 1000:1000`, are masked
- * too: hiding a path or group ID costs less than leaking a password.
+ * Masks the password in `-u user:password` style flags: everything after the first
+ * colon of the shell word, which joins quoted and unquoted segments
+ * (`"$API_USER"suffix:pass`). Not masked: no colon, an empty password, or a password
+ * that is one complete reference (`$API_TOKEN`, `$(id -g)`). Other `-u` uses with a
+ * colon, such as `rsync -u host:/srv` or `docker run -u 1000:1000`, are masked too:
+ * hiding a path or group ID costs less than leaking a password.
  */
-function findUserFlags(input: string, ends: Ends, out: Candidate[]): void {
+function findUserFlags(input: string, out: Candidate[]): void {
+  // A flag inside the word read for an earlier flag is part of that word, not a
+  // new flag; skipping it keeps the scan linear (`--user=--user=...`).
+  let coveredUntil = 0;
   for (const match of input.matchAll(USER_FLAG)) {
+    if (match.index < coveredUntil) continue;
     const at = match.index + match[0].length;
     if (input.charAt(at) === "-") continue;
-    const value = readValue(input, at, ends);
-    // Skip a leading reference such as `$(id -u)` or `$API_USER` before looking
-    // for the colon, so a colon inside it is not taken as the separator.
-    const from = value.start + referenceLength(input, value.start);
-    const stop = Math.min(value.end, from + MAX_USER);
+    const wordEnd = shellWordEnd(input, at);
+    coveredUntil = wordEnd;
+    // Skip a leading reference such as `$(id -u)` or `$API_USER`, so a colon inside
+    // it is not taken as the separator. Track quotes to trim them off the password.
+    const stop = Math.min(wordEnd, at + MAX_USER);
+    let quote = "";
     let colon = -1;
-    for (let i = from; i < stop; i++) {
-      if (input.charCodeAt(i) === 0x3a /* : */) {
+    for (let i = at + referenceLength(input, at); i < stop; i++) {
+      const ch = input.charAt(i);
+      if (quote === "" && (ch === '"' || ch === "'")) quote = ch;
+      else if (quote !== "" && ch === quote) quote = "";
+      else if (ch === ":") {
         colon = i;
         break;
       }
     }
-    // A quoted user followed by the colon, as in `"$API_USER":password`.
-    let inQuotes = value.quoted;
-    if (
-      colon < 0 &&
-      value.quoted &&
-      input.charAt(value.end) === input.charAt(value.start - 1) &&
-      input.charAt(value.end + 1) === ":"
-    ) {
-      colon = value.end + 1;
-      inQuotes = false;
-    }
     if (colon < 0) continue;
-    // Inside quotes, the password runs to the closing quote (it may hold spaces);
-    // otherwise it is read as a value of its own, quoted or not, so a reference
-    // after the colon is whole.
-    const password = inQuotes
-      ? { start: colon + 1, end: value.end }
-      : readValue(input, colon + 1, ends);
-    const { start, end } = password;
+    let start = colon + 1;
+    let end = wordEnd;
+    const last = input.charAt(end - 1);
+    if (quote !== "" && end > start && last === quote) {
+      end -= 1; // `"user:pass"`: drop the closing quote
+    } else if (quote === "" && end - start >= 2) {
+      const first = input.charAt(start);
+      if (
+        (first === '"' || first === "'") &&
+        last === first &&
+        shellWordEnd(input, start) === end
+      ) {
+        // `user:"pass"`: drop the quotes when they wrap the whole password.
+        const close = quotedEnd(input, start);
+        if (close === end - 1) {
+          start += 1;
+          end -= 1;
+        }
+      }
+    }
     if (isPlaceholder(input, start, end)) continue;
     out.push({ start, end, kind: "basic-auth" });
   }
 }
 
-/** Masks the whole parameter list after a parameterized Authorization scheme. */
+/**
+ * End of the shell word at `at`: quoted and unquoted segments joined, complete
+ * references (`$(id -u)`) taken whole. Ends at whitespace or a command separator
+ * outside quotes; an unterminated quote ends it at the line end.
+ */
+function shellWordEnd(input: string, at: number): number {
+  let i = at;
+  while (i < input.length) {
+    const ch = input.charAt(i);
+    if (ch === '"' || ch === "'") {
+      const close = quotedEnd(input, i);
+      if (input.charAt(close) !== ch) return close;
+      i = close + 1;
+      continue;
+    }
+    const ref = referenceLength(input, i);
+    if (ref > 0) {
+      i += ref;
+      continue;
+    }
+    if (UNQUOTED_STOP.has(ch) || /\s/.test(ch)) return i;
+    i += 1;
+  }
+  return i;
+}
+
+/** Index of the quote closing the one at `at`, or of the line end (or text end) if none. */
+function quotedEnd(input: string, at: number): number {
+  const quote = input.charAt(at);
+  let j = at + 1;
+  while (j < input.length) {
+    const ch = input.charAt(j);
+    if (ch === quote || ch === "\n" || ch === "\r") return j;
+    j += ch === "\\" && quote === '"' ? 2 : 1;
+  }
+  return input.length;
+}
+
+/** Masks from the first parameter of a parameterized Authorization scheme to the line end. */
 function findAuthParams(input: string, out: Candidate[]): void {
+  let coveredUntil = 0;
   for (const match of input.matchAll(AUTH_PARAMS)) {
     const start = match.index + match[0].length;
-    const end = authParamsEnd(input, start);
+    if (start < coveredUntil) continue;
+    let end = start;
+    while (end < input.length && input.charAt(end) !== "\n" && input.charAt(end) !== "\r") end++;
+    coveredUntil = end;
     if (end > start) out.push({ start, end, kind: "bearer-token" });
   }
-}
-
-const PARAM_NAME = /[A-Za-z0-9_.-]/;
-const PARAM_TOKEN_STOP = /[\s,"'\\]/;
-
-/**
- * Where a `name=value, name="value"` list starting at `at` ends. Values are bare
- * tokens, `"quoted"`, or `\"shell-escaped\"`; an unterminated quote runs to the
- * line end. Never reads past MAX_AUTH_PARAMS characters.
- */
-function authParamsEnd(input: string, at: number): number {
-  const limit = Math.min(input.length, at + MAX_AUTH_PARAMS);
-  let end = at;
-  let i = at;
-  while (i < limit) {
-    let j = i;
-    while (j < limit && PARAM_NAME.test(input.charAt(j))) j++;
-    if (j === i || input.charAt(j) !== "=") break;
-    j = paramValueEnd(input, j + 1, limit);
-    end = j;
-    while (j < limit && (input.charAt(j) === " " || input.charAt(j) === "\t")) j++;
-    if (input.charAt(j) !== ",") break;
-    j++;
-    while (j < limit && (input.charAt(j) === " " || input.charAt(j) === "\t")) j++;
-    i = j;
-  }
-  return end;
-}
-
-function paramValueEnd(input: string, at: number, limit: number): number {
-  const close = input.startsWith('\\"', at) ? '\\"' : input.charAt(at) === '"' ? '"' : "";
-  if (close === "") {
-    let j = at;
-    while (j < limit && !PARAM_TOKEN_STOP.test(input.charAt(j))) j++;
-    return j;
-  }
-  for (let j = at + close.length; j < limit; j++) {
-    const ch = input.charAt(j);
-    if (ch === "\n" || ch === "\r") return j;
-    if (input.startsWith(close, j)) return j + close.length;
-  }
-  return limit;
 }
 
 /**

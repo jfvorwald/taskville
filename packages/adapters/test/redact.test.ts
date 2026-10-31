@@ -451,6 +451,12 @@ const positives: Positive[] = [
     kind: "bearer-token",
   },
   {
+    name: "Basic credential with one pad is not read as a parameter list",
+    input: `curl -H "Authorization: Basic ${fake.basic.slice(0, 31)}=" https://x`,
+    secret: `${fake.basic.slice(0, 31)}=`,
+    kind: "basic-auth",
+  },
+  {
     name: "AWS SigV4 parameters",
     input: `Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
     secret: `Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
