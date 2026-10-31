@@ -2,6 +2,7 @@ import { stateHash } from "../hash/index.ts";
 import { initialRequestsState, type RequestsState, reduceRequests } from "./attention/index.ts";
 import { type EntitiesState, initialEntities, reduceEntities } from "./entities/index.ts";
 import type { DomainEvent } from "./entities/types.ts";
+import { initialRetired, type Retired, retain } from "./retention.ts";
 
 // The root reducer: `reduce(state, event)` is a pure function of its arguments (constitution
 // III). Same events in the same order give byte-identical state and the same stateHash.
@@ -15,12 +16,21 @@ import type { DomainEvent } from "./entities/types.ts";
 //   1. add its state type to ProjectState below,
 //   2. spread its initial keys into initialState,
 //   3. append its reducer to SLICES (wrapped, if it takes only its own keys, as requests is).
+// After the slices, `retain` drops closed and finished records beyond the newest (data-model.md
+// "Retention"). It is the one step that reads and writes several slices' keys, and it runs last
+// so every slice sees the event first.
 // Bump REDUCER_VERSION whenever the state shape or any rule changes, so stored projections are
 // rebuilt from events at startup.
 
 export type { Command, PendingRequest, RequestsState } from "./attention/index.ts";
 export { compareTimestamps, MAX_OPEN_TOOL_CALLS_PER_AGENT } from "./entities/index.ts";
 export type * from "./entities/types.ts";
+export {
+  RETAIN_CLOSED_REQUESTS,
+  RETAIN_FINISHED_AGENTS,
+  RETAIN_TERMINAL_TASKS,
+  type Retired,
+} from "./retention.ts";
 
 export const REDUCER_VERSION = 4;
 
@@ -31,7 +41,12 @@ export interface ProjectMeta {
   readonly head: number;
 }
 
-export type ProjectState = ProjectMeta & EntitiesState & RequestsState;
+export type ProjectState = ProjectMeta &
+  EntitiesState &
+  RequestsState & {
+    /** Records dropped by retention, by kind (data-model.md "Retention"). */
+    readonly retired: Retired;
+  };
 
 type Slice = (state: ProjectState, event: DomainEvent) => ProjectState;
 
@@ -53,6 +68,7 @@ export function initialState(projectId: string): ProjectState {
     head: 0,
     ...initialEntities(),
     ...initialRequestsState(),
+    retired: initialRetired(),
   };
 }
 
@@ -64,6 +80,7 @@ export function reduce(state: ProjectState, event: DomainEvent): ProjectState {
   }
   let next = state;
   for (const slice of SLICES) next = slice(next, event);
+  next = retain(next);
   return next.head === event.ingestSequence ? next : { ...next, head: event.ingestSequence };
 }
 
