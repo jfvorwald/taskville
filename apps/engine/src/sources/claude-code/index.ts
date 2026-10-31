@@ -10,6 +10,7 @@ export {
 export {
   CLAUDE_CODE_HOOKS_PATH,
   MAX_HOOK_BODY_BYTES,
+  MAX_HOOK_SOURCE_EVENT_ID,
   registerClaudeCodeRoutes,
 } from "./route.ts";
 export {
