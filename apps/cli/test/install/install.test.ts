@@ -27,6 +27,10 @@ import {
 guardRealSettings();
 
 let sb: Sandbox;
+
+/** The command install writes for this sandbox: home and URL always explicit. */
+const commandFor = (box: Sandbox, url = "http://127.0.0.1:4807") =>
+  `TASKVILLE_HOME='${box.tv}' TASKVILLE_URL='${url}' '${box.shim}'`;
 afterEach(() => sb?.remove());
 
 const write = (path: string, text: string) => {
@@ -51,7 +55,7 @@ describe("install --scope user", () => {
     expect(hooks).not.toHaveProperty("PermissionRequest");
     for (const event of EVENTS) {
       expect(hooks[event]).toEqual([
-        { hooks: [{ type: "command", command: `'${sb.shim}'`, async: true }] },
+        { hooks: [{ type: "command", command: commandFor(sb), async: true }] },
       ]);
     }
     // The shim is a private copy in the Taskville home, so the path survives package moves.
@@ -195,6 +199,41 @@ describe("install --scope user", () => {
     expect(r.stdout + r.stderr).not.toContain(token);
   });
 
+  it("never prints a secret whose name and value are on different lines (roborev 5200)", async () => {
+    sb = sandbox();
+    const secret = "hunter2 correct horse";
+    write(
+      sb.userSettings,
+      `{\n  "env": {\n    "DB_PASSWORD":\n      "${secret}"\n  },\n  "passwords": [\n    "${secret}"\n  ]\n}\n`,
+    );
+    for (const argv of [
+      ["install", "claude-code", "--scope", "user", "--dry-run"],
+      ["install", "claude-code", "--scope", "user", "--yes"],
+      ["uninstall", "claude-code", "--scope", "user", "--dry-run"],
+    ]) {
+      const r = await tv(sb, argv);
+      expect(r.code, r.stderr).toBe(0);
+      expect(r.stdout + r.stderr, argv.join(" ")).not.toContain("hunter2");
+    }
+  });
+
+  it("reinstalls when a user narrowed an installed group with a matcher (roborev 5200)", async () => {
+    sb = sandbox();
+    await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
+    const edited = json(sb.userSettings);
+    const pre = (edited.hooks as Hooks).PreToolUse?.[0];
+    if (pre === undefined) throw new Error("no PreToolUse group");
+    pre.matcher = "Bash";
+    writeFileSync(sb.userSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).not.toMatch(/already installed/i);
+    const groups = hooksOf(sb.userSettings).PreToolUse ?? [];
+    expect(groups.filter((g) => g.hooks.some((h) => String(h.command).includes("shim")))).toEqual([
+      { hooks: [expect.objectContaining({ async: true })] },
+    ]);
+  });
+
   it("writes through a symlinked settings file (dotfiles) and keeps the link", async () => {
     sb = sandbox();
     const target = join(sb.root, "dotfiles", "claude-settings.json");
@@ -261,14 +300,42 @@ describe("install --scope user", () => {
 });
 
 describe("hook command", () => {
-  it("names TASKVILLE_HOME only when it is not the default, and quotes it for sh", async () => {
+  it("always sets TASKVILLE_HOME and TASKVILLE_URL, so an inherited value never wins (roborev 5200)", async () => {
+    sb = sandbox();
+    const r = await tv(
+      sb,
+      ["install", "claude-code", "--scope", "user", "--yes", "--url", "http://127.0.0.1:4807"],
+      {
+        env: {
+          HOME: sb.home,
+          TASKVILLE_URL: "http://127.0.0.1:5555",
+          TASKVILLE_HOME: join(sb.root, "other"),
+        },
+      },
+    );
+    // --url and the env both given: the flag wins. TASKVILLE_HOME from the env is the home here.
+    expect(r.code, r.stderr).toBe(0);
+    const command = String(ours(join(sb.home, ".claude", "settings.json"))[0]?.command);
+    expect(command).toBe(
+      `TASKVILLE_HOME='${join(sb.root, "other")}' TASKVILLE_URL='http://127.0.0.1:4807' '${join(sb.root, "other", "hooks", "taskville-claude-code-shim.sh")}'`,
+    );
+    // Run under an environment that has other values: the command's assignments win.
+    const shim = join(sb.root, "other", "hooks", "taskville-claude-code-shim.sh");
+    writeFileSync(shim, `#!/bin/sh\nprintf '%s|%s' "$TASKVILLE_HOME" "$TASKVILLE_URL"\n`);
+    const out = execFileSync("/bin/sh", ["-c", command], {
+      encoding: "utf8",
+      env: { TASKVILLE_URL: "http://127.0.0.1:6666", TASKVILLE_HOME: "/elsewhere" },
+    });
+    expect(out).toBe(`${join(sb.root, "other")}|http://127.0.0.1:4807`);
+  });
+
+  it("quotes a home with spaces, quotes and $ for sh", async () => {
     sb = sandbox();
     const odd = join(sb.root, `it's a "home" $x`);
     const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes", "--home", odd]);
     expect(r.code, r.stderr).toBe(0);
     const [hook] = ours(sb.userSettings);
     const command = String(hook?.command);
-    expect(command.startsWith("TASKVILLE_HOME=")).toBe(true);
     // Run the exact command under sh -c with the shim swapped for a probe that prints what it got.
     const shim = join(odd, "hooks", "taskville-claude-code-shim.sh");
     writeFileSync(
@@ -276,7 +343,7 @@ describe("hook command", () => {
       `#!/bin/sh\nprintf '%s|%s|%s' "$0" "$TASKVILLE_HOME" "\${TASKVILLE_URL-unset}"\n`,
     );
     const out = execFileSync("/bin/sh", ["-c", command], { encoding: "utf8", env: {} });
-    expect(out).toBe(`${shim}|${odd}|unset`);
+    expect(out).toBe(`${shim}|${odd}|http://127.0.0.1:4807`);
   });
 
   it("refuses a URL the shim would never contact", async () => {
@@ -295,9 +362,7 @@ describe("hook command", () => {
     chmodSync(join(sb.tv, "config.json"), 0o600);
     const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
     expect(r.code, r.stderr).toBe(0);
-    expect(ours(sb.userSettings)[0]?.command).toBe(
-      `TASKVILLE_URL='http://127.0.0.1:5999' '${sb.shim}'`,
-    );
+    expect(ours(sb.userSettings)[0]?.command).toBe(commandFor(sb, "http://127.0.0.1:5999"));
   });
 });
 
@@ -341,7 +406,7 @@ describe("uninstall", () => {
 
   it("identifies entries by the shim marker, not by position, and leaves look-alikes", async () => {
     sb = sandbox();
-    const lookAlike = { type: "command", command: `'${sb.shim}' --extra`, async: true };
+    const lookAlike = { type: "command", command: `${commandFor(sb)} --extra`, async: true };
     write(sb.userSettings, `${JSON.stringify({ hooks: { Stop: [{ hooks: [lookAlike] }] } })}\n`);
     await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
     const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"]);
