@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 /**
  * The session opener is a user-configured program run by the command service
  * (M4) with `execFile` and an argument array, never through a shell. It is set
@@ -10,6 +12,14 @@
  */
 export const OPENER_PLACEHOLDERS = ["sessionId", "cwd"] as const;
 export type OpenerValues = Record<(typeof OPENER_PLACEHOLDERS)[number], string>;
+
+// A `{sessionId}` value must look like an ID, so it can never start an option.
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** A placeholder value that `renderOpener` refuses to put into an argument. */
+export class OpenerValueError extends Error {
+  override name = "OpenerValueError";
+}
 
 const MAX_ARGS = 32;
 const MAX_ARG_LENGTH = 1024;
@@ -99,18 +109,35 @@ export function openerIssues(template: unknown): OpenerIssue[] {
   return issues;
 }
 
-/** Fills a validated template. Returns the `execFile` program and argument array. */
+/**
+ * Fills a validated template. Returns the `execFile` program and argument array.
+ * Throws OpenerValueError when a placeholder the template uses has a value that
+ * could act as an option (M1.18 F6): `{cwd}` must be an absolute path and
+ * `{sessionId}` must match `[A-Za-z0-9][A-Za-z0-9._-]*`.
+ */
 export function renderOpener(
   template: readonly string[],
   values: OpenerValues,
 ): { file: string; args: string[] } {
   const [file = "", ...rest] = template;
   const args = rest.map((arg) =>
-    arg.replace(PLACEHOLDER, (match, name: string) =>
-      KNOWN.has(name) ? values[name as keyof OpenerValues] : match,
-    ),
+    arg.replace(PLACEHOLDER, (match, name: string) => {
+      if (!KNOWN.has(name)) return match;
+      const key = name as keyof OpenerValues;
+      checkValue(key, values[key]);
+      return values[key];
+    }),
   );
   return { file, args };
+}
+
+function checkValue(name: keyof OpenerValues, value: string): void {
+  if (name === "cwd" && !isAbsolute(value)) {
+    throw new OpenerValueError("{cwd} must be an absolute path");
+  }
+  if (name === "sessionId" && !SESSION_ID.test(value)) {
+    throw new OpenerValueError("{sessionId} must match [A-Za-z0-9][A-Za-z0-9._-]*");
+  }
 }
 
 function isShell(program: string): boolean {
