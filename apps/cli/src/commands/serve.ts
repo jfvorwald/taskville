@@ -190,6 +190,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
   const { io, home } = context;
   const now = io.now ?? (() => new Date());
   let parts: ServeParts | undefined;
+  let server: Awaited<ReturnType<typeof startServer>> | undefined;
   const stopDrain = new AbortController();
   let draining: Promise<unknown> = Promise.resolve();
   try {
@@ -198,7 +199,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
     const first = await replaySpool(spool);
-    const server = await startServer({ app: parts.app, port: parts.port });
+    server = await startServer({ app: parts.app, port: parts.port });
     parts.gitWatcher.start();
     if (!first.failed && (first.deferredFiles > 0 || first.mainFile === "busy")) {
       draining = drainSpool({ ...spool, signal: stopDrain.signal }).catch((error: unknown) => {
@@ -250,13 +251,17 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     stopDrain.abort();
     await draining;
     await parts.close();
-    await server.close();
+    const listening = server;
+    server = undefined;
+    await listening.close();
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
     stopDrain.abort();
     await draining;
     await parts?.close();
+    // A failure after listening (a closed terminal, say) must not leave the port open.
+    await server?.close().catch(() => {});
     if (error instanceof CliError) throw error;
     throw new CliError(EXIT.failure, `Cannot start the engine: ${(error as Error).message}`);
   }
@@ -265,7 +270,8 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
 /**
  * Raw-mode keys on a TTY only: `p` (or `P`) asks for a new link, Ctrl-C (a byte in raw mode)
  * stops. One request per chunk at most, so a pasted run of keys counts once. Returns undefined,
- * touching nothing, when `stdin` is missing or not a terminal. `restore` leaves raw mode, stops
+ * touching nothing, when `stdin` is missing or not a terminal, and undefined after undoing any
+ * partial setup when the terminal refuses raw mode. `restore` leaves raw mode, stops
  * reading, and is also registered for process exit, so the terminal is never left raw.
  */
 function listenForKeys(
@@ -281,20 +287,31 @@ function listenForKeys(
     else if (/[pP]/.test(keys)) handlers.pair();
   };
   let restored = false;
+  let raw = false;
   const restore = () => {
     if (restored) return;
     restored = true;
     process.off("exit", restore);
     stdin.off("data", onData);
     try {
-      stdin.setRawMode?.(false);
+      if (raw) stdin.setRawMode?.(false);
+    } catch {
+      // The terminal may already be gone; nothing left to restore.
     } finally {
       stdin.pause();
     }
   };
-  stdin.setRawMode(true);
-  stdin.on("data", onData);
-  stdin.resume();
-  process.once("exit", restore);
+  try {
+    stdin.setRawMode(true);
+    raw = true;
+    stdin.on("data", onData);
+    stdin.resume();
+    process.once("exit", restore);
+  } catch {
+    // A terminal that cannot go raw (closed, or not really a TTY): undo what was done and fall
+    // back to the no-terminal behavior instead of failing a running engine.
+    restore();
+    return undefined;
+  }
   return { restore };
 }
