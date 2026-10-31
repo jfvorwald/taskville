@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft (bootstrapped from ARCHITECTURE.md section 14, step 1; not yet clarified with the owner)
+**Status**: Draft (bootstrapped from ARCHITECTURE.md section 14, milestone M1; clarified with the owner 2026-10-30; aligned with ARCHITECTURE.md revision 3 by M1.01)
 
 **Input**: User description: "Headless event engine foundation: protocol, reducer, SQLite event log, CLI, snapshots, SSE, deterministic demo"
 
@@ -46,8 +46,10 @@ with the CLI, run `status`, and compare the output to an expected snapshot.
 4. **Given** a session with two running subagents and one finished subagent, **When**
    status is requested, **Then** the two running subagents appear indented under their
    parent and the finished one appears only with `--all`.
-5. **Given** an agent marked `awaiting_input`, **When** status is requested,
-   **Then** that agent is flagged as needing attention with the recorded reason.
+5. **Given** an agent with an open request (`request.opened`, attention level
+   `needs_you`), **When** status is requested, **Then** that agent is flagged
+   "needs you" with the recorded reason (masked and truncated per FR-017), and the
+   request is listed by `taskville requests` as not answerable from the CLI.
 6. **Given** an event with an unsupported schema version or invalid shape, **When**
    it is ingested, **Then** it is rejected with an actionable per-event error and
    the rest of the batch is still processed.
@@ -87,7 +89,7 @@ assigned work, handing off tasks, waiting for input, and completing, at a
 configurable pace whose default (`calm`) suits an ambient display.
 
 **Why this priority**: It is the data source for building and reviewing the city
-(feature 002) before any real runtime is integrated, and it doubles as a soak test.
+(milestone M3) before any real runtime is integrated, and it doubles as a soak test.
 
 **Independent Test**: Run the demo twice with the same seed in accelerated time and
 compare final state hashes; they must match.
@@ -96,8 +98,9 @@ compare final state hashes; they must match.
 
 1. **Given** seed 42, **When** the demo runs for a fixed simulated duration twice,
    **Then** both runs produce the same event sequence and final state hash.
-2. **Given** a running demo, **When** status is requested, **Then** at least one
-   agent is working and, within a bounded simulated time, one is awaiting input and
+2. **Given** a demo running at the default `calm` pace, **When** status is requested,
+   **Then** at least one agent is working and, within 10 simulated minutes of the
+   start, at least one agent has been at attention level `needs_you` and at least
    one handoff has occurred.
 3. **Given** demo events, **When** they are stored, **Then** they carry `demo`
    provenance and can never be mistaken for live or imported events.
@@ -116,7 +119,12 @@ compare final state hashes; they must match.
 - Engine restarted with an older reducer version's projection on disk: projection
   is rebuilt from the event log before serving.
 - Event for a project that was never added: rejected with `unknown_project`; nothing is created.
-- Write request without the local token, or from a disallowed browser origin: rejected.
+- Any request, read or write, whose `Host` is not the loopback host and port, that
+  carries no valid credential, or whose `Origin` does not match the engine: rejected.
+- A permission request seen only through telemetry (no bridge in this feature): the
+  agent shows `needs_you`, but the request is never answerable.
+- A spooled (`late`) event describing a request: recorded in history, but it never
+  opens a `needs_you` state.
 
 ## Requirements *(mandatory)*
 
@@ -130,8 +138,9 @@ compare final state hashes; they must match.
   same-key different-content as a conflict.
 - **FR-004**: System MUST assign a gap-free, monotonically increasing ingest sequence
   per project and commit event plus projection atomically before acknowledging.
-- **FR-005**: System MUST derive agent, session, task, and activity state with a pure,
-  deterministic reducer and expose a state hash.
+- **FR-005**: System MUST derive agent (kind, parent, team), session, task, activity,
+  team, tool call, pending request, and command state with a pure, deterministic
+  reducer and expose a state hash.
 - **FR-006**: System MUST keep connection state separate from activity state.
 - **FR-007**: System MUST provide a project snapshot that includes an atomic resume cursor.
 - **FR-008**: System MUST stream events after a cursor, serving durable backlog before
@@ -144,24 +153,54 @@ compare final state hashes; they must match.
 - **FR-012**: CLI MUST provide: start the engine headless, add and list projects, show project status, ingest
   a JSONL file, follow events, and start/stop a seeded demo.
 - **FR-013**: System MUST provide a seeded demo producer whose output is reproducible for a given seed and pace. Pace is configurable (`calm` default: a visible change every 5 to 15 s and a needs-you moment about every 3 min at 1x; `lively`: every 1 to 3 s; or custom intervals).
-- **FR-014**: System MUST bind to loopback by default, require a local token for
-  write routes, and reject disallowed browser origins.
+- **FR-014**: System MUST bind to loopback only; reject any request, read or write,
+  whose `Host` is not the loopback host and port; require a credential on every
+  route, reads included (the CLI token, or a paired browser session sent as
+  `X-Taskville-Session`); never use cookies; require a matching `Origin` on
+  state-changing browser requests; and never let the CLI, shim, or bridge token
+  authorize a command (ARCHITECTURE.md sections 9.2 and 13).
 - **FR-015**: System MUST expose a health endpoint reporting process and storage health.
 - **FR-016**: System MUST store each event's provenance (`live`, `imported`, `demo`).
 - **FR-017**: System MUST store an agent-supplied attention reason only after secret masking and truncation to 280 characters, marking the text as truncated or masked when that happened.
+- **FR-018**: CLI MUST list pending requests read-only (`taskville requests`) and MUST
+  NOT offer any way to answer them (constitution principle I exception;
+  ARCHITECTURE.md section 9.2). This adds to FR-012 without changing it.
+- **FR-019**: System MUST derive attention with the three levels of ARCHITECTURE.md
+  section 2.2 (`needs_you`, `trouble`, `waiting`), label heuristic attention as
+  heuristic, compute elapsed-time heuristics in selectors with an injected clock
+  (never in stored state), merge one prompt into one `needs_you` record, and treat
+  only bridge-held requests as answerable.
 
 ### Out of Scope for This Feature
 
-3D city, overlays, Git and session importers, replay and checkpoints, the command
-service, named runtime adapters, staging deployment. Each is a later feature.
+3D city (M3), overlays, Git and session importers (M8), history replay and
+checkpoints (M6), the command service's side effects and the permission bridge
+(M4), the Claude Code adapter (M2), the evidence store (M2.06), staging deployment
+(M7). This feature does define the `request.*` and `command.*` events and their
+projections, and registers `POST /v1/commands` as a credential-checked stub with no
+side effects, so the credential rules are tested from the start.
 
 ### Key Entities
 
-- **Project**: an isolated city; name and (later) repository roots.
-- **Agent**: stable identity from a source, display name, role, connection state.
-- **Session**: one agent run from one source; start/end; belongs to an agent.
+Names and fields follow ARCHITECTURE.md section 6; [data-model.md](data-model.md)
+has the full field lists.
+
+- **Project**: an isolated city; ID, name, repository roots. Added explicitly; the
+  built-in Unsorted project always exists.
+- **Agent**: stable identity `(sourceId, sourceAgentId)`, display name, role, kind
+  (`session`, `subagent`, `lead`, `teammate`), parent agent ID (subagents), team ID
+  (leads and teammates), connection state.
+- **Team**: a lead and its teammates; started and ended.
+- **Session**: one agent run from one source; start/end; working directory; belongs
+  to an agent.
+- **ToolCall**: one tool use by an agent; phase `running`, `succeeded`, or `failed`.
 - **Task**: a unit of work; title, lifecycle status, assigned agents, related tasks.
 - **AgentActivity**: what an agent is doing now, on which task, with latest evidence.
+- **Attention**: derived per agent: level (`needs_you`, `trouble`, `waiting`), kind,
+  reason, since, optional request ID, and whether it is heuristic.
+- **PendingRequest**: a permission, elicitation, or input request and its state.
+- **Command**: a request to act on a PendingRequest and its status (no side
+  effects in this feature).
 - **Event**: immutable envelope with source identity, timestamps, ingest sequence,
   type, payload, provenance.
 
@@ -187,5 +226,7 @@ service, named runtime adapters, staging deployment. Each is a later feature.
   surfaced, not resolved, in this feature.
 - The work-area vocabulary (Dispatch, Test Lab, Workshop, Review, Security, Archives)
   is a presentation concern and lives in the city feature, not here.
-- The proposed stack in ARCHITECTURE.md section 4 (TypeScript, pnpm workspace, Node,
-  SQLite, SSE) is adopted unless the plan's research finds a reason not to.
+- The stack in ARCHITECTURE.md section 5 (TypeScript 7, pnpm workspace, Node 26,
+  Hono 4, `node:sqlite`, SSE) is adopted.
+- No permission bridge exists in this feature, so every request in it is known only
+  from telemetry and is not answerable.

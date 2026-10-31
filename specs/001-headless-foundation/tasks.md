@@ -18,7 +18,7 @@ description: "Task list for feature 001, mirroring GitHub milestone M1"
 ## Phase 1: Setup
 
 - [ ] T001 Scaffold pnpm workspace, `pnpm check`, `.claude/check.sh`, CI in package.json, pnpm-workspace.yaml, tsconfig.base.json, biome.json, .github/workflows/ci.yml ([#2](https://github.com/jfvorwald/taskville/issues/2), M1.02)
-- [ ] T002 [P] Align spec 001 documents with architecture revision 2 in specs/001-headless-foundation/ ([#1](https://github.com/jfvorwald/taskville/issues/1), M1.01)
+- [ ] T002 [P] Align spec 001 documents with architecture revisions 2 and 3 in specs/001-headless-foundation/ ([#1](https://github.com/jfvorwald/taskville/issues/1), M1.01)
 - [ ] T003 [P] Retro report generator in scripts/retro/ ([#94](https://github.com/jfvorwald/taskville/issues/94), M1.19)
 
 ## Phase 2: Foundational
@@ -38,6 +38,10 @@ description: "Task list for feature 001, mirroring GitHub milestone M1"
 ## Phase 3: User Story 1 - Ingest agent events and see who is doing what (P1)
 
 **Independent test**: ingest a fixture with the CLI and compare `status --json` to the golden output.
+
+**Not shippable alone (analysis finding F1, accepted)**: T015 also delivers US2's
+`events follow`, so US1's CLI waits on US2's SSE ticket T016. US1's domain and ingest
+work (T012 to T014) can still be verified on their own through engine tests.
 
 - [ ] T012 [US1] Domain reducer for agents, sessions, tasks, activity, teams in packages/domain/src/reducer/entities/ ([#9](https://github.com/jfvorwald/taskville/issues/9), M1.07)
 - [ ] T013 [P] [US1] Attention, requests, and commands in packages/domain/src/reducer/attention/ and packages/domain/src/selectors/ ([#10](https://github.com/jfvorwald/taskville/issues/10), M1.08)
