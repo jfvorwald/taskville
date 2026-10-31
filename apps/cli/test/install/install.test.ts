@@ -217,17 +217,22 @@ describe("install --scope user", () => {
     }
   });
 
-  it("refuses duplicate keys, which JSON.parse would hide, without printing them (roborev 5210)", async () => {
-    sb = sandbox();
-    const text = `{"env": {"DB_PASSWORD": "hunter2 first", "DB_PASSWORD": "second"}}\n`;
-    write(sb.userSettings, text);
-    for (const flag of ["--dry-run", "--yes"]) {
-      const r = await tv(sb, ["install", "claude-code", "--scope", "user", flag]);
-      expect(r.code).toBe(1);
-      expect(r.stderr).toMatch(/duplicate/i);
-      expect(r.stdout + r.stderr).not.toContain("hunter2");
+  it("refuses duplicate keys, which JSON.parse would hide, without printing them (roborev 5207, 5210)", async () => {
+    for (const text of [
+      `{"env": {"DB_PASSWORD": "hunter2 first", "DB_PASSWORD": "second"}}\n`,
+      `{"env":{"DB_PASSWORD":\n"hunter2", "DB_PASSWORD":"replacement"}}\n`,
+    ]) {
+      sb = sandbox();
+      write(sb.userSettings, text);
+      for (const flag of ["--dry-run", "--yes"]) {
+        const r = await tv(sb, ["install", "claude-code", "--scope", "user", flag]);
+        expect(r.code).toBe(1);
+        expect(r.stderr).toMatch(/duplicate/i);
+        expect(r.stdout + r.stderr).not.toContain("hunter2");
+      }
+      expect(read(sb.userSettings)).toBe(text);
+      sb.remove();
     }
-    expect(read(sb.userSettings)).toBe(text);
   });
 
   it("reinstalls when a user narrowed an installed group with a matcher (roborev 5200)", async () => {
