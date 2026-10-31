@@ -433,6 +433,29 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
     expect(JSON.stringify(storedEvents("repo"))).not.toContain(secret);
   });
 
+  it("reports a reused key whose new content has a lone surrogate as conflict, not 500 (roborev)", async () => {
+    let title = "ok";
+    const { source } = makeSource(db(), {
+      mapper: (_payload, ctx) => ({
+        events: [
+          {
+            schemaVersion: 1,
+            sourceEventId: `${ctx.sourceEventId}:0`,
+            occurredAt: ctx.receivedAt,
+            type: "task.created",
+            taskId: "task-1",
+            payload: { title },
+            provenance: "live",
+          },
+        ],
+      }),
+    });
+    await source.ingestHook({ sourceEventId: "r-6", payload: hook() });
+    title = "bad \uD800";
+    const again = await source.ingestHook({ sourceEventId: "r-6", payload: hook() });
+    expect(again.results.map((r) => r.status)).toEqual(["conflict"]);
+  });
+
   it("still ingests the events of a hook that were not stored before", async () => {
     let calls = 0;
     const event = (n: number) => ({
