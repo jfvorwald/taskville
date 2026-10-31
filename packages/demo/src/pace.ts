@@ -27,11 +27,19 @@ export const LIVELY: Pace = {
 
 const UNITS: Record<string, number> = { s: 1_000, m: 60_000, h: 3_600_000 };
 
-/** `90s`, `10m`, `1.5h` to milliseconds. */
+/** Longest duration or interval the demo accepts: 30 days of simulated time. */
+export const MAX_DURATION_MS = 30 * 24 * 3_600_000;
+
+/**
+ * `90s`, `10m`, `1.5h` to milliseconds, at most 30 days. A digit string can overflow to
+ * Infinity, which would stop the virtual clock from ever reaching it, so the result is bounded.
+ */
 export function parseDuration(text: string): number {
   const match = /^(\d+(?:\.\d+)?)(s|m|h)$/.exec(text.trim());
   if (match === null) throw new Error(`Invalid duration "${text}": use a number with s, m, or h`);
-  return Math.round(Number(match[1]) * (UNITS[match[2] ?? ""] ?? 0));
+  const ms = Math.round(Number(match[1]) * (UNITS[match[2] ?? ""] ?? 0));
+  if (!(ms <= MAX_DURATION_MS)) throw new Error(`Invalid duration "${text}": at most 30 days`);
+  return ms;
 }
 
 /** `calm`, `lively`, or `change=<min>-<max>,needs-you=<interval>`, for example `change=2s-6s,needs-you=90s`. */

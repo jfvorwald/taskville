@@ -2,7 +2,15 @@
 // built-ins, clock, or Math.random; time is a virtual clock and randomness is mulberry32.
 
 export { type OfflineOptions, type OfflineRun, runOffline, toStoredEvents } from "./offline.ts";
-export { CALM, formatPace, LIVELY, type Pace, parseDuration, parsePace } from "./pace.ts";
+export {
+  CALM,
+  formatPace,
+  LIVELY,
+  MAX_DURATION_MS,
+  type Pace,
+  parseDuration,
+  parsePace,
+} from "./pace.ts";
 export {
   DemoIngestError,
   type ProducerOptions,
