@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./hash": "./src/hash/index.ts"
+  },
   "scripts": {
     "test": "vitest run --root ../.. --project @taskville/domain"
   },

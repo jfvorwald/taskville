@@ -19,7 +19,10 @@ function reorderKeys(value: unknown, seed: number): unknown {
       const entries = Object.entries(v).map(([k, x]) => [k, walk(x)] as const);
       for (let i = entries.length - 1; i > 0; i--) {
         const j = Math.floor(next() * (i + 1));
-        [entries[i], entries[j]] = [entries[j] as (typeof entries)[number], entries[i] as (typeof entries)[number]];
+        [entries[i], entries[j]] = [
+          entries[j] as (typeof entries)[number],
+          entries[i] as (typeof entries)[number],
+        ];
       }
       return Object.fromEntries(entries);
     }

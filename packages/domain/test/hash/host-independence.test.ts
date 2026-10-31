@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { canonicalJson, hashCanonical, sha256Hex, stateHash, utf8Encode } from "../../src/hash/index.ts";
+import {
+  canonicalJson,
+  hashCanonical,
+  sha256Hex,
+  stateHash,
+  utf8Encode,
+} from "../../src/hash/index.ts";
 
 // Proves the hash module gives the same answers with no host APIs at all: it is
 // loaded into a fresh V8 context that has only the ECMAScript built-ins (no

@@ -27,9 +27,9 @@ describe("canonicalJson: structure", () => {
   it("sorts keys by UTF-16 code unit order, not code point or locale order", () => {
     // U+1F600 is the pair D83D DE00, which sorts before U+FFFF in UTF-16 code
     // units but after it in code point order. "B" (0x42) sorts before "a" (0x61).
-    const value = { "￿": 1, "\u{1f600}": 2, a: 3, B: 4, "": 5, aa: 6, "é": 7 };
+    const value = { "\uffff": 1, "\u{1f600}": 2, a: 3, B: 4, "": 5, aa: 6, "\u00e9": 7 };
     expect(canonicalJson(value)).toBe(
-      '{"":5,"B":4,"a":3,"aa":6,"é":7,"\u{1f600}":2,"￿":1}',
+      '{"":5,"B":4,"a":3,"aa":6,"\u00e9":7,"\u{1f600}":2,"\uffff":1}',
     );
   });
 
@@ -98,13 +98,13 @@ describe("canonicalJson: strings", () => {
   });
 
   it("writes non-ASCII characters as themselves, not as escapes", () => {
-    expect(canonicalJson("é€\u{1f600}  ")).toBe(
-      '"é€\u{1f600}  "',
+    expect(canonicalJson("\u00e9\u20ac\u{1f600}\u2028\u2029")).toBe(
+      '"\u00e9\u20ac\u{1f600}\u2028\u2029"',
     );
   });
 
   it("does not normalize Unicode: NFC and NFD forms stay distinct", () => {
-    expect(canonicalJson("é")).not.toBe(canonicalJson("é"));
+    expect(canonicalJson("\u00e9")).not.toBe(canonicalJson("e\u0301"));
   });
 
   it("rejects lone surrogates in values and in keys", () => {

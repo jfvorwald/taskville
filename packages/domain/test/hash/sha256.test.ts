@@ -77,7 +77,7 @@ describe("utf8Encode", () => {
   });
 
   it("encodes 1-, 2-, 3- and 4-byte sequences", () => {
-    expect(Array.from(utf8Encode("Aé€\u{1f600}"))).toEqual([
+    expect(Array.from(utf8Encode("A\u00e9\u20ac\u{1f600}"))).toEqual([
       0x41, 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80,
     ]);
   });

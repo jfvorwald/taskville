@@ -24,7 +24,11 @@ function builtinImports(source: string): string[] {
     for (const match of source.matchAll(pattern)) {
       const spec = match[1] ?? "";
       const bare = spec.replace(/^node:/, "");
-      if (spec.startsWith("node:") || BUILTINS.has(bare) || BUILTINS.has(bare.split("/")[0] ?? "")) {
+      if (
+        spec.startsWith("node:") ||
+        BUILTINS.has(bare) ||
+        BUILTINS.has(bare.split("/")[0] ?? "")
+      ) {
         found.push(spec);
       }
     }
