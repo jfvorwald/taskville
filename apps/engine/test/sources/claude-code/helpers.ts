@@ -36,9 +36,13 @@ export function useProjects(projects: readonly { id: string; roots: string[] }[]
 }
 
 /**
- * Stand-in for the M2.03 mapper (#22): one `agent.connected` per hook, keyed by
- * the hook's `session_id` (or `agent_id`), with the context's fields applied.
- * It records every call so tests can check the context the engine passed.
+ * Stand-in for the M2.03 mapper (#22, final interface at 2ba6a1a): one
+ * `agent.connected` per hook with M2.03's ID shapes: `sourceEventId`
+ * `<ctx.sourceEventId>:<event type>`, agent `claude-code:<session_id>` or
+ * `claude-code:<session_id>:<agent_id>`, envelope `sessionId` the raw
+ * `session_id`, `occurredAt` = `receivedAt`, `late` = `ctx.late`, and a context
+ * `sourceEventId` over 170 characters ignored. Evidence is the raw tool input
+ * and output, unredacted, as M2.03 returns it. Records every call.
  */
 export function standInMapper(): ClaudeCodeMapper & { calls: MapContext[] } {
   const calls: MapContext[] = [];
@@ -46,17 +50,23 @@ export function standInMapper(): ClaudeCodeMapper & { calls: MapContext[] } {
     calls.push(ctx);
     const hook = payload as Record<string, unknown>;
     if (hook.hook_event_name === "Ignored") return { events: [], ignored: "not mapped" };
-    const agentId = typeof hook.agent_id === "string" ? hook.agent_id : hook.session_id;
+    if (ctx.sourceEventId.length > 170) return { events: [], ignored: "sourceEventId too long" };
+    const session = String(hook.session_id);
+    const agentId =
+      typeof hook.agent_id === "string"
+        ? `claude-code:${session}:${hook.agent_id}`
+        : `claude-code:${session}`;
     return {
       events: [
         {
           schemaVersion: 1,
           projectId: ctx.projectId,
           sourceId: "claude-code",
-          sourceEventId: `${ctx.sourceEventId}:0`,
+          sourceEventId: `${ctx.sourceEventId}:agent.connected`,
           occurredAt: ctx.receivedAt,
           type: "agent.connected",
           agentId,
+          sessionId: session,
           payload: {},
           provenance: "live",
           late: ctx.late,
