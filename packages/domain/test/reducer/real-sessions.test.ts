@@ -286,13 +286,22 @@ describe("telemetry request closure, decision #184 D1 default (d)", () => {
     },
   );
 
-  it("a bridge-held request is not closed by another agent's tool result either (#116 D3)", () => {
+  it.each([
+    [
+      "another agent's tool result",
+      (emit: Emit) => [start(emit, "t1", SUB), finish(emit, "t1", SUB, "succeeded")],
+    ],
+    [
+      "the owner's unrelated tool result",
+      (emit: Emit) => [start(emit, "t2", LEAD), finish(emit, "t2", LEAD, "succeeded")],
+    ],
+    ["the owner's turn_failed", (emit: Emit) => [emit("session.turn_failed", {}, LEAD)]],
+    ["the session's turn_ended", (emit: Emit) => [emit("session.turn_ended", {}, LEAD)]],
+    ["a new prompt", (emit: Emit) => [emit("session.prompt_submitted", {}, LEAD)]],
+    ["session.ended", (emit: Emit) => [emit("session.ended", {}, LEAD)]],
+  ])("no same-session event closes a bridge-held request: %s (#116)", (_, make) => {
     const emit = eventStream();
-    const state = run([
-      opened(emit, "b1", LEAD, "taskville:bridge"),
-      start(emit, "t1", SUB),
-      finish(emit, "t1", SUB, "succeeded"),
-    ]);
+    const state = run([opened(emit, "b1", LEAD, "taskville:bridge"), ...make(emit)]);
     expect(state.requests.b1?.state).toBe("open");
     expect(state.requests.b1?.answerable).toBe(true);
   });
