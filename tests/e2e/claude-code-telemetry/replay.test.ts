@@ -124,16 +124,18 @@ async function replay(
     const code = await runShim(payloadText(r), ref.home, ref.url);
     assert.equal(code, 0, `shim exit for hook ${i}`);
     // The shim never blocks the agent: 1 s curl timeout plus the bounded lock wait.
-    assert.ok(performance.now() - started < 3000, `shim took too long on hook ${i}`);
+    const shimMs = performance.now() - started;
+    assert.ok(shimMs < 3000, `shim took too long on hook ${i}`);
     const id = agentIdOf(r.input);
     if (running !== undefined && registers(r) && !appeared.has(id)) {
+      // The one-second budget runs from before the shim started, so the poll gets what is left.
       const ms = await within(
-        1000,
+        Math.max(0, 1000 - shimMs),
         async () => (await statusAgents(running)).some((a) => a.id === id),
         0,
       );
       assert.notEqual(ms, undefined, `${id} (${hookName(r)}) not in taskville status within 1 s`);
-      appeared.set(id, ms ?? 0);
+      appeared.set(id, shimMs + (ms ?? 0));
     }
   }
   return appeared;

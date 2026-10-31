@@ -446,6 +446,12 @@ async function team(ref: { engine?: Engine | undefined }): Promise<void> {
     240_000,
   );
   say(`  TeammateIdle ${idle ? "seen" : "not seen within 240 s"}`);
+  if (!idle) {
+    // Do not save an incomplete run: redaction would overwrite the committed team fixture with it.
+    tmux("kill-server");
+    await watch.stop();
+    throw new Error("team scenario: no TeammateIdle within 240 s; recording not saved");
+  }
   // Let the lead finish its shutdown turn.
   await waitFor(() => {
     const lines = recorded();
