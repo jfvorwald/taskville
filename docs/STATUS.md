@@ -2,24 +2,25 @@
 
 Lead-owned cross-session summary. Teammates never edit this file; they write their own report in [tasks/](tasks/) and the lead folds it in here after review and merge.
 
-**Updated:** 2026-10-30 · **Current wave:** 1 (M1 Headless foundation) · **Open gate:** [G1 #19](https://github.com/jfvorwald/taskville/issues/19)
+**Updated:** 2026-10-31 · **Current wave:** 1 (M1 Headless foundation), complete · **Open gate:** [G1 #19](https://github.com/jfvorwald/taskville/issues/19), waiting on the owner
 
 ## Where things stand
 
-The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Event fixtures are in (PR #130): five JSONL fixtures with expected per-line ingest results and a shared loader. Engine storage is in (PR #134): an insert-only, gap-free event log enforced by SQLite triggers, projections with a rebuild helper, and owner-only database files. Attention, requests and commands are in (PR #137): one prompt, one red state; only bridge-held requests answerable; heuristic trouble from an injected clock. Retro tooling is in (PR #141): `pnpm retro M<n>` renders the milestone report from GitHub data with Mermaid charts and "not measured" where it cannot compute. The domain reducer is in (PR #139) and composed with attention and requests: replaying the same events gives the same `stateHash`, and the M1.17 fixtures replay to reviewed snapshots. Batch 3 is complete. The ingest pipeline is in (PR #145): per-event validation, masking before the content hash, duplicates and conflicts, and one transaction per batch with gap-free sequences proven under concurrent HTTP requests and three concurrent SQLite writers. The seeded six-agent demo producer is in (PR #146): calm, lively and custom paces, deterministic per seed and pace, offline and live modes. Snapshots and resumable SSE streams are in (PR #149): state plus cursor in one read, backlog then live with `Last-Event-ID`, heartbeats, resnapshot on slow consumers, and open requests expired at engine start. Batch 5 is complete. The CLI is in (PR #153): `serve --headless` with a printed one-time pairing URL, `project add/list`, `status` tree and `--json`, `events ingest/follow`, read-only `requests`, `unpair`. The demo commands are in (PR #156): `demo run --offline` prints a stable hash per seed and pace, and `demo start` posts the six-agent demo to a real `serve`. Batches 6 and 7 are complete apart from the remaining security fixes; batch 8 (performance and soak) is running. Remaining fixes for the security review (#17, [posted](https://github.com/jfvorwald/taskville/issues/17#issuecomment-6538400517): no critical or high; 3 medium, 3 low, each getting a fix PR).
+**M1 is complete and the team has stopped at gate G1.** All 22 M1 tickets are closed (21 planned plus the retro; none added or dropped). The [G1 summary](https://github.com/jfvorwald/taskville/issues/19#issuecomment-6538979170) is posted on #19 with the [retro](retros/M1.md) linked first, and #19 carries `waiting:user`. Nothing behind G1 (M2, M3) starts until the owner closes it.
+
+The headless engine works end to end: workspace and CI (#108), spec 001 aligned to revision 3 (#112), both Claude Code spikes (#111, #118), protocol v1 (#123), canonical hashing (#124), secret redaction (#127, #158), config and home (#128), fixtures (#130), insert-only SQLite storage (#134), domain reducer with attention and requests (#137, #139), retro tooling (#141), ingest (#145), the six-agent demo (#146, #159), snapshots and resumable SSE (#149), the CLI (#153, #156), the security review with all six findings fixed (#17: #152, #158, #164), and performance checks (#169).
+
+`pnpm check` on main at 07c1872: 66 files, 1,287 tests pass; CI green. The spec 001 quickstart was run by hand on main on 2026-10-31 and behaved as specified. SC-004 and SC-005 pass; SC-006 missed (#166, decision #168).
 
 ## In progress
 
-| Ticket | Lane | Teammate | State |
-| --- | --- | --- | --- |
-| [#95](https://github.com/jfvorwald/taskville/issues/95) M1.RT Retrospective and lessons | Review | lead | in progress |
-
-Ready, waiting for a free teammate: none (storage teammate takes #103 after its security fixes). Blocked: #95 (retro) on #17 and #103.
+None. The team is stopped at the gate.
 
 ## Done this wave
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#95](https://github.com/jfvorwald/taskville/issues/95) M1.RT Retrospective and lessons | [#171](https://github.com/jfvorwald/taskville/pull/171) | job 5020 pass, no findings | `pnpm retro M1` (written sections preserved on re-run); `pnpm check` 1287 tests ([retro](retros/M1.md), [report](tasks/M1.RT.md)) |
 | [#103](https://github.com/jfvorwald/taskville/issues/103) M1.21 Performance and soak checks | [#169](https://github.com/jfvorwald/taskville/pull/169) | 5005: 3 medium fixed; re-review 5011: 1 medium fixed; post-commit 5007: 1 medium fixed | SC-004 and SC-005 pass; SC-006 MISS filed as #166 ([report](tasks/M1.21.md)) |
 | [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 fix: demo parsers reject non-finite values | [#159](https://github.com/jfvorwald/taskville/pull/159) | 4979 pass, no findings | demo 97, CLI 60, `pnpm check` 1278 tests on main ([report](tasks/M1.15-fix.md)) |
 | [#18](https://github.com/jfvorwald/taskville/issues/18) M1.16 CLI demo commands | [#156](https://github.com/jfvorwald/taskville/pull/156) | 4957: 1 medium fixed; re-review 4962: 1 high, 1 medium fixed; post-commit 4964 pass | CLI 60 tests incl. `demo start` against a real `serve`; `pnpm check` 1203 tests on main ([report](tasks/M1.16.md)) |
@@ -138,4 +139,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Merge batch 2 as it lands; the M1 retro (#95) and the G1 summary once #17's fixes and #103 merge; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).
+The owner reviews G1 (#19): the retro, the S-1 and S-2 findings, the security review on #17, the quickstart, and the timing numbers; decides #116 (hold window) and #120 (teammate attribution) plus the other open decisions; and closes #19 to release M2 and M3 (wave 2). Proposed process changes and follow-ups #143, #166, #167 are listed in the G1 summary.
