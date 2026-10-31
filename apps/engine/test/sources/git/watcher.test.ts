@@ -637,6 +637,9 @@ describe("parsing git output", () => {
 // anywhere else.
 describe("repository config that names a program to run", () => {
   /**
+   * Each variant also turns its own transport on with `protocol.<name>.allow=always`, which beats
+   * a blanket `protocol.allow=never` unless that setting is overridden on the command line too.
+   *
    * A repository with a promisor remote and a ref at an object that is not there, so reading the
    * ref's commit date asks the remote for it. `configure` sets how the remote would run `marker`.
    */
@@ -676,6 +679,7 @@ describe("repository config that names a program to run", () => {
       (repo, marker) => {
         git(repo, "config", "remote.evil.url", join(dir, "nowhere"));
         git(repo, "config", "remote.evil.uploadpack", `touch '${marker}'; false`);
+        git(repo, "config", "protocol.file.allow", "always");
       },
     ],
     [
@@ -690,6 +694,7 @@ describe("repository config that names a program to run", () => {
       (repo, marker) => {
         git(repo, "config", "remote.evil.url", "ssh://evil.invalid/repo");
         git(repo, "config", "core.sshCommand", `sh -c "touch '${marker}'; false" #`);
+        git(repo, "config", "protocol.ssh.allow", "always");
       },
     ],
     [
@@ -697,6 +702,7 @@ describe("repository config that names a program to run", () => {
       async (repo, marker) => {
         git(repo, "config", "remote.evil.url", await authServer());
         git(repo, "config", "credential.helper", `!touch '${marker}'; false #`);
+        git(repo, "config", "protocol.http.allow", "always");
       },
     ],
   ];
