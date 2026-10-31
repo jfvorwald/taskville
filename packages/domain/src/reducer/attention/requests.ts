@@ -172,15 +172,15 @@ function closeSession(state: RequestsState, event: StoredEnvelope): RequestsStat
  * Which same-session events close an open request. Kept as one rule so decision #184 can be
  * switched in one place.
  *
- * #184 D1 (default): a telemetry request (not answerable) closes only on its owning agent's
- * events, or on a session boundary (`session.turn_ended`, `session.prompt_submitted`,
- * `session.ended`) from any agent. Subagents and in-process teammates share their lead's
- * session (S-2), so a subagent's unrelated tool call no longer clears its lead's red state.
- * The D1 alternative (#135 D2, any agent's event closes it) is `return true`. A bridge-held
- * request keeps #135 D2.
+ * #184 D1 (default): a telemetry request closes only on its owning agent's events, or on a
+ * session boundary (`session.turn_ended`, `session.prompt_submitted`, `session.ended`) from
+ * any agent. Subagents and in-process teammates share their lead's session (S-2), so a
+ * subagent's unrelated tool call no longer clears its lead's red state. A bridge-held request
+ * follows the same rule: #116 D3 closes it only on a matching PostToolUse (M4), so another
+ * agent's result never closes it either. The D1 alternative (#135 D2: any agent's event closes
+ * a telemetry request) is one line at the top: `if (!request.answerable) return true;`.
  */
 export function closesRequest(request: PendingRequest, event: StoredEnvelope): boolean {
-  if (request.answerable) return true;
   if (
     event.type === "session.turn_ended" ||
     event.type === "session.prompt_submitted" ||

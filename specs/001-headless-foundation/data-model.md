@@ -135,7 +135,8 @@ there is no other way to change them (ARCHITECTURE.md section 6).
   `session.turn_ended`, `session.prompt_submitted`, and `session.ended` close it
   from any agent in the session. Subagents and in-process teammates share their
   lead's session (S-2), so this keeps a subagent's unrelated tool call from closing
-  its lead's prompt. Bridge-held requests keep the any-agent rule. `request.resolved` (engine only) closes it as
+  its lead's prompt. Bridge-held requests follow the same rule, since #116 D3
+  closes them only on a matching PostToolUse (M4). `request.resolved` (engine only) closes it as
   `answered_here` or `answered_elsewhere`; `request.expired` (engine only, emitted
   for every open request at engine start) closes it as `expired`.
 - A `late` `request.opened` is recorded with `late: true` and state `expired`; it
