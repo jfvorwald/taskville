@@ -1523,7 +1523,7 @@ describe("adversarial input", () => {
     ["value keys", '"value":'.repeat(n / 8)],
     ["value keys with objects", '"value":{'.repeat(n / 9)],
     ["value keys with objects and a name", `${'"value":{'.repeat(n / 20)},"name":"A_PASS"`],
-    ["value objects then names", `${'"value":{'.repeat(450)},"name":"A_PASS"`.repeat(n / 4100)],
+    ["value objects then names", `${'"value":{'.repeat(113)},"name":"A_PASS"`.repeat(n / 1040)],
     ["unclosed name object values", '{"name":"A_PASS","value":{'.repeat(n / 26)],
     ["unclosed name array values", '{"name":"A_PASS","value":['.repeat(n / 26)],
     ["unclosed name string values", '{"name":"A_PASS","value":"'.repeat(n / 26)],

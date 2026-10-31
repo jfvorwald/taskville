@@ -178,9 +178,17 @@ const PASSWORD_COMMAND =
 const MAX_COMMAND_WORDS = 256;
 
 // A `{"name": "DB_PASSWORD", "value": "..."}` pair (Kubernetes env, the GitHub API, AWS
-// tags, `docker inspect`) written as text. Group 3 is the name; the value is read by hand.
-const NAME_VALUE_PAIR =
-  /(["'])(?:name|key)\1[ \t]*:[ \t]*(["'])([A-Za-z_][A-Za-z0-9_.-]{0,99})\2[ \t]*,[ \t]*\1value\1[ \t]*:[ \t]*/gi;
+// tags, `docker inspect`) written as text, in either property order and across lines.
+// PAIR_NAME finds the name (group 3); the value is read by hand.
+const PAIR_NAME = /(["'])(?:name|key)\1\s*:\s*(["'])([A-Za-z_][A-Za-z0-9_.-]{0,99})\2/gi;
+const VALUE_KEY_AFTER = /\s*,\s*(["'])value\1\s*:\s*/iy;
+const VALUE_KEY = /(["'])value\1\s*:\s*/gi;
+
+// How far a nested `{...}` or `[...]` value is followed, so a long run costs a bounded scan.
+// A value read forward from its name can be longer than one read back from the name that
+// follows it: the backward case rescans from every `"value":` in the window.
+const MAX_PAIR_VALUE = 4096;
+const MAX_PAIR_VALUE_BEFORE_NAME = 1024;
 
 /** Masks secret-looking values in a string. Deterministic and idempotent. */
 export function redactText(input: string): RedactedText {
@@ -392,17 +400,92 @@ function pairValueEnd(input: string, value: Value): number {
   return after >= value.end || SYNTAX_STOP.has(input.charAt(after)) ? after : value.end;
 }
 
-/** Masks the value of a text `{"name": "DB_PASSWORD", "value": ...}` pair. */
-function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
-  for (const match of input.matchAll(NAME_VALUE_PAIR)) {
-    if (!isSensitiveName(match[3] ?? "")) continue;
-    const value = readValue(input, match.index + match[0].length, ends);
-    const end = value.quoted ? value.end : pairValueEnd(input, value);
-    // JSON `null` carries nothing, and redactJson leaves it.
-    if (!value.quoted && input.slice(value.start, end) === "null") continue;
-    if (!isPlaceholder(input, value.start, end)) {
-      out.push({ start: value.start, end, kind: "sensitive-value" });
+/**
+ * End of the `{...}` or `[...]` that opens at `at`: quote-aware, counting both bracket
+ * kinds. If it does not close within `limit` characters, the value is taken to run that far.
+ */
+function balancedEnd(input: string, at: number, limit: number): number {
+  const stop = Math.min(input.length, at + limit);
+  let depth = 0;
+  let quote = "";
+  for (let i = at; i < stop; i++) {
+    const ch = input.charAt(i);
+    if (quote !== "") {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "{" || ch === "[") {
+      depth += 1;
+    } else if ((ch === "}" || ch === "]") && --depth === 0) {
+      return i + 1;
     }
+  }
+  return stop;
+}
+
+interface PairValue {
+  /** The span to mask. */
+  start: number;
+  end: number;
+  /** Where the value token ends, quotes included. */
+  next: number;
+}
+
+/** Reads the value of a pair at `at`: a string, a number, or a whole object or array. */
+function readPairValue(input: string, ends: Ends, at: number, limit: number): PairValue | null {
+  const first = input.charAt(at);
+  // `[REDACTED:...]` opens with a bracket too, but it is a marker, read as a plain value.
+  if ((first === "{" || first === "[") && referenceLength(input, at) === 0) {
+    const end = balancedEnd(input, at, limit);
+    return { start: at, end, next: end };
+  }
+  const value = readValue(input, at, ends);
+  if (value.quoted) {
+    const closed = input.charAt(value.end) === input.charAt(at);
+    return { start: value.start, end: value.end, next: closed ? value.end + 1 : value.end };
+  }
+  const end = pairValueEnd(input, value);
+  // JSON `null` carries nothing, and redactJson leaves it.
+  if (input.slice(value.start, end) === "null") return null;
+  return { start: value.start, end, next: end };
+}
+
+/**
+ * Masks the value of a text `{"name": "DB_PASSWORD", "value": ...}` pair, in either
+ * property order. The two properties must sit next to each other, as `JSON.stringify` and
+ * Kubernetes manifests write them; a property in between ends the match.
+ */
+function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
+  // `"value"` after a sensitive name.
+  let maskedUntil = 0;
+  const commas: number[] = []; // where the comma in front of each sensitive name sits
+  for (const match of input.matchAll(PAIR_NAME)) {
+    if (!isSensitiveName(match[3] ?? "")) continue;
+    let comma = match.index;
+    while (comma > 0 && /\s/.test(input.charAt(comma - 1))) comma--;
+    if (input.charAt(comma - 1) === ",") commas.push(comma - 1);
+    if (match.index < maskedUntil) continue;
+    VALUE_KEY_AFTER.lastIndex = match.index + match[0].length;
+    const key = VALUE_KEY_AFTER.exec(input);
+    if (key === null) continue;
+    const value = readPairValue(input, ends, VALUE_KEY_AFTER.lastIndex, MAX_PAIR_VALUE);
+    if (value === null || isPlaceholder(input, value.start, value.end)) continue;
+    out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+    maskedUntil = value.next;
+  }
+  // `"value"` before a sensitive name: only a `"value"` that ends just before one of those
+  // commas is read, so a `"value"` with no sensitive name near it costs nothing.
+  let next = 0;
+  for (const match of input.matchAll(VALUE_KEY)) {
+    const at = match.index + match[0].length;
+    while (next < commas.length && (commas[next] ?? 0) < at) next++;
+    const comma = commas[next];
+    if (comma === undefined || comma - at > MAX_PAIR_VALUE_BEFORE_NAME) continue;
+    const value = readPairValue(input, ends, at, comma - at);
+    if (value === null || isPlaceholder(input, value.start, value.end)) continue;
+    if (!/^\s*$/.test(input.slice(value.next, comma))) continue;
+    out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
   }
 }
 
@@ -499,8 +582,8 @@ function userSeparator(input: string, at: number): { colon: number; quote: strin
 
 /**
  * End of the shell word at `at`: quoted and unquoted segments joined, complete
- * references (`$(id -u)`) taken whole. Ends at whitespace or a command separator
- * outside quotes; an unterminated quote ends it at the line end.
+ * references (`$(id -u)`) taken whole, backslash escapes honored. Ends at whitespace or a
+ * command separator outside quotes; an unterminated quote ends it at the line end.
  */
 function shellWordEnd(input: string, at: number): number {
   let i = at;
@@ -517,10 +600,16 @@ function shellWordEnd(input: string, at: number): number {
       i += ref;
       continue;
     }
+    // A backslash outside quotes escapes the next character: `pa\ ss` is one word, and a
+    // backslash before a line break continues the word on the next line.
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
     if (UNQUOTED_STOP.has(ch) || /\s/.test(ch)) return i;
     i += 1;
   }
-  return i;
+  return Math.min(i, input.length);
 }
 
 /**
