@@ -19,6 +19,9 @@ export interface ProducerOptions {
   readonly post: (batch: EventBatchRequest) => Promise<EventBatchResponse>;
   /** Waits real milliseconds. */
   readonly sleep: (ms: number) => Promise<void>;
+  /** Reads the real clock in milliseconds; steps are scheduled against it so that time spent
+   * posting does not slow the pace. */
+  readonly now: () => number;
   /** Checked before each step; true stops the run (for example on SIGINT). */
   readonly stop?: () => boolean;
 }
@@ -51,11 +54,11 @@ export async function runProducer(options: ProducerOptions): Promise<ProducerSum
   const speed = options.speed ?? 1;
   if (!(speed > 0)) throw new Error(`speed must be above zero, got ${speed}`);
   const summary: ProducerSummary = { steps: 0, events: 0, accepted: 0, duplicate: 0, lastAtMs: -1 };
-  let previousAt = 0;
+  const runStart = options.now();
   for (const step of demoSteps(options)) {
     if (options.stop?.() === true) break;
-    await options.sleep((step.atMs - previousAt) / speed);
-    previousAt = step.atMs;
+    await options.sleep(Math.max(0, runStart + step.atMs / speed - options.now()));
+    if (options.stop?.() === true) break;
     const response = await options.post({ events: [...step.events] });
     const failed = response.results.filter(
       (r) => r.status === "rejected" || r.status === "conflict",

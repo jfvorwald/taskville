@@ -203,6 +203,25 @@ describe("scenario content", () => {
     expect(of("team.ended").map((e) => e.payload.teamId)).toContain(team?.payload.teamId);
   });
 
+  it("moves tasks through the task graph without transition warnings", () => {
+    const stored = toStoredEvents(
+      generateDemo({ seed: 42, pace: CALM, durationMs: 2 * 60 * MIN }).flatMap((s) => s.events),
+      "demo",
+    );
+    const tasks = Object.values(replay("demo", stored).tasks);
+    expect(tasks.some((t) => t.status === "completed")).toBe(true);
+    expect(tasks.filter((t) => t.transitionWarning !== undefined)).toEqual([]);
+    expect(of("task.status_changed").some((e) => e.payload.status === "reviewing")).toBe(true);
+  });
+
+  it("gives runs that start a millisecond apart different event keys", () => {
+    const key = (startAtMs: number) =>
+      generateDemo({ seed: 1, pace: CALM, durationMs: MIN, startAtMs })[0]?.events[0]
+        ?.sourceEventId;
+    expect(key(DEMO_EPOCH_MS)).not.toBe(key(DEMO_EPOCH_MS + 1));
+    expect(key(DEMO_EPOCH_MS)).toBe(key(DEMO_EPOCH_MS));
+  });
+
   it("never emits engine-only types", () => {
     expect(
       events.filter(

@@ -24,10 +24,23 @@ function stubIngest(verdict?: (sourceEventId: string) => IngestResult) {
   return { batches, post };
 }
 
-const recordSleep = () => {
+/** A fake wall clock: sleeping advances it, and so does each post by `postMs`. */
+const fakeClock = (postMs = 0) => {
+  let time = 1_000_000;
   const delays: number[] = [];
-  return { delays, sleep: async (ms: number) => void delays.push(ms) };
+  return {
+    delays,
+    now: () => time,
+    sleep: async (ms: number) => {
+      delays.push(ms);
+      time += ms;
+    },
+    spend: () => {
+      time += postMs;
+    },
+  };
 };
+const recordSleep = () => fakeClock();
 
 describe("runProducer", () => {
   it("posts one batch per visible change, exactly the generated events", async () => {
@@ -42,6 +55,7 @@ describe("runProducer", () => {
       durationMs: 10 * MIN,
       post: ingest.post,
       sleep,
+      now: () => 0,
     });
     const steps = generateDemo({ seed: 42, pace: CALM, durationMs: 10 * MIN, startAtMs });
     expect(ingest.batches.map((b) => b.events)).toEqual(steps.map((s) => s.events));
@@ -55,7 +69,7 @@ describe("runProducer", () => {
 
   it("waits the simulated gap divided by the speed before each step", async () => {
     const run = async (speed: number) => {
-      const { delays, sleep } = recordSleep();
+      const { delays, sleep, now } = recordSleep();
       await runProducer({
         seed: 1,
         pace: CALM,
@@ -64,25 +78,65 @@ describe("runProducer", () => {
         speed,
         post: stubIngest().post,
         sleep,
+        now,
       });
       return delays;
     };
     const steps = generateDemo({ seed: 1, pace: CALM, durationMs: 5 * MIN });
     const gaps = steps.slice(1).map((s, i) => s.atMs - (steps[i]?.atMs ?? 0));
     expect(await run(1)).toEqual([0, ...gaps]);
-    expect(await run(20)).toEqual([0, ...gaps.map((g) => g / 20)]);
+    const fast = await run(20);
+    expect(fast).toHaveLength(gaps.length + 1);
+    for (const [i, gap] of [0, ...gaps].entries()) expect(fast[i]).toBeCloseTo(gap / 20, 6);
+  });
+
+  it("schedules against the wall clock, so time spent posting does not slow the pace", async () => {
+    const clock = fakeClock(400);
+    const ingest = stubIngest();
+    await runProducer({
+      seed: 1,
+      pace: CALM,
+      projectId: "demo",
+      durationMs: 5 * MIN,
+      post: async (batch) => {
+        clock.spend();
+        return ingest.post(batch);
+      },
+      sleep: clock.sleep,
+      now: clock.now,
+    });
+    const steps = generateDemo({ seed: 1, pace: CALM, durationMs: 5 * MIN });
+    const gaps = steps.slice(1).map((s, i) => s.atMs - (steps[i]?.atMs ?? 0));
+    expect(clock.delays).toEqual([0, ...gaps.map((g) => g - 400)]);
+  });
+
+  it("does not post after a stop requested while it slept", async () => {
+    const ingest = stubIngest();
+    let stopped = false;
+    await runProducer({
+      seed: 1,
+      pace: CALM,
+      projectId: "demo",
+      post: ingest.post,
+      sleep: async () => {
+        if (ingest.batches.length === 2) stopped = true;
+      },
+      now: () => 0,
+      stop: () => stopped,
+    });
+    expect(ingest.batches).toHaveLength(2);
   });
 
   it("stops when asked, between steps", async () => {
     const ingest = stubIngest();
-    let calls = 0;
     await runProducer({
       seed: 1,
       pace: CALM,
       projectId: "demo",
       post: ingest.post,
       sleep: async () => {},
-      stop: () => ++calls > 3,
+      now: () => 0,
+      stop: () => ingest.batches.length >= 3,
     });
     expect(ingest.batches).toHaveLength(3);
   });
@@ -100,6 +154,7 @@ describe("runProducer", () => {
         eventId: "00000000-0000-4000-8000-000000000001",
       })).post,
       sleep: async () => {},
+      now: () => 0,
     });
     expect(summary.accepted).toBe(0);
     expect(summary.duplicate).toBe(summary.events);
@@ -118,6 +173,7 @@ describe("runProducer", () => {
       durationMs: 2 * MIN,
       post: reject.post,
       sleep: async () => {},
+      now: () => 0,
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DemoIngestError);
     expect((error as DemoIngestError).codes).toEqual(["unknown_project"]);
@@ -134,6 +190,7 @@ describe("runProducer", () => {
       durationMs: MIN,
       post: ingest.post,
       sleep: async () => {},
+      now: () => 0,
     });
     const first = ingest.batches[0]?.events[0] as { occurredAt: string; projectId: string };
     expect(first.occurredAt).toBe("2030-01-01T00:00:00.000Z");

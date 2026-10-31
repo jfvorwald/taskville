@@ -129,7 +129,9 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
   const startAtMs = options.startAtMs ?? DEMO_EPOCH_MS;
   const rng: Rng = seededRng(seed);
   const prefix = `d${seed}`;
-  const run = `r${Math.floor(startAtMs / 1000).toString(36)}`;
+  // The run tag keys this run's events and per-run IDs: the same seed and start time repeat as
+  // duplicates; any other start time, even a millisecond apart, is a new run.
+  const run = `r${startAtMs.toString(36)}`;
   let at = 0;
   let sequence = 0;
   let counter = 0;
@@ -439,7 +441,10 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
       yield* awaitWork(me);
       const task = me.queue.shift() as Task;
       reviewCount += 1;
-      yield activity(me, "reviewing", task.id);
+      yield [
+        ev("task.status_changed", { status: "reviewing" }, { agent: me, task: task.id }),
+        ...activity(me, "reviewing", task.id),
+      ];
       if (reviewCount === 1 || rng.chance(0.35))
         yield* subagent(me, "security-check", "security-reviewer", "reviewing");
       yield* tool(me, "Read", `Review the diff for ${task.title}`, [rng.pick(FILES)]);
