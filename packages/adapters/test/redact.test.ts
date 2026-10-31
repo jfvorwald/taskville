@@ -428,7 +428,26 @@ const positives: Positive[] = [
   {
     name: "Digest parameters with shell-escaped quotes",
     input: `curl -H "Authorization: Digest username=\\"admin\\", response=\\"${fake.hexResponse}\\"" https://x`,
-    secret: `username=\\"admin\\", response=\\"${fake.hexResponse}\\"`,
+    // The whole rest of the line is masked, trailing URL included.
+    secret: `username=\\"admin\\", response=\\"${fake.hexResponse}\\"" https://x`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with an escaped quote in a value",
+    input: `Authorization: Digest username="ad\\"min", response="${fake.hexResponse}"`,
+    secret: `username="ad\\"min", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with spaces around the equals signs",
+    input: `Authorization: Digest username = "admin", response = "${fake.hexResponse}"`,
+    secret: `username = "admin", response = "${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters after a very long uri",
+    input: `Authorization: Digest uri="/${"a".repeat(5000)}", response="${fake.hexResponse}"`,
+    secret: `uri="/${"a".repeat(5000)}", response="${fake.hexResponse}"`,
     kind: "bearer-token",
   },
   {
@@ -490,6 +509,18 @@ const positives: Positive[] = [
     name: "curl password after a quoted user",
     input: `curl -u "$API_USER":${fake.password} https://x`,
     secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password after a quoted user segment and a suffix",
+    input: `curl -u "$API_USER"suffix:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password with a quoted segment inside it",
+    input: `curl -u admin:pre"${fake.password}" https://x`,
+    secret: `pre"${fake.password}"`,
     kind: "basic-auth",
   },
   {
@@ -864,6 +895,9 @@ describe("adversarial input", () => {
     ["unterminated Authorization parameter", `Authorization: Digest a="${"x".repeat(n)}`],
     ["escaped Authorization parameters", 'Authorization: Digest a=\\"'.repeat(n / 26)],
     ["Authorization parameter lists", `Authorization: Digest ${"a=b,".repeat(n / 4)}`],
+    ["Authorization headers on one line", "Authorization: Digest a=1 ".repeat(n / 25)],
+    ["quoted -u segments", '-u "a"'.repeat(n / 6)],
+    ["-u references", "-u $(a)".repeat(n / 7)],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
