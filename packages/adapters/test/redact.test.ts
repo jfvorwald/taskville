@@ -837,6 +837,43 @@ const positives: Positive[] = [
     secret: fake.password,
     kind: "sensitive-value",
   },
+  // roborev 5399: any number of global options before `login`; the segment decides.
+  {
+    name: "docker login as the tenth word, after five global options",
+    input: `docker --config /tmp/dc --tlscacert /tmp/ca.pem --tlscert /tmp/cert.pem --tlskey /tmp/key.pem --tlsverify login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login after thirty global options",
+    input: `docker ${Array.from({ length: 30 }, (_, i) => `--opt${i} v${i}`).join(" ")} login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login with --password and a value that looks like prose",
+    input: `docker login --username me --password ${fake.lettersToken} registry.example.test`,
+    secret: fake.lettersToken,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login with --password= and a value that looks like prose",
+    input: `podman login --password=${fake.lettersToken} registry.example.test`,
+    secret: fake.lettersToken,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql run through docker exec",
+    input: `docker exec -i db mysql -u root -p${fake.password} app`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login after a docker command that has no login",
+    input: `docker run -p 8080:80 img && docker login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
   // roborev 5357: a backslash escapes the next character in an unquoted shell word.
   {
     name: "mysql -p with an escaped space",
@@ -1523,6 +1560,20 @@ describe("M2.22 names and flags", () => {
     expectWellFormed(input, result);
   });
 
+  it("masks the -p of a docker command that also says login (accepted over-mask)", () => {
+    // No global-option parsing: a whole `login` word anywhere after docker in the command
+    // makes its -p a password. A publish flag in such a command is masked, never leaked.
+    expect(redactText("docker run -p 8080:80 img login").text).toBe(
+      `docker run -p ${maskMarker("sensitive-value")} img login`,
+    );
+    expect(redactText("docker run -p 8080:80 img").spans).toEqual([]);
+  });
+
+  it("stops a docker segment at a separator", () => {
+    const input = `docker login reg; docker run -p 8080:80 img\ndocker ps -p 1`;
+    expect(redactText(input).text).toBe(input);
+  });
+
   it("is idempotent", () => {
     const input = `mysql -p${fake.password} app; sshpass -p ${fake.password} ssh host; docker login -p ${fake.password} r`;
     const once = redactText(input).text;
@@ -1601,6 +1652,15 @@ describe("adversarial input", () => {
     ["name pairs with long values", `{"name":"A_PASS","value":"${"a".repeat(n)}`],
     ["name pairs without values", '{"name":"A_PASS",'.repeat(n / 17)],
     ["name pairs with quotes", `{"name":"${"A_".repeat(n / 2)}`],
+    ["/docker repeats", "/docker".repeat(20_000)],
+    ["docker repeats", "docker ".repeat(n / 7)],
+    ["docker -p repeats", "docker -p ".repeat(n / 10)],
+    ["docker login repeats, separated", "docker login -p ;".repeat(n / 16)],
+    ["docker --password repeats", "docker --password ".repeat(n / 18)],
+    ["docker options, thirty then login", `docker ${"--a b ".repeat(30)}login `.repeat(n / 190)],
+    ["docker with a long word", `docker ${"a".repeat(n)} login`],
+    ["docker unterminated quotes", 'docker "'.repeat(n / 8)],
+    ["docker escapes", `docker ${"\\ ".repeat(n / 2)}`],
     ["docker quoted global options", 'docker --config "a b" '.repeat(n / 23)],
     ["docker unclosed quote options", 'docker --config "'.repeat(n / 17)],
     ["docker global options", "docker --config /tmp ".repeat(n / 22)],
