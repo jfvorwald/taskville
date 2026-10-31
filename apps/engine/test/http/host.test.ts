@@ -29,7 +29,7 @@ describe("Host check (DNS rebinding)", () => {
       const { app, pairing } = makeApp();
       const code = pairing.issueCode();
       const res = await app.request(
-        "/v1/pairing/exchange",
+        "/v1/pairing",
         postJson({ code }, { Host: host, Origin: ORIGIN }),
       );
       expect(res.status).toBe(403);

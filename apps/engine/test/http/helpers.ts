@@ -1,6 +1,6 @@
 import pino from "pino";
 import { PairingStore } from "../../src/auth/pairing.ts";
-import { createApp } from "../../src/http/app.ts";
+import { type AppOptions, createApp } from "../../src/http/app.ts";
 
 export const PORT = 4807;
 export const HOST = `127.0.0.1:${PORT}`;
@@ -8,7 +8,7 @@ export const ORIGIN = `http://127.0.0.1:${PORT}`;
 export const CLI_TOKEN = "cli-token-0123456789abcdefghijklmnopqrstuvwxyzAB";
 export const BRIDGE_TOKEN = "bridge-token-0123456789abcdefghijklmnopqrstuvwxy";
 
-export function makeApp(extra: { staticDir?: string } = {}) {
+export function makeApp(extra: Partial<Pick<AppOptions, "staticDir" | "health" | "version">> = {}) {
   const logLines: string[] = [];
   const logger = pino({ level: "debug" }, { write: (line: string) => logLines.push(line) });
   const pairing = new PairingStore();

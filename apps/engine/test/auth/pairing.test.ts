@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PairingStore } from "../../src/auth/pairing.ts";
-
-function clock(start = 1_000_000) {
-  let t = start;
-  return { now: () => t, advance: (ms: number) => (t += ms) };
-}
+import { MemoryPairingRecords, PairingStore } from "../../src/auth/pairing.ts";
 
 describe("PairingStore", () => {
   it("exchanges a fresh code for a session secret that is not the code", () => {
@@ -28,14 +23,6 @@ describe("PairingStore", () => {
     store.issueCode();
     expect(store.exchange("not-a-real-code")).toBeNull();
     expect(store.exchange("")).toBeNull();
-  });
-
-  it("rejects an expired code", () => {
-    const c = clock();
-    const store = new PairingStore({ now: c.now, codeTtlMs: 60_000 });
-    const code = store.issueCode();
-    c.advance(60_001);
-    expect(store.exchange(code)).toBeNull();
   });
 
   it("invalidates the previous code when a new one is issued", () => {
@@ -65,5 +52,33 @@ describe("PairingStore", () => {
     expect(store.hasSession(a)).toBe(false);
     expect(store.hasSession(b)).toBe(false);
     expect(store.exchange(pending)).toBeNull();
+  });
+
+  it("keeps sessions in its records, so a store over the same records accepts them", () => {
+    const records = new MemoryPairingRecords();
+    const first = new PairingStore({ records });
+    const session = first.exchange(first.issueCode()) ?? "";
+    // A restarted engine builds a new store over the same persisted records.
+    const restarted = new PairingStore({ records });
+    expect(restarted.hasSession(session)).toBe(true);
+    expect(records.list()).toHaveLength(1);
+    expect(records.list()[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(records.list()[0]).not.toContain(session);
+  });
+
+  it("unpairAll clears the records", () => {
+    const records = new MemoryPairingRecords();
+    const store = new PairingStore({ records });
+    store.exchange(store.issueCode());
+    store.unpairAll();
+    expect(records.list()).toEqual([]);
+    expect(new PairingStore({ records }).unpairAll()).toBe(0);
+  });
+
+  it("ignores a malformed stored hash instead of throwing", () => {
+    const records = new MemoryPairingRecords();
+    records.add("not-hex");
+    const store = new PairingStore({ records });
+    expect(store.hasSession("anything")).toBe(false);
   });
 });

@@ -12,10 +12,7 @@ import {
 } from "./helpers.ts";
 
 async function pair(app: ReturnType<typeof makeApp>["app"], code: string): Promise<string> {
-  const res = await app.request(
-    "/v1/pairing/exchange",
-    postJson({ code }, { Host: HOST, Origin: ORIGIN }),
-  );
+  const res = await app.request("/v1/pairing", postJson({ code }, { Host: HOST, Origin: ORIGIN }));
   expect(res.status).toBe(200);
   const body = (await res.json()) as { session: string };
   return body.session;
@@ -75,7 +72,7 @@ describe("credentials on reads", () => {
     const res = await app.request("/health", { headers: bearer(BRIDGE_TOKEN) });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({
-      error: { code: "forbidden", message: expect.any(String) },
+      error: { code: "credential_not_allowed", message: expect.any(String) },
     });
   });
 
@@ -92,7 +89,7 @@ describe("browser pairing", () => {
     const code = pairing.issueCode();
     await pair(app, code);
     const again = await app.request(
-      "/v1/pairing/exchange",
+      "/v1/pairing",
       postJson({ code }, { Host: HOST, Origin: ORIGIN }),
     );
     expect(again.status).toBe(401);
@@ -104,10 +101,10 @@ describe("browser pairing", () => {
   it("requires a matching Origin on the exchange", async () => {
     const { app, pairing } = makeApp();
     const code = pairing.issueCode();
-    const none = await app.request("/v1/pairing/exchange", postJson({ code }, { Host: HOST }));
+    const none = await app.request("/v1/pairing", postJson({ code }, { Host: HOST }));
     expect(none.status).toBe(403);
     const foreign = await app.request(
-      "/v1/pairing/exchange",
+      "/v1/pairing",
       postJson({ code }, { Host: HOST, Origin: "http://evil.example" }),
     );
     expect(foreign.status).toBe(403);
@@ -121,10 +118,7 @@ describe("browser pairing", () => {
   it("rejects a malformed exchange body without echoing it", async () => {
     const { app } = makeApp();
     for (const body of [{}, { code: 42 }, { code: "" }, { code: "x".repeat(1000) }, "nope"]) {
-      const res = await app.request(
-        "/v1/pairing/exchange",
-        postJson(body, { Host: HOST, Origin: ORIGIN }),
-      );
+      const res = await app.request("/v1/pairing", postJson(body, { Host: HOST, Origin: ORIGIN }));
       expect(res.status, JSON.stringify(body)).toBe(400);
       expect(await res.text()).not.toContain("xxxxxxxx");
     }
@@ -135,7 +129,7 @@ describe("browser pairing", () => {
     const code = pairing.issueCode();
     await pair(app, code);
     const res = await app.request(
-      "/v1/pairing/exchange",
+      "/v1/pairing",
       postJson({ code }, { Host: HOST, Origin: ORIGIN }),
     );
     expect(await res.text()).not.toContain(code);
@@ -144,7 +138,7 @@ describe("browser pairing", () => {
   it("marks API responses no-store and never sets cookies", async () => {
     const { app, pairing } = makeApp();
     const res = await app.request(
-      "/v1/pairing/exchange",
+      "/v1/pairing",
       postJson({ code: pairing.issueCode() }, { Host: HOST, Origin: ORIGIN }),
     );
     expect(res.status).toBe(200);
@@ -157,7 +151,7 @@ describe("browser pairing", () => {
     const { app, pairing } = makeApp();
     const a = await pair(app, pairing.issueCode());
     const b = await pair(app, pairing.issueCode());
-    const res = await app.request("/v1/pairing/unpair", {
+    const res = await app.request("/v1/pairing/revoke", {
       method: "POST",
       headers: bearer(CLI_TOKEN),
     });
@@ -172,12 +166,12 @@ describe("browser pairing", () => {
   it("unpair is refused to a browser session and to the bridge", async () => {
     const { app, pairing } = makeApp();
     const session = await pair(app, pairing.issueCode());
-    const fromBrowser = await app.request("/v1/pairing/unpair", {
+    const fromBrowser = await app.request("/v1/pairing/revoke", {
       method: "POST",
       headers: { ...sessionHeaders(session), Origin: ORIGIN },
     });
     expect(fromBrowser.status).toBe(403);
-    const fromBridge = await app.request("/v1/pairing/unpair", {
+    const fromBridge = await app.request("/v1/pairing/revoke", {
       method: "POST",
       headers: bearer(BRIDGE_TOKEN),
     });
@@ -186,28 +180,28 @@ describe("browser pairing", () => {
 
   it("offers no HTTP route that mints a pairing code", async () => {
     const { app } = makeApp();
-    for (const path of ["/v1/pairing", "/v1/pairing/code", "/v1/pairing/issue"]) {
+    for (const path of ["/v1/pairing/code", "/v1/pairing/issue", "/v1/pairing/new"]) {
       const res = await app.request(path, { method: "POST", headers: bearer(CLI_TOKEN) });
       expect(res.status, path).toBe(404);
     }
+    // The exchange route itself never hands out a code or session without one.
+    const res = await app.request("/v1/pairing", postJson({}, bearer(CLI_TOKEN)));
+    expect(res.status).toBe(400);
   });
 });
 
 describe("command route stub", () => {
-  function appWithCommands() {
-    const made = makeApp();
-    made.app.post("/v1/commands", requireScope("command"), (c) => c.json({ accepted: true }));
-    return made;
-  }
-
   it("refuses the CLI token", async () => {
-    const { app } = appWithCommands();
+    const { app } = makeApp();
     const res = await app.request("/v1/commands", postJson({}, bearer(CLI_TOKEN)));
     expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: { code: "credential_not_allowed", message: expect.any(String) },
+    });
   });
 
   it("refuses the CLI token even with a matching Origin", async () => {
-    const { app } = appWithCommands();
+    const { app } = makeApp();
     const res = await app.request(
       "/v1/commands",
       postJson({}, { ...bearer(CLI_TOKEN), Origin: ORIGIN }),
@@ -216,29 +210,42 @@ describe("command route stub", () => {
   });
 
   it("refuses the bridge token", async () => {
-    const { app } = appWithCommands();
+    const { app } = makeApp();
     const res = await app.request("/v1/commands", postJson({}, bearer(BRIDGE_TOKEN)));
     expect(res.status).toBe(403);
   });
 
+  it("refuses tokens on GET /v1/commands/:id too", async () => {
+    const { app } = makeApp();
+    for (const token of [CLI_TOKEN, BRIDGE_TOKEN]) {
+      const res = await app.request("/v1/commands/cmd-1", { headers: bearer(token) });
+      expect(res.status).toBe(403);
+    }
+  });
+
   it("refuses a request with no credentials", async () => {
-    const { app } = appWithCommands();
+    const { app } = makeApp();
     const res = await app.request("/v1/commands", postJson({}, { Host: HOST, Origin: ORIGIN }));
     expect(res.status).toBe(401);
   });
 
-  it("accepts a paired session with a matching Origin", async () => {
-    const { app, pairing } = appWithCommands();
+  it("answers a paired session with a matching Origin with 501 until M4", async () => {
+    const { app, pairing } = makeApp();
     const session = await pair(app, pairing.issueCode());
-    const res = await app.request(
+    const post = await app.request(
       "/v1/commands",
       postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
     );
-    expect(res.status).toBe(200);
+    expect(post.status).toBe(501);
+    expect(await post.json()).toEqual({
+      error: { code: "not_implemented", message: expect.any(String) },
+    });
+    const get = await app.request("/v1/commands/cmd-1", { headers: sessionHeaders(session) });
+    expect(get.status).toBe(501);
   });
 
   it("refuses a paired session with no Origin or a foreign Origin", async () => {
-    const { app, pairing } = appWithCommands();
+    const { app, pairing } = makeApp();
     const session = await pair(app, pairing.issueCode());
     const none = await app.request("/v1/commands", postJson({}, sessionHeaders(session)));
     expect(none.status).toBe(403);
@@ -250,13 +257,48 @@ describe("command route stub", () => {
   });
 
   it("refuses a revoked session", async () => {
-    const { app, pairing } = appWithCommands();
+    const { app, pairing } = makeApp();
     const session = await pair(app, pairing.issueCode());
     pairing.unpairAll();
     const res = await app.request(
       "/v1/commands",
       postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
     );
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("routes added after createApp", () => {
+  it("inherit the credential rules through requireScope", async () => {
+    const { app, pairing } = makeApp();
+    app.post("/v1/later-command", requireScope("command"), (c) => c.json({ accepted: true }));
+    const cli = await app.request("/v1/later-command", postJson({}, bearer(CLI_TOKEN)));
+    expect(cli.status).toBe(403);
+    const session = await pair(app, pairing.issueCode());
+    const browser = await app.request(
+      "/v1/later-command",
+      postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
+    );
+    expect(browser.status).toBe(200);
+  });
+});
+
+describe("check order", () => {
+  it("rejects a foreign Origin before looking at credentials", async () => {
+    const { app } = makeApp();
+    const res = await app.request("/health", {
+      headers: { ...bearer("wrong-token"), Origin: "http://evil.example" },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: { code: "forbidden_origin" } });
+  });
+
+  it("ignores cookies as credentials", async () => {
+    const { app, pairing } = makeApp();
+    const session = await pair(app, pairing.issueCode());
+    const res = await app.request("/health", {
+      headers: { Host: HOST, Cookie: `x-taskville-session=${session}` },
+    });
     expect(res.status).toBe(401);
   });
 });
@@ -291,7 +333,7 @@ describe("logs", () => {
     const { app, pairing, logLines } = makeApp();
     const code = pairing.issueCode();
     const session = await pair(app, code);
-    await app.request("/v1/pairing/exchange", postJson({ code }, { Host: HOST, Origin: ORIGIN }));
+    await app.request("/v1/pairing", postJson({ code }, { Host: HOST, Origin: ORIGIN }));
     await app.request("/health", { headers: bearer(CLI_TOKEN) });
     await app.request("/health", { headers: bearer(`${BRIDGE_TOKEN}`) });
     await app.request("/health", { headers: sessionHeaders(session) });
@@ -301,5 +343,27 @@ describe("logs", () => {
     for (const secret of [CLI_TOKEN, BRIDGE_TOKEN, code, session, "wrong-token-value-abc"]) {
       expect(all).not.toContain(secret);
     }
+  });
+});
+
+describe("GET /health", () => {
+  it("reports storage health from the injected probe and the version", async () => {
+    const { app } = makeApp({ health: () => ({ db: "ok", walMode: true }), version: "0.1.0" });
+    const res = await app.request("/health", { headers: bearer(CLI_TOKEN) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      status: "ok",
+      db: "ok",
+      walMode: true,
+      uptimeSeconds: expect.any(Number),
+      version: "0.1.0",
+    });
+  });
+
+  it("returns 503 when the database cannot be read", async () => {
+    const { app } = makeApp({ health: () => ({ db: "error", walMode: false }) });
+    const res = await app.request("/health", { headers: bearer(CLI_TOKEN) });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ status: "error", db: "error" });
   });
 });
