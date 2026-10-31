@@ -1,6 +1,6 @@
 // Worker for the concurrent-writers test: opens its own connection to the
 // shared database and ingests its batches as fast as it can.
-import { workerData, parentPort } from "node:worker_threads";
+import { parentPort, workerData } from "node:worker_threads";
 import { IngestPipeline } from "../../src/ingest/index.ts";
 import { openStorage } from "../../src/storage/index.ts";
 

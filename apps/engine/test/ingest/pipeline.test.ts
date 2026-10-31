@@ -1,13 +1,9 @@
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { projectStateHash, type ProjectState, replay } from "@taskville/domain/reducer";
+import { type ProjectState, projectStateHash, replay } from "@taskville/domain/reducer";
 import { eventBatchResponseSchema, storedEnvelopeSchema } from "@taskville/protocol";
 import { describe, expect, it, vi } from "vitest";
-import {
-  type CommittedBatch,
-  domainReducer,
-  IngestPipeline,
-} from "../../src/ingest/index.ts";
+import { type CommittedBatch, domainReducer, IngestPipeline } from "../../src/ingest/index.ts";
 import { fakeGithubToken, fixedNow, input, useStorage } from "./helpers.ts";
 
 const db = useStorage(["demo", "other"]);
@@ -24,7 +20,9 @@ describe("IngestPipeline.ingest", () => {
       input("e1", { projectId: "other" }),
     ]);
     expect(eventBatchResponseSchema.parse(response)).toEqual(response);
-    expect(response.results.map((r) => [r.status, "ingestSequence" in r && r.ingestSequence])).toEqual([
+    expect(
+      response.results.map((r) => [r.status, "ingestSequence" in r && r.ingestSequence]),
+    ).toEqual([
       ["accepted", 2],
       ["accepted", 3],
       ["accepted", 2],
@@ -69,7 +67,11 @@ describe("IngestPipeline.ingest", () => {
     const first = pipeline().ingest([input("e1")]).results[0];
     const changed = pipeline().ingest([input("e1", { occurredAt: "2026-10-30T11:00:01Z" })]);
     expect(changed.results).toEqual([
-      { sourceEventId: "e1", status: "conflict", existingEventId: first && "eventId" in first ? first.eventId : "" },
+      {
+        sourceEventId: "e1",
+        status: "conflict",
+        existingEventId: first && "eventId" in first ? first.eventId : "",
+      },
     ]);
     expect(db.storage().head("demo")).toBe(2);
     expect([...db.storage().events("demo", 1)][0]?.occurredAt).toBe("2026-10-30T11:00:00Z");
@@ -119,7 +121,12 @@ describe("IngestPipeline.ingest", () => {
     ]);
     expect(response.heads).toEqual({});
     expect(db.storage().project("ghost")).toBeUndefined();
-    expect(db.storage().projects().map((p) => p.id)).toEqual(["demo", "other", "unsorted"]);
+    expect(
+      db
+        .storage()
+        .projects()
+        .map((p) => p.id),
+    ).toEqual(["demo", "other", "unsorted"]);
   });
 
   it("applies producer policy: engine-only types, reserved sources, provenance", () => {
@@ -130,7 +137,9 @@ describe("IngestPipeline.ingest", () => {
       input("d", { provenance: "demo" }),
       input("e", { sourceId: "demo:1", provenance: "demo" }),
     ]);
-    expect(response.results.map((r) => (r.status === "rejected" ? r.error.code : r.status))).toEqual([
+    expect(
+      response.results.map((r) => (r.status === "rejected" ? r.error.code : r.status)),
+    ).toEqual([
       "engine_only_type",
       "reserved_source",
       "provenance_mismatch",
@@ -149,11 +158,18 @@ describe("IngestPipeline.ingest", () => {
     p.ingest([
       input("r1", {
         type: "agent.registered",
-        payload: { sourceAgentId: "s1", displayName: "Builder", role: "implementer", kind: "session" },
+        payload: {
+          sourceAgentId: "s1",
+          displayName: "Builder",
+          role: "implementer",
+          kind: "session",
+        },
       }),
       input("s1", { type: "session.started", sessionId: "sess-1", payload: {} }),
     ]);
-    p.ingest([input("t1", { type: "task.created", taskId: "task-1", payload: { title: "Do it" } })]);
+    p.ingest([
+      input("t1", { type: "task.created", taskId: "task-1", payload: { title: "Do it" } }),
+    ]);
 
     const projection = db.storage().projection<ProjectState>("demo");
     const replayed = replay("demo", db.storage().events("demo"));
@@ -168,7 +184,9 @@ describe("IngestPipeline.ingest", () => {
     pipeline().ingest([input("u1", { projectId: "unsorted" })]);
     const projection = db.storage().projection<ProjectState>("unsorted");
     expect(projection?.head).toBe(2);
-    expect(projection?.stateHash).toBe(projectStateHash(replay("unsorted", db.storage().events("unsorted"))));
+    expect(projection?.stateHash).toBe(
+      projectStateHash(replay("unsorted", db.storage().events("unsorted"))),
+    );
   });
 });
 
@@ -187,7 +205,12 @@ describe("commit and broadcast", () => {
       expect(batch.events.map((e) => e.sourceEventId)).toEqual(["e1", "e2"]);
       expect(batch.heads).toEqual({ demo: 3 });
     });
-    pipeline({ onCommit }).ingest([input("e1"), input("e1"), input("bad", { type: "x" }), input("e2")]);
+    pipeline({ onCommit }).ingest([
+      input("e1"),
+      input("e1"),
+      input("bad", { type: "x" }),
+      input("e2"),
+    ]);
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(seen).toEqual([3]);
   });
@@ -239,7 +262,9 @@ describe("masking and truncation (FR-017)", () => {
       input("f1", { type: "session.turn_failed", sessionId: "sess-1", payload: { reason } }),
     ]);
     const [stored] = [...db.storage().events("demo", 1)];
-    const payload = stored?.payload as { reason: { text: string; masked: boolean; truncated: boolean } };
+    const payload = stored?.payload as {
+      reason: { text: string; masked: boolean; truncated: boolean };
+    };
     expect(payload.reason.masked).toBe(true);
     expect(payload.reason.truncated).toBe(true);
     expect([...payload.reason.text]).toHaveLength(280);
@@ -249,7 +274,11 @@ describe("masking and truncation (FR-017)", () => {
 
   it("sets neither flag for a short clean reason", () => {
     pipeline().ingest([
-      input("f1", { type: "session.turn_failed", sessionId: "sess-1", payload: { reason: "tests failed" } }),
+      input("f1", {
+        type: "session.turn_failed",
+        sessionId: "sess-1",
+        payload: { reason: "tests failed" },
+      }),
     ]);
     expect([...db.storage().events("demo", 1)][0]?.payload).toEqual({
       reason: { text: "tests failed", masked: false, truncated: false },
@@ -283,7 +312,10 @@ describe("masking and truncation (FR-017)", () => {
       expiresAt: "2026-10-30T11:05:00Z",
     });
     expect(JSON.stringify(opened?.payload)).not.toContain(token);
-    expect(task?.payload).toEqual({ title: "rotate [REDACTED:github-token]", relatedTaskIds: ["task-0"] });
+    expect(task?.payload).toEqual({
+      title: "rotate [REDACTED:github-token]",
+      relatedTaskIds: ["task-0"],
+    });
   });
 
   it("strips control characters from payload text before masking", () => {
@@ -313,7 +345,11 @@ describe("masking and truncation (FR-017)", () => {
   it("hashes the masked reason before truncation: a difference past 280 is a conflict", () => {
     const base = "y".repeat(300);
     const event = (tail: string) =>
-      input("f1", { type: "session.turn_failed", sessionId: "s", payload: { reason: base + tail } });
+      input("f1", {
+        type: "session.turn_failed",
+        sessionId: "s",
+        payload: { reason: base + tail },
+      });
     pipeline().ingest([event("a")]);
     expect(pipeline().ingest([event("b")]).results[0]?.status).toBe("conflict");
     expect(pipeline().ingest([event("a")]).results[0]?.status).toBe("duplicate");
@@ -321,14 +357,22 @@ describe("masking and truncation (FR-017)", () => {
 
   it("treats two secrets that mask to the same text under one key as a duplicate (R-13)", () => {
     const event = (secret: string) =>
-      input("f1", { type: "session.turn_failed", sessionId: "s", payload: { reason: `token ${secret}` } });
+      input("f1", {
+        type: "session.turn_failed",
+        sessionId: "s",
+        payload: { reason: `token ${secret}` },
+      });
     pipeline().ingest([event(fakeGithubToken(1))]);
     expect(pipeline().ingest([event(fakeGithubToken(2))]).results[0]?.status).toBe("duplicate");
   });
 
   it("never writes the unmasked secret to the database files", () => {
     pipeline().ingest([
-      input("f1", { type: "session.turn_failed", sessionId: "s", payload: { reason: `oops ${token}` } }),
+      input("f1", {
+        type: "session.turn_failed",
+        sessionId: "s",
+        payload: { reason: `oops ${token}` },
+      }),
       input("t1", { type: "task.created", taskId: "task-1", payload: { title: token } }),
     ]);
     db.storage().close();

@@ -25,7 +25,10 @@ function setup() {
 describe("POST /v1/events/batch", () => {
   it("ingests a batch with the CLI token and returns per-event results and heads", async () => {
     const { app } = setup();
-    const res = await app.request(URL, postJson({ events: [input("e1"), input("e2")] }, bearer(CLI_TOKEN)));
+    const res = await app.request(
+      URL,
+      postJson({ events: [input("e1"), input("e2")] }, bearer(CLI_TOKEN)),
+    );
     expect(res.status).toBe(200);
     const body = eventBatchResponseSchema.parse(await res.json());
     expect(body.results.map((r) => r.status)).toEqual(["accepted", "accepted"]);
@@ -46,20 +49,25 @@ describe("POST /v1/events/batch", () => {
   it("refuses a browser session and the bridge token with credential_not_allowed", async () => {
     const { app, pairing } = setup();
     const session = pairing.exchange(pairing.issueCode()) ?? "";
-    for (const headers of [
-      { ...sessionHeaders(session), Origin: ORIGIN },
-      bearer(BRIDGE_TOKEN),
-    ]) {
+    for (const headers of [{ ...sessionHeaders(session), Origin: ORIGIN }, bearer(BRIDGE_TOKEN)]) {
       const res = await app.request(URL, postJson({ events: [input("e1")] }, headers));
       expect(res.status).toBe(403);
-      expect(await res.json()).toEqual({ error: expect.objectContaining({ code: "credential_not_allowed" }) });
+      expect(await res.json()).toEqual({
+        error: expect.objectContaining({ code: "credential_not_allowed" }),
+      });
     }
     expect(db.storage().head("demo")).toBe(1);
   });
 
   it("refuses a request without a credential or with a foreign Host", async () => {
     const { app } = setup();
-    const anonymous = await app.request(URL, postJson({ events: [input("e1")] }, { Host: HOST }));
+    // Without Origin the Origin check refuses first (M1.10 order); with one, the credential check does.
+    const noOrigin = await app.request(URL, postJson({ events: [input("e1")] }, { Host: HOST }));
+    expect(noOrigin.status).toBe(403);
+    const anonymous = await app.request(
+      URL,
+      postJson({ events: [input("e1")] }, { Host: HOST, Origin: ORIGIN }),
+    );
     expect(anonymous.status).toBe(401);
     const rebinding = await app.request(
       URL,
@@ -71,7 +79,12 @@ describe("POST /v1/events/batch", () => {
 
   it("answers 400 bad_request when the body is not a batch", async () => {
     const { app } = setup();
-    for (const body of ["{not json", JSON.stringify({ events: "nope" }), JSON.stringify([1]), JSON.stringify({ events: [], extra: 1 })]) {
+    for (const body of [
+      "{not json",
+      JSON.stringify({ events: "nope" }),
+      JSON.stringify([1]),
+      JSON.stringify({ events: [], extra: 1 }),
+    ]) {
       const res = await app.request(URL, {
         method: "POST",
         headers: { ...bearer(CLI_TOKEN), "Content-Type": "application/json" },
@@ -87,13 +100,23 @@ describe("POST /v1/events/batch", () => {
     const events = Array.from({ length: MAX_BATCH_EVENTS + 1 }, (_, i) => input(`e${i}`));
     const res = await app.request(URL, postJson({ events }, bearer(CLI_TOKEN)));
     expect(res.status).toBe(413);
-    expect(await res.json()).toEqual({ error: expect.objectContaining({ code: "payload_too_large" }) });
+    expect(await res.json()).toEqual({
+      error: expect.objectContaining({ code: "payload_too_large" }),
+    });
     expect(db.storage().head("demo")).toBe(1);
   });
 
   it("answers 413 for a body over 5 MB", async () => {
     const { app } = setup();
-    const big = { events: [input("e1", { type: "task.created", taskId: "t", payload: { title: "z".repeat(5 * 1024 * 1024) } })] };
+    const big = {
+      events: [
+        input("e1", {
+          type: "task.created",
+          taskId: "t",
+          payload: { title: "z".repeat(5 * 1024 * 1024) },
+        }),
+      ],
+    };
     const res = await app.request(URL, postJson(big, bearer(CLI_TOKEN)));
     expect(res.status).toBe(413);
     expect(db.storage().head("demo")).toBe(1);
@@ -106,7 +129,12 @@ describe("POST /v1/events/batch", () => {
         URL,
         postJson(
           // Every request also resends one event of the previous request: a race on the same key.
-          { events: [...Array.from({ length: 10 }, (_, i) => input(`r${r}-${i}`)), input(`r${Math.max(0, r - 1)}-0`)] },
+          {
+            events: [
+              ...Array.from({ length: 10 }, (_, i) => input(`r${r}-${i}`)),
+              input(`r${Math.max(0, r - 1)}-0`),
+            ],
+          },
           bearer(CLI_TOKEN),
         ),
       ),

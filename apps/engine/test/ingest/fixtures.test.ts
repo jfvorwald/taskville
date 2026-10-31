@@ -1,6 +1,5 @@
 import { type IngestResult, storedEnvelopeSchema } from "@taskville/protocol";
 import { describe, expect, it } from "vitest";
-import { IngestPipeline } from "../../src/ingest/index.ts";
 import {
   EVENT_FIXTURES,
   type EventFixture,
@@ -8,6 +7,7 @@ import {
   loadExpected,
   loadFixture,
 } from "../../../../fixtures/events/loader.ts";
+import { IngestPipeline } from "../../src/ingest/index.ts";
 import { addProject, fixedNow, useStorage } from "./helpers.ts";
 
 // Golden test (M1.17): the engine's real ingest must reproduce every
@@ -18,7 +18,11 @@ const db = useStorage([]);
 type Ingested = Map<string, IngestResult>;
 
 /** Ingests one fixture as one batch; a line that is not JSON is sent as its raw text. */
-function ingestFixture(pipeline: IngestPipeline, name: EventFixture, seen: Ingested): IngestResult[] {
+function ingestFixture(
+  pipeline: IngestPipeline,
+  name: EventFixture,
+  seen: Ingested,
+): IngestResult[] {
   const lines = loadFixture(name);
   const batch = lines.map((entry) => (entry.ok ? entry.value : `malformed line ${entry.line}`));
   const { results } = pipeline.ingest(batch);
