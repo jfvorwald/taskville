@@ -296,8 +296,8 @@ PendingRequest states: `open`, `answered_here`, `answered_elsewhere`, `expired`.
 
 PendingRequest and Command are projections of `request.*` and `command.*` events, like everything else; there are no mutable request tables. Lifecycle rules:
 
-- A request closes as `answered_elsewhere` on the next event from the same session (`PostToolUse`, `PostToolUseFailure`, `Stop`, `UserPromptSubmit`) if Taskville did not answer it.
-- A command succeeds only if its decision was written to the still-open hook response. If the hold window ended first, the command fails as `expired` and the card says so.
+- A request closes as `answered_elsewhere` on the next event from the same session (`PostToolUse`, `PostToolUseFailure`, `Stop`, `UserPromptSubmit`) if Taskville did not answer it. For a bridge-held permission request (decision #116): a hook connection closed before any city answer is recorded as answered in the terminal (deny); exactly one unambiguous matching `PostToolUse` (same session, prompt, tool name and input) closes it as answered in the terminal (allow). A Notification never counts as an answer.
+- A decision sent from the city is recorded as sent, unconfirmed, once it is written to the still-open hook response, and succeeds only when telemetry confirms it took effect (decision #116), because writing to an open response does not prove the decision applied. If the hold window ended first, the command fails as `expired` and the card says so.
 - On engine start, every request still `open` gets a `request.expired` event, because its hook connection died with the old process.
 
 Connection is separate from activity. A disconnected agent keeps its last task; nothing fails automatically. Identity is never merged on name similarity.
@@ -366,11 +366,11 @@ Rejected alternative: HTTP hooks for telemetry. They run synchronously, so every
 **Permission bridge: one HTTP hook.** `PermissionRequest` is configured as an `http` hook pointing at `POST /v1/bridge/claude-code/permission`, with the bridge token passed through `allowedEnvVars`. The engine creates a PendingRequest, the agent turns red, and the request is held open.
 
 - If the user clicks Allow or Deny, the engine answers the held request with `{"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}` (or `deny` with the user's message).
-- If no viewer is connected, or nobody answers within the hold window (default 90 s, configurable), the engine returns an empty 2xx and Claude Code falls back to its normal prompt. The agent stays red until a later event shows the request was answered elsewhere.
+- If no viewer is connected, or nobody answers within the hold window (default 90 s, configurable, independent of whether a viewer is focused; decision #116), the engine returns an empty 2xx and Claude Code falls back to its normal prompt. The agent stays red until a later event shows the request was answered elsewhere.
 - If Taskville is down, the hook fails without blocking and Claude Code behaves as if the hook did not exist.
-- The hook's `timeout` is set explicitly a few seconds above the hold window, so the engine always answers before Claude Code gives up on the hook.
+- The hook's `timeout` is set to the hold window plus 5 s, so the engine always answers before Claude Code gives up on the hook.
 
-**Spike S-1 (before building the bridge):** confirm whether the terminal prompt appears while a PermissionRequest hook is pending, how a terminal answer is reported back, and whether an empty response falls through cleanly. If the terminal prompt is suppressed while the hook waits, the default hold window drops to a few seconds unless a viewer is actively focused.
+**Spike S-1 (before building the bridge):** confirm whether the terminal prompt appears while a PermissionRequest hook is pending, how a terminal answer is reported back, and whether an empty response falls through cleanly. If the terminal prompt is suppressed while the hook waits, the default hold window drops to a few seconds unless a viewer is actively focused. Resolved in M1 ([findings](docs/spikes/S-1-permission-bridge.md)): the terminal prompt stays visible, so the hold is focus-independent (decision #116).
 
 **Mapping.** `session_id` maps to Session. The main session is an agent, named from the session name or the project directory. `agent_id` and `agent_type` on any hook input identify the subagent that fired it; `SubagentStart` creates the child agent with a parent link and `SubagentStop` closes it. `teammate_name` and `agent_id` on `TeammateIdle`, `TaskCreated`, and `TaskCompleted` identify teammates; an Agent tool call with a `name` while agent teams are enabled marks the caller as a lead. `PreToolUse` and `PostToolUse` pairs, matched by `tool_use_id`, become ToolCall records whose inputs and outputs are stored as evidence for the code feed. The working directory maps to a project through configured repository roots; unknown directories go to an "Unsorted" project rather than being guessed. Tool names map to activities (Edit and Write to implementing, Read, Grep, and WebFetch to researching, agent spawns to dispatching). A Bash command that looks like a test run maps to testing and is flagged as heuristic.
 
@@ -558,4 +558,4 @@ Revision 2:
 
 ## 17. Decisions left to implementation
 
-Exact dependency versions, geometry dimensions, animation timings within the stated limits, checkpoint cadence tuning, phrase-set wording, and sound assets. The hold window for the permission bridge is set by spike S-1. Remote hosting is chosen at M7 from measured requirements.
+Exact dependency versions, geometry dimensions, animation timings within the stated limits, checkpoint cadence tuning, phrase-set wording, and sound assets. The hold window for the permission bridge was set by spike S-1 (90 s, decision #116). Remote hosting is chosen at M7 from measured requirements.

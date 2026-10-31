@@ -2,21 +2,38 @@
 
 Lead-owned cross-session summary. Teammates never edit this file; they write their own report in [tasks/](tasks/) and the lead folds it in here after review and merge.
 
-**Updated:** 2026-10-31 · **Current wave:** 1 (M1 Headless foundation), complete · **Open gate:** [G1 #19](https://github.com/jfvorwald/taskville/issues/19), waiting on the owner
+**Updated:** 2026-10-31 · **Current wave:** 2 (M2 Claude Code telemetry), in progress · **Open gate:** none; next is [G2 #40](https://github.com/jfvorwald/taskville/issues/40)
 
 ## Where things stand
 
-**M1 is complete and the team has stopped at gate G1.** All 22 M1 tickets are closed (21 planned plus the retro; none added or dropped). The [G1 summary](https://github.com/jfvorwald/taskville/issues/19#issuecomment-6538979170) is posted on #19 with the [retro](retros/M1.md) linked first, and #19 carries `waiting:user`. Nothing behind G1 (M2, M3) starts until the owner closes it.
+**G1 closed by the owner on 2026-10-31 ("Reviewed, all good"); M2 has started.** All eleven G1 decision tickets were answered and are applied (a comment on each says what changed). M3 (also wave 2 in the roadmap) is not started yet; the owner asked for M2.
 
-The headless engine works end to end: workspace and CI (#108), spec 001 aligned to revision 3 (#112), both Claude Code spikes (#111, #118), protocol v1 (#123), canonical hashing (#124), secret redaction (#127, #158), config and home (#128), fixtures (#130), insert-only SQLite storage (#134), domain reducer with attention and requests (#137, #139), retro tooling (#141), ingest (#145), the six-agent demo (#146, #159), snapshots and resumable SSE (#149), the CLI (#153, #156), the security review with all six findings fixed (#17: #152, #158, #164), and performance checks (#169).
+Applied from the G1 answers:
 
-`pnpm check` on main at 07c1872: 66 files, 1,287 tests pass; CI green. The spec 001 quickstart was run by hand on main on 2026-10-31 and behaved as specified. SC-004 and SC-005 pass; SC-006 missed (#166, decision #168).
+- #116 defaults: ARCHITECTURE.md 6 and 8.1 and the `.roborev.toml` bridge invariant now say hold 90 s focus-independent, hook timeout hold + 5 s, terminal No is a deny, one unambiguous matching PostToolUse is a terminal allow, city decisions are "sent, unconfirmed" until telemetry confirms (this PR).
+- #163 D1 alternative: new ticket [#173](https://github.com/jfvorwald/taskville/issues/173) (M2.12, fresh pairing link from a running `serve`, plus persisted pairings wired per #113). The mechanism is follow-up decision [#174](https://github.com/jfvorwald/taskville/issues/174), defaulting to a keypress in the `serve` terminal, because a CLI-token route that mints codes would reopen the self-approval path #113 closed.
+- #120 defaults, plus the D2 alternative as an optional setting: new ticket [#175](https://github.com/jfvorwald/taskville/issues/175) (M5.13, strict teammate attribution). M2.04 marks every heuristic link so the setting can hide it.
+- #168 defaults: SC-006 stays on RSS and stays a MISS; #166, #167 and #143 are scheduled into M2.
+- G1 retro proposal 4 applied: task reports gain a `**Review outcome:**` line (docs/tasks/README.md).
+
+`pnpm check` on main at b927183: 66 files, 1,287 tests pass; CI green.
 
 ## In progress
 
-None. The team is stopped at the gate.
+| Ticket | Teammate | Notes |
+| --- | --- | --- |
+| [#22](https://github.com/jfvorwald/taskville/issues/22) M2.03 Adapter: sessions, tool calls, notifications | adapter-core | owns the `@taskville/adapters/claude-code` entry and `mapClaudeCodeHook` |
+| [#23](https://github.com/jfvorwald/taskville/issues/23) M2.04 Adapter: subagents and agent teams | adapter-crew | wires into the index after #22 merges |
+| [#20](https://github.com/jfvorwald/taskville/issues/20) M2.01 Telemetry hook shim with spool | shim | defines the wrapper body and spool line format |
+| [#21](https://github.com/jfvorwald/taskville/issues/21) M2.02 Claude Code source endpoint | engine-source | mapper and evidence sink injected until #22 and #27 merge |
+
+Next as slots free: #27 M2.06 evidence store, #25 M2.09 Git watcher, #143 and #167 (domain follow-ups), then batch 2 (#28 M2.07, #29 M2.08, #173 M2.12), batch 3 (#34 M2.10, #35 M2.11), and #96 M2.RT.
 
 ## Done this wave
+
+Nothing merged in wave 2 yet.
+
+## Done in wave 1 (M1)
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
@@ -50,19 +67,10 @@ None. The team is stopped at the gate.
 
 Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskville/issues?q=is%3Aopen+label%3Awaiting%3Auser).
 
-- [#113](https://github.com/jfvorwald/taskville/issues/113) persisted browser pairings are a same-user write path (default: persist digests per spec; alternative: memory only, re-pair after restart). Blocks nothing; the security review #17 weighs it, and it must be settled before `serve` wires pairings to storage.
-- [#133](https://github.com/jfvorwald/taskville/issues/133) `node:sqlite` on pinned Node 26.8.2 has no `Database`/`Statement` names (default: alias `DatabaseSync`/`StatementSync` in `storage/sqlite.ts`; docs unchanged until approved). Blocks nothing.
-- [#135](https://github.com/jfvorwald/taskville/issues/135) request merge and closure details (defaults: merge on exact tool name, the M2 adapter fills it on Notifications; close on the next same-session event from any agent; bridge record wins a merge). Blocks nothing in M1.
-- [#138](https://github.com/jfvorwald/taskville/issues/138) tool-call count exactness and task graph shortcuts (defaults: bounded projection as specified; task graph literal, so `queued -> completed` is flagged). Blocks nothing.
-- [#160](https://github.com/jfvorwald/taskville/issues/160) redactor strategy after six review rounds (default: keep patterns with robust boundaries; alternative: mask the rest of the line after any Authorization header or `-u` flag). Blocks nothing.
-- [#163](https://github.com/jfvorwald/taskville/issues/163) getting a new pairing link after expiry (default: restart `serve`; window 10 minutes). Blocks nothing.
-- [#168](https://github.com/jfvorwald/taskville/issues/168) what SC-006 measures (RSS as written, or memory after GC) and how long the soak runs. Decides whether #166 is a real miss.
-- [#110](https://github.com/jfvorwald/taskville/issues/110) where projects are registered (default: engine `projects` table, `project add` via `POST /v1/projects`, config projects registered at start). Blocks nothing.
-- [#114](https://github.com/jfvorwald/taskville/issues/114) ARCHITECTURE.md 7.4 vs 6 on `pending_requests`/`commands` tables (default: projection-only, M4; text unchanged). Blocks nothing.
-- [#116](https://github.com/jfvorwald/taskville/issues/116) S-1: hold window (default 90 s, focus-independent, hook timeout hold + 5 s) and terminal-answer rules that would change ARCHITECTURE.md 8.1 and the `.roborev.toml` bridge invariant. Blocks nothing in M1; feeds M4.02 and M4.03.
-- [#120](https://github.com/jfvorwald/taskville/issues/120) S-2: teammate attribution by display mode (default: in-process by `agent_id`; split-pane as own session, heuristic "for: <name>" red state, no Allow or Deny). Blocks nothing in M1; feeds M2.04 and M5.
+- [#174](https://github.com/jfvorwald/taskville/issues/174) how a running `serve` issues a fresh pairing link (default: keypress in the `serve` terminal; alternative: `taskville pair` over a CLI-token route). Blocks nothing; #173 builds on the default.
+- [#176](https://github.com/jfvorwald/taskville/issues/176) milestones after M1 have no spec-kit feature, which the constitution's workflow expects (default: tickets plus ARCHITECTURE.md and the spec 001 contracts are M2's contract; alternative: pause and write spec 002). Blocks nothing.
 
- Items there are blocking only if the ticket says so; everything else proceeds on its stated default.
+Items there are blocking only if the ticket says so; everything else proceeds on its stated default.
 
 ## Measurements
 
