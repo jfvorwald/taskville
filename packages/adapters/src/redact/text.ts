@@ -81,6 +81,12 @@ const PEM_END = /-----END [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g;
 const ASSIGNMENT =
   /(?<![A-Za-z0-9_.$-])(["']?)([A-Za-z_][A-Za-z0-9_.-]{0,99})\1([ \t]*)(=(?![=>~])|:(?![:/]))([ \t]*)/g;
 
+// A standalone run of base64 or base64url characters (with at most two trailing
+// "=" pads, so `NAME=value` is never one run), judged by isHighEntropyToken.
+// The lookarounds pin it to a whole run, so a run is tried from its first character
+// only and one longer than 256 fails after a bounded backtrack.
+const STANDALONE = /(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/_-]{20,256}={0,2}(?![A-Za-z0-9+/=_-])/g;
+
 // `--name=value` and `--name value` command-line flags.
 const FLAG = /(?<![A-Za-z0-9_-])--([A-Za-z][A-Za-z0-9-]{0,63})(=|[ \t]+)/g;
 
@@ -92,6 +98,7 @@ export function redactText(input: string): RedactedText {
   const valueEnds = unquotedValueEnds(input);
   findAssignments(input, valueEnds, candidates);
   findFlags(input, valueEnds, candidates);
+  findStandaloneTokens(input, candidates);
   return applyMasks(input, merge(candidates));
 }
 
@@ -113,6 +120,14 @@ function findTokens(input: string, out: Candidate[]): void {
       const [start, end] = match.indices?.[group ?? 0] ?? [match.index, match.index];
       if (end <= start || startsWithMarker(input, start)) continue;
       out.push({ start, end, kind });
+    }
+  }
+}
+
+function findStandaloneTokens(input: string, out: Candidate[]): void {
+  for (const match of input.matchAll(STANDALONE)) {
+    if (isHighEntropyToken(match[0])) {
+      out.push({ start: match.index, end: match.index + match[0].length, kind: "high-entropy" });
     }
   }
 }

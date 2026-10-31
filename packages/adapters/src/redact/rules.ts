@@ -93,12 +93,18 @@ export function isSensitiveName(name: string): boolean {
   return KEY_QUALIFIERS.has(words.at(-2) ?? "");
 }
 
-/** Values that name a secret elsewhere rather than being one: empty, `$VAR`, `***`. */
+// A complete reference to a secret held elsewhere: `$NAME` (environment style,
+// upper case), `${...}`, or `$(...)`. Anything else that starts with `$`, such as
+// `$ecret123`, is treated as a literal value.
+const REFERENCE = /^\$(?:[A-Z_][A-Z0-9_]*$|\{|\()/;
+
+/** Values that name a secret elsewhere rather than being one: empty, `$VAR`, `***`, a marker. */
 export function isPlaceholder(text: string, start: number, end: number): boolean {
   if (end <= start) return true;
-  const first = text.charCodeAt(start);
-  if (first === 0x24 /* $ */) return true;
   if (startsWithMarker(text, start)) return true;
+  if (text.charCodeAt(start) === 0x24 /* $ */ && end - start <= 256) {
+    return REFERENCE.test(text.slice(start, end));
+  }
   for (let i = start; i < end; i++) {
     if (text.charCodeAt(i) !== 0x2a /* * */) return false;
   }
@@ -127,8 +133,8 @@ const IMAGE_PREFIXES = ["iVBORw0KGgo", "/9j/", "R0lGOD", "UklGR", "PHN2Zy"];
  * upper and lower case and digits, Shannon entropy close to what random text of
  * that length reaches, and not mostly made of word-like runs (camelCase
  * identifiers; random base62 text stays under the 0.7 cutoff about 99% of the time).
- * Hex-only strings (Git SHAs), UUIDs, base64 images, and integrity digests do
- * not qualify.
+ * Hex-only strings (Git SHAs), UUIDs, base64 images, integrity digests, and
+ * path-like runs do not qualify.
  */
 export function isHighEntropyToken(value: string): boolean {
   if (value.length < 20 || value.length > 256) return false;
@@ -136,8 +142,15 @@ export function isHighEntropyToken(value: string): boolean {
   if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/[0-9]/.test(value)) return false;
   if (IMAGE_PREFIXES.some((p) => value.startsWith(p))) return false;
   if (/^sha(?:1|256|384|512)-/.test(value)) return false; // Subresource Integrity digest
+  if (isPathLike(value)) return false;
+  if (/^(?:toolu|srvtoolu|msg|req)_/.test(value)) return false; // Claude Code and API IDs
   if (wordCoverage(value) >= 0.7) return false;
   return shannonEntropy(value) >= Math.min(0.85 * Math.log2(value.length), 4.5);
+}
+
+/** A run with slashes where some segment is a plain lowercase word, like `assets/index-x1`. */
+function isPathLike(value: string): boolean {
+  return value.includes("/") && value.split("/").some((segment) => /^[a-z]{3,}$/.test(segment));
 }
 
 function wordCoverage(value: string): number {

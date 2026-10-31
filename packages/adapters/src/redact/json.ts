@@ -56,7 +56,16 @@ export function redactJson(value: JsonValue, options: RedactJsonOptions = {}): R
     if (Array.isArray(node)) return node.map((item, i) => walk(item, [...path, i], null));
     if (node !== null && typeof node === "object") {
       const out: { [key: string]: JsonValue } = {};
-      for (const [k, v] of Object.entries(node)) out[k] = walk(v, [...path, k], k);
+      for (const [k, v] of Object.entries(node)) {
+        // defineProperty, not assignment, so a "__proto__" key from parsed JSON stays
+        // an own property instead of replacing the output's prototype.
+        Object.defineProperty(out, k, {
+          value: walk(v, [...path, k], k),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
       return out;
     }
     return node;
