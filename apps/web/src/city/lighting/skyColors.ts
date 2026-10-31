@@ -44,8 +44,8 @@ export function sunPosition(sunAngleDeg: number): [number, number, number] {
 export function lightRig(state: LightingState, day: ThemeTokens, night: ThemeTokens): LightRig {
   const n = state.nightness;
   const sky = mixHex(day["--tv-scene-bg"], night["--tv-scene-bg"], n);
-  const nightSky = mixHex(night["--tv-scene-bg"], "#ffffff", 0.35);
-  const nightGround = mixHex(night["--tv-scene-bg"], "#000000", 0.3);
+  const nightSky = mixHex(night["--tv-scene-bg"], "#ffffff", 0.6);
+  const nightGround = mixHex(night["--tv-scene-bg"], "#ffffff", 0.35);
   // Day light warms toward the middle of dusk or dawn (nightness 0.5), then cools to moonlight.
   const sunColor =
     n < 0.5 ? mixHex(DAY_LIGHT, WARM_LIGHT, n * 2) : mixHex(WARM_LIGHT, MOON_LIGHT, (n - 0.5) * 2);

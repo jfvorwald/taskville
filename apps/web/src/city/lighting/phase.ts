@@ -83,9 +83,9 @@ const smooth = (t: number) => t * t * (3 - 2 * t);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export const DAY_AMBIENT = 1.15;
-export const NIGHT_AMBIENT = 0.45;
+export const NIGHT_AMBIENT = 1.1;
 export const DAY_SUN = 1.4;
-export const NIGHT_SUN = 0.35;
+export const NIGHT_SUN = 0.9;
 
 export function nightnessAt(minutes: number): number {
   const m = ((minutes % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES;
