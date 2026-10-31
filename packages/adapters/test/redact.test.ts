@@ -58,6 +58,7 @@ const fake = {
   pemBody: chars(64, B64, 15),
   generic40: body(40, 16),
   generic32: body(32, 17),
+  slashed: [body(12, 22), "/", body(14, 23), "/", body(12, 24)].join(""),
 };
 
 const pem = (label: string) =>
@@ -253,6 +254,24 @@ const positives: Positive[] = [
     kind: "sensitive-value",
   },
   {
+    name: "sensitive value that starts with a dollar sign",
+    input: "PASSWORD=$ecret123 ./start",
+    secret: "$ecret123",
+    kind: "sensitive-value",
+  },
+  {
+    name: "standalone high-entropy token in prose",
+    input: `the reason: retry with ${fake.generic40} please`,
+    secret: fake.generic40,
+    kind: "high-entropy",
+  },
+  {
+    name: "standalone base64 secret containing slashes",
+    input: `rotated to ${fake.slashed} yesterday`,
+    secret: fake.slashed,
+    kind: "high-entropy",
+  },
+  {
     name: "query parameter",
     input: "GET https://example.test/cb?access_token=abc123def456&state=1",
     secret: "abc123def456",
@@ -402,6 +421,10 @@ const negatives: Array<{ name: string; input: string }> = [
     input: ["GITHUB_TOKEN: $", "{{ secrets.GITHUB_TOKEN }}"].join(""),
   },
   { name: "empty sensitive value", input: "PASSWORD= ./start" },
+  { name: "braced shell reference", input: "API_TOKEN=${API_TOKEN:-} make" },
+  { name: "command substitution", input: "PASSWORD=$(cat ~/.pw) ./start" },
+  { name: "build asset path with a hash", input: "loaded assets/index-B3kd8Fj2xQ.js" },
+  { name: "nanoid-free prose with long words", input: "internationalization and characterization" },
   { name: "already-masked placeholder", input: "API_KEY=******** " },
   { name: "hyphenated words containing sk-", input: "task-runner-configuration-loader-module-v2" },
   { name: "camelCase identifier quoted", input: 'handler = "handleSubmitButtonClick1"' },
@@ -484,6 +507,21 @@ describe("redactJson", () => {
     expect(result.value).toEqual({
       a: [1, false, null, { password: maskMarker("sensitive-value") }],
     });
+  });
+
+  it("masks a dollar-prefixed sensitive value", () => {
+    expect(redactJson({ password: "$ecret123" }).value).toEqual({
+      password: maskMarker("sensitive-value"),
+    });
+  });
+
+  it("keeps a __proto__ property as an own property", () => {
+    const value = JSON.parse('{"__proto__": {"password": "x1"}, "a": 1}') as JsonValue;
+    const result = redactJson(value);
+    expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
+    expect(JSON.stringify(result.value)).toBe(
+      `{"__proto__":{"password":"${maskMarker("sensitive-value")}"},"a":1}`,
+    );
   });
 
   it("returns no masks for clean input", () => {
