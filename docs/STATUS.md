@@ -1,37 +1,31 @@
 # Status
 
-Lead-owned cross-session summary. Teammates never edit this file; they write their own report in [tasks/](tasks/) and the lead folds it in here after review and merge.
+Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-10-31 · **Current wave:** 2 (M2 Claude Code telemetry), in progress · **Open gate:** none; next is [G2 #40](https://github.com/jfvorwald/taskville/issues/40)
+**Updated:** 2026-10-31, recovery audit at about 13:45 EDT. **Implementation baseline:** main 20e28d8. **State:** paused by owner before further implementation. G2 #40 remains open; agents must not close it. M3 has not started.
 
-## Where things stand
+## Recovery checkpoint
 
-**G1 closed by the owner on 2026-10-31 ("Reviewed, all good"); M2 has started.** All eleven G1 decision tickets were answered and are applied (a comment on each says what changed). M3 (also wave 2 in the roadmap) is not started yet; the owner asked for M2.
+The previous summary lagged behind GitHub. Seventeen M2 implementation/follow-up PRs are merged: #179, #180, #181, #182, #186, #188, #189, #191, #192, #195, #196, #197, #199, #200, #201, #203, #204. Preserve them; do not repeat their tickets.
 
-Applied from the G1 answers:
-
-- #116 defaults: ARCHITECTURE.md 6 and 8.1 and the `.roborev.toml` bridge invariant now say hold 90 s focus-independent, hook timeout hold + 5 s, terminal No is a deny, one unambiguous matching PostToolUse is a terminal allow, city decisions are "sent, unconfirmed" until telemetry confirms (this PR).
-- #163 D1 alternative: new ticket [#173](https://github.com/jfvorwald/taskville/issues/173) (M2.12, fresh pairing link from a running `serve`, plus persisted pairings wired per #113). The mechanism is follow-up decision [#174](https://github.com/jfvorwald/taskville/issues/174), defaulting to a keypress in the `serve` terminal, because a CLI-token route that mints codes would reopen the self-approval path #113 closed.
-- #120 defaults, plus the D2 alternative as an optional setting: new ticket [#175](https://github.com/jfvorwald/taskville/issues/175) (M5.13, strict teammate attribution). M2.04 marks every heuristic link so the setting can hide it.
-- #168 defaults: SC-006 stays on RSS and stays a MISS; #166, #167 and #143 are scheduled into M2.
-- G1 retro proposal 4 applied: task reports gain a `**Review outcome:**` line (docs/tasks/README.md).
-
-`pnpm check` on main at b927183: 66 files, 1,287 tests pass; CI green.
-
-## In progress
-
-| Ticket | Teammate | Notes |
+| Work | State | Next action after the pause |
 | --- | --- | --- |
-| [#22](https://github.com/jfvorwald/taskville/issues/22) M2.03 Adapter: sessions, tool calls, notifications | adapter-core | owns the `@taskville/adapters/claude-code` entry and `mapClaudeCodeHook` |
-| [#23](https://github.com/jfvorwald/taskville/issues/23) M2.04 Adapter: subagents and agent teams | adapter-crew | wires into the index after #22 merges |
-| [#20](https://github.com/jfvorwald/taskville/issues/20) M2.01 Telemetry hook shim with spool | shim | defines the wrapper body and spool line format |
-| [#21](https://github.com/jfvorwald/taskville/issues/21) M2.02 Claude Code source endpoint | engine-source | mapper and evidence sink injected until #22 and #27 merge |
+| M2.10 #34 | Draft [PR #208](https://github.com/jfvorwald/taskville/pull/208), recovered from d456db7; report committed in 0d9fe6e | Separate crew mapper task-ID fix, enable the TODO assertion, confirmation panel and CI disposition before merge |
+| M2.11 #35 | Review report complete in [PR #205](https://github.com/jfvorwald/taskville/pull/205); three medium and two low findings remain | Assign bounded fixes for F1 lazy fetch command execution, F2 redaction gaps, F3 unsafe home permissions; retain F4/F5 explicitly |
+| M2.19 #207 | Assigned just before limit, never started; no branch or worktree | Keep queued; no replacement worker during recovery |
+| M2.18 #166 | Code merged in #203; local report-only commit 3b3f972 not upstream | Preserve corrected measurement; carry it into reporting, not another implementation push to the merged branch |
+| M2.RT #96 | Not started | Wait for acceptance and security disposition, then full wave verification and retro |
+| G2 #40 | Open, not ready | Owner review only after the retro and evidence are ready |
 
-Next as slots free: #27 M2.06 evidence store, #25 M2.09 Git watcher, #143 and #167 (domain follow-ups), then batch 2 (#28 M2.07, #29 M2.08, #173 M2.12), batch 3 (#34 M2.10, #35 M2.11), and #96 M2.RT.
+Recovery verification on M2.10 (which includes main 20e28d8): `pnpm check` passes typecheck, lint, 91 files and 2,033 tests. Recorded e2e replay exits 0 with six passing checks and one failing TODO for split task identities. This does not establish a complete acceptance pass. No live Claude run, benchmark, or full push-tier suite was repeated.
 
-## Done this wave
+All five original worktrees had clean tracked files at discovery. M2.18 was ahead of its remote by one report-only commit. Root `.agents/` and `AGENTS.md` were pre-existing untracked user files and remain untouched. See [recovery assessment](tasks/RECOVERY-2026-10-31.md) for process state, delegation proposals, and handoff instructions.
 
-Nothing merged in wave 2 yet.
+## Remaining decisions
+
+Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206. Existing defaults remain in force; no architecture, constitution, production, or user-config changes made in recovery.
+
+SC-006 remains MISSED. M2.18's 28.7% rerun and M2.16's overlapping soak must not be treated as clean measurements. The preserved M2.18 correction reports a replacement 39.7% MISS, with other tests and reviews still running. #206 and #166 have not yet received that correction. This is not a fully quiet-machine benchmark. The 1x eight-hour run remains M7 work.
 
 ## Done in wave 1 (M1)
 
@@ -147,4 +141,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-The owner reviews G1 (#19): the retro, the S-1 and S-2 findings, the security review on #17, the quickstart, and the timing numbers; decides #116 (hold window) and #120 (teammate attribution) plus the other open decisions; and closes #19 to release M2 and M3 (wave 2). Proposed process changes and follow-ups #143, #166, #167 are listed in the G1 summary.
+Remain paused. First agree the model policy and independent Codex ownership workflow. On explicit restart, resolve M2.10's crew identity bug and M2.11's medium security findings, then M2.19, wave verification, M2 retro, and the G2 owner review. Do not start M3 automatically.
