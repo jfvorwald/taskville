@@ -1,0 +1,19 @@
+ ▐▛███▛█   Claude Code v2.1.312
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /tmp/spike-s1/proj
+▎ Debug mode enabled · logging to /tmp/spike-s1/debug1.log
+❯ Use the Bash tool to run exactly: touch exp1.txt
+⏺ Bash(touch exp1.txt)
+  ⎿  Waiting…
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you - choose "switch to auto mode" below
+ Create empty file exp1.txt
+ touch exp1.txt
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /tmp/spike-s1/proj from
+      this project
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+ Esc to cancel · Tab to amend

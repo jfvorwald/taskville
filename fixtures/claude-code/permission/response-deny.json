@@ -1,0 +1,13 @@
+{
+  "sentAt": "2026-10-31T01:19:45.289Z",
+  "status": 200,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "deny",
+        "message": "TASKVILLE-SPIKE-DENY-7Q: the owner said no, do not retry"
+      }
+    }
+  }
+}
