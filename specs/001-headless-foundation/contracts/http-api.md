@@ -110,7 +110,11 @@ Guarantees: backlog `after+1..head` is sent in ingest order before live events;
 no gaps; no duplicates within one connection. `after > head` -> `resnapshot`.
 Hono's `streamSSE` has no write cap, so the engine keeps its own per-subscriber
 queue of 1,000 frames; on overflow -> `resnapshot` with `slow_consumer` and close.
-Other subscribers are unaffected.
+Other subscribers are unaffected. A cut-off client that has not read the final
+`resnapshot` frame within 5 s is aborted. At most 64 streams are open at once;
+above that the route answers `503 too_many_streams`. Revoking pairings
+(`POST /v1/pairing/revoke`) ends every stream opened with a browser session
+(security review #17, F1 and F5).
 
 ### `POST /v1/commands`, `GET /v1/commands/:id` (stub in this feature)
 

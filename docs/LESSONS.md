@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-36: A timeout for a stalled client must start at the cut-off, and check order is a safety property
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** storage teammate (M1.18 fixes)
+- **What happened:** A timeout started after the stream loop finishes never fires for a stalled client, because the loop itself is blocked writing to that client. In ingest, running the producer-policy check before the Unicode walk removed the only reachable path to unbounded nesting (F2).
+- **Lesson:** Start timers at the event that should bound them; order validation so cheap policy checks reject before expensive walks, with a stack-overflow catch as the backstop.
+- **Action:** Fixed in PR #152.
+
 ### L-35: Mutations that survive point at unreachable-in-normal-runs paths
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #15 · **Recorded by:** storage teammate (M1.13)
 - **What happened:** Dropping duplicate frames, paging the backlog and the shutdown abort survived the done-when tests because those paths do not run in a normal stream. Separately, a post-commit roborev high (job 4899) found open requests were not expired at engine start.
