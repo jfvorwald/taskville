@@ -217,6 +217,19 @@ describe("install --scope user", () => {
     }
   });
 
+  it("refuses duplicate keys, which JSON.parse would hide, without printing them (roborev 5210)", async () => {
+    sb = sandbox();
+    const text = `{"env": {"DB_PASSWORD": "hunter2 first", "DB_PASSWORD": "second"}}\n`;
+    write(sb.userSettings, text);
+    for (const flag of ["--dry-run", "--yes"]) {
+      const r = await tv(sb, ["install", "claude-code", "--scope", "user", flag]);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/duplicate/i);
+      expect(r.stdout + r.stderr).not.toContain("hunter2");
+    }
+    expect(read(sb.userSettings)).toBe(text);
+  });
+
   it("reinstalls when a user narrowed an installed group with a matcher (roborev 5200)", async () => {
     sb = sandbox();
     await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
@@ -385,6 +398,17 @@ describe("uninstall", () => {
     await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
     expect((await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"])).code).toBe(0);
     expect(existsSync(sb.userSettings)).toBe(false);
+  });
+
+  it("keeps a formatting-only edit made after install (roborev 5210)", async () => {
+    sb = sandbox();
+    write(sb.userSettings, `{"model": "opus"}\n`);
+    await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
+    // Same values, now indented with four spaces.
+    writeFileSync(sb.userSettings, `${JSON.stringify(json(sb.userSettings), null, 4)}\n`);
+    const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(read(sb.userSettings)).toBe(`{\n    "model": "opus"\n}\n`);
   });
 
   it("removes only Taskville's entries when the file changed after install", async () => {
