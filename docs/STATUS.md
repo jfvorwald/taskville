@@ -2,31 +2,47 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-10-31, 15:45 EDT, M2 resumed by the owner through G2. **Implementation baseline:** main 20e28d8. **State:** M2 in progress. G2 #40 remains open; agents must not close it. M3 has not started.
+**Updated:** 2026-10-31, 16:25 EDT. **Main:** 7c4d228. **State:** M2 complete, stopped at gate G2 [#40](https://github.com/jfvorwald/taskville/issues/40) (`waiting:user`). Agents must not close it. M3 has not started.
 
-## M2 resume
+## Done in wave 2 (M2)
 
-Seventeen M2 implementation/follow-up PRs are merged: #179, #180, #181, #182, #186, #188, #189, #191, #192, #195, #196, #197, #199, #200, #201, #203, #204. Preserve them; do not repeat their tickets. The recovery audit is in [RECOVERY-2026-10-31](tasks/RECOVERY-2026-10-31.md); its model and effort policy is approved.
+Gate summary: [G2 #40](https://github.com/jfvorwald/taskville/issues/40). Retro: [retros/M2.md](retros/M2.md). Lessons L-45 to L-117.
 
-| Work | State | Next |
+| Ticket | PR | Outcome |
 | --- | --- | --- |
-| M2.20 #209 crew mapper: one task across lead and teammate | In progress (Claude Sonnet 5.5, medium) | Unblocks M2.10 |
-| M2.21 #210 Git watcher lazy fetch (M2.11 F1) | In progress (Claude Sonnet 5.5, high) | Root registration decision #213 |
-| M2.22 #211 redaction gaps (M2.11 F2) | Queued | |
-| M2.23 #212 installer/shim home ownership (M2.11 F3) | Queued | |
-| M2.19 #207 CLI retired counts | Queued, dependencies merged (#204) | |
-| M2.10 #34 | Draft [PR #208](https://github.com/jfvorwald/taskville/pull/208); one TODO assertion for split task IDs | After #209: enable assertion, confirmation panel, CI |
-| M2.11 #35 | Review in [PR #205](https://github.com/jfvorwald/taskville/pull/205); dispositions [on #35](https://github.com/jfvorwald/taskville/issues/35) | Closes when #210 to #212 merge; F4 #214 and F5 #215 retained as low follow-ups |
-| M2.18 #166 | Code merged in #203; corrected measurement posted on #206 and #166 | SC-006 remains MISSED |
-| M2.RT #96, G2 #40 | Not started | After the fixes and wave verification |
+| M2.01 #20 hook shim with spool | #186 | fixed or answered; [report](tasks/M2.01.md) |
+| M2.02 #21 source endpoint | #179, #181 | [report](tasks/M2.02.md) |
+| M2.03 #22 adapter: sessions, tools, notifications | #182 | [report](tasks/M2.03.md) |
+| M2.04 #23 adapter: subagents and teams | #180 | [report](tasks/M2.04.md) |
+| M2.06 #27 evidence store | #189 | [report](tasks/M2.06.md) |
+| M2.07 #28 spool ingest, late semantics | #191, #196 | [report](tasks/M2.07.md) |
+| M2.08 #29 install and uninstall | #195 | [report](tasks/M2.08.md) |
+| M2.09 #25 live Git watcher | #192 | [report](tasks/M2.09.md) |
+| M2.10 #34 real-session e2e | #208 | replay 7/7, 0 todo; [report](tasks/M2.10.md) |
+| M2.11 #35 security review | #205; fixes #218, #219, #220 | 3 medium fixed; F4 #214 and F5 #215 retained; [report](tasks/M2.11.md) |
+| M2.12 #173 pairing link, persisted pairings | #199 | [report](tasks/M2.12.md) |
+| M2.13 #183 reducer rules for real sessions | #197 | [report](tasks/M2.13.md) |
+| M2.14 #185 redactor GitHub tokens | #188 | [report](tasks/M2.14.md) |
+| M2.15 #143 attention ordering | #201 | [report](tasks/M2.15.md) |
+| M2.16 #167 bounded projection state | #204 | [report](tasks/M2.16.md) |
+| M2.17 #194 redactor nested values | #200 | [report](tasks/M2.17.md) |
+| M2.18 #166 projection cache, SQLite limits | #203 | SC-006 still MISSED; [report](tasks/M2.18.md) |
+| M2.19 #207 CLI retired counts | #221 | [report](tasks/M2.19.md) |
+| M2.20 #209 crew mapper team task | #217 | 8-hex scope trade-off accepted; [report](tasks/M2.20.md) |
+| M2.21 #210 Git lazy fetch (F1) | #218 | [report](tasks/M2.21.md) |
+| M2.22 #211 redaction gaps (F2) | #219 | 4 crafted gaps pre-existing on main: #222, decision #223; [report](tasks/M2.22.md) |
+| M2.23 #212 private home (F3) | #220 | [report](tasks/M2.23.md) |
+| M2.RT #96 retro | #224 | [report](tasks/M2.RT.md) |
 
-Session window: the live usage display could not be read from this session; the owner said not to wait. Working to the provisional 19:50 EDT cutoff from the recovery audit (earliest plausible): normal assignments stop 18:50, drain from 19:20, shutdown done by 19:35.
+Wave verification on main 44f5af1 with no workers running: `pnpm check` 94 files, 2,275 tests; real-session replay 7/7; `pnpm perf:unit` 14; SC-004 and SC-005 PASS (see Measurements). Flake F-2 (M2.10 replay under load). Recovery audit: [RECOVERY-2026-10-31](tasks/RECOVERY-2026-10-31.md).
+
+Workers this session (all stopped after handoff, branches frozen, worktrees kept): Claude Sonnet 5.5 medium for M2.20, M2.10 completion, M2.19; Sonnet 5.5 high for M2.21, M2.22, M2.23; Haiku 5.5 low for the lessons copy. The live usage display could not be read from the lead session; work ended well inside the provisional 19:50 EDT cutoff.
 
 ## Remaining decisions
 
-Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206, #213. Existing defaults remain in force.
+Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206, #213, #223. Defaults remain in force; none blocks M2.
 
-SC-006 remains MISSED. M2.18's 28.7% rerun and M2.16's overlapping soak are invalid. The replacement clean-from-other-soaks run reports 39.7% MISS, on a machine that was not quiet. The 1x eight-hour run remains M7 work.
+SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16's overlap invalid). The 1x eight-hour run remains M7 work.
 
 ## Done in wave 1 (M1)
 
@@ -77,6 +93,10 @@ Items there are blocking only if the ticket says so; everything else proceeds on
 | Live `pnpm retro M1` | 7.2 s | `time pnpm retro M1` | #94 |
 | `demo run --seed 42 --duration 2h --offline` (quickstart section 4) | same hash twice, 0.24 s | by hand, Node 26.8.2 | #18 |
 | Offline 8-hour calm demo run | 127 ms | demo test suite (Node 26.8.2) | #14 |
+| SC-004 batch over HTTP to real `serve`, M2 wave | p50 92.8 ms, max 99.5 ms (5 runs): PASS | `pnpm perf batch` on main 44f5af1, no workers running (Apple M1, Node 26.8.2) | #96 |
+| SC-005 ingest to SSE viewer, M2 wave | idle max 12.2 ms, with demo max 10.2 ms (1,000 probes each): PASS | `pnpm perf latency` on main 44f5af1 | #96 |
+| SC-006 calm soak after #203 | 39.7% MISS (98.9 to 138.2 MiB); 28.7% rerun invalid (overlapped another soak) | `pnpm perf soak` | #166, #206 |
+| Real-session replay | 7 pass, 0 todo (19.5 s) | `node --test tests/e2e/claude-code-telemetry/` | #34 |
 | SC-004 batch over HTTP to real `serve` | median 155.8 ms, max 205.4 ms (5 runs); target under 1 s: PASS | `pnpm perf batch` (Apple M1, 16 GiB, Node 26.8.2) | #103 |
 | SC-005 ingest to SSE viewer | idle median 1.7 / p95 4.0 / max 15.1 ms; with demo median 2.2 / p95 6.1 / max 44.9 ms (1,000 probes each); target under 250 ms: PASS | `pnpm perf latency` | #103 |
 | SC-006 RSS growth hour 1 to 8, calm demo at 480x | 14.1%, rerun alone 26.6%; target under 10%: MISS (#166); heap after GC flat 16.6 to 16.7 MiB (diagnostic, not committed) | `pnpm perf soak` | #103 |
@@ -142,4 +162,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Land #209 to #212 and #207, finish M2.10 acceptance, run the wave verification, M2.RT #96, and prepare G2 #40. Stop at G2; do not start M3.
+Stopped at G2 #40 for the owner. Do not start M3 or close the gate. Follow-ups for scheduling: #214, #215, #222 (after decision #223), and the M4 residuals listed in the G2 summary.
