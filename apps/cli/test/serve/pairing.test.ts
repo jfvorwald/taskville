@@ -303,6 +303,32 @@ describe("failures after the server listens (roborev 5255)", () => {
   });
 });
 
+describe("terminal restored on a failure after the keys are attached (roborev 5262)", () => {
+  it("restores raw mode and closes the server when the hint cannot be printed", async () => {
+    const home = tempDir();
+    try {
+      const tty = new FakeTerminal();
+      const port = await freePort();
+      const code = await run(["serve", "--headless", "--home", home.path, "--port", String(port)], {
+        stdout: (s) => {
+          if (s.startsWith("Press p")) throw new Error("stdout closed");
+        },
+        stderr: () => {},
+        env: {},
+        cwd: home.path,
+        stdin: tty,
+      });
+      expect(code).toBe(1);
+      expect(tty.rawModes).toEqual([true, false]);
+      expect(tty.listenerCount("data")).toBe(0);
+      expect(tty.flowing).toBe(false);
+      await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
+    } finally {
+      home.remove();
+    }
+  });
+});
+
 describe("no route mints a pairing code (#113, #174)", () => {
   it("serve's route table has only the pairing exchange and revoke, and nothing new", async () => {
     const home = tempDir();
