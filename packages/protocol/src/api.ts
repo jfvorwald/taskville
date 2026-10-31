@@ -122,19 +122,28 @@ export const snapshotResponseSchema = z.strictObject({
 });
 export type SnapshotResponse = z.output<typeof snapshotResponseSchema>;
 
-export const pairingRequestSchema = z.strictObject({ code: z.string().min(1) });
+/** Max pairing code length the engine accepts (`apps/engine`, M1.10). */
+export const PAIRING_CODE_MAX_LENGTH = 256;
+
+export const pairingRequestSchema = z.strictObject({
+  code: z.string().min(1).max(PAIRING_CODE_MAX_LENGTH),
+});
 export const pairingResponseSchema = z.strictObject({ session: z.string().min(1) });
 export const pairingRevokeResponseSchema = z.strictObject({ revoked: nonNegativeIntSchema });
 export type PairingRequest = z.output<typeof pairingRequestSchema>;
 export type PairingResponse = z.output<typeof pairingResponseSchema>;
 export type PairingRevokeResponse = z.output<typeof pairingRevokeResponseSchema>;
 
-/** `GET /health`: `200` with `status: "ok"`, `503` with `db: "error"`. */
+/**
+ * `GET /health`: `200` with `status: "ok"`, `503` with `db: "error"`. http-api.md lists every
+ * field, but `db` and `walMode` are absent until the engine has storage wired in, and `version`
+ * when none is configured, so they are optional here.
+ */
 export const healthResponseSchema = z.strictObject({
   status: z.enum(["ok", "error"]),
-  db: z.enum(["ok", "error"]),
-  walMode: z.boolean(),
+  db: z.enum(["ok", "error"]).optional(),
+  walMode: z.boolean().optional(),
   uptimeSeconds: z.number().nonnegative(),
-  version: z.string().min(1),
+  version: z.string().min(1).optional(),
 });
 export type HealthResponse = z.output<typeof healthResponseSchema>;

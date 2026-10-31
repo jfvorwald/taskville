@@ -160,6 +160,9 @@ describe("pairing and health", () => {
   it("parses the pairing exchange and revoke", () => {
     expect(pairingRequestSchema.parse({ code: "abc" })).toEqual({ code: "abc" });
     expect(pairingRequestSchema.safeParse({ code: "" }).success).toBe(false);
+    // apps/engine (M1.10) caps the code at 256 characters.
+    expect(pairingRequestSchema.safeParse({ code: "c".repeat(256) }).success).toBe(true);
+    expect(pairingRequestSchema.safeParse({ code: "c".repeat(257) }).success).toBe(false);
     expect(pairingResponseSchema.parse({ session: "s" })).toEqual({ session: "s" });
     expect(pairingRevokeResponseSchema.parse({ revoked: 2 })).toEqual({ revoked: 2 });
   });
@@ -169,6 +172,14 @@ describe("pairing and health", () => {
     expect(healthResponseSchema.parse(ok)).toEqual(ok);
     expect(healthResponseSchema.parse({ ...ok, status: "error", db: "error" })).toBeTruthy();
     expect(healthResponseSchema.safeParse({ ...ok, db: "maybe" }).success).toBe(false);
+  });
+
+  it("accepts the process-only health an engine reports before storage is wired", () => {
+    // apps/engine (M1.10) omits db and walMode without a storage health hook, and version
+    // when none is configured.
+    const processOnly = { status: "ok", uptimeSeconds: 3 };
+    expect(healthResponseSchema.parse(processOnly)).toEqual(processOnly);
+    expect(healthResponseSchema.safeParse({ uptimeSeconds: 3 }).success).toBe(false);
   });
 });
 
