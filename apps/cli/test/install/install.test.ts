@@ -235,14 +235,13 @@ describe("install --scope user", () => {
     }
   });
 
-  it("never prints a number under a sensitive key (#194)", async () => {
+  it("never prints a number under a sensitive key, even on an unindented line (#194, roborev 5260)", async () => {
     sb = sandbox();
-    write(
-      sb.userSettings,
-      `{\n  "env": {\n    "DB_PASSWORD": 987654321987\n  },\n  "auth": {"token": {"pin": 424242}}\n}\n`,
-    );
+    // The token value sits alone at column 0, so its removed line reads "-424242" in the diff.
+    write(sb.userSettings, `{"env": {"DB_PASSWORD": 987654321987}, "token":\n424242\n}\n`);
     const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--dry-run"]);
     expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain("-424242".replace("424242", "[REDACTED]"));
     expect(r.stdout).not.toContain("987654321987");
     expect(r.stdout).not.toContain("424242");
   });
