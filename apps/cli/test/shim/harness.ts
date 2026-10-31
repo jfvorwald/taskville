@@ -59,6 +59,8 @@ export interface ShimOptions {
   shell: string;
   input: string | Buffer;
   env: Record<string, string>;
+  /** Working directory (a relative TASKVILLE_HOME resolves against it). */
+  cwd?: string;
 }
 
 /** Runs the shim once, piping `input` to its stdin. */
@@ -67,6 +69,7 @@ export function runShim(options: ShimOptions): Promise<ShimRun> {
   return new Promise((resolve, reject) => {
     const child = spawn(options.shell, [SHIM], {
       env: options.env,
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";

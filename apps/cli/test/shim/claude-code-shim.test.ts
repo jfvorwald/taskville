@@ -141,6 +141,30 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(statSync(home.spoolFile).mode & 0o777).toBe(0o600);
   });
 
+  it("tightens an existing spool file to 0600 before appending", async () => {
+    writeFileSync(home.spoolFile, "", { mode: 0o644 });
+    chmodSync(home.spoolFile, 0o644);
+    await runShim({
+      shell,
+      input: JSON.stringify(hookPayload(23)),
+      env: shimEnv(home, await deadUrl()),
+    });
+    expect(statSync(home.spoolFile).mode & 0o777).toBe(0o600);
+    expect(spoolLines(home)).toHaveLength(1);
+  });
+
+  it("handles a relative home that starts with a hyphen", async () => {
+    const env = shimEnv(home, await deadUrl(), { TASKVILLE_HOME: "-data" });
+    const run = await runShim({
+      shell,
+      input: JSON.stringify(hookPayload(24)),
+      env,
+      cwd: home.root,
+    });
+    expect(run.code).toBe(0);
+    expect(existsSync(join(home.root, "-data", "spool", "claude-code.jsonl"))).toBe(true);
+  });
+
   it("spools on a non-2xx answer", async () => {
     for (const status of [401, 403, 500, 302]) {
       server.setMode({ kind: "status", status });

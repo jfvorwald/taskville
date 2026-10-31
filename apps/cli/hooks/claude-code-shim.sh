@@ -43,10 +43,12 @@
 # SPOOL (consumed by spool ingest, M2.09 / #28). Sensitive: holds unredacted
 # hook payloads (prompts, tool inputs and outputs).
 #   Directory  $TASKVILLE_HOME/spool (mode 0700). Files are created 0600.
-#   Main file  claude-code.jsonl, appended under the lock below.
+#   Main file  claude-code.jsonl, appended under the lock below. An existing
+#              file is set to 0600 first; one owned by another user is never
+#              appended to (the event goes to its own file).
 #   Own files  claude-code.<sourceEventId>.jsonl, one event each, written when
 #              the lock cannot be taken within about 1 s or the main file is a
-#              symlink or not a regular file. Written to a temporary name in
+#              symlink, not a regular file, or owned by another user. Written to a temporary name in
 #              the spool directory and renamed, so they are always complete.
 #   Temporary  .claude-code.* (dot files): incomplete, never ingest them. One
 #              older than a minute was left by a killed shim and can be deleted.
@@ -165,6 +167,8 @@ case $home in
 esac
 home=$(strip_slashes "$home")
 [ -n "$home" ] || bail
+# A relative home such as "-data" must never be read as an option.
+case $home in /*) ;; *) home=./$home ;; esac
 
 # A concurrent hook may create either directory first: a failed mkdir is not
 # fatal, the checks after it decide.
@@ -330,6 +334,12 @@ append_main() {
   if [ -e "$file" ] && [ ! -f "$file" ]; then return 1; fi
   acquire_lock || return 1
   if [ -h "$file" ]; then
+    release_lock
+    return 1
+  fi
+  # An existing file must be ours and private before payloads go into it: an
+  # owned file is tightened to 0600, anyone else's is left alone.
+  if [ -e "$file" ] && { [ ! -O "$file" ] || ! chmod 600 "$file"; }; then
     release_lock
     return 1
   fi
