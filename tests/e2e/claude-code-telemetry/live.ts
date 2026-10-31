@@ -22,7 +22,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { openEvidenceStore } from "../../../apps/engine/src/evidence/index.ts";
 import {
@@ -43,7 +43,7 @@ const { values } = parseArgs({
   options: { out: { type: "string" }, model: { type: "string" }, only: { type: "string" } },
 });
 if (values.out === undefined) throw new Error("--out <dir> is required");
-const OUT = values.out;
+const OUT = resolve(values.out);
 const MODEL = values.model ?? "claude-haiku-5-5";
 const PROJ = join(OUT, "proj");
 const HOME = join(OUT, "home");
@@ -105,7 +105,8 @@ function setup(): void {
     "PermissionRequest",
     "PermissionDenied",
   ];
-  const command = `/usr/bin/python3 '${recorder}' '${REC}'`;
+  const q = (w: string) => `'${w.replaceAll("'", "'\\''")}'`;
+  const command = `/usr/bin/python3 ${q(recorder)} ${q(REC)}`;
   const hooks = Object.fromEntries(
     events.map((e) => [e, [{ hooks: [{ type: "command", command }] }]]),
   );
@@ -341,6 +342,10 @@ async function downtime(ref: { engine?: Engine | undefined }, port: number): Pro
     await new Promise((r) => setTimeout(r, 100));
   }
   await running;
+  if (killedAt === 0)
+    throw new Error(
+      "downtime: the `echo step1` PostToolUse never arrived; the engine was not killed",
+    );
   await new Promise((r) => setTimeout(r, 2000));
   const spooled = readdirSync(join(HOME, "spool")).filter((n) => n.endsWith(".jsonl"));
   const spoolLines = spooled
