@@ -82,6 +82,8 @@ function collect(node: unknown, into: Sensitive): void {
     if (node !== "") into.strings.add(node);
   } else if (typeof node === "number") {
     into.numbers.add(node);
+    // A quoted copy of the same digits elsewhere would print it too (roborev 5274).
+    into.strings.add(JSON.stringify(node));
   } else if (Array.isArray(node)) {
     for (const item of node) collect(item, into);
   } else if (node !== null && typeof node === "object") {
