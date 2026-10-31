@@ -20,10 +20,13 @@ function freePort(): Promise<number> {
 
 function rawGet(port: number, headers: Record<string, string>): Promise<number> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path: "/health", method: "GET", headers }, (res) => {
-      res.resume();
-      resolve(res.statusCode ?? 0);
-    });
+    const req = request(
+      { host: "127.0.0.1", port, path: "/health", method: "GET", headers },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      },
+    );
     req.once("error", reject);
     req.end();
   });

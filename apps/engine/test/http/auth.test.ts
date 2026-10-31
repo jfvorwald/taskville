@@ -12,7 +12,10 @@ import {
 } from "./helpers.ts";
 
 async function pair(app: ReturnType<typeof makeApp>["app"], code: string): Promise<string> {
-  const res = await app.request("/v1/pairing/exchange", postJson({ code }, { Host: HOST, Origin: ORIGIN }));
+  const res = await app.request(
+    "/v1/pairing/exchange",
+    postJson({ code }, { Host: HOST, Origin: ORIGIN }),
+  );
   expect(res.status).toBe(200);
   const body = (await res.json()) as { session: string };
   return body.session;
@@ -154,7 +157,10 @@ describe("browser pairing", () => {
     const { app, pairing } = makeApp();
     const a = await pair(app, pairing.issueCode());
     const b = await pair(app, pairing.issueCode());
-    const res = await app.request("/v1/pairing/unpair", { method: "POST", headers: bearer(CLI_TOKEN) });
+    const res = await app.request("/v1/pairing/unpair", {
+      method: "POST",
+      headers: bearer(CLI_TOKEN),
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ revoked: 2 });
     for (const s of [a, b]) {
@@ -202,7 +208,10 @@ describe("command route stub", () => {
 
   it("refuses the CLI token even with a matching Origin", async () => {
     const { app } = appWithCommands();
-    const res = await app.request("/v1/commands", postJson({}, { ...bearer(CLI_TOKEN), Origin: ORIGIN }));
+    const res = await app.request(
+      "/v1/commands",
+      postJson({}, { ...bearer(CLI_TOKEN), Origin: ORIGIN }),
+    );
     expect(res.status).toBe(403);
   });
 
@@ -221,7 +230,10 @@ describe("command route stub", () => {
   it("accepts a paired session with a matching Origin", async () => {
     const { app, pairing } = appWithCommands();
     const session = await pair(app, pairing.issueCode());
-    const res = await app.request("/v1/commands", postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }));
+    const res = await app.request(
+      "/v1/commands",
+      postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
+    );
     expect(res.status).toBe(200);
   });
 
@@ -241,7 +253,10 @@ describe("command route stub", () => {
     const { app, pairing } = appWithCommands();
     const session = await pair(app, pairing.issueCode());
     pairing.unpairAll();
-    const res = await app.request("/v1/commands", postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }));
+    const res = await app.request(
+      "/v1/commands",
+      postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
+    );
     expect(res.status).toBe(401);
   });
 });
