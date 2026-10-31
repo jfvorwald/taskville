@@ -260,6 +260,14 @@ export function parentDirProblem(
   if (rootStat !== undefined && !trusted(rootStat)) return `/ is owned by another user`;
   while (rest.length > 0) {
     const [name, ...after] = rest;
+    // `.` and `..` are applied where the walk is, never folded into the text first: `link/..` is
+    // the parent of what the link points at, not of the directory holding the link. `current` is
+    // always a real directory here, so its dirname is its true parent.
+    if (name === "." || name === "..") {
+      if (name === "..") current = dirname(current);
+      rest = after;
+      continue;
+    }
     const next = join(current, name ?? "");
     const stat = view.lstat(next);
     if (stat === undefined) return undefined;
@@ -267,9 +275,8 @@ export function parentDirProblem(
       if (!trusted(stat)) return `${next} is a symlink owned by another user, who could re-aim it`;
       if (++hops > MAX_SYMLINK_HOPS) return `${path} passes through too many symlinks`;
       const target = view.readlink(next);
-      // `current` is already a real directory, so joining normalizes `..` correctly.
-      rest = [...split(isAbsolute(target) ? target : join(current, target)), ...after];
-      current = "/";
+      rest = [...split(target), ...after];
+      if (isAbsolute(target)) current = "/";
       continue;
     }
     if (after.length > 0) {

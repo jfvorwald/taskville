@@ -137,6 +137,23 @@ describe("parentDirProblem (injected stat)", () => {
     expect(problem("/home/u/l/.taskville", rel)).toMatch(/\/w is writable by/);
   });
 
+  it("applies `..` after resolving a link, not before (link/.. is not the link's directory)", () => {
+    // /safe/l1 -> /safe/a/l2, and /safe/a/l2 -> /shared/deep. Target "l2/../x" inside /safe/a
+    // means /shared/x, so a lexical join (/safe/a/x) would skip the writable /shared.
+    const v = view(
+      {
+        "/": 0o40755,
+        "/safe": 0o40700,
+        "/safe/a": 0o40700,
+        "/shared": 0o40777,
+        "/shared/deep": 0o40700,
+        "/shared/x": 0o40700,
+      },
+      { "/safe/a/l1": "l2/../x", "/safe/a/l2": "/shared/deep" },
+    );
+    expect(problem("/safe/a/l1/.taskville", v)).toMatch(/\/shared is writable by/);
+  });
+
   it("refuses a symlink on the way that another user owns, even in a root-owned sticky dir", () => {
     const v = view(
       { "/": 0o40755, "/shared": 0o41770, "/private": 0o40700 },
