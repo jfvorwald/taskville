@@ -241,7 +241,7 @@ describe("hostile input", () => {
 describe("commit and broadcast", () => {
   it("calls onCommit after COMMIT with only the accepted envelopes", () => {
     const seen: number[] = [];
-    const onCommit = vi.fn((batch: CommittedBatch) => {
+    const onCommit = vi.fn((_batch: CommittedBatch) => {
       // A second connection sees the events, so the commit happened first.
       const raw = new DatabaseSync(db.path());
       try {

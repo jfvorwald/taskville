@@ -16,7 +16,10 @@ function makeBatch(run: number): unknown[] {
   const events: unknown[] = [];
   const base = Date.parse("2026-10-30T11:00:00Z") + run * 3_600_000;
   for (let i = 0; i < batchSize; i++) {
-    const agent = `agent-${i % 6}`;
+    // Groups of five events share an agent and session, so each tool_call.finished
+    // closes the start just before it in the same session.
+    const actor = Math.floor(i / 5) % 6;
+    const agent = `agent-${actor}`;
     const common = {
       schemaVersion: 1,
       projectId: "bench",
@@ -24,7 +27,7 @@ function makeBatch(run: number): unknown[] {
       sourceEventId: `r${run}-e${i}`,
       occurredAt: new Date(base + i * 1000).toISOString(),
       agentId: agent,
-      sessionId: `sess-${i % 6}`,
+      sessionId: `sess-${actor}`,
       provenance: "live",
     };
     const kind = i % 5;

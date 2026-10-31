@@ -44,10 +44,14 @@ const UNMASKED_FIELDS: Partial<Record<EventType, readonly string[]>> = {
   "git.merge": ["sha", "parents"],
 };
 
-/** Payload fields with a length limit that masking could push past (a marker can be longer than the secret). */
-const CAPPED_FIELDS: Readonly<Record<string, number>> = {
-  inputPreview: INPUT_PREVIEW_MAX_CHARS,
-  sourceValue: ID_MAX_LENGTH,
+/**
+ * Payload fields with a length limit that masking could push past (a marker can
+ * be longer than the secret), and the unit the schema counts: `inputPreview` in
+ * code points, `sourceValue` in UTF-16 units (a plain `z.string().max`).
+ */
+const CAPPED_FIELDS: Readonly<Record<string, { max: number; unit: "codePoints" | "utf16" }>> = {
+  inputPreview: { max: INPUT_PREVIEW_MAX_CHARS, unit: "codePoints" },
+  sourceValue: { max: ID_MAX_LENGTH, unit: "utf16" },
 };
 
 /**
@@ -69,14 +73,22 @@ export function stripControlCharacters(text: string): string {
   return start === 0 ? text : out + text.slice(start);
 }
 
-/** The first `max` code points of `text`, so a surrogate pair is never split. */
-function cutCodePoints(text: string, max: number): { text: string; cut: boolean } {
+/**
+ * The longest prefix of `text` within `max` code points (or UTF-16 units),
+ * never splitting a surrogate pair.
+ */
+function cut(
+  text: string,
+  max: number,
+  unit: "codePoints" | "utf16" = "codePoints",
+): { text: string; cut: boolean } {
   let count = 0;
   for (let i = 0; i < text.length; ) {
-    if (count === max) return { text: text.slice(0, i), cut: true };
-    const code = text.codePointAt(i) ?? 0;
-    i += code > 0xffff ? 2 : 1;
-    count += 1;
+    const width = (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1;
+    const step = unit === "utf16" ? width : 1;
+    if (count + step > max) return { text: text.slice(0, i), cut: true };
+    i += width;
+    count += step;
   }
   return { text, cut: false };
 }
@@ -121,17 +133,17 @@ export function normalizePayload(event: InputEvent): NormalizedPayload {
 
   const stored: Record<string, unknown> = { ...hashed };
   if (typeof hashed.reason === "string") {
-    const { text, cut } = cutCodePoints(hashed.reason, REASON_MAX_CHARS);
+    const reason = cut(hashed.reason, REASON_MAX_CHARS);
     stored.reason = {
-      text,
+      text: reason.text,
       masked: masks.some((mask) => mask.path.length === 1 && mask.path[0] === "reason"),
-      truncated: cut,
+      truncated: reason.cut,
     };
   }
-  for (const [field, max] of Object.entries(CAPPED_FIELDS)) {
+  for (const [field, { max, unit }] of Object.entries(CAPPED_FIELDS)) {
     const current = stored[field];
     if (typeof current === "string" && !unmasked.has(field)) {
-      stored[field] = cutCodePoints(current, max).text;
+      stored[field] = cut(current, max, unit).text;
     }
   }
   return { hashed, stored };
