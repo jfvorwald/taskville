@@ -191,6 +191,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
   const now = io.now ?? (() => new Date());
   let parts: ServeParts | undefined;
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
+  let keys: { restore: () => void } | undefined;
   const stopDrain = new AbortController();
   let draining: Promise<unknown> = Promise.resolve();
   try {
@@ -221,7 +222,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       interrupt = resolve;
     });
     let lastKeyCode = Number.NEGATIVE_INFINITY;
-    const keys = listenForKeys(io.stdin, {
+    keys = listenForKeys(io.stdin, {
       pair: () => {
         const t = now().getTime();
         // A clock that went back does not lock the key out.
@@ -257,6 +258,8 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
+    // Never leave the terminal raw, whatever failed.
+    keys?.restore();
     stopDrain.abort();
     await draining;
     await parts?.close();
