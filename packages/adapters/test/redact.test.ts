@@ -1340,6 +1340,11 @@ describe("redactJson: name and value pairs (M2.22)", () => {
     });
   });
 
+  it("masks a value glued to a marker in a serialized pair", () => {
+    const text = `{"name":"DB_PASS","value":${maskMarker("sensitive-value")}hunter2}`;
+    expect(redactText(text).text).not.toContain("hunter2");
+  });
+
   it("is idempotent", () => {
     const once = redactJson({ name: "DB_PASS", value: "x1" }).value;
     expect(redactJson(once).value).toEqual(once);

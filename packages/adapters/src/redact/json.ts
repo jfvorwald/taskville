@@ -43,7 +43,9 @@ export interface RedactJsonOptions {
  * and spans. The whole value of a sensitive property name (`password`, `apiKey`,
  * ...) is sealed: any string, number, boolean, object, or array there becomes one
  * mask marker, keys inside it included, so `{ password: { value } }`,
- * `{ token: 123 }`, or `{ password: { hunter2: true } }` keeps nothing (#194).
+ * `{ token: 123 }`, or `{ password: { hunter2: true } }` keeps nothing (#194). The
+ * `value` next to a sensitive `name` or `key` (`{ name: "DB_PASSWORD", value }`) is sealed
+ * the same way (M2.22).
  * Null carries nothing and stays, and so does a placeholder string (`$NAME`,
  * `***`, empty) directly under the key. Elsewhere a string that is a whole
  * high-entropy token is masked entirely and any other string is masked span by
@@ -71,10 +73,13 @@ export function redactJson(value: JsonValue, options: RedactJsonOptions = {}): R
     if (Array.isArray(node)) return node.map((item, i) => walk(item, [...path, i]));
     if (node !== null && typeof node === "object") {
       const out: { [key: string]: JsonValue } = {};
-      for (const [k, v] of Object.entries(node)) {
+      const entries = Object.entries(node);
+      const pair = namesSensitivePair(entries);
+      for (const [k, v] of entries) {
         const childPath = [...path, k];
         let next: JsonValue;
-        if (!isSensitiveName(k) || v === null || options.skip?.(childPath)) {
+        const sensitive = isSensitiveName(k) || (pair && k.toLowerCase() === "value");
+        if (!sensitive || v === null || options.skip?.(childPath)) {
           next = walk(v, childPath);
         } else if (typeof v === "string") {
           const { text, spans } = redactString(v, true);
@@ -97,6 +102,17 @@ export function redactJson(value: JsonValue, options: RedactJsonOptions = {}): R
     return node;
   };
   return { value: walk(value, []), masks };
+}
+
+/**
+ * True for a `{ name: "DB_PASSWORD", value: ... }` pair (also `key`/`Key`/`Name`): the
+ * secret sits under a generic `value`, so the sibling name decides (M2.11 F2).
+ */
+function namesSensitivePair(entries: ReadonlyArray<[string, JsonValue]>): boolean {
+  return entries.some(([k, v]) => {
+    const lower = k.toLowerCase();
+    return (lower === "name" || lower === "key") && typeof v === "string" && isSensitiveName(v);
+  });
 }
 
 function redactString(value: string, sensitive: boolean): { text: string; spans: MaskSpan[] } {

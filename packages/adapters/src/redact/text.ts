@@ -167,6 +167,21 @@ const USER_FLAG = /(?<![A-Za-z0-9_-])(?:-[uU][ \t]*|--(?:proxy-)?user(?:=|[ \t]+
 // after a flag costs a bounded scan per match.
 const MAX_USER = 128;
 
+// Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
+// publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
+// tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
+// `sshpass`, 3 is `docker|podman login`. A path in front (`/usr/bin/mysql`) is fine.
+const PASSWORD_COMMAND =
+  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(?:docker|podman)[ \t]+(login))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
+
+// Words read after one of those commands, so a long line costs a bounded scan.
+const MAX_COMMAND_WORDS = 256;
+
+// A `{"name": "DB_PASSWORD", "value": "..."}` pair (Kubernetes env, the GitHub API, AWS
+// tags, `docker inspect`) written as text. Group 3 is the name; the value is read by hand.
+const NAME_VALUE_PAIR =
+  /(["'])(?:name|key)\1[ \t]*:[ \t]*(["'])([A-Za-z_][A-Za-z0-9_.-]{0,99})\2[ \t]*,[ \t]*\1value\1[ \t]*:[ \t]*/gi;
+
 /** Masks secret-looking values in a string. Deterministic and idempotent. */
 export function redactText(input: string): RedactedText {
   const candidates: Candidate[] = [];
@@ -175,6 +190,8 @@ export function redactText(input: string): RedactedText {
   const ends = valueEnds(input);
   findAssignments(input, ends, candidates);
   findFlags(input, ends, candidates);
+  findPasswordFlags(input, candidates);
+  findNameValuePairs(input, ends, candidates);
   findAuthParams(input, candidates);
   findUserFlags(input, candidates);
   findStandaloneTokens(input, candidates);
@@ -290,6 +307,102 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
     if (input.charAt(at) === "-") continue;
     const value = readValue(input, at, ends);
     classify(input, name, value, value.quoted || match[2] === "=", out);
+  }
+}
+
+/**
+ * Masks the password in the short `-p` flag of `mysql`, `mysqldump`, `sshpass`, and
+ * `docker|podman login`, in the rest of that command (up to a newline, `;`, `&`, or `|`).
+ * `mysql` and `mysqldump` read the password only when attached (`-pSECRET`; a bare `-p`
+ * prompts, and the next word is the database). `sshpass` and `login` also take `-p SECRET`.
+ * `sshpass` options end at the first word that is not one, so `sshpass -p x ssh -p 2222 host`
+ * masks `x` and leaves the port. Not masked: no value, or a value that is one complete
+ * reference (`-p"$DB_PASS"`, `-p $TOKEN`).
+ */
+function findPasswordFlags(input: string, out: Candidate[]): void {
+  let scannedUntil = 0;
+  for (const match of input.matchAll(PASSWORD_COMMAND)) {
+    if (match.index < scannedUntil) continue;
+    const spaced = match[1] === undefined; // sshpass and login take `-p SECRET` too
+    const sshpass = match[2] !== undefined;
+    let at = match.index + match[0].length;
+    for (let words = 0; words < MAX_COMMAND_WORDS; words++) {
+      at = skipBlanks(input, at);
+      const end = shellWordEnd(input, at);
+      if (end === at) break; // newline, `;`, `&`, `|`, a backtick, or the end of the text
+      scannedUntil = end;
+      if (input.charAt(at) !== "-") {
+        if (sshpass) break; // the command sshpass runs: its own flags are not ours
+        at = end;
+        continue;
+      }
+      const flag = input.charAt(at + 1);
+      if (flag === "p" && end - at > 2) {
+        pushPassword(input, at + 2, end, out);
+      } else if (flag === "p" && end - at === 2 && spaced) {
+        const start = skipBlanks(input, end);
+        const valueEnd = shellWordEnd(input, start);
+        pushPassword(input, start, valueEnd, out);
+        scannedUntil = Math.max(scannedUntil, valueEnd);
+        at = Math.max(end, valueEnd);
+        continue;
+      } else if (sshpass && end - at === 2 && (flag === "f" || flag === "d" || flag === "P")) {
+        // sshpass -f FILE, -d FD, -P PROMPT: the next word belongs to the option.
+        const start = skipBlanks(input, end);
+        at = Math.max(end, shellWordEnd(input, start));
+        scannedUntil = Math.max(scannedUntil, at);
+        continue;
+      }
+      at = end;
+    }
+  }
+}
+
+function skipBlanks(input: string, at: number): number {
+  let i = at;
+  while (input.charAt(i) === " " || input.charAt(i) === "\t") i++;
+  return i;
+}
+
+/** Marks a shell word as a password, dropping quotes that wrap all of it. */
+function pushPassword(input: string, from: number, to: number, out: Candidate[]): void {
+  let start = from;
+  let end = to;
+  const first = input.charAt(start);
+  if (
+    (first === '"' || first === "'") &&
+    end - start >= 2 &&
+    quotedEnd(input, start + 1, first) === end - 1
+  ) {
+    start += 1;
+    end -= 1;
+  }
+  if (!isPlaceholder(input, start, end)) out.push({ start, end, kind: "sensitive-value" });
+}
+
+/**
+ * End of an unquoted pair value: at a comma or bracket, except that a marker or reference
+ * (a sealed number leaves `"value":[REDACTED:sensitive-value]}`) ends where it ends, and
+ * anything glued to it (`[REDACTED:x]hunter2`) stays part of the value.
+ */
+function pairValueEnd(input: string, value: Value): number {
+  const ref = referenceLength(input, value.start);
+  if (ref === 0) return value.looseEnd;
+  const after = value.start + ref;
+  return after >= value.end || SYNTAX_STOP.has(input.charAt(after)) ? after : value.end;
+}
+
+/** Masks the value of a text `{"name": "DB_PASSWORD", "value": ...}` pair. */
+function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
+  for (const match of input.matchAll(NAME_VALUE_PAIR)) {
+    if (!isSensitiveName(match[3] ?? "")) continue;
+    const value = readValue(input, match.index + match[0].length, ends);
+    const end = value.quoted ? value.end : pairValueEnd(input, value);
+    // JSON `null` carries nothing, and redactJson leaves it.
+    if (!value.quoted && input.slice(value.start, end) === "null") continue;
+    if (!isPlaceholder(input, value.start, end)) {
+      out.push({ start: value.start, end, kind: "sensitive-value" });
+    }
   }
 }
 
