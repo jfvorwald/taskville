@@ -132,15 +132,15 @@ describe("rebuild from events", () => {
     storage = openStorage(path);
     expect(storage.projection("p1")?.stateHash).toBe(v1);
     expect(rebuildStaleProjections(storage, standInReducer(2))).toEqual(["p1", "p2"]);
-    expect(storage.projection("p1")?.stateHash).toBe(
-      stateHash(2, storage.projection("p1")?.state),
-    );
+    expect(storage.projection("p1")?.stateHash).toBe(stateHash(2, storage.projection("p1")?.state));
   });
 });
 
 describe("Unsorted project", () => {
   it("is created once, as a builtin project whose first event is a valid project.created", () => {
-    expect(ensureUnsortedProject(storage, { now: () => new Date(Date.parse("2026-10-30T12:00:00Z")) })).toBe(true);
+    expect(
+      ensureUnsortedProject(storage, { now: () => new Date(Date.parse("2026-10-30T12:00:00Z")) }),
+    ).toBe(true);
     expect(ensureUnsortedProject(storage)).toBe(false);
 
     const project = storage.project(UNSORTED_PROJECT_ID);
@@ -155,7 +155,13 @@ describe("Unsorted project", () => {
       payload: { name: "Unsorted", roots: [], builtin: true },
     });
     expect(created?.sourceId.startsWith("taskville:")).toBe(true);
-    expect(storage.findEventBySourceKey("unsorted", created?.sourceId ?? "", created?.sourceEventId ?? "")?.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(
+      storage.findEventBySourceKey(
+        "unsorted",
+        created?.sourceId ?? "",
+        created?.sourceEventId ?? "",
+      )?.contentHash,
+    ).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("gets its projection from the boot rebuild", () => {

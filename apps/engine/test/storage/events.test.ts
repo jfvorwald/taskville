@@ -82,12 +82,18 @@ describe("appendEvent", () => {
   it("rejects a sequence that is not head + 1, so the log stays gap-free", () => {
     expect(() => storage.transaction((tx) => tx.appendEvent(envelope("p1", 2), HASH_A))).toThrow();
     storage.transaction((tx) => tx.appendEvent(envelope("p1", 1), HASH_A));
-    expect(() => storage.transaction((tx) => tx.appendEvent(envelope("p1", 1, { sourceEventId: "x" }), HASH_A))).toThrow();
+    expect(() =>
+      storage.transaction((tx) =>
+        tx.appendEvent(envelope("p1", 1, { sourceEventId: "x" }), HASH_A),
+      ),
+    ).toThrow();
     expect(storage.head("p1")).toBe(1);
   });
 
   it("rejects an event for a project that does not exist", () => {
-    expect(() => storage.transaction((tx) => tx.appendEvent(envelope("nope", 1), HASH_A))).toThrow();
+    expect(() =>
+      storage.transaction((tx) => tx.appendEvent(envelope("nope", 1), HASH_A)),
+    ).toThrow();
     expect(storage.project("nope")).toBeUndefined();
   });
 
@@ -126,6 +132,17 @@ describe("insert-only events table", () => {
       raw.close();
     }
     expect([...storage.events("p1")]).toHaveLength(2);
+  });
+
+  it("refuses to move a project head away from its last event", () => {
+    const raw = rawDb();
+    try {
+      expect(() => raw.exec("UPDATE projects SET head = 5 WHERE id = 'p1'")).toThrow(/head/);
+      expect(() => raw.exec("UPDATE projects SET head = 0 WHERE id = 'p1'")).toThrow(/head/);
+    } finally {
+      raw.close();
+    }
+    expect(storage.head("p1")).toBe(2);
   });
 
   it("aborts INSERT OR REPLACE over an existing event", () => {

@@ -39,7 +39,13 @@ describe("openStorage", () => {
       .filter((row) => (row as { type: string }).type === "table")
       .map((row) => (row as { name: string }).name);
     expect(tables).toEqual(
-      expect.arrayContaining(["schema_migrations", "projects", "events", "projections", "pairings"]),
+      expect.arrayContaining([
+        "schema_migrations",
+        "projects",
+        "events",
+        "projections",
+        "pairings",
+      ]),
     );
     expect(tables).not.toContain("pending_requests");
     expect(tables).not.toContain("commands");
@@ -73,7 +79,13 @@ describe("openStorage", () => {
     const path = join(dir(), "taskville.db");
     const first = openStorage(path);
     first.transaction((tx) => {
-      tx.insertProject({ id: "demo", name: "Demo", roots: ["/repo"], builtin: false, createdAt: "t" });
+      tx.insertProject({
+        id: "demo",
+        name: "Demo",
+        roots: ["/repo"],
+        builtin: false,
+        createdAt: "t",
+      });
       tx.appendEvent(envelope("demo", 1), HASH_A);
     });
     first.close();
