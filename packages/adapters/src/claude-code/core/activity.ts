@@ -132,7 +132,7 @@ const isTestScript = (word: string | undefined) =>
  */
 function runsTestScript(args: string[]): boolean {
   const positional: string[] = [];
-  for (let i = 0; i < args.length && positional.length < 3; i += 1) {
+  for (let i = 0; i < args.length && positional.length < 4; i += 1) {
     const word = args[i] as string;
     if (word === "--") break;
     if (word.startsWith("-")) {
@@ -141,10 +141,15 @@ function runsTestScript(args: string[]): boolean {
     }
     positional.push(word);
   }
-  const [command, second, third] = positional;
+  return isTestInvocation(positional);
+}
+
+/** `test`, `run test`, or either after `workspace <name>`. */
+function isTestInvocation(positional: string[]): boolean {
+  const [command, second] = positional;
   if (isTestScript(command)) return true;
   if (command === "run" || command === "run-script") return isTestScript(second);
-  if (command === "workspace") return isTestScript(third);
+  if (command === "workspace") return isTestInvocation(positional.slice(2));
   return false;
 }
 

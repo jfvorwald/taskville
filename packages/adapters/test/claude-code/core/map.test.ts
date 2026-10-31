@@ -307,6 +307,8 @@ describe("activity from tool names (8.1, 8.3)", () => {
     "pnpm --filter=web test:unit",
     "yarn workspace web test",
     "pnpm -w test",
+    "yarn workspace web run test",
+    "yarn workspace web run test:unit",
     "npm run test:e2e",
   ])("Bash `%s` maps to testing, flagged heuristic", (command) => {
     expect(activityOf("Bash", { command })).toEqual({ activity: "testing", heuristic: true });
