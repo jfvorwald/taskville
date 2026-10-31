@@ -96,9 +96,9 @@ export function redactText(input: string): RedactedText {
   const candidates: Candidate[] = [];
   findPrivateKeys(input, candidates);
   findTokens(input, candidates);
-  const valueEnds = unquotedValueEnds(input);
-  findAssignments(input, valueEnds, candidates);
-  findFlags(input, valueEnds, candidates);
+  const ends = valueEnds(input);
+  findAssignments(input, ends, candidates);
+  findFlags(input, ends, candidates);
   findStandaloneTokens(input, candidates);
   return applyMasks(input, merge(candidates));
 }
@@ -135,28 +135,43 @@ function findStandaloneTokens(input: string, out: Candidate[]): void {
 
 // Where an unquoted value ends: whitespace, a quote, or a shell command separator.
 // Brackets and commas do not end it, so `PASSWORD=abc]def` masks the whole word;
-// the looser assignment forms trim trailing syntax instead (see classify).
+// the looser assignment forms stop at the first comma or bracket instead (see classify).
 const UNQUOTED_STOP = new Set([..." \t\r\n\f\v\"'`;&|"]);
 
-/** For each index, where an unquoted value starting there ends. One pass, O(n). */
-function unquotedValueEnds(input: string): Int32Array {
-  const ends = new Int32Array(input.length + 1);
-  ends[input.length] = input.length;
-  for (let i = input.length - 1; i >= 0; i--) {
-    ends[i] =
-      UNQUOTED_STOP.has(input.charAt(i)) || /\s/.test(input.charAt(i)) ? i : (ends[i + 1] ?? i);
+const SYNTAX_STOP = new Set([...",)}]>"]);
+
+interface Ends {
+  /** For each index, where an unquoted value starting there ends. */
+  word: Int32Array;
+  /** For each index, the next comma or closing bracket (or the text length). */
+  syntax: Int32Array;
+}
+
+/** Precomputes both end tables in one backward pass, so reading any value is O(1). */
+function valueEnds(input: string): Ends {
+  const n = input.length;
+  const word = new Int32Array(n + 1);
+  const syntax = new Int32Array(n + 1);
+  word[n] = n;
+  syntax[n] = n;
+  for (let i = n - 1; i >= 0; i--) {
+    const ch = input.charAt(i);
+    word[i] = UNQUOTED_STOP.has(ch) || /\s/.test(ch) ? i : (word[i + 1] ?? i);
+    syntax[i] = SYNTAX_STOP.has(ch) ? i : (syntax[i + 1] ?? i);
   }
-  return ends;
+  return { word, syntax };
 }
 
 interface Value {
   start: number;
   end: number;
+  /** Where the value ends in loose (code-like) forms: also at a comma or closing bracket. */
+  looseEnd: number;
   quoted: boolean;
 }
 
 /** Reads the value at `at`: a quoted string up to its closing quote or line end, or an unquoted run. */
-function readValue(input: string, at: number, valueEnds: Int32Array): Value {
+function readValue(input: string, at: number, ends: Ends): Value {
   const quote = input.charAt(at);
   if (quote === '"' || quote === "'") {
     let i = at + 1;
@@ -165,35 +180,36 @@ function readValue(input: string, at: number, valueEnds: Int32Array): Value {
       if (ch === quote || ch === "\n" || ch === "\r") break;
       i += ch === "\\" ? 2 : 1;
     }
-    return { start: at + 1, end: Math.min(i, input.length), quoted: true };
+    const end = Math.min(i, input.length);
+    return { start: at + 1, end, looseEnd: end, quoted: true };
   }
-  let end = valueEnds[at] ?? at;
+  let end = ends.word[at] ?? at;
   // A reference such as `$(cat ~/.pw)` or `${{ secrets.X }}` may contain spaces;
   // the value runs through it and on to the end of the word that follows.
   const ref = referenceLength(input, at);
-  if (ref > 0 && at + ref > end) end = valueEnds[at + ref] ?? at + ref;
-  return { start: at, end, quoted: false };
+  if (ref > 0 && at + ref > end) end = ends.word[at + ref] ?? at + ref;
+  return { start: at, end, looseEnd: Math.min(end, ends.syntax[at] ?? end), quoted: false };
 }
 
-function findAssignments(input: string, valueEnds: Int32Array, out: Candidate[]): void {
+function findAssignments(input: string, ends: Ends, out: Candidate[]): void {
   for (const match of input.matchAll(ASSIGNMENT)) {
     const name = match[2] ?? "";
     const tight = match[3] === "" && match[4] === "=";
     // `NAME= next` assigns an empty value in a shell; the next word is not it.
     if (tight && match[5] !== "") continue;
-    const value = readValue(input, match.index + match[0].length, valueEnds);
+    const value = readValue(input, match.index + match[0].length, ends);
     // `NAME=value` with no spaces, as in shell and .env files and query strings.
     classify(input, name, value, value.quoted || tight, out);
   }
 }
 
-function findFlags(input: string, valueEnds: Int32Array, out: Candidate[]): void {
+function findFlags(input: string, ends: Ends, out: Candidate[]): void {
   for (const match of input.matchAll(FLAG)) {
     const name = match[1] ?? "";
     if (!isSensitiveName(name)) continue;
     const at = match.index + match[0].length;
     if (input.charAt(at) === "-") continue;
-    const value = readValue(input, at, valueEnds);
+    const value = readValue(input, at, ends);
     classify(input, name, value, value.quoted || match[2] === "=", out);
   }
 }
@@ -212,17 +228,25 @@ function classify(
   strict: boolean,
   out: Candidate[],
 ): void {
-  const { start } = value;
-  let { end } = value;
+  const { start, end } = value;
   if (isPlaceholder(input, start, end)) return;
   const sensitive = isSensitiveName(name);
   if (sensitive && strict) {
     out.push({ start, end, kind: "sensitive-value" });
     return;
   }
-  // Loose forms are often code (`{ password: hunter2 }`), so trailing brackets and
-  // commas are syntax, not part of the value.
-  while (end > start && ",)}]>".includes(input.charAt(end - 1))) end--;
+  // Loose forms are often code (`{password: hunter2,port:5432}`), so the value ends
+  // at the first comma or closing bracket, which is syntax rather than part of it.
+  classifyLoose(input, start, value.looseEnd, sensitive, out);
+}
+
+function classifyLoose(
+  input: string,
+  start: number,
+  end: number,
+  sensitive: boolean,
+  out: Candidate[],
+): void {
   // Both looser checks reject anything longer, so skip the copy.
   if (end - start > 256) return;
   const text = input.slice(start, end);

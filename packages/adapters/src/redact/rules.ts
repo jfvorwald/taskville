@@ -159,7 +159,7 @@ export function isHighEntropyToken(value: string): boolean {
 /** A run with slashes that starts with a plain lowercase directory name, like `assets/index-x1`. */
 function isPathLike(value: string): boolean {
   const first = value.split("/").find((segment) => segment.length > 0) ?? "";
-  return value.includes("/") && /^[a-z][a-z_-]{2,}$/.test(first);
+  return value.includes("/") && /^[a-z]{3,}$/.test(first);
 }
 
 function wordCoverage(value: string): number {
