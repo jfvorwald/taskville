@@ -1,0 +1,35 @@
+.bar {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 4px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+}
+
+.button {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--tv-radius) - 2px);
+  background: transparent;
+  color: var(--tv-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tv-accent) 25%, transparent);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 1px;
+}
+
+.button:disabled {
+  color: var(--tv-text-muted);
+  cursor: default;
+}

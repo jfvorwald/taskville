@@ -1,4 +1,5 @@
 import { CityScene } from "./buildings/index.ts";
+import { InteractionLayer } from "./interaction/index.ts";
 import { CityAgents } from "./movement/index.ts";
 
 /**
@@ -10,6 +11,7 @@ export function CityRoot() {
     <>
       <CityScene />
       <CityAgents />
+      <InteractionLayer />
     </>
   );
 }
