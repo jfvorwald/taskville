@@ -314,6 +314,35 @@ describe("restarts", () => {
   });
 });
 
+describe("late (history, not live)", () => {
+  it("marks a repository's first scan and a catch-up after a restart late, and live scans not", async () => {
+    const repo = newRepo("repo");
+    branchAndMerge(repo);
+    addProject("p", [repo]);
+    const first = watcher();
+    await first.scanAll();
+    const firstScan = gitEvents("p");
+    expect(firstScan.length).toBeGreaterThan(0);
+    expect(firstScan.every((e) => e.late)).toBe(true);
+
+    commit(repo, "live.txt", "while watching");
+    await first.scanAll();
+    const live = gitEvents("p").slice(firstScan.length);
+    expect(live.map((e) => e.type)).toEqual(["git.commit", "git.ref_moved"]);
+    expect(live.every((e) => !e.late)).toBe(true);
+    await first.stop();
+
+    git(repo, "checkout", "-q", "feature");
+    commit(repo, "down.txt", "while the engine was down");
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge main while down", "main");
+    const before = gitEvents("p").length;
+    await watcher().scanAll();
+    const catchUp = gitEvents("p").slice(before);
+    expect(catchUp.map((e) => e.type)).toContain("git.merge");
+    expect(catchUp.every((e) => e.late)).toBe(true);
+  });
+});
+
 describe("honest ref events", () => {
   it("dates a first observation at the scan, not at the tip's commit", async () => {
     const repo = newRepo("repo");
