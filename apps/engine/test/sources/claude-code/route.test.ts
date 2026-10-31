@@ -62,7 +62,9 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const body = await read(res);
     expect(body).toEqual({
       projectId: "repo",
-      results: [expect.objectContaining({ sourceEventId: "u-1:agent.connected", status: "accepted" })],
+      results: [
+        expect.objectContaining({ sourceEventId: "u-1:agent.connected", status: "accepted" }),
+      ],
       heads: { repo: 2 },
     });
     expect(mapper.calls).toEqual([
