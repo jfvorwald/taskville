@@ -14,6 +14,7 @@ import {
   noStore,
   originCheck,
   requireCredential,
+  requireOrigin,
   requireScope,
 } from "./middleware.ts";
 
@@ -80,6 +81,7 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
 
   app.post(
     PAIRING_EXCHANGE,
+    requireOrigin,
     bodyLimit({
       maxSize: 1024,
       onError: (c) => apiError(c, 413, "payload_too_large", "Body too large"),

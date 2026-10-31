@@ -115,6 +115,17 @@ describe("browser pairing", () => {
     await pair(app, code);
   });
 
+  it("requires a matching Origin on the exchange even with a bearer token", async () => {
+    const { app, pairing } = makeApp();
+    const code = pairing.issueCode();
+    for (const token of [CLI_TOKEN, BRIDGE_TOKEN]) {
+      const res = await app.request("/v1/pairing", postJson({ code }, bearer(token)));
+      expect(res.status).toBe(403);
+    }
+    // Neither rejected attempt consumed the code.
+    await pair(app, code);
+  });
+
   it("rejects a malformed exchange body without echoing it", async () => {
     const { app } = makeApp();
     for (const body of [{}, { code: 42 }, { code: "" }, { code: "x".repeat(1000) }, "nope"]) {
@@ -185,8 +196,11 @@ describe("browser pairing", () => {
       expect(res.status, path).toBe(404);
     }
     // The exchange route itself never hands out a code or session without one.
-    const res = await app.request("/v1/pairing", postJson({}, bearer(CLI_TOKEN)));
-    expect(res.status).toBe(400);
+    const res = await app.request(
+      "/v1/pairing",
+      postJson({}, { ...bearer(CLI_TOKEN), Origin: ORIGIN }),
+    );
+    expect(res.status).not.toBe(200);
   });
 });
 

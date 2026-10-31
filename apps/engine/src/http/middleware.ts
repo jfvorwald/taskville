@@ -94,6 +94,17 @@ export function originCheck(allowedOrigins: ReadonlySet<string>): MiddlewareHand
   };
 }
 
+/**
+ * Route guard for browser-only routes: an Origin must be present whatever
+ * other headers are sent (`originCheck` has already verified it is allowed).
+ */
+export const requireOrigin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (c.req.header("origin") === undefined) {
+    return apiError(c, 403, "forbidden_origin", "Origin header required");
+  }
+  return next();
+};
+
 /** Default deny for the API: every `/v1/*` route needs a credential unless listed in `publicRoutes`. */
 export function requireCredential(publicRoutes: ReadonlySet<string>): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
