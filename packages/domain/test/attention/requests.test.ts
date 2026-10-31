@@ -508,6 +508,27 @@ describe("answered_elsewhere on the next same-session event", () => {
     expect(state.requests.b1?.state).toBe("answered_here");
     expect(state.requests.b2?.state).toBe("answered_elsewhere");
   });
+  it("does not count a succeeded session.open as an answer", () => {
+    const emit = eventStream();
+    const state = run([
+      opened(emit, "b1", { toolName: "Bash" }, { sourceId: BRIDGE }),
+      emit(
+        "command.requested",
+        {
+          commandId: "c1",
+          commandType: "session.open",
+          requestId: "b1",
+          payload: {},
+          idempotencyKey: "k1",
+        },
+        { sourceId: ENGINE },
+      ),
+      emit("command.delivered", { commandId: "c1" }, { sourceId: ENGINE }),
+      emit("command.succeeded", { commandId: "c1" }, { sourceId: ENGINE }),
+      emit("tool_call.finished", { toolCallId: "t1", phase: "succeeded" }, LEAD),
+    ]);
+    expect(state.requests.b1?.state).toBe("answered_elsewhere");
+  });
 });
 
 describe("commands", () => {

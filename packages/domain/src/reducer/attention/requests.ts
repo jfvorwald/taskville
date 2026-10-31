@@ -146,7 +146,7 @@ function close(state: RequestsState, requestId: string, to: RequestState): Reque
 
 /**
  * The next event from the same session closes its open requests (ARCHITECTURE.md section 6):
- * `answered_here` when a Taskville command for the request already succeeded, otherwise
+ * `answered_here` when a Taskville `permission.decide` for the request already succeeded, otherwise
  * `answered_elsewhere`.
  */
 function closeSession(state: RequestsState, sessionId: string): RequestsState {
@@ -163,6 +163,7 @@ function closeSession(state: RequestsState, sessionId: string): RequestsState {
 function answeredHere(commands: Record<string, Command>, request: PendingRequest): boolean {
   return Object.values(commands).some(
     (c) =>
+      c.type === "permission.decide" &&
       c.status === "succeeded" &&
       (c.requestId === request.id || request.mergedRequestIds.includes(c.requestId)),
   );
