@@ -77,9 +77,12 @@ function opened(state: RequestsState, event: StoredEnvelopeOf<"request.opened">)
     return { ...state, requests: { ...state.requests, [request.id]: request } };
   }
 
-  if (request.answerable && !target.answerable) {
+  const workerOverGeneric = request.heuristic === true && target.heuristic !== true;
+  if ((request.answerable && !target.answerable) || (workerOverGeneric && !target.answerable)) {
     // The bridge's record wins over telemetry: its preview is the one an Allow would approve, so a
-    // forged telemetry preview must never become answerable. The red state keeps its first time.
+    // forged telemetry preview must never become answerable. A worker prompt (#120) wins over the
+    // lead's generic notification so the teammate's name survives either arrival order; it stays
+    // labeled heuristic. The red state keeps its first time.
     const { [target.id]: _replaced, ...rest } = state.requests;
     const merged: PendingRequest = {
       ...request,
@@ -98,8 +101,9 @@ function opened(state: RequestsState, event: StoredEnvelopeOf<"request.opened">)
 
 /**
  * "One prompt, one red state": an open permission request with the same session, agent, and tool
- * name (both absent counts as the same). A request without a session never merges, and two
- * bridge-held requests never merge, because each holds its own hook response. Among several
+ * name (both absent counts as the same). A request without a session never merges, two
+ * bridge-held requests never merge, because each holds its own hook response, and two heuristic
+ * worker prompts never merge, because each is a different teammate's prompt. Among several
  * candidates the earliest opened wins, then the smallest ID, independent of key order.
  */
 function mergeTarget(
@@ -115,7 +119,9 @@ function mergeTarget(
       candidate.sessionId !== incoming.sessionId ||
       candidate.agentId !== incoming.agentId ||
       candidate.toolName !== incoming.toolName ||
-      (candidate.answerable && incoming.answerable)
+      (candidate.answerable && incoming.answerable) ||
+      // Two worker prompts (#120) are two teammates' prompts, never one.
+      (candidate.heuristic === true && incoming.heuristic === true)
     ) {
       continue;
     }
