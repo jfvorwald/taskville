@@ -5,6 +5,7 @@ import {
 } from "@taskville/engine/src/auth/pairing.ts";
 import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { ensureHome } from "@taskville/engine/src/config/home.ts";
+import { resolveWebDir } from "@taskville/engine/src/config/web-dir.ts";
 import { type EvidenceStore, openEvidenceStore } from "@taskville/engine/src/evidence/index.ts";
 import { createApp } from "@taskville/engine/src/http/app.ts";
 import { LOOPBACK_ADDRESS, startServer } from "@taskville/engine/src/http/server.ts";
@@ -133,6 +134,12 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
     const prepared = ensureHome(home);
     const { config, warnings } = loadConfig({ home, port: portFlag });
     for (const warning of warnings) io.stderr(`warning: ${warning}\n`);
+    const web = resolveWebDir(io.env);
+    if (web.dir === undefined) {
+      io.stderr(
+        `warning: the web client is not built (no index.html in ${web.missing}); run pnpm --filter @taskville/web build\n`,
+      );
+    }
     const records = new DeferredPairingRecords();
     const pairing = new PairingStore({ records, maxPendingCodes: MAX_OUTSTANDING_CODES });
     const app = createApp({
@@ -141,6 +148,7 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
       bridgeToken: prepared.bridgeToken,
       pairing,
       logger,
+      ...(web.dir === undefined ? {} : { staticDir: web.dir }),
       version: packageJson.version,
       health: () => engine?.health() ?? { db: "error", walMode: false },
     });

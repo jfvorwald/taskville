@@ -119,7 +119,7 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
   if (options.staticDir !== undefined) {
     const files = staticFiles(options.staticDir);
     // API and health paths are never served from the static directory.
-    app.get("*", (c, next) => (isApiPath(c.req.path) ? next() : files(c, next)));
+    app.use("*", (c, next) => (isApiPath(c.req.path) ? next() : files(c, next)));
   }
 
   app.notFound((c) => apiError(c, 404, "not_found", "Not found"));
