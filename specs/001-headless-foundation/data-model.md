@@ -101,7 +101,8 @@ there is no other way to change them (ARCHITECTURE.md section 6).
   session and tool; the agent is part of the key so that two subagents in one
   session asking for the same tool keep separate records (section 2.9). If spike
   S-2 shows that a `Notification` carries no subagent attribution, the M2 adapter
-  attributes it before ingest; the reducer never guesses.
+  attributes it before ingest; the reducer never guesses. A request without a
+  `sessionId` never merges.
 - A request closes as `answered_elsewhere` when the next event from the same
   session arrives (`tool_call.finished`, `session.turn_ended`,
   `session.turn_failed`, `session.prompt_submitted`, `session.ended`) and the
