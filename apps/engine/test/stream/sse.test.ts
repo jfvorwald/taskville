@@ -264,17 +264,24 @@ describe("slow consumers", () => {
   it("still ends a cut-off stream that never drains when the engine shuts down", async () => {
     const { app } = setup({ queueLimit: 5 });
     const slowRes = await streamRequest(app, "demo", bearer(CLI_TOKEN), "?after=1");
-    await ingest(app, events(0, 20));
+    // One event per batch, so a write is already blocked on the unread client when the queue overflows.
+    for (let i = 0; i < 20; i++) await ingest(app, events(i, 1));
     expect(engine?.hub.subscriberCount()).toBe(0);
     expect(engine?.hub.openStreams()).toBe(1);
 
     engine?.close();
     expect(engine?.hub.openStreams()).toBe(0);
     engine = undefined;
+    // Aborted, not drained: the stalled client's queued frames, resnapshot included, are dropped.
     const reader = slowRes.body?.getReader();
-    let done = false;
-    for (let i = 0; i < 50 && !done; i++) done = (await reader?.read())?.done ?? true;
-    expect(done).toBe(true);
+    const decoder = new TextDecoder();
+    let text = "";
+    for (let i = 0; i < 50; i++) {
+      const chunk = await reader?.read();
+      if (!chunk || chunk.done) break;
+      text += decoder.decode(chunk.value);
+    }
+    expect(text).not.toContain("slow_consumer");
   });
 
   it("uses a 1,000-frame queue by default", () => {
