@@ -7,7 +7,7 @@ Human output to stdout, diagnostics to stderr. Every request sends
 
 | Command | Behavior | Exit codes |
 | --- | --- | --- |
-| `taskville serve --headless [--port N]` | Runs the engine in the foreground on `127.0.0.1` (any other host is refused); creates home, DB, token, the built-in Unsorted project on first run; rebuilds stale projections before listening; prints the one-time browser pairing URL `http://127.0.0.1:<port>/#pair=<code>` | 0 on clean shutdown (SIGINT/SIGTERM), 1 on startup failure |
+| `taskville serve --headless [--port N]` | Runs the engine in the foreground on `127.0.0.1` (any other host is refused); creates home, DB, token, the built-in Unsorted project on first run; rebuilds stale projections before listening; prints the one-time browser pairing URL `http://127.0.0.1:<port>/#pair=<code>` and that it is valid for 10 minutes | 0 on clean shutdown (SIGINT/SIGTERM), 1 on startup failure |
 | `taskville project add --name <name> [--id <id>] [--root <dir>]...` | Adds a project (FR-011) through `POST /v1/projects`; `--root` repeats; relative roots are resolved to absolute paths | 0 ok, 2 project exists, 3 unreachable, 5 auth failure |
 | `taskville project list` | One line per project: id, name, roots, head; Unsorted is always listed | 0 ok, 3 unreachable, 5 auth failure |
 | `taskville status --project <id> [--all]` | Indented tree (FR-012, below) | 0 ok, 2 unknown project, 3 unreachable, 5 auth failure |

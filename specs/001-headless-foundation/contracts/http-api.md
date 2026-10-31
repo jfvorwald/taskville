@@ -49,11 +49,14 @@ files.
 ### `POST /v1/pairing`
 
 `taskville serve` prints a one-time URL `http://127.0.0.1:<port>/#pair=<code>`
-(128-bit random code, in the fragment so it never reaches request logs). The page
+(256-bit random code, in the fragment so it never reaches request logs). The page
 posts `{ "code" }` and receives `200 { "session": "<secret>" }` (256-bit). The code
-is single-use and valid until used or the engine stops; a reused or unknown code
-gets `401 invalid_pairing_code`. Requires a matching `Origin`. A pairing survives
-page reloads and engine restarts until revoked.
+is single-use and valid for 10 minutes after `serve` issues it (`PAIRING_CODE_TTL_MS`,
+security review #17 F4); a reused, expired or unknown code gets
+`401 invalid_pairing_code`, and a new code needs a `serve` restart (decision #163).
+Requires a matching `Origin`. A pairing survives page reloads until revoked. Whether
+it survives engine restarts is decision #113; until it is answered, pairings are kept
+in memory and a restart means pairing again.
 
 ### `POST /v1/pairing/revoke`
 
