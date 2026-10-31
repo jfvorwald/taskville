@@ -7,6 +7,7 @@ import {
   sessionAgentId,
   subagentAgentId,
 } from "../../../src/claude-code/index.ts";
+import { redactText } from "../../../src/redact/index.ts";
 
 // Unit behavior of the core Claude Code hook mapper (M2.03, ARCHITECTURE.md 8.1, 8.3).
 // Every emitted event must also be a valid protocol v1 input event a producer may send.
@@ -570,6 +571,22 @@ describe("untrusted payloads (L-18, L-29, L-31, L-32)", () => {
     // A secret across the cut is dropped whole, never left half visible.
     const across = reasonOf(`${"x".repeat(3990)} ${key} tail`);
     expect(across).toBe(`${"x".repeat(3990)} `);
+  });
+
+  it("never keeps a secret whose detecting context the cut removed (job 5100)", () => {
+    // `https://user:<password>@host`: the password is a secret only because of the `@` after it.
+    // With the password ending exactly at the cut, keeping it would drop the `@`.
+    for (const pad of [0, 1, 2, 5]) {
+      const password = "q".repeat(3987 - pad);
+      const error = `${"x".repeat(pad)}https://user:${password}@host and more text`;
+      const reason = only(
+        map({ ...base, hook_event_name: "StopFailure", error }),
+        "session.turn_failed",
+      ).payload.reason as string;
+      expect([...reason].length).toBeLessThanOrEqual(4000);
+      // What the engine would store after masking the reason it receives.
+      expect(redactText(reason).text).not.toContain("q".repeat(20));
+    }
   });
 
   it("masks secrets in tool names, paths, display names, outcomes and working directories", () => {

@@ -24,20 +24,39 @@ export function cleanText(value: unknown, max: number): string | undefined {
  * Prepares a `reason`. The engine masks a reason at ingest and stores `masked: true` when it did
  * (FR-017), so the reason is passed on unmasked: masking it here would make the engine record
  * `masked: false` for masked text. A reason over the 4,000-character input limit is cut there,
- * or earlier where the cut would fall inside something the redactor masks, so no secret is ever
- * left half visible for the engine to miss.
+ * before any secret the cut touches, and the cut text is checked to still show every secret it
+ * keeps: some secrets are recognized only from text after them (the `@` after a URL password,
+ * job 5100). If one would no longer be recognized, the reason is cut before the first secret.
  */
 export function cleanReason(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.toWellFormed();
   if (text === "") return undefined;
   if (codePointLength(text) <= INPUT_REASON_MAX_CHARS) return text;
+  const spans = redactText(text).spans;
   let cut = cutCodePoints(text, INPUT_REASON_MAX_CHARS).length;
-  for (const span of redactText(text).spans) {
-    if (span.start < cut && cut < span.end) cut = span.start;
+  // Spans are sorted and disjoint, so one pass moves the cut out of all of them.
+  for (const span of spans) {
+    if (span.start < cut && cut <= span.end) cut = span.start;
+  }
+  if (!keepsEverySecretVisible(text.slice(0, cut), spans, cut)) {
+    // Text before the first secret holds none, whatever follows it.
+    cut = spans.find((span) => span.start < cut)?.start ?? cut;
   }
   const out = text.slice(0, cut);
   return out === "" ? undefined : out;
+}
+
+/** True when the redactor still finds every secret of `spans` that lies wholly in `kept`. */
+function keepsEverySecretVisible(
+  kept: string,
+  spans: readonly { start: number; end: number }[],
+  cut: number,
+): boolean {
+  const inKept = spans.filter((span) => span.end <= cut);
+  if (inKept.length === 0) return true;
+  const again = redactText(kept).spans;
+  return inKept.every((span) => again.some((a) => a.start <= span.start && a.end >= span.end));
 }
 
 /** The first line of already cleaned text. */
