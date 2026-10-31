@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CITY_CAMERA, CITY_LAYOUT } from "../../../src/city/layout/index.ts";
 import {
   markOccluders,
   rayHitsBox,
   stepFade,
   viewDirection,
 } from "../../../src/city/interaction/occlusion.ts";
+import { CITY_CAMERA, CITY_LAYOUT } from "../../../src/city/layout/index.ts";
 
 const dir = { x: 0, y: 0, z: 0 };
 viewDirection(CITY_CAMERA.azimuth, CITY_CAMERA.elevation, dir);

@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, BackSide } from "three";
+import { BackSide, BoxGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial } from "three";
 import { describe, expect, it } from "vitest";
 import { createHullGlow, hullScale } from "../../../src/city/interaction/hull.ts";
 

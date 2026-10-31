@@ -1,7 +1,7 @@
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial } from "three";
 import { describe, expect, it } from "vitest";
-import { createBuildingFader } from "../../../src/city/interaction/fade.ts";
 import { windowSites } from "../../../src/city/buildings/parts.ts";
+import { createBuildingFader } from "../../../src/city/interaction/fade.ts";
 import { CITY_LAYOUT } from "../../../src/city/layout/index.ts";
 
 const wall = new MeshLambertMaterial({ color: "#aaa" });
@@ -44,7 +44,11 @@ describe("building fader", () => {
 
   it("fades a wanted building to the faded opacity on cloned materials, others untouched", () => {
     const { root, meshes } = city();
-    const fader = createBuildingFader({ sites: windowSites(CITY_LAYOUT), fadedOpacity: 0.2, seconds: 0.5 });
+    const fader = createBuildingFader({
+      sites: windowSites(CITY_LAYOUT),
+      fadedOpacity: 0.2,
+      seconds: 0.5,
+    });
     fader.bind(root);
     fader.update(10, (id) => id === first);
     const faded = meshes.get(first)?.[0]?.material as MeshLambertMaterial;
@@ -58,17 +62,25 @@ describe("building fader", () => {
 
   it("eases over time instead of jumping", () => {
     const { root, meshes } = city();
-    const fader = createBuildingFader({ sites: windowSites(CITY_LAYOUT), fadedOpacity: 0.2, seconds: 1 });
+    const fader = createBuildingFader({
+      sites: windowSites(CITY_LAYOUT),
+      fadedOpacity: 0.2,
+      seconds: 1,
+    });
     fader.bind(root);
     fader.update(0.25, (id) => id === first);
-    const mid = (meshes.get(first)?.[0]?.material as MeshLambertMaterial).opacity;
+    const mid = ((meshes.get(first)?.[0]?.material ?? wall) as MeshLambertMaterial).opacity;
     expect(mid).toBeLessThan(1);
     expect(mid).toBeGreaterThan(0.2);
   });
 
   it("restores the original shared material once fully faded back in", () => {
     const { root, meshes } = city();
-    const fader = createBuildingFader({ sites: windowSites(CITY_LAYOUT), fadedOpacity: 0.2, seconds: 0.5 });
+    const fader = createBuildingFader({
+      sites: windowSites(CITY_LAYOUT),
+      fadedOpacity: 0.2,
+      seconds: 0.5,
+    });
     fader.bind(root);
     fader.update(10, (id) => id === first);
     fader.update(10, () => false);
@@ -106,5 +118,24 @@ describe("building fader", () => {
     fader.bind(root);
     fader.update(1, () => true);
     expect(() => fader.dispose()).not.toThrow();
+  });
+});
+
+describe("building fader and theme changes", () => {
+  it("fades the materials a building has now, not the ones it had when bound", () => {
+    const { root, meshes } = city();
+    const fader = createBuildingFader({
+      sites: windowSites(CITY_LAYOUT),
+      fadedOpacity: 0.2,
+      seconds: 0.5,
+    });
+    fader.bind(root);
+    const themed = new MeshLambertMaterial({ color: "#ff00ff" });
+    for (const m of meshes.get(first) ?? []) m.material = themed;
+    fader.update(10, (id) => id === first);
+    const during = meshes.get(first)?.[0]?.material as MeshLambertMaterial;
+    expect(during.color.getHex()).toBe(themed.color.getHex());
+    fader.update(10, () => false);
+    expect(meshes.get(first)?.[0]?.material).toBe(themed);
   });
 });

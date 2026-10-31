@@ -47,7 +47,8 @@ function scene(): Scene {
 
 function topCamera(): OrthographicCamera {
   const cam = new OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
-  cam.position.set(0, 20, 0.001);
+  cam.up.set(0, 0, -1);
+  cam.position.set(0, 20, 0);
   cam.lookAt(0, 0, 0);
   cam.updateMatrixWorld();
   return cam;
@@ -84,6 +85,7 @@ describe("ownerOf", () => {
 describe("picker", () => {
   const cam = topCamera();
   const s = scene();
+  s.updateMatrixWorld(true);
   const pickables = collectPickables(s, []);
   const picker = createPicker();
 
@@ -93,7 +95,7 @@ describe("picker", () => {
   });
 
   it("picks a building under the pointer", () => {
-    expect(picker.pick(1, 0, cam, pickables)).toBe("area:review");
+    expect(picker.pick(0.9, 0, cam, pickables)).toBe("area:review");
   });
 
   it("returns null over empty ground", () => {
@@ -101,6 +103,6 @@ describe("picker", () => {
   });
 
   it("looks through areas the caller says are faded", () => {
-    expect(picker.pick(1, 0, cam, pickables, (id) => id === "area:review")).toBeNull();
+    expect(picker.pick(0.9, 0, cam, pickables, (id) => id === "area:review")).toBeNull();
   });
 });
