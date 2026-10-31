@@ -583,6 +583,149 @@ const positives: Positive[] = [
     secret: fake.password,
     kind: "basic-auth",
   },
+  // M2.22 (#211, M2.11 F2): common credential names and password flags.
+  ...[
+    ["PGPASSWORD", "psql -h db app"],
+    ["MYSQL_PWD", "mysql -u root app"],
+    ["DB_PASS", "./migrate"],
+    ["SMTP_PASS", "./send-mail"],
+    ["REDIS_PASS", "redis-cli ping"],
+    ["SECRET_KEY_BASE", "rails server"],
+    ["dbPass", "node app.js"],
+  ].map(([name, rest]): Positive => {
+    return {
+      name: `${name} environment assignment`,
+      input: `${name}=${fake.password} ${rest}`,
+      secret: fake.password,
+      kind: "sensitive-value",
+    };
+  }),
+  {
+    name: "a flag named db-pass",
+    input: `app --db-pass ${fake.password} --port 5432`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "a quoted SECRET_KEY_BASE in a .env line",
+    input: `SECRET_KEY_BASE="${fake.password}"`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql -p attached",
+    input: `mysql -u root -p${fake.password} app`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql -p attached before the other flags",
+    input: `mysql -p${fake.password} -h db -u root app`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql -p attached after the database name",
+    input: `mysql app -p${fake.password}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql -p attached and double quoted",
+    input: `mysql -u root -p"${fake.password}" app`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysqldump -p attached",
+    input: `mysqldump -u root -p${fake.password} app > dump.sql`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql by absolute path",
+    input: `/usr/local/bin/mysql -h db -u root -p${fake.password}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql in the second command of a line",
+    input: `cd /srv && mysql -u root -p${fake.password} app`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "sshpass -p with a space",
+    input: `sshpass -p ${fake.password} ssh host uptime`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "sshpass -p attached",
+    input: `sshpass -p${fake.password} ssh host uptime`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "sshpass -p single quoted",
+    input: `sshpass -p '${fake.password}' ssh host uptime`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "sshpass -p after another option",
+    input: `sshpass -P assword -p ${fake.password} ssh host`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login -p",
+    input: `docker login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login -u and -p",
+    input: `docker login -u me -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login -p attached",
+    input: `docker login registry.example.test -p${fake.password}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "podman login -p",
+    input: `podman login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON name and value pair in a command",
+    input: `kubectl patch -p '{"name": "DB_PASSWORD", "value": "${fake.password}"}'`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "compact JSON name and value pair",
+    input: `{"name":"MYSQL_PWD","value":"${fake.password}"}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON key and Value pair with capitals",
+    input: `{"Key":"API_SECRET","Value":"${fake.password}"}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON name and numeric value pair",
+    input: '{"name":"DB_PASS","value":123456789}',
+    secret: "123456789",
+    kind: "sensitive-value",
+  },
 ];
 
 describe("redactText true positives", () => {
@@ -764,6 +907,46 @@ const negatives: Array<{ name: string; input: string }> = [
     input: 'curl -u "$API_USER:$API_TOKEN" https://x',
   },
   { name: "curl user-agent flag", input: 'curl --user-agent "agent:1" https://x' },
+  // M2.22 (#211): -p is a port or publish flag in most tools; only the named commands
+  // read it as a password, and only with a real value.
+  { name: "ssh -p port", input: "ssh -p 2222 host" },
+  { name: "scp -P port", input: "scp -P 2222 a.txt host:/tmp" },
+  { name: "docker run -p publish", input: "docker run -p 8080:80 nginx" },
+  {
+    name: "docker run -p after login in the same line",
+    input: "docker login reg; docker run -p 8080:80 nginx",
+  },
+  { name: "psql -p port", input: "psql -h db -p 5432 -U app" },
+  { name: "pg_dump -p port", input: "pg_dump -p 5432 app" },
+  { name: "mysql -p alone prompts", input: "mysql -u root -p app" },
+  { name: "mysql -p at the end prompts", input: "mysql -u root -p" },
+  { name: "mysql -P port", input: "mysql -h db -P 3306 -u root app" },
+  { name: "mysql with a password reference", input: 'mysql -u root -p"$DB_PASS" app' },
+  { name: "mysql with an unquoted password reference", input: "mysql -u root -p$DB_PASS app" },
+  { name: "mysql with a masked password", input: "mysql -u root -p[REDACTED:sensitive-value] app" },
+  { name: "mysql -p in a later command", input: "mysql -e 'select 1' && ssh -p 2222 host" },
+  { name: "mysql_secure_installation is not mysql", input: "mysql_secure_installation -pfoo" },
+  { name: "mysqld is not mysqldump", input: "mysqld -p3306" },
+  { name: "sshpass with a password from a file", input: "sshpass -f /run/pw ssh host" },
+  { name: "sshpass with the environment", input: "sshpass -e ssh -p 2222 host" },
+  { name: "sshpass with a password reference", input: 'sshpass -p "$SSH_PW" ssh -p 2222 host' },
+  { name: "sshpass then ssh with a port", input: "sshpass -f /run/pw ssh -p 2222 host" },
+  { name: "docker login without a password flag", input: "docker login registry.example.test" },
+  { name: "docker login with a reference", input: 'docker login -u me -p "$REGISTRY_TOKEN" reg' },
+  { name: "docker login password from stdin", input: "docker login -u me --password-stdin reg" },
+  { name: "docker -p without login", input: "docker ps -p 3306" },
+  { name: "PWD is the working directory", input: "PWD=/home/me/project make" },
+  { name: "OLDPWD is the previous directory", input: "OLDPWD=/home/me/project make" },
+  { name: "lower case pwd variable is not a password", input: "pwd=/home/me/project" },
+  { name: "bare pass counter", input: 'summary pass=12 fail=0 {"pass": 12}' },
+  { name: "bypass is not pass", input: "bypass=ENABLED_FOR_TESTS_1" },
+  { name: "SECRET_KEY_BASE reference", input: "SECRET_KEY_BASE=$SECRET_KEY_BASE rails s" },
+  { name: "JSON name and value pair for PATH", input: '{"name":"PATH","value":"/usr/bin"}' },
+  {
+    name: "JSON name pair with a reference",
+    input: '{"name":"DB_PASSWORD","value":"$DB_PASSWORD"}',
+  },
+  { name: "JSON key alone", input: '{"name": "DB_PASSWORD", "description": "the database login"}' },
 ];
 
 describe("redactText false positives", () => {
@@ -1060,6 +1243,127 @@ describe("redactJson: a sensitive key's whole value is sealed (#194)", () => {
   });
 });
 
+// M2.22 (#211, M2.11 F2): a {name, value} pair (Kubernetes env, the GitHub API, AWS tags,
+// HAR headers) holds the secret under a generic property, so the sibling name decides.
+describe("redactJson: name and value pairs (M2.22)", () => {
+  const M = maskMarker("sensitive-value");
+  const rows: Array<[string, JsonValue, JsonValue]> = [
+    [
+      "name and value",
+      { name: "DB_PASSWORD", value: "Xy7pass9word" },
+      { name: "DB_PASSWORD", value: M },
+    ],
+    [
+      "Name and Value",
+      { Name: "PGPASSWORD", Value: "Xy7pass9word" },
+      { Name: "PGPASSWORD", Value: M },
+    ],
+    ["key and value", { key: "MYSQL_PWD", value: "x1" }, { key: "MYSQL_PWD", value: M }],
+    ["Key and Value", { Key: "dbPass", Value: "x1" }, { Key: "dbPass", Value: M }],
+    [
+      "value before name",
+      { value: "x1", name: "SECRET_KEY_BASE" },
+      { value: M, name: "SECRET_KEY_BASE" },
+    ],
+    ["a numeric value", { name: "DB_PASS", value: 1234 }, { name: "DB_PASS", value: M }],
+    ["an object value", { name: "API_TOKEN", value: { a: 1 } }, { name: "API_TOKEN", value: M }],
+    [
+      "an array value",
+      { name: "client_secret", value: ["a", "b"] },
+      { name: "client_secret", value: M },
+    ],
+    [
+      "a Kubernetes env list",
+      {
+        env: [
+          { name: "PATH", value: "/usr/bin" },
+          { name: "DB_PASSWORD", value: "x1" },
+          { name: "PORT", value: "5432" },
+        ],
+      },
+      {
+        env: [
+          { name: "PATH", value: "/usr/bin" },
+          { name: "DB_PASSWORD", value: M },
+          { name: "PORT", value: "5432" },
+        ],
+      },
+    ],
+    [
+      "an extra sibling stays readable",
+      { name: "DB_PASSWORD", value: "x1", source: "env" },
+      { name: "DB_PASSWORD", value: M, source: "env" },
+    ],
+    [
+      "a request header pair",
+      { name: "Authorization", value: "Basic dXNlcjpwYXNz" },
+      { name: "Authorization", value: M },
+    ],
+  ];
+  it.each(rows)("seals the value of %s", (_name, input, expected) => {
+    expect(redactJson(input).value).toEqual(expected);
+  });
+
+  const clean: Array<[string, JsonValue]> = [
+    ["PATH", { name: "PATH", value: "/usr/bin" }],
+    ["a numeric value of an ordinary name", { name: "PORT", value: 5432 }],
+    ["a reference under a sensitive name", { name: "DB_PASSWORD", value: "$DB_PASSWORD" }],
+    ["a null value", { name: "DB_PASSWORD", value: null }],
+    ["a sensitive name with no value sibling", { name: "DB_PASSWORD", note: "rotate monthly" }],
+    ["a value with no name sibling", { value: "Xy7pass9word-ish", label: "x" }],
+    ["a non-string name", { name: 7, value: "keep" }],
+    ["a key that is a path", { key: "src/redact/index.ts", value: "export" }],
+    ["a name that only contains a sensitive word", { name: "tokenizer", value: "bpe" }],
+    ["a pair in a different property", { name: "DB_PASSWORD", other: "keep" }],
+  ];
+  it.each(clean)("leaves %s alone", (_name, input) => {
+    const result = redactJson(input);
+    expect(result.value).toEqual(input);
+    expect(result.masks).toEqual([]);
+  });
+
+  it("reports one mask at the value's path", () => {
+    const result = redactJson({ env: [{ name: "DB_PASS", value: { deep: true } }] });
+    expect(result.masks.map((m) => m.path)).toEqual([["env", 0, "value"]]);
+  });
+
+  it("respects skip on the value path", () => {
+    const input: JsonValue = { name: "DB_PASS", value: "keep" };
+    const result = redactJson(input, { skip: (path) => path[0] === "value" });
+    expect(result.value).toEqual(input);
+  });
+
+  it("masks the same pair serialized inside a string", () => {
+    const text = JSON.stringify({ name: "DB_PASSWORD", value: "Xy7pass9word" });
+    expect(redactJson({ note: text }).value).toEqual({
+      note: `{"name":"DB_PASSWORD","value":"${M}"}`,
+    });
+  });
+
+  it("is idempotent", () => {
+    const once = redactJson({ name: "DB_PASS", value: "x1" }).value;
+    expect(redactJson(once).value).toEqual(once);
+  });
+});
+
+describe("M2.22 names and flags", () => {
+  it("masks the value after each leaking command in one line, leaving ports readable", () => {
+    const pw = fake.password;
+    const input = `PGPASSWORD=${pw} psql -p 5432 && mysql -uroot -p${pw} app && sshpass -p ${pw} ssh -p 2222 host`;
+    const result = redactText(input);
+    expect(result.text).not.toContain(pw);
+    expect(result.text).toContain("psql -p 5432");
+    expect(result.text).toContain("ssh -p 2222 host");
+    expectWellFormed(input, result);
+  });
+
+  it("is idempotent", () => {
+    const input = `mysql -p${fake.password} app; sshpass -p ${fake.password} ssh host; docker login -p ${fake.password} r`;
+    const once = redactText(input).text;
+    expect(redactText(once).text).toBe(once);
+  });
+});
+
 describe("adversarial input", () => {
   const n = 100_000;
   const cases: Array<[string, string]> = [
@@ -1111,6 +1415,26 @@ describe("adversarial input", () => {
     ["quoted -u segments", '-u "a"'.repeat(n / 6)],
     ["-u references", "-u $(a)".repeat(n / 7)],
     ["escaped space-led Authorization values", `Authorization: Digest a=" ${'\\"'.repeat(n / 2)}`],
+    // M2.22: the command-scoped password flags and the name and value pair.
+    ["mysql repeats", "mysql ".repeat(n / 6)],
+    ["mysql -p repeats", "mysql -p ".repeat(n / 9)],
+    ["mysql -p attached repeats", "mysql -pa ".repeat(n / 10)],
+    ["mysql long word", `mysql ${"a".repeat(n)}`],
+    ["mysql unterminated quotes", 'mysql "'.repeat(n / 7)],
+    ["mysql escaped quotes", `mysql -p"${"\\".repeat(n)}`],
+    ["mysql references", "mysql $(a) ".repeat(n / 11)],
+    ["mysql many flags", `mysql ${"-a ".repeat(n / 3)}`],
+    ["sshpass -p repeats", "sshpass -p ".repeat(n / 11)],
+    ["sshpass -p words", "sshpass -p a ".repeat(n / 13)],
+    ["sshpass -f repeats", "sshpass -f ".repeat(n / 11)],
+    ["docker login repeats", "docker login ".repeat(n / 13)],
+    ["docker login -p repeats", "docker login -p ".repeat(n / 16)],
+    ["docker login many flags", `docker login ${"-p ".repeat(n / 3)}`],
+    ["podman  login spaces", `podman login${" ".repeat(n)}`],
+    ["name and value pairs", '{"name": "A_PASS", "value": '.repeat(n / 28)],
+    ["name pairs with long values", `{"name":"A_PASS","value":"${"a".repeat(n)}`],
+    ["name pairs without values", '{"name":"A_PASS",'.repeat(n / 17)],
+    ["name pairs with quotes", `{"name":"${"A_".repeat(n / 2)}`],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
