@@ -37,8 +37,11 @@ export const RESOLVE_RETRY_MS = 60_000;
 const DEBOUNCE_MS = 250;
 
 export interface GitWatcherOptions {
-  /** The project registry: every project's roots are watched, including ones added later. */
-  storage: Pick<StorageReads, "projects">;
+  /**
+   * The project registry (every project's roots are watched, including ones added later) and
+   * its event log, from which the last recorded branch tips are restored after a restart.
+   */
+  storage: Pick<StorageReads, "projects" | "events">;
   /** The ingest pipeline's `ingest`. */
   ingest: (events: readonly unknown[]) => EventBatchResponse;
   now?: () => Date;
@@ -58,7 +61,7 @@ interface Repo {
   path: string;
   commonDir: string;
   sourceId: string;
-  /** Branch tips at the last scan; undefined until the first scan. */
+  /** Branch tips at the last scan; undefined until the first scan restores or reads them. */
   tips: Map<string, string> | undefined;
   /** The scan in progress or last finished; scans of one repository never overlap. */
   running: Promise<void>;
@@ -242,15 +245,16 @@ export class GitWatcher {
       "refs/remotes",
     ]);
     const tips = parseRefs(refOutput, maxRefs);
-    const previous = repo.tips;
+    // Every ref event is dated when it was observed: a scan cannot know when a ref moved.
     const now = this.#now().toISOString();
+    const previous = repo.tips ?? this.#recordedTips(repo);
 
-    let moves: Array<{ tip: RefTip; from?: string; occurredAt: string }>;
+    let moves: Array<{ tip: RefTip; from?: string }>;
     let commits: CommitRecord[];
-    if (previous === undefined) {
-      // First scan: where every branch points now, and the newest commits. A move's time is its
-      // tip's commit time, so a restart produces the same event and deduplicates.
-      moves = tips.map((tip) => ({ tip, occurredAt: tip.committedAt }));
+    if (previous.size === 0) {
+      // Nothing recorded for this repository: where every branch points now (first observations,
+      // with no `from`), and the newest commits.
+      moves = tips.map((tip) => ({ tip }));
       commits = await this.#gitLog(
         repo,
         unique(tips.map((t) => t.sha)),
@@ -265,7 +269,7 @@ export class GitWatcher {
       }
       moves = changed.map((tip) => {
         const from = previous.get(tip.ref);
-        return from === undefined ? { tip, occurredAt: now } : { tip, from, occurredAt: now };
+        return from === undefined ? { tip } : { tip, from };
       });
       commits = await this.#gitLog(
         repo,
@@ -277,11 +281,12 @@ export class GitWatcher {
 
     const events = [
       ...commits.reverse().flatMap((c) => this.#commitEvents(repo, c)),
-      ...moves.map(({ tip, from, occurredAt }) =>
+      // The observation time keeps a repeated transition (A to B, back, and to B again) distinct.
+      ...moves.map(({ tip, from }) =>
         this.#event(
           repo,
-          `ref:${shortHash(tip.ref)}:${from ?? "none"}:${tip.sha}`,
-          occurredAt,
+          `ref:${shortHash(tip.ref)}:${from ?? "none"}:${tip.sha}:${Date.parse(now)}`,
+          now,
           "git.ref_moved",
           {
             repo: repo.path,
@@ -301,7 +306,24 @@ export class GitWatcher {
     repo.tips = new Map(tips.map((t) => [t.ref, t.sha]));
   }
 
-  /** Commits reachable from `include` and not from `exclude`, newest first, at most `limit`. */
+  /**
+   * Branch tips as last recorded in the project's log for this repository, so a restart reports
+   * only what changed while the engine was down.
+   */
+  #recordedTips(repo: Repo): Map<string, string> {
+    const tips = new Map<string, string>();
+    for (const event of this.#options.storage.events(repo.projectId)) {
+      if (event.type === "git.ref_moved" && event.sourceId === repo.sourceId) {
+        tips.set(event.payload.ref, event.payload.to);
+      }
+    }
+    return tips;
+  }
+
+  /**
+   * Commits reachable from `include` and not from `exclude`, newest first, at most `limit`. An
+   * excluded commit that no longer exists (history rewritten and collected) is skipped.
+   */
   async #gitLog(
     repo: Repo,
     include: string[],
@@ -314,6 +336,7 @@ export class GitWatcher {
       "-z",
       `--format=${LOG_FORMAT}`,
       `--max-count=${limit}`,
+      "--ignore-missing",
       "--end-of-options",
       ...include,
       ...exclude.map((sha) => `^${sha}`),
