@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   mkdtempSync,
@@ -50,6 +51,12 @@ describe("loadOrCreateToken", () => {
     symlinkSync(target, path);
     expect(() => loadOrCreateToken(path)).toThrow(TokenFileError);
   });
+
+  it("refuses a FIFO at the token path without blocking", () => {
+    const path = join(home, "token");
+    execFileSync("mkfifo", ["-m", "600", path]);
+    expect(() => loadOrCreateToken(path)).toThrow(TokenFileError);
+  }, 2000);
 
   it("refuses a token that is too short to be a real secret", () => {
     const path = join(home, "token");

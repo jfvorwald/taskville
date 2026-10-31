@@ -1,4 +1,12 @@
-import { closeSync, constants, fstatSync, openSync, readFileSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { generateSecret } from "./secrets.ts";
 
 /** Raised when a token file exists but cannot be trusted. Never carries the token value. */
@@ -8,6 +16,8 @@ export class TokenFileError extends Error {
 
 const MIN_TOKEN_LENGTH = 32;
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+// Opening a FIFO for reading would otherwise block until a writer appears.
+const NONBLOCK = constants.O_NONBLOCK ?? 0;
 
 /**
  * Returns the token stored at `path`, creating the file with a new random
@@ -38,17 +48,22 @@ function tryCreate(path: string): string | undefined {
   }
   const token = generateSecret();
   try {
-    writeSync(fd, `${token}\n`);
-  } finally {
+    // writeFileSync on a descriptor loops until every byte is written.
+    writeFileSync(fd, `${token}\n`);
+  } catch (err) {
     closeSync(fd);
+    // Never leave a partial file behind: it would block every later start.
+    unlinkSync(path);
+    throw err;
   }
+  closeSync(fd);
   return token;
 }
 
 function readExisting(path: string): string {
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | NOFOLLOW);
+    fd = openSync(path, constants.O_RDONLY | NOFOLLOW | NONBLOCK);
   } catch (err) {
     if (isErrno(err, "ELOOP")) throw new TokenFileError(`token file ${path} is a symlink`);
     throw err;
