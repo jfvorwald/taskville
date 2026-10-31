@@ -574,6 +574,50 @@ describe("sessions and activity", () => {
     expect(later.activity.a1?.sessionId).toBe("s1");
   });
 
+  it("does not reopen a session when a late start is older than its end", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("session.ended", {}, { agentId: "a1", sessionId: "s1" }),
+      emit(
+        "session.started",
+        {},
+        { agentId: "a1", sessionId: "s1", occurredAt: "2026-10-30T09:00:00Z" },
+      ),
+    ]);
+    expect(state.sessions.s1).toMatchObject({
+      startedAt: "2026-10-30T09:00:00Z",
+      endedAt: "2026-10-30T10:00:01Z",
+    });
+    expect(state.activity.a1?.openSessionCount).toBe(0);
+  });
+
+  it("records activity for a session it has not heard of in that session, not another", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("session.started", {}, { agentId: "a1", sessionId: "s1" }),
+      emit("activity.started", { activity: "testing" }, { agentId: "a1", sessionId: "s1" }),
+      emit("activity.started", { activity: "documenting" }, { agentId: "a1", sessionId: "s2" }),
+    ]);
+    expect(state.sessions.s1?.activity.activity).toBe("testing");
+    expect(state.sessions.s2).toMatchObject({
+      agentId: "a1",
+      activity: { activity: "documenting" },
+    });
+    expect(state.sessions.s2?.startedAt).toBeUndefined();
+    expect(state.activity.a1?.openSessionCount).toBe(2);
+  });
+
+  it("never writes one agent's activity into another agent's session", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("session.started", {}, { agentId: "a1", sessionId: "s1" }),
+      emit("session.started", {}, { agentId: "a2", sessionId: "s2" }),
+      emit("activity.started", { activity: "testing" }, { agentId: "a2", sessionId: "s1" }),
+    ]);
+    expect(state.sessions.s1?.activity.activity).toBe("unknown");
+    expect(state.sessions.s2?.activity.activity).toBe("unknown");
+  });
+
   it("reopens an ended session when it starts again", () => {
     const emit = eventStream();
     const state = run([
@@ -946,6 +990,21 @@ describe("tool calls", () => {
     const state = run(events);
     expect(state.toolCalls.t0?.phase).toBe("succeeded");
     expect(state.agents.a?.toolCallCount).toBe(MAX_OPEN_TOOL_CALLS_PER_AGENT + 1);
+  });
+
+  it("ignores a start or finish from another agent for a call it does not own", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("tool_call.started", { toolCallId: "t1", toolName: "Bash" }, { agentId: "a" }),
+      emit("tool_call.finished", { toolCallId: "t1", phase: "failed" }, { agentId: "b" }),
+      emit("tool_call.finished", { toolCallId: "t2", phase: "failed" }, { agentId: "a" }),
+      emit("tool_call.started", { toolCallId: "t2", toolName: "Edit" }, { agentId: "b" }),
+    ]);
+    expect(state.toolCalls.t1).toMatchObject({ agentId: "a", phase: "running" });
+    expect(state.toolCalls.t2).toMatchObject({ agentId: "a", phase: "failed" });
+    expect(state.toolCalls.t2?.toolName).toBeUndefined();
+    expect(state.agents.a).toMatchObject({ toolCallCount: 1, consecutiveToolFailures: 1 });
+    expect(state.agents.b).toMatchObject({ toolCallCount: 0, consecutiveToolFailures: 0 });
   });
 
   it("ignores a repeated start or finish for the same call", () => {
