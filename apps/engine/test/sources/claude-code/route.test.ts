@@ -388,6 +388,50 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
     expect(storedEvents("repo")).toHaveLength(1);
   });
 
+  it("reports the same sourceEventId with different hook content as conflict (roborev 5072)", async () => {
+    let clock = Date.parse(T0);
+    const { source } = makeSource(db(), { now: () => new Date(clock) });
+    const first = await source.ingestHook({ sourceEventId: "r-4", payload: hook() });
+    clock += 1_000;
+    const changed = await source.ingestHook({
+      sourceEventId: "r-4",
+      payload: hook({ session_id: "sess-other" }),
+      late: true,
+    });
+    const original = first.results[0];
+    expect(changed.results).toEqual([
+      {
+        sourceEventId: "r-4:0",
+        status: "conflict",
+        existingEventId: original?.status === "accepted" ? original.eventId : "",
+      },
+    ]);
+    expect(storedEvents("repo")).toHaveLength(1);
+  });
+
+  it("compares content after masking, so a retried hook with a secret is still a duplicate", async () => {
+    const secret = ["gh", "p_"].join("") + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";
+    const { source } = makeSource(db(), {
+      mapper: (_payload, ctx) => ({
+        events: [
+          {
+            schemaVersion: 1,
+            sourceEventId: `${ctx.sourceEventId}:0`,
+            occurredAt: ctx.receivedAt,
+            type: "task.created",
+            taskId: "task-1",
+            payload: { title: `token ${secret}` },
+            provenance: "live",
+          },
+        ],
+      }),
+    });
+    await source.ingestHook({ sourceEventId: "r-5", payload: hook() });
+    const again = await source.ingestHook({ sourceEventId: "r-5", payload: hook(), late: true });
+    expect(again.results.map((r) => r.status)).toEqual(["duplicate"]);
+    expect(JSON.stringify(storedEvents("repo"))).not.toContain(secret);
+  });
+
   it("still ingests the events of a hook that were not stored before", async () => {
     let calls = 0;
     const event = (n: number) => ({
