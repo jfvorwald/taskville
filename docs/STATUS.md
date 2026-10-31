@@ -6,23 +6,24 @@ Lead-owned cross-session summary. Teammates never edit this file; they write the
 
 ## Where things stand
 
-The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Batch 3 is running: event fixtures, the domain reducer, attention and requests, and engine storage.
+The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Event fixtures are in (PR #130): five JSONL fixtures with expected per-line ingest results and a shared loader. Batch 3 is running: the domain reducer, attention and requests, and engine storage, with the retro tooling alongside.
 
 ## In progress
 
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
 | [#10](https://github.com/jfvorwald/taskville/issues/10) M1.08 Domain attention, requests, and commands | Domain | domain-attn | in progress |
-| [#12](https://github.com/jfvorwald/taskville/issues/12) M1.17 Event fixtures and golden tests | Domain | domain | in progress |
+| [#94](https://github.com/jfvorwald/taskville/issues/94) M1.19 Retro tooling (Infra lane, taken by the domain teammate) | Infra | domain | in progress |
 | [#11](https://github.com/jfvorwald/taskville/issues/11) M1.09 Engine storage: SQLite event log and projections | Engine | storage | in progress |
 | [#9](https://github.com/jfvorwald/taskville/issues/9) M1.07 Domain reducer: agents, sessions, tasks, activity, teams | Domain | domain-hash | in progress |
 
-Ready, waiting for a free teammate: #94 M1.19.
+Ready, waiting for a free teammate: none. Blocked: #13 waits on #9, #10, #11; #14 waits on #9.
 
 ## Done this wave
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#12](https://github.com/jfvorwald/taskville/issues/12) M1.17 Event fixtures and golden tests | [#130](https://github.com/jfvorwald/taskville/pull/130) | job 4797 pass, no findings | protocol 322 tests incl. golden fixtures and a mutation check; `pnpm check` 660 tests on main ([report](tasks/M1.17.md)) |
 | [#8](https://github.com/jfvorwald/taskville/issues/8) M1.11 Config file and Taskville home | [#128](https://github.com/jfvorwald/taskville/pull/128) | 4776: symlinked-home chmod fixed; final 4781 pass | engine 130 tests, `pnpm check` 635 tests on main, CI pass; mutation checks on opener and file modes ([report](tasks/M1.11.md)) |
 | [#24](https://github.com/jfvorwald/taskville/issues/24) M1.20 Secret redaction module | [#127](https://github.com/jfvorwald/taskville/pull/127) | 4740: 2 high, 1 medium fixed; re-review 4752: 3 new high fixed; post-commit 4763: 2 high regressions fixed; final post-commit 4783 pass (no third panel, per rule) | adapters 143 tests, `pnpm check` 592 tests on main, CI pass ([report](tasks/M1.20.md)) |
 | [#6](https://github.com/jfvorwald/taskville/issues/6) M1.06 Canonical JSON and state hashing | [#124](https://github.com/jfvorwald/taskville/pull/124) | job 4767 pass, no findings | domain 63 tests incl. NIST vectors and isolated-context parity; `pnpm check` 450 tests on main ([report](tasks/M1.06.md)) |
@@ -59,6 +60,8 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Known follow-ups
 
+- M1.17: expected reducer snapshots deferred to #9 (no contract defines them yet); a non-JSON line is expected as `invalid_envelope` (events.md names no code); the reference model checks producer policy before `unknown_project`, an order the fixtures do not pin.
+
 - M1.11: default port 4807; config projects registered at start (decision #110 default); POSIX-only file modes (Windows NOT RUN).
 
 - Flakes: F-1 (M1.20 timing bound under parallel load, fixed by raising the bound; L-19).
@@ -81,4 +84,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Merge batch 2 as it lands; next free slot goes to #94; #13 (ingest) once #9, #10 and #11 merge; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).
+Merge batch 2 as it lands; #13 (ingest) once #9, #10 and #11 merge; #14 (demo) once #9 merges; #9, #10, #11, #12 once #5 and #6 merge. See [ROADMAP.md](ROADMAP.md).
