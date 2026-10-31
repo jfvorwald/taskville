@@ -13,8 +13,8 @@ export const ENGINE = "taskville:engine";
 export const TELEMETRY = "claude-code";
 
 export interface EnvelopeFields {
-  agentId?: string;
-  sessionId?: string;
+  agentId?: string | undefined;
+  sessionId?: string | undefined;
   sourceId?: string;
   occurredAt?: string;
   late?: boolean;

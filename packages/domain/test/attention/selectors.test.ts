@@ -238,9 +238,10 @@ describe("heuristic silent trouble with an injected clock", () => {
 
   it("still applies alongside non-heuristic trouble", () => {
     const state = stateOf([agent("a1", { consecutiveToolFailures: 4 })]);
+    // Same since: ties break on kind, so the order is fixed.
     expect(attention(state, ms(T0) + minutes(11)).map((r) => r.kind)).toEqual([
-      "tool_failures",
       "silent",
+      "tool_failures",
     ]);
   });
 

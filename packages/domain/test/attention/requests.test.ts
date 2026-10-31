@@ -582,10 +582,11 @@ describe("commands", () => {
     expect(state.commands.c3?.status).toBe("unsupported");
   });
 
-  it("keeps terminal statuses final and ignores out-of-order transitions", () => {
+  it("keeps terminal statuses final, needs delivery before success, and ignores other moves", () => {
     const emit = eventStream();
     const state = run([
       requested(emit, "c1"),
+      emit("command.delivered", { commandId: "c1" }, { sourceId: ENGINE }),
       emit("command.succeeded", { commandId: "c1" }, { sourceId: ENGINE }),
       emit("command.failed", { commandId: "c1", reason: reason("late") }, { sourceId: ENGINE }),
       emit("command.delivered", { commandId: "c1" }, { sourceId: ENGINE }),
@@ -593,10 +594,13 @@ describe("commands", () => {
       emit("command.delivered", { commandId: "c2" }, { sourceId: ENGINE }),
       emit("command.unsupported", { commandId: "c2" }, { sourceId: ENGINE }),
       emit("command.delivered", { commandId: "c2" }, { sourceId: ENGINE }),
+      requested(emit, "c3"),
+      emit("command.succeeded", { commandId: "c3" }, { sourceId: ENGINE }),
     ]);
     expect(state.commands.c1?.status).toBe("succeeded");
     expect(state.commands.c1?.reason).toBeUndefined();
     expect(state.commands.c2?.status).toBe("delivered");
+    expect(state.commands.c3?.status).toBe("requested");
   });
 
   it("ignores repeated command.requested, unknown command IDs, and non-engine sources", () => {
