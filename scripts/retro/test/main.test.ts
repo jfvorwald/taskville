@@ -73,6 +73,14 @@ describe("retro CLI, offline from a snapshot", () => {
     expect(readFileSync(out, "utf8")).toContain("## What hurt *(written)*\n\nRebases.\n");
   });
 
+  it("renders a recorded snapshot as of its recording time unless --now is given", () => {
+    const recorded = join(tmp, "m9-recorded.json");
+    const recordedOut = join(tmp, "M9-recorded.md");
+    writeFileSync(recorded, JSON.stringify({ ...example, recordedAt: "2026-01-03T12:00:00.000Z" }));
+    execFileSync(process.execPath, [main, "M9", "--from", recorded, "--out", recordedOut]);
+    expect(readFileSync(recordedOut, "utf8")).toContain("Generated 2026-01-03T12:00Z");
+  });
+
   it("refuses a snapshot from another milestone", () => {
     const result = spawnSync(
       process.execPath,

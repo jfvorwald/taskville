@@ -73,7 +73,13 @@ describe("buildModel", () => {
   });
 
   it("classifies reviews of done tickets from their task reports", () => {
-    expect(model.reviews).toEqual({ firstPass: 1, oneFix: 1, escalated: 0, notMeasured: [] });
+    expect(model.reviews).toEqual({
+      firstPass: 1,
+      oneFix: 1,
+      multipleFix: [],
+      escalated: 0,
+      notMeasured: [],
+    });
   });
 
   it("counts CI failures, re-runs, and flakes on ticket branches only", () => {
@@ -85,8 +91,24 @@ describe("buildModel", () => {
     expect(model.notRun).toBe(1);
   });
 
-  it("leaves NOT RUN unmeasured when no done ticket has a report", () => {
+  it("leaves NOT RUN unmeasured when any done ticket's report does not say", () => {
     expect(buildModel({ ...example, taskReports: {} }, NOW).notRun).toBeNull();
+    const oneMissing = { "M9.02": example.taskReports["M9.02"] ?? "" };
+    expect(buildModel({ ...example, taskReports: oneMissing }, NOW).notRun).toBeNull();
+  });
+
+  it("counts in-progress tickets per day as the most at once that day, so back-to-back work is 1", () => {
+    const backToBack = buildModel(
+      {
+        ...example,
+        pulls: example.pulls.map((p) =>
+          p.number === 11 ? { ...p, firstCommitAt: "2026-01-02T12:00:00Z" } : p,
+        ),
+      },
+      NOW,
+    );
+    expect(backToBack.inProgressPerDay).toEqual([1, 1, 2]);
+    expect(backToBack.peakParallel).toBe(2);
   });
 
   it("has no timeline when no ticket has started", () => {

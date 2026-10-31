@@ -91,7 +91,11 @@ function planVersusActual(model: RetroModel): string {
 }
 
 export function buildView(model: RetroModel, snapshot: Snapshot, now: Date, key: string): View {
-  const reviewed = model.reviews.firstPass + model.reviews.oneFix + model.reviews.escalated;
+  const reviewed =
+    model.reviews.firstPass +
+    model.reviews.oneFix +
+    model.reviews.multipleFix.length +
+    model.reviews.escalated;
   const unmeasuredSizes = SIZES.filter((s) => model.cycleHours[s] === null);
   const cycle = SIZES.map((s) => model.cycleHours[s] ?? 0);
   return {
@@ -136,6 +140,9 @@ export function buildView(model: RetroModel, snapshot: Snapshot, now: Date, key:
     escalated: model.reviews.escalated,
     review_note: [
       "From the roborev field of each merged ticket's task report: a medium or higher finding fixed before merge is one fix round.",
+      model.reviews.multipleFix.length > 0
+        ? `More than one fix round (not in the chart): ${model.reviews.multipleFix.join(", ")}.`
+        : "",
       model.reviews.notMeasured.length > 0
         ? `Not measured: ${model.reviews.notMeasured.join(", ")} (the report does not say).`
         : "",

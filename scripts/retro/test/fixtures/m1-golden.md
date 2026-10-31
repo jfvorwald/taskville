@@ -6,7 +6,7 @@ Generated 2026-10-31T02:19Z by `pnpm retro M1` from GitHub data. Charts and numb
 
 | Tickets planned | Added | Done | Dropped | Calendar days | Peak parallel | First-pass reviews | Flakes | NOT RUN |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 22 | 0 | 11 | 0 | 1 | 11 | 44% | 0 | 11 |
+| 22 | 0 | 11 | 0 | 1 | 4 | 44% | 0 | 11 |
 
 ## Timeline by lane
 
@@ -53,8 +53,8 @@ xychart-beta
 xychart-beta
   title "Tickets in progress per day"
   x-axis ["10-31"]
-  y-axis "In progress" 0 --> 11
-  bar [11]
+  y-axis "In progress" 0 --> 4
+  bar [4]
 ```
 
 Most in progress at one moment: 4 (2026-10-31T01:41 UTC).
@@ -76,11 +76,11 @@ Average over merged tickets with a size on the board. Not measured: L (no merged
 ```mermaid
 pie title Reviews
   "Passed first review" : 4
-  "One fix round" : 5
+  "One fix round" : 2
   "Escalated" : 0
 ```
 
-From the roborev field of each merged ticket's task report: a medium or higher finding fixed before merge is one fix round. Not measured: M1.10, M1.11 (the report does not say).
+From the roborev field of each merged ticket's task report: a medium or higher finding fixed before merge is one fix round. More than one fix round (not in the chart): M1.01, M1.03, M1.20. Not measured: M1.10, M1.11 (the report does not say).
 
 ## Quality signals
 

@@ -16,6 +16,14 @@ describe("classifyReview", () => {
   it.each([
     "panel job 4675 (2 high) fixed in 3b65b1d; re-review job 4684 (1 medium) fixed in 9c9927d and 83439be; post-commit jobs 4681, 4695, 4696 pass. No third panel round (re-review once rule)",
     "pre_merge panel job 4680 failed (1 high, 2 medium), fixed in 0ddc37b; re-review job 4694 failed with new findings (2 high, 1 medium), fixed or answered with evidence in 36d0d39",
+  ])(
+    "more than one fix round when the first review and the re-review both had findings: %s",
+    (line) => {
+      expect(classifyReview(report(line))).toBe("multiple_fix");
+    },
+  );
+
+  it.each([
     "pass (job 4728, pre_merge panel) after one high finding in job 4720 was fixed in 8b0483d (an unlabelled heuristic subagent parent link).",
     "pre_merge panel job 4744 pass (no findings). Re-review panel job 4762 after rebasing onto M1.10: 1 medium (health schema) and 1 low (pairing code), both fixed in 8b869a4",
     "a critical finding fixed in abc1234",

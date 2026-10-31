@@ -40,6 +40,20 @@ describe("renderRetro", () => {
     expect(md).toContain("Not started: M9.05.");
   });
 
+  it("lists tickets that needed more than one fix round under the review chart", () => {
+    const twoRounds = {
+      ...example,
+      taskReports: {
+        ...example.taskReports,
+        "M9.02":
+          "- **PR:** #11 · **roborev:** panel job 2 (1 high) fixed; re-review job 3 (1 medium) fixed\n- **NOT RUN:** none\n",
+      },
+    };
+    const out = renderRetro({ snapshot: twoRounds, template, now: NOW, key: "M9" });
+    expect(out).toContain("More than one fix round (not in the chart): M9.02.");
+    expect(out).toContain('"One fix round" : 0');
+  });
+
   it("notes the most tickets in progress at one moment under the parallelism chart", () => {
     expect(md).toContain("Most in progress at one moment: 2 (2026-01-02T10:00 UTC).");
   });

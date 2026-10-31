@@ -43,11 +43,16 @@ export function parseArgs(argv: string[]): Args {
 
 export async function main(argv: string[]): Promise<string> {
   const args = parseArgs(argv);
-  const now = args.now === undefined ? new Date() : new Date(args.now);
+  // A recorded snapshot renders as of its recording time: nothing after it was observed.
   const snapshot: Snapshot =
     args.from === undefined
-      ? await collect({ key: args.key, project: BOARD_PROJECT, now })
+      ? await collect({
+          key: args.key,
+          project: BOARD_PROJECT,
+          now: new Date(args.now ?? Date.now()),
+        })
       : (JSON.parse(readFileSync(args.from, "utf8")) as Snapshot);
+  const now = new Date(args.now ?? snapshot.recordedAt ?? Date.now());
   if (args.record !== undefined) {
     mkdirSync(dirname(args.record), { recursive: true });
     writeFileSync(args.record, `${JSON.stringify(snapshot, null, 2)}\n`);

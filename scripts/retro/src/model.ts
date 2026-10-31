@@ -8,7 +8,8 @@
 // - The milestone starts at its earliest ticket start. Tickets created by then are planned; later
 //   ones were added mid-milestone.
 // - Days are UTC calendar days from the milestone start to the last close (or `now` while any
-//   ticket is open). Open and in-progress counts are taken at the end of each day (or `now`).
+//   ticket is open). Open tickets are counted at the end of each day (or `now`); in progress is
+//   the most tickets worked on at the same moment that day.
 // - CI counts cover workflow runs on ticket branches only. Cancelled runs are not failures.
 
 import { ticketKeyOf } from "./reduce.ts";
@@ -48,7 +49,14 @@ export type RetroModel = {
   /** Most tickets in progress at one instant, and when that was first reached. */
   peakConcurrent: { count: number; at: string | null };
   cycleHours: Record<Size, number | null>;
-  reviews: { firstPass: number; oneFix: number; escalated: number; notMeasured: string[] };
+  reviews: {
+    firstPass: number;
+    oneFix: number;
+    /** Tickets whose first review and re-review both had medium-or-higher findings. */
+    multipleFix: string[];
+    escalated: number;
+    notMeasured: string[];
+  };
   ci: { failures: number; reruns: number; flakes: number };
   notRun: number | null;
 };
@@ -131,28 +139,35 @@ export function buildModel(snapshot: Snapshot, now: Date): RetroModel {
       (t) => ms(t.createdAt) < at && (t.closedAt === null || ms(t.closedAt) >= at),
     ).length;
   });
-  const inProgressPerDay = dayStarts.map((dayStart) => {
-    const at = cutoff(dayStart);
-    return tickets.filter((t) => t.start !== null && ms(t.start) < at && workEnd(t) >= dayStart)
-      .length;
-  });
-  // Sweep start and end events; at equal times ends go first, so back-to-back work is not overlap.
-  const events = tickets
-    .filter((t) => t.start !== null)
-    .flatMap((t) => [
-      { time: ms(t.start ?? ""), delta: 1 },
-      { time: workEnd(t), delta: -1 },
-    ])
-    .sort((a, b) => a.time - b.time || a.delta - b.delta);
-  const peakConcurrent = { count: 0, at: null as string | null };
-  let running = 0;
-  for (const event of events) {
-    running += event.delta;
-    if (running > peakConcurrent.count) {
-      peakConcurrent.count = running;
-      peakConcurrent.at = new Date(event.time).toISOString();
+  // Most tickets in progress at one moment within [from, to): sweep clipped work intervals; at
+  // equal times ends go first, so back-to-back work is not overlap.
+  const worked = tickets.flatMap((t) =>
+    t.start === null ? [] : [[ms(t.start), workEnd(t)] as const],
+  );
+  const maxConcurrent = (from: number, to: number) => {
+    const events = worked
+      .map(([a, b]) => [Math.max(a, from), Math.min(b, to)] as const)
+      .filter(([a, b]) => a < b)
+      .flatMap(([a, b]) => [
+        { time: a, delta: 1 },
+        { time: b, delta: -1 },
+      ])
+      .sort((x, y) => x.time - y.time || x.delta - y.delta);
+    const peak = { count: 0, at: null as string | null };
+    let running = 0;
+    for (const event of events) {
+      running += event.delta;
+      if (running > peak.count) {
+        peak.count = running;
+        peak.at = new Date(event.time).toISOString();
+      }
     }
-  }
+    return peak;
+  };
+  const inProgressPerDay = dayStarts.map(
+    (dayStart) => maxConcurrent(dayStart, cutoff(dayStart)).count,
+  );
+  const peakConcurrent = maxConcurrent(Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY);
 
   const total = tickets.length;
   const idealPerDay = dayStarts.map((_, i) =>
@@ -169,19 +184,28 @@ export function buildModel(snapshot: Snapshot, now: Date): RetroModel {
   }
 
   const done = tickets.filter((t) => t.state === "done");
-  const reviews = { firstPass: 0, oneFix: 0, escalated: 0, notMeasured: [] as string[] };
+  const reviews = {
+    firstPass: 0,
+    oneFix: 0,
+    multipleFix: [] as string[],
+    escalated: 0,
+    notMeasured: [] as string[],
+  };
   for (const ticket of done) {
     const outcome = classifyReview(snapshot.taskReports[ticket.key]);
     if (outcome === "first_pass") reviews.firstPass += 1;
     else if (outcome === "one_fix") reviews.oneFix += 1;
+    else if (outcome === "multiple_fix") reviews.multipleFix.push(ticket.key);
     else if (outcome === "escalated") reviews.escalated += 1;
     else reviews.notMeasured.push(ticket.key);
   }
 
-  const notRunValues = done
-    .map((t) => listsNotRun(snapshot.taskReports[t.key]))
-    .filter((v) => v !== null);
-  const notRun = notRunValues.length === 0 ? null : notRunValues.filter(Boolean).length;
+  // A total only when every done ticket's report says; otherwise it would hide unknown checks.
+  const notRunValues = done.map((t) => listsNotRun(snapshot.taskReports[t.key]));
+  const notRun =
+    notRunValues.length === 0 || notRunValues.includes(null)
+      ? null
+      : notRunValues.filter(Boolean).length;
 
   const ticketBranches = new Set(tickets.map((t) => t.key));
   for (const [, pulls] of pullsByKey) for (const p of pulls) ticketBranches.add(p.headRef);

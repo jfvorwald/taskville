@@ -5,12 +5,12 @@
 // measured") otherwise:
 // - an explicit `**Review outcome:**` field wins;
 // - escalation words (escalated, debugger, decision ticket) mean escalated;
-// - a counted medium, high, or critical finding ("1 medium", "one high") means one fix round,
-//   since the re-review-once rule allows at most one re-review after fixes;
+// - a counted medium, high, or critical finding ("1 medium", "one high") means one fix round, or
+//   more than one when both the first review and the re-review report such findings;
 // - "pass" with nothing "fixed" means passed first review;
 // - anything else (for example findings fixed with no severity given) is not measured.
 
-export type ReviewOutcome = "first_pass" | "one_fix" | "escalated";
+export type ReviewOutcome = "first_pass" | "one_fix" | "multiple_fix" | "escalated";
 
 const field = (text: string, name: string): string | null => {
   const match = new RegExp(`\\*\\*${name}:\\*\\*([^\\n]*)`, "i").exec(text);
@@ -25,11 +25,16 @@ export function classifyReview(report: string | undefined): ReviewOutcome | null
   if (explicit !== undefined) {
     if (explicit.startsWith("passed first")) return "first_pass";
     if (explicit.startsWith("one fix")) return "one_fix";
+    if (explicit.startsWith("more than one fix")) return "multiple_fix";
     if (explicit.startsWith("escalated")) return "escalated";
   }
   const roborev = field(report, "roborev");
   if (roborev === null) return null;
   if (/escalat|debugger|decision ticket|needs:decision/i.test(roborev)) return "escalated";
+  const reReview = roborev.search(/re-?review/i);
+  const first = reReview === -1 ? roborev : roborev.slice(0, reReview);
+  const second = reReview === -1 ? "" : roborev.slice(reReview);
+  if (SEVERE_FINDING.test(first) && SEVERE_FINDING.test(second)) return "multiple_fix";
   if (SEVERE_FINDING.test(roborev)) return "one_fix";
   if (/\bpass\b/i.test(roborev) && !/\bfixed\b/i.test(roborev)) return "first_pass";
   return null;
