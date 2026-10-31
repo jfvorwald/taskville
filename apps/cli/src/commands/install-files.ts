@@ -226,27 +226,46 @@ const realView: ParentView = {
 };
 
 /**
- * Why a directory above `path` lets another account replace it, or undefined. Every existing
- * ancestor (symlinks resolved, from the nearest one that exists) must not be writable by group or
- * other unless it has the sticky bit (like /tmp), because whoever can write a directory can rename
- * the Taskville home away and put their own, with their own shim, in its place.
+ * Why a directory above `path` lets another account replace it, or undefined. Whoever can write
+ * a directory, or owns it, can rename the Taskville home away and put their own, with their own
+ * shim, in its place. So every ancestor, both as written and with symlinks resolved (a link in a
+ * shared directory can be re-aimed), must be owned by root or by this user and must not be
+ * writable by group or other. A sticky bit (like /tmp) excuses the write bits, never the owner.
+ * Ancestors that do not exist yet are skipped; the walk starts at the nearest one that does.
  */
-export function parentDirProblem(path: string, view: ParentView = realView): string | undefined {
-  let real: string | undefined;
-  for (let dir = dirname(path); real === undefined; dir = dirname(dir)) {
+export function parentDirProblem(
+  path: string,
+  view: ParentView = realView,
+  uid: number | undefined = process.getuid?.(),
+): string | undefined {
+  const ancestors = (from: string) => {
+    const list: string[] = [];
+    for (let dir = dirname(from); ; dir = dirname(dir)) {
+      list.push(dir);
+      if (dirname(dir) === dir) return list;
+    }
+  };
+  const chains = [ancestors(path)];
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
     try {
-      real = view.realpath(dir);
+      chains.push(ancestors(join(view.realpath(dir), "x")));
+      break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT" || dirname(dir) === dir) throw error;
     }
   }
-  for (let dir = real; ; dir = dirname(dir)) {
+  for (const dir of new Set(chains.flat())) {
     const stat = view.lstat(dir);
-    if (stat !== undefined && (stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
+    // A symlink's own mode means nothing; the directory holding it is on the chain.
+    if (stat === undefined || stat.isSymbolicLink()) continue;
+    if (uid !== undefined && stat.uid !== uid && stat.uid !== 0) {
+      return `${dir} is owned by another user, who could replace ${path}`;
+    }
+    if ((stat.mode & GROUP_OTHER_WRITE) !== 0 && (stat.mode & STICKY) === 0) {
       return `${dir} is writable by other accounts and is not sticky, so one of them could replace ${path}; run chmod go-w ${dir} first`;
     }
-    if (dirname(dir) === dir) return undefined;
   }
+  return undefined;
 }
 
 /**
@@ -257,7 +276,7 @@ function privateDir(path: string, create: boolean, checkParents: boolean): void 
   const stat = lstatOrUndefined(path);
   const problem =
     stat === undefined
-      ? checkParents && create
+      ? checkParents
         ? parentDirProblem(path)
         : undefined
       : (privateDirProblem(path, stat, process.getuid?.()) ??

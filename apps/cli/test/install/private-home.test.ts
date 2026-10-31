@@ -54,30 +54,70 @@ describe("privateDirProblem (injected stat)", () => {
 });
 
 describe("parentDirProblem (injected stat)", () => {
-  const view = (dirs: Record<string, number>) => ({
-    realpath: (p: string) => p,
-    lstat: (p: string) => (p in dirs ? stat({ mode: dirs[p] ?? 0 }) : undefined),
+  const view = (
+    dirs: Record<string, number>,
+    links: Record<string, string> = {},
+    owners: Record<string, number> = {},
+  ) => ({
+    realpath: (p: string) => {
+      const link = Object.entries(links).find(([from]) => p === from || p.startsWith(`${from}/`));
+      return link === undefined ? p : link[1] + p.slice(link[0].length);
+    },
+    lstat: (p: string) =>
+      p in links
+        ? stat({ kind: "link", mode: 0o120777 })
+        : p in dirs
+          ? stat({ mode: dirs[p] ?? 0, uid: owners[p] ?? 1000 })
+          : undefined,
   });
+  const ME = 1000;
 
   it("accepts parents that others cannot write, and sticky world-writable ones", () => {
     const v = view({ "/": 0o40755, "/home": 0o40755, "/home/u": 0o40700, "/tmp": 0o41777 });
-    expect(parentDirProblem("/home/u/.taskville", v)).toBeUndefined();
-    expect(parentDirProblem("/tmp/.taskville", v)).toBeUndefined();
+    expect(parentDirProblem("/home/u/.taskville", v, ME)).toBeUndefined();
+    expect(parentDirProblem("/tmp/.taskville", v, ME)).toBeUndefined();
   });
 
   it("refuses a parent others can write without the sticky bit", () => {
     const v = view({ "/": 0o40755, "/home": 0o40755, "/home/u": 0o40777 });
-    expect(parentDirProblem("/home/u/.taskville", v)).toMatch(/\/home\/u is writable by/);
+    expect(parentDirProblem("/home/u/.taskville", v, ME)).toMatch(/\/home\/u is writable by/);
   });
 
   it("refuses a group-writable parent without the sticky bit, and walks above the first parent", () => {
     const v = view({ "/": 0o40755, "/home": 0o40775, "/home/u": 0o40700 });
-    expect(parentDirProblem("/home/u/.taskville", v)).toMatch(/\/home is writable by/);
+    expect(parentDirProblem("/home/u/.taskville", v, ME)).toMatch(/\/home is writable by/);
+  });
+
+  it("refuses a sticky world-writable parent that another user owns, accepts root's and ours", () => {
+    const dirs = { "/": 0o40755, "/shared": 0o41777 };
+    expect(parentDirProblem("/shared/.taskville", view(dirs, {}, { "/shared": 2000 }), ME)).toMatch(
+      /\/shared is owned by another user/,
+    );
+    expect(
+      parentDirProblem("/shared/.taskville", view(dirs, {}, { "/shared": 0 }), ME),
+    ).toBeUndefined();
+    expect(
+      parentDirProblem("/shared/.taskville", view(dirs, {}, { "/shared": ME }), ME),
+    ).toBeUndefined();
+  });
+
+  it("refuses a parent another user owns even without write bits for others", () => {
+    const v = view({ "/": 0o40755, "/srv": 0o40755 }, {}, { "/srv": 2000 });
+    expect(parentDirProblem("/srv/.taskville", v, ME)).toMatch(/\/srv is owned by another user/);
+  });
+
+  it("checks the directories holding a symlink on the way, not only where it points", () => {
+    // /shared/link -> /private/real; /shared is writable by others, /private/real is not.
+    const v = view(
+      { "/": 0o40755, "/shared": 0o40777, "/private": 0o40755, "/private/real": 0o40700 },
+      { "/shared/link": "/private/real" },
+    );
+    expect(parentDirProblem("/shared/link/.taskville", v, ME)).toMatch(/\/shared is writable by/);
   });
 
   it("starts at the nearest existing ancestor when the home does not exist yet", () => {
     const v = view({ "/": 0o40755, "/home": 0o40755, "/home/u": 0o40777 });
-    expect(parentDirProblem("/home/u/a/b/.taskville", v)).toMatch(/\/home\/u is writable by/);
+    expect(parentDirProblem("/home/u/a/b/.taskville", v, ME)).toMatch(/\/home\/u is writable by/);
   });
 });
 
@@ -126,6 +166,12 @@ describe("install against a home that is not private", () => {
     expect(r.stderr).toContain(sb.home);
     expect(existsSync(sb.tv)).toBe(false);
     expect(existsSync(sb.userSettings)).toBe(false);
+  });
+
+  it("dry-run (checkShim) refuses a 0777 parent for a home that does not exist yet", () => {
+    sb = sandbox();
+    chmodSync(sb.home, 0o777);
+    expect(() => checkShim(sb.tv, "s.sh", "#!/bin/sh\n")).toThrow(/writable by/);
   });
 
   it("accepts a 0777 parent that has the sticky bit", async () => {
