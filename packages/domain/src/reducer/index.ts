@@ -1,4 +1,5 @@
 import { stateHash } from "../hash/index.ts";
+import { initialRequestsState, type RequestsState, reduceRequests } from "./attention/index.ts";
 import { type EntitiesState, initialEntities, reduceEntities } from "./entities/index.ts";
 import type { DomainEvent } from "./entities/types.ts";
 
@@ -8,14 +9,16 @@ import type { DomainEvent } from "./entities/types.ts";
 // Composition. State is ProjectMeta plus one set of keys per slice. A slice is a generic
 // function `<S extends ItsState>(state: S, event) => S` that returns `{ ...state, ...its keys }`
 // and never touches another slice's keys, plus an `initialX()` for its keys. `reduce` runs the
-// slices in SLICES order, then sets `head`. To add a slice (for example M1.08's requests,
-// commands, and attention in reducer/attention/):
+// slices in SLICES order, then sets `head`. Slices today: entities (reducer/entities/) and
+// requests and commands (reducer/attention/, M1.08), in that order, so the requests slice sees
+// this event's agents. To add a slice:
 //   1. add its state type to ProjectState below,
 //   2. spread its initial keys into initialState,
-//   3. append its reducer to SLICES, after entities so it sees this event's agents.
+//   3. append its reducer to SLICES (wrapped, if it takes only its own keys, as requests is).
 // Bump REDUCER_VERSION whenever the state shape or any rule changes, so stored projections are
 // rebuilt from events at startup.
 
+export type { Command, PendingRequest, RequestsState } from "./attention/index.ts";
 export { MAX_OPEN_TOOL_CALLS_PER_AGENT } from "./entities/index.ts";
 export type * from "./entities/types.ts";
 
@@ -28,14 +31,29 @@ export interface ProjectMeta {
   readonly head: number;
 }
 
-export type ProjectState = ProjectMeta & EntitiesState;
+export type ProjectState = ProjectMeta & EntitiesState & RequestsState;
 
 type Slice = (state: ProjectState, event: DomainEvent) => ProjectState;
 
-const SLICES: readonly Slice[] = [reduceEntities];
+/** reduceRequests takes and returns only its own keys, and returns them unchanged on no effect. */
+const requestsSlice: Slice = (state, event) => {
+  const before = { requests: state.requests, commands: state.commands };
+  const after = reduceRequests(before, event);
+  return after === before
+    ? state
+    : { ...state, requests: after.requests, commands: after.commands };
+};
+
+const SLICES: readonly Slice[] = [reduceEntities, requestsSlice];
 
 export function initialState(projectId: string): ProjectState {
-  return { projectId, reducerVersion: REDUCER_VERSION, head: 0, ...initialEntities() };
+  return {
+    projectId,
+    reducerVersion: REDUCER_VERSION,
+    head: 0,
+    ...initialEntities(),
+    ...initialRequestsState(),
+  };
 }
 
 export function reduce(state: ProjectState, event: DomainEvent): ProjectState {
