@@ -1,4 +1,6 @@
 // Throwaway spike server for S-1. Logs every hook request to JSONL.
+// It records raw hook bodies (tool_input included) on purpose, because the spike is about payloads.
+// Point it only at a throwaway project; redact the log before committing (Authorization is masked here).
 // Mode is switched at runtime: GET /_mode?m=<mode>&hold=<seconds>&msg=<text>
 // Modes for /permission: allow, deny, empty, hang. Other paths answer 200 {} immediately.
 
