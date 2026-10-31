@@ -4,6 +4,7 @@ import {
   formatPace,
   isoFromMs,
   LIVELY,
+  MAX_DURATION_MS,
   mulberry32,
   parseDuration,
   parsePace,
@@ -97,6 +98,10 @@ describe("pace (FR-013, contracts/cli.md)", () => {
     "change=2s-6s,needs-you=0s",
     "change=2s-6s,needs-you=90s,extra=1s",
     "change=2s-6s,change=3s-4s,needs-you=90s",
+    `change=1s-${"9".repeat(400)}s,needs-you=90s`,
+    `change=${"9".repeat(400)}s-${"9".repeat(401)}s,needs-you=90s`,
+    `change=1s-2s,needs-you=${"9".repeat(400)}m`,
+    "change=1s-2s,needs-you=721h",
   ])("rejects %j", (text) => {
     expect(() => parsePace(text)).toThrow(/pace/i);
   });
@@ -119,6 +124,14 @@ describe("parseDuration", () => {
 
   it.each(["", "10", "-1s", "1d", "s", "1e3s"])("rejects %j", (text) => {
     expect(() => parseDuration(text)).toThrow();
+  });
+
+  it("accepts up to 30 days and rejects anything longer, including digits that overflow", () => {
+    expect(MAX_DURATION_MS).toBe(30 * 24 * 3_600_000);
+    expect(parseDuration("720h")).toBe(MAX_DURATION_MS);
+    expect(() => parseDuration("720.5h")).toThrow(/30 days/);
+    expect(() => parseDuration(`${"9".repeat(400)}h`)).toThrow(/30 days/);
+    expect(() => parseDuration(`${"9".repeat(400)}.5s`)).toThrow(/30 days/);
   });
 });
 
