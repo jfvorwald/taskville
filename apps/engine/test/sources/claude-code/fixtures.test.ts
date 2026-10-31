@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_HOOKS_PATH,
   CLAUDE_CODE_SOURCE_ID,
+  type HookIngestResponse,
   registerClaudeCodeRoutes,
 } from "../../../src/sources/claude-code/index.ts";
 import { bearer, CLI_TOKEN, makeApp, postJson } from "../../http/helpers.ts";
@@ -40,7 +41,7 @@ async function postAll(db: ReturnType<typeof useProjects>, file: string) {
       postJson({ sourceEventId: `${file}#${i}`, payload }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as HookIngestResponse;
     routed.push(body.projectId);
     for (const result of body.results) expect(result.status).toBe("accepted");
   }

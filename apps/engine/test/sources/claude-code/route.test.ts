@@ -1,8 +1,10 @@
+import pino from "pino";
 import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_HOOKS_PATH,
   CLAUDE_CODE_SOURCE_ID,
   type HookEvidence,
+  type HookIngestResponse,
   MAX_HOOK_BODY_BYTES,
   registerClaudeCodeRoutes,
 } from "../../../src/sources/claude-code/index.ts";
@@ -21,6 +23,12 @@ import { fixedNow, makeSource, T0, useProjects } from "./helpers.ts";
 const db = useProjects([{ id: "repo", roots: ["/work/repo"] }]);
 const URL = `http://127.0.0.1:4807${CLAUDE_CODE_HOOKS_PATH}`;
 
+type Reply = HookIngestResponse & {
+  results: { status: string; error?: { code: string } }[];
+  error: { code: string };
+};
+const read = async (res: Response) => (await res.json()) as Reply;
+
 function hook(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     session_id: "sess-1",
@@ -31,14 +39,14 @@ function hook(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 function setup(extra: Parameters<typeof makeSource>[1] = {}) {
-  const { app, pairing, logLines } = makeApp();
-  const { source, mapper } = makeSource(db.storage(), extra);
+  const { app, pairing } = makeApp();
+  const { source, mapper } = makeSource(db(), extra);
   registerClaudeCodeRoutes(app, source);
-  return { app, pairing, mapper, logLines };
+  return { app, pairing, mapper };
 }
 
 function storedEvents(projectId: string) {
-  return [...db.storage().events(projectId, 1)];
+  return [...db().events(projectId, 1)];
 }
 
 describe("POST /v1/sources/claude-code/hooks", () => {
@@ -49,7 +57,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       postJson({ sourceEventId: "u-1", payload: hook() }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await read(res);
     expect(body).toEqual({
       projectId: "repo",
       results: [expect.objectContaining({ sourceEventId: "u-1:0", status: "accepted" })],
@@ -77,7 +85,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect((await res.json()).projectId).toBe("unsorted");
+    expect((await read(res)).projectId).toBe("unsorted");
     expect(storedEvents("unsorted")).toHaveLength(1);
     expect(storedEvents("repo")).toHaveLength(0);
   });
@@ -87,7 +95,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const body = { sourceEventId: "u-3", payload: hook() };
     await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
     const again = await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
-    expect((await again.json()).results[0].status).toBe("duplicate");
+    expect((await read(again)).results[0]?.status).toBe("duplicate");
     expect(storedEvents("repo")).toHaveLength(1);
   });
 
@@ -114,7 +122,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       URL,
       postJson({ sourceEventId: "u-4", payload: hook() }, bearer(CLI_TOKEN)),
     );
-    expect((await res.json()).results[0].status).toBe("accepted");
+    expect((await read(res)).results[0]?.status).toBe("accepted");
     expect(storedEvents("repo")[0]).toMatchObject({
       projectId: "repo",
       sourceId: CLAUDE_CODE_SOURCE_ID,
@@ -143,9 +151,9 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       postJson({ sourceEventId: "u-5", payload: hook() }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
-    const { results } = await res.json();
-    expect(results.map((r: { status: string }) => r.status)).toEqual(["rejected", "rejected"]);
-    expect(results[0].error.code).toBe("engine_only_type");
+    const { results } = await read(res);
+    expect(results.map((r) => r.status)).toEqual(["rejected", "rejected"]);
+    expect(results[0]?.error?.code).toBe("engine_only_type");
     expect(storedEvents("repo")).toHaveLength(0);
   });
 
@@ -159,15 +167,19 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ projectId: "repo", results: [], heads: {}, ignored: true });
+    expect(await read(res)).toEqual({ projectId: "repo", results: [], heads: {}, ignored: true });
   });
 
   it("hands mapped evidence to the evidence sink with the resolved project, after ingest", async () => {
-    const stored: { projectId: string; evidence: readonly HookEvidence[]; head?: number }[] = [];
+    const stored: {
+      projectId: string;
+      evidence: readonly HookEvidence[];
+      head: number | undefined;
+    }[] = [];
     const { app } = setup({
       evidence: {
         store: (projectId, evidence) =>
-          stored.push({ projectId, evidence, head: db.storage().head(projectId) }),
+          stored.push({ projectId, evidence, head: db().head(projectId) }),
       },
     });
     await app.request(
@@ -190,7 +202,9 @@ describe("POST /v1/sources/claude-code/hooks", () => {
   });
 
   it("keeps the ingested events when the evidence sink throws, and logs no request content", async () => {
-    const { app, logLines } = setup({
+    const logLines: string[] = [];
+    const { app } = setup({
+      logger: pino({ level: "debug" }, { write: (line: string) => logLines.push(line) }),
       evidence: {
         store: () => {
           throw new Error("secret-ish /work/repo/src");
@@ -203,6 +217,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     );
     expect(res.status).toBe(200);
     expect(storedEvents("repo")).toHaveLength(1);
+    expect(logLines.join("\n")).toContain("evidence store failed");
     expect(logLines.join("\n")).not.toContain("/work/repo");
   });
 
@@ -215,7 +230,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
         postJson({ sourceEventId: "u-9", payload: hook() }, headers),
       );
       expect(res.status).toBe(403);
-      expect((await res.json()).error.code).toBe("credential_not_allowed");
+      expect((await read(res)).error.code).toBe("credential_not_allowed");
     }
     expect(storedEvents("repo")).toHaveLength(0);
   });
@@ -229,12 +244,12 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       URL,
       postJson(body, { ...bearer(CLI_TOKEN), Host: "evil.example:4807" }),
     );
-    expect((await foreignHost.json()).error.code).toBe("forbidden_host");
+    expect((await read(foreignHost)).error.code).toBe("forbidden_host");
     const foreignOrigin = await app.request(
       URL,
       postJson(body, { ...bearer(CLI_TOKEN), Origin: "http://evil.example" }),
     );
-    expect((await foreignOrigin.json()).error.code).toBe("forbidden_origin");
+    expect((await read(foreignOrigin)).error.code).toBe("forbidden_origin");
     expect(storedEvents("repo")).toHaveLength(0);
   });
 
@@ -258,7 +273,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     for (const body of bad) {
       const res = await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
       expect(res.status, JSON.stringify(body)?.slice(0, 60)).toBe(400);
-      expect((await res.json()).error.code).toBe("bad_request");
+      expect((await read(res)).error.code).toBe("bad_request");
     }
     const notJson = await app.request(URL, {
       method: "POST",
@@ -286,7 +301,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     });
     expect(res2.status).toBe(200);
     // An inherited cwd is not the hook's cwd.
-    expect((await res2.json()).projectId).toBe("unsorted");
+    expect((await read(res2)).projectId).toBe("unsorted");
   });
 
   it("rejects a body over the size limit with 413 payload_too_large before mapping", async () => {
@@ -297,7 +312,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       postJson({ sourceEventId: "u-13", payload: hook({ tool_response: big }) }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(413);
-    expect((await res.json()).error.code).toBe("payload_too_large");
+    expect((await read(res)).error.code).toBe("payload_too_large");
     expect(mapper.calls).toHaveLength(0);
   });
 
@@ -311,7 +326,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
 
 describe("ClaudeCodeSource.ingestHook (the spool's entry point)", () => {
   it("passes late: true through to the mapper and the stored events", async () => {
-    const { source, mapper } = makeSource(db.storage());
+    const { source, mapper } = makeSource(db());
     const response = await source.ingestHook({
       sourceEventId: "s-1",
       payload: hook(),
@@ -323,15 +338,15 @@ describe("ClaudeCodeSource.ingestHook (the spool's entry point)", () => {
   });
 
   it("defaults late to false", async () => {
-    const { source } = makeSource(db.storage());
+    const { source } = makeSource(db());
     await source.ingestHook({ sourceEventId: "s-2", payload: hook() });
     expect(storedEvents("repo")[0]?.late).toBe(false);
   });
 
   it("resolves against projects added after the source was built", async () => {
-    const { source } = makeSource(db.storage());
+    const { source } = makeSource(db());
     const { createProject } = await import("../../../src/projects/index.ts");
-    createProject(db.storage(), { id: "late-add", name: "late-add", roots: ["/work/new"] });
+    createProject(db(), { id: "late-add", name: "late-add", roots: ["/work/new"] });
     const response = await source.ingestHook({
       sourceEventId: "s-3",
       payload: hook({ cwd: "/work/new/x" }),
