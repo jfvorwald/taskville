@@ -20,24 +20,22 @@ const documents = {
 
 export type JsonSchemaName = keyof typeof documents;
 
-type Member = { properties?: { type?: { const?: unknown } }; required?: string[] };
-
 /**
  * Envelope IDs a type requires are checked by a refinement, which JSON Schema cannot express, so
- * they are added to each event member's `required` list here.
+ * they are added to the `required` list of every event member, at any depth (the SSE frame
+ * document nests stored envelopes).
  */
-function withRequiredEnvelopeIds(doc: Record<string, unknown>): Record<string, unknown> {
-  const members = doc.oneOf as Member[] | undefined;
-  if (members === undefined) return doc;
-  return {
-    ...doc,
-    oneOf: members.map((member) => {
-      const type = member.properties?.type?.const;
-      if (typeof type !== "string" || !isEventType(type)) return member;
-      const required = new Set([...(member.required ?? []), ...requiredEnvelopeIds(type)]);
-      return { ...member, required: [...required] };
-    }),
-  };
+function withRequiredEnvelopeIds(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(withRequiredEnvelopeIds);
+  if (typeof node !== "object" || node === null) return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) out[key] = withRequiredEnvelopeIds(value);
+  const properties = out.properties as { type?: { const?: unknown } } | undefined;
+  const type = properties?.type?.const;
+  if (typeof type === "string" && isEventType(type) && Array.isArray(out.required)) {
+    out.required = [...new Set([...(out.required as string[]), ...requiredEnvelopeIds(type)])];
+  }
+  return out;
 }
 
 export type JsonSchemaDocument = Record<string, unknown> & { $schema: string; $id: string };
@@ -50,10 +48,7 @@ export function buildJsonSchemas(): Record<JsonSchemaName, JsonSchemaDocument> {
     (typeof documents)[JsonSchemaName],
   ][]) {
     const generated = z.toJSONSchema(schema, { io, target: "draft-2020-12" });
-    const { $schema: _, ...rest } =
-      name === "input-event" || name === "stored-envelope"
-        ? withRequiredEnvelopeIds(generated)
-        : generated;
+    const { $schema: _, ...rest } = withRequiredEnvelopeIds(generated) as Record<string, unknown>;
     out[name] = {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       $id: `urn:taskville:protocol:v1:${name}`,

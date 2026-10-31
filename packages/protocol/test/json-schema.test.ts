@@ -53,6 +53,18 @@ describe("JSON Schema export", () => {
     }
   });
 
+  it("lists required envelope IDs inside the SSE event frame too", () => {
+    const text = JSON.stringify(buildJsonSchemas()["sse-frame"]);
+    const member = /"type":\{"type":"string","const":"session\.started"\}/;
+    expect(text).toMatch(member);
+    const doc = buildJsonSchemas()["sse-frame"] as unknown as {
+      oneOf: { properties: { data: { oneOf?: (MemberSchema & { required: string[] })[] } } }[];
+    };
+    const envelopes = doc.oneOf.flatMap((frame) => frame.properties.data.oneOf ?? []);
+    const started = envelopes.find((m) => m.properties.type.const === "session.started");
+    expect(started?.required).toEqual(expect.arrayContaining(["agentId", "sessionId"]));
+  });
+
   it("states code-point limits as maxLength", () => {
     const input = JSON.stringify(buildJsonSchemas()["input-event"]);
     expect(input).toContain('"maxLength":4000');
