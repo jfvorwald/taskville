@@ -1,0 +1,59 @@
+Claude Code 2.1.312 (Claude Code), model claude-haiku-5-5, 2026-10-31T16:31:11.437Z
+project add: Added project e2e (e2e)
+install: Note: .claude/settings.local.json holds machine-specific paths. Claude Code git-ignores it only when it creates the file itself, so add it to .gitignore if this project is a git repository.
+scenario subagents (claude -p): two subagents, tool calls, a seeded token, tasks, a failure
+  claude said: done
+  hooks: SessionStart 1, UserPromptSubmit 1, PreToolUse 10, SubagentStart 2, PostToolUse 9, SubagentStop 2, TaskCreated 1, TaskCompleted 1, PostToolUseFailure 1, Stop 1, SessionEnd 1
+  agent claude-code:a0042909-469f-4042-a0bb-82cc65021d91: first hook SessionStart, in the snapshot after 239 ms
+  agent claude-code:a0042909-469f-4042-a0bb-82cc65021d91:ad00f2c22b0bca20e: first hook SubagentStart, in the snapshot after 112 ms
+  agent claude-code:a0042909-469f-4042-a0bb-82cc65021d91:ad9015f221e56730b: first hook SubagentStart, in the snapshot after 131 ms
+  taskville status --all:
+    e2e · 0 active · 0 needs you · 0 trouble · 1 waiting
+    proj · unknown · idle · waiting
+      general-purpose (subagent) · unknown · unknown · finished
+      general-purpose (subagent) · unknown · researching · finished
+  tool calls in the hooks 10, in the event log 10 (missing 0), with evidence bodies 10, bodies marked masked 5, bodies holding the seeded token unmasked 0
+scenario downtime (claude -p): the engine is killed mid-session and restarted after it
+  engine killed (SIGKILL) after the PostToolUse of `echo step1`
+  while down: 11 spool lines in claude-code.jsonl
+  restarted: cursor 42 before the run, 58 after replay; {"level":30,"time":1793464316494,"pid":84983,"hostname":"host","mainFile":"claimed","files":1,"hooks":11,"accepted":12,"duplicate":0,"conflict":0,"rejected":0,"ignored":0,"invalidLines":0,"oversized":0,"unreadableFiles":0,"poisoned":0,"removedFiles":1,"deferredFiles":0,"failed":false,"msg":"spo
+  spool after restart: empty
+  needs-you records: 0
+  late events in the log: 14 (git.commit, git.ref_moved, tool_call.finished, tool_call.started, session.turn_ended, activity.ended, session.ended)
+  hooks: SessionStart 1, UserPromptSubmit 1, PreToolUse 5, PostToolUse 5, Stop 1, SessionEnd 1
+  tool calls in the hooks 5, in the event log 15 (missing 0), with evidence bodies 5, bodies marked masked 0, bodies holding the seeded token unmasked 0
+  taskville status --all:
+    e2e · 0 active · 0 needs you · 0 trouble · 2 waiting
+    proj · unknown · idle · waiting
+    proj · unknown · idle · waiting
+      general-purpose (subagent) · unknown · unknown · finished
+      general-purpose (subagent) · unknown · researching · finished
+scenario team (interactive, tmux, in-process): one teammate, a task, then shutdown
+  accepted the folder-trust dialog for the throwaway project
+  TeammateIdle not seen within 240 s
+  hooks: 
+  tool calls in the hooks 0, in the event log 15 (missing 0), with evidence bodies 0, bodies marked masked 0, bodies holding the seeded token unmasked 0
+  taskville status --all:
+    e2e · 0 active · 0 needs you · 0 trouble · 2 waiting
+    proj · unknown · idle · waiting
+    proj · unknown · idle · waiting
+      general-purpose (subagent) · unknown · unknown · finished
+      general-purpose (subagent) · unknown · researching · finished
+scenario stop-failure (claude -p, unknown model): StopFailure
+  claude said: There's an issue with the selected model (claude-nonexistent-0-0). It may not exist or you may not h
+  hooks: SessionStart 1, UserPromptSubmit 1, StopFailure 1, SessionEnd 1
+scenario elicitation (claude -p, stdio MCP server): Elicitation
+  claude said: The ask_name tool returned: `{"action":"cancel"}`. The user cancelled the name prompt, so no name was given.
+  hooks: SessionStart 1, UserPromptSubmit 1, PreToolUse 2, PostToolUse 2, Elicitation 1, Notification 1, Stop 1, SessionEnd 1
+--- team scenario, re-run after fixing the trust-dialog step (second live run)
+scenario team (interactive, tmux, in-process): one teammate, a task, then shutdown
+  accepted the folder-trust dialog for the throwaway project
+  TeammateIdle seen
+  hooks: SessionStart 1, UserPromptSubmit 1, PreToolUse 10, PostToolUse 10, TaskCreated 1, SubagentStart 1, Stop 2, TaskCompleted 1, SubagentStop 1, TeammateIdle 1, SessionEnd 1
+  agent claude-code:b4395a96-fd40-4c5f-8ea3-c5f447a2e4a7: first hook SessionStart, in the snapshot after 94 ms
+  agent claude-code:b4395a96-fd40-4c5f-8ea3-c5f447a2e4a7:apip-c669c6801b38dd2a: first hook SubagentStart, in the snapshot after 24 ms
+  tool calls in the hooks 10, in the event log 10 (missing 0), with evidence bodies 10, bodies marked masked 0, bodies holding the seeded token unmasked 0
+  taskville status --all:
+    e2e · 0 active · 0 needs you · 0 trouble · 1 waiting
+    proj (lead) · unknown · idle · waiting
+      pip (teammate) · unknown · idle
