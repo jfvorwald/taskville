@@ -6,23 +6,24 @@ Lead-owned cross-session summary. Teammates never edit this file; they write the
 
 ## Where things stand
 
-The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Both spikes are still running; batch 2 has started with the engine HTTP core and protocol v1.
+The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is still running; batch 2 has started with the engine HTTP core, protocol v1 and secret redaction.
 
 ## In progress
 
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
-| [#3](https://github.com/jfvorwald/taskville/issues/3) M1.03 Spike S-1 permission hook | Research | research-s1 | in progress |
 | [#4](https://github.com/jfvorwald/taskville/issues/4) M1.04 Spike S-2 crews attribution | Research | research-s2 | in progress |
 | [#7](https://github.com/jfvorwald/taskville/issues/7) M1.10 Engine HTTP core, auth, pairing | Engine | engine | in progress |
 | [#5](https://github.com/jfvorwald/taskville/issues/5) M1.05 Protocol v1 schemas | Domain | domain | in progress |
+| [#24](https://github.com/jfvorwald/taskville/issues/24) M1.20 Secret redaction module | Adapter | adapter | in progress |
 
-Ready, waiting for a free teammate: #24 M1.20 (P0), #6 M1.06, #8 M1.11, #94 M1.19.
+Ready, waiting for a free teammate: #6 M1.06, #8 M1.11, #94 M1.19.
 
 ## Done this wave
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#3](https://github.com/jfvorwald/taskville/issues/3) M1.03 Spike S-1 permission hook | [#111](https://github.com/jfvorwald/taskville/pull/111) | job 4680: 1 high, 2 medium fixed; re-review 4694: fixed or answered with evidence; background 4707 pass | `pnpm check` pass; fixture redaction grep clean; [findings](spikes/S-1-permission-bridge.md), [report](tasks/M1.03.md) |
 | [#1](https://github.com/jfvorwald/taskville/issues/1) M1.01 Align spec 001 with architecture | [#112](https://github.com/jfvorwald/taskville/pull/112) | job 4675: 2 high fixed; re-review 4684: 1 medium fixed; background reviews of fix commits pass | Done-when grep passes; side-by-side table in [report](tasks/M1.01.md); `pnpm check` 6/6 |
 | [#2](https://github.com/jfvorwald/taskville/issues/2) M1.02 Scaffold workspace, quality gate, CI | [#108](https://github.com/jfvorwald/taskville/pull/108) | pass, job 4668, no findings | `pnpm check` 6/6 locally, on a clean clone and in CI ([report](tasks/M1.02.md)) |
 
@@ -32,6 +33,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 
 - [#110](https://github.com/jfvorwald/taskville/issues/110) where projects are registered (default: engine `projects` table, `project add` via `POST /v1/projects`, config projects registered at start). Blocks nothing.
 - [#114](https://github.com/jfvorwald/taskville/issues/114) ARCHITECTURE.md 7.4 vs 6 on `pending_requests`/`commands` tables (default: projection-only, M4; text unchanged). Blocks nothing.
+- [#116](https://github.com/jfvorwald/taskville/issues/116) S-1: hold window (default 90 s, focus-independent, hook timeout hold + 5 s) and terminal-answer rules that would change ARCHITECTURE.md 8.1 and the `.roborev.toml` bridge invariant. Blocks nothing in M1; feeds M4.02 and M4.03.
 
  Items there are blocking only if the ticket says so; everything else proceeds on its stated default.
 
@@ -40,6 +42,8 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 | What | Value | Command | Ticket |
 | --- | --- | --- | --- |
 | `.claude/check.sh` wall time, clean clone | 0.72 s | `time ./.claude/check.sh` (macOS, Node 26.8.2, pnpm 12.4.2) | #2 |
+| Notification `permission_prompt` delay after PermissionRequest | 6.011 to 6.016 s (3 runs) | spike server log, Claude Code 2.1.312 | #3 |
+| Terminal No to hook connection close | 15 ms (1 run) | spike server log | #3 |
 
 Targets in the spec are not measurements until a ticket records them here with the command that produced them.
 
