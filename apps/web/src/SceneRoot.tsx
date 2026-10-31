@@ -18,7 +18,6 @@ export function SceneRoot() {
         onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
       >
         <color attach="background" args={[readCssToken("--tv-scene-bg", "#11141a")]} />
-        <ambientLight intensity={1} />
         <AnchorBridge source={worldAnchors} />
         <CityRoot />
       </Canvas>

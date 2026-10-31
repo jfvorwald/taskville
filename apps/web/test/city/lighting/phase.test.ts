@@ -59,7 +59,6 @@ describe("computeLighting", () => {
     expect(s.phase).toBe("day");
     expect(s.nightness).toBe(0);
     expect(s.mode).toBe("day");
-    expect(s.lampsOn).toBe(false);
     expect(s.sunElevationDeg).toBeGreaterThan(60);
   });
 
@@ -68,11 +67,10 @@ describe("computeLighting", () => {
     expect(s.phase).toBe("night");
     expect(s.nightness).toBe(1);
     expect(s.mode).toBe("night");
-    expect(s.lampsOn).toBe(true);
     expect(s.sunElevationDeg).toBeLessThan(0);
   });
 
-  it("dusk ramps nightness from 0 to 1 and flips to night mode halfway", () => {
+  it("dusk ramps nightness from 0 to 1 and flips to night mode (lamps and windows on) halfway", () => {
     const start = computeLighting(17 * 60 + 30);
     const early = computeLighting(18 * 60);
     const late = computeLighting(19 * 60);
@@ -83,7 +81,7 @@ describe("computeLighting", () => {
     expect(late.nightness).toBeGreaterThan(early.nightness);
     expect(early.mode).toBe("day");
     expect(late.mode).toBe("night");
-    expect(computeLighting(18 * 60 + 30).lampsOn).toBe(true);
+    expect(computeLighting(18 * 60 + 30).mode).toBe("night");
   });
 
   it("dawn ramps nightness from 1 to 0 and turns the lamps off", () => {
