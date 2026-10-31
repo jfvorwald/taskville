@@ -42,9 +42,7 @@ function builtinImports(source: string): string[] {
 
 // Each entry names a global the demo must not touch. Any use counts, not only a call, so
 // `const now = Date.now` is caught too. `Date` is banned except `Date.parse` and `Date.UTC`,
-// which read no clock (M1.08's selectors parse event timestamps). The entities reducer
-// compares timestamps by hand instead (reducer/entities/time.ts), because Date.parse is only
-// specified to millisecond precision and protocol timestamps may carry more digits.
+// which read no clock; src/time.ts formats timestamps by arithmetic instead of `new Date`.
 const FORBIDDEN_GLOBALS: [RegExp, string][] = [
   [/\bDate\b(?!\s*\.\s*(?:parse|UTC)\b)/, "Date (clock)"],
   [/\bperformance\b/, "performance (clock)"],
