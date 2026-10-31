@@ -170,9 +170,10 @@ const MAX_USER = 128;
 // Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
 // publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
 // tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
-// `sshpass`, 3 is `docker|podman login`. A path in front (`/usr/bin/mysql`) is fine.
+// `sshpass`, 3 is `docker|podman login`, which may follow global options
+// (`docker --config /tmp login`). A path in front (`/usr/bin/mysql`) is fine.
 const PASSWORD_COMMAND =
-  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(?:docker|podman)[ \t]+(login))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
+  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(?:docker|podman)(?:[ \t]+-[^\s;&|]+(?:[ \t]+[^-\s;&|][^\s;&|]*)?){0,8}[ \t]+(login))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
 
 // Words read after one of those commands, so a long line costs a bounded scan.
 const MAX_COMMAND_WORDS = 256;
@@ -184,11 +185,11 @@ const PAIR_NAME = /(["'])(?:name|key)\1\s*:\s*(["'])([A-Za-z_][A-Za-z0-9_.-]{0,9
 const VALUE_KEY_AFTER = /\s*,\s*(["'])value\1\s*:\s*/iy;
 const VALUE_KEY = /(["'])value\1\s*:\s*/gi;
 
-// How far a nested `{...}` or `[...]` value is followed, so a long run costs a bounded scan.
-// A value read forward from its name can be longer than one read back from the name that
-// follows it: the backward case rescans from every `"value":` in the window.
-const MAX_PAIR_VALUE = 4096;
-const MAX_PAIR_VALUE_BEFORE_NAME = 1024;
+// Work allowed for reading values that come before their name, in characters scanned per
+// call. A `"value":` only counts once the name that follows is known to be sensitive, but
+// each one in front of it is tried; past this budget the text up to the name is masked
+// instead, so a crafted run costs bounded time and never leaves a value readable.
+const PAIR_SCAN_BUDGET = 500_000;
 
 /** Masks secret-looking values in a string. Deterministic and idempotent. */
 export function redactText(input: string): RedactedText {
@@ -401,11 +402,11 @@ function pairValueEnd(input: string, value: Value): number {
 }
 
 /**
- * End of the `{...}` or `[...]` that opens at `at`: quote-aware, counting both bracket
- * kinds. If it does not close within `limit` characters, the value is taken to run that far.
+ * End of the `{...}` or `[...]` that opens at `at`, and whether it closed: quote-aware,
+ * counting both bracket kinds. One that never closes runs to the end of `limit`.
  */
-function balancedEnd(input: string, at: number, limit: number): number {
-  const stop = Math.min(input.length, at + limit);
+function balancedEnd(input: string, at: number, limit: number): { end: number; closed: boolean } {
+  const stop = Math.min(input.length, limit);
   let depth = 0;
   let quote = "";
   for (let i = at; i < stop; i++) {
@@ -418,10 +419,10 @@ function balancedEnd(input: string, at: number, limit: number): number {
     } else if (ch === "{" || ch === "[") {
       depth += 1;
     } else if ((ch === "}" || ch === "]") && --depth === 0) {
-      return i + 1;
+      return { end: i + 1, closed: true };
     }
   }
-  return stop;
+  return { end: stop, closed: false };
 }
 
 interface PairValue {
@@ -430,25 +431,30 @@ interface PairValue {
   end: number;
   /** Where the value token ends, quotes included. */
   next: number;
+  /** False for a string or object that has no closing quote or bracket before `limit`. */
+  closed: boolean;
 }
 
-/** Reads the value of a pair at `at`: a string, a number, or a whole object or array. */
+/**
+ * Reads the value of a pair at `at`: a string, a number, or a whole object or array,
+ * looking no further than `limit`.
+ */
 function readPairValue(input: string, ends: Ends, at: number, limit: number): PairValue | null {
   const first = input.charAt(at);
   // `[REDACTED:...]` opens with a bracket too, but it is a marker, read as a plain value.
   if ((first === "{" || first === "[") && referenceLength(input, at) === 0) {
-    const end = balancedEnd(input, at, limit);
-    return { start: at, end, next: end };
+    const { end, closed } = balancedEnd(input, at, limit);
+    return { start: at, end, next: end, closed };
   }
   const value = readValue(input, at, ends);
   if (value.quoted) {
-    const closed = input.charAt(value.end) === input.charAt(at);
-    return { start: value.start, end: value.end, next: closed ? value.end + 1 : value.end };
+    const closed = input.charAt(value.end) === first && value.end < limit;
+    return { start: value.start, end: value.end, next: closed ? value.end + 1 : value.end, closed };
   }
   const end = pairValueEnd(input, value);
   // JSON `null` carries nothing, and redactJson leaves it.
   if (input.slice(value.start, end) === "null") return null;
-  return { start: value.start, end, next: end };
+  return { start: value.start, end, next: end, closed: end <= limit };
 }
 
 /**
@@ -457,35 +463,53 @@ function readPairValue(input: string, ends: Ends, at: number, limit: number): Pa
  * Kubernetes manifests write them; a property in between ends the match.
  */
 function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
-  // `"value"` after a sensitive name.
+  // `"value"` after a sensitive name. A value that never closes runs to the end of the text,
+  // so each scan is paid once: what it covers is masked, and the matches inside are skipped.
   let maskedUntil = 0;
-  const commas: number[] = []; // where the comma in front of each sensitive name sits
+  const anchors: Array<{ comma: number; nameEnd: number }> = [];
   for (const match of input.matchAll(PAIR_NAME)) {
     if (!isSensitiveName(match[3] ?? "")) continue;
+    const nameEnd = match.index + match[0].length;
     let comma = match.index;
     while (comma > 0 && /\s/.test(input.charAt(comma - 1))) comma--;
-    if (input.charAt(comma - 1) === ",") commas.push(comma - 1);
+    if (input.charAt(comma - 1) === ",") anchors.push({ comma: comma - 1, nameEnd });
     if (match.index < maskedUntil) continue;
-    VALUE_KEY_AFTER.lastIndex = match.index + match[0].length;
-    const key = VALUE_KEY_AFTER.exec(input);
-    if (key === null) continue;
-    const value = readPairValue(input, ends, VALUE_KEY_AFTER.lastIndex, MAX_PAIR_VALUE);
-    if (value === null || isPlaceholder(input, value.start, value.end)) continue;
-    out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+    VALUE_KEY_AFTER.lastIndex = nameEnd;
+    if (VALUE_KEY_AFTER.exec(input) === null) continue;
+    const value = readPairValue(input, ends, VALUE_KEY_AFTER.lastIndex, input.length);
+    if (value === null) continue;
     maskedUntil = value.next;
+    if (!isPlaceholder(input, value.start, value.end)) {
+      out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+    }
   }
-  // `"value"` before a sensitive name: only a `"value"` that ends just before one of those
-  // commas is read, so a `"value"` with no sensitive name near it costs nothing.
-  let next = 0;
-  for (const match of input.matchAll(VALUE_KEY)) {
-    const at = match.index + match[0].length;
-    while (next < commas.length && (commas[next] ?? 0) < at) next++;
-    const comma = commas[next];
-    if (comma === undefined || comma - at > MAX_PAIR_VALUE_BEFORE_NAME) continue;
-    const value = readPairValue(input, ends, at, comma - at);
-    if (value === null || isPlaceholder(input, value.start, value.end)) continue;
-    if (!/^\s*$/.test(input.slice(value.next, comma))) continue;
-    out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+  if (anchors.length === 0) return;
+  // `"value"` before a sensitive name: the value must close exactly where the comma in front
+  // of the name sits, so a name nested inside the value does not end it early. Candidates are
+  // tried from the earliest, so the outer value wins over any `"value"` inside it.
+  const starts = [...input.matchAll(VALUE_KEY)].map((m) => m.index + m[0].length);
+  let budget = PAIR_SCAN_BUDGET;
+  let floorAt = 0; // first candidate after the previous name, where the fallback starts
+  for (const [n, { comma }] of anchors.entries()) {
+    const floor = anchors[n - 1]?.nameEnd ?? 0;
+    while (floorAt < starts.length && (starts[floorAt] ?? 0) < floor) floorAt++;
+    for (let k = 0; k < starts.length && (starts[k] ?? 0) < comma; k++) {
+      const at = starts[k] ?? 0;
+      if (budget <= 0) {
+        // Out of budget: mask from the first `"value"` since the previous name to this one.
+        const from = starts[floorAt] ?? at;
+        out.push({ start: from < comma ? from : at, end: comma, kind: "sensitive-value" });
+        break;
+      }
+      const value = readPairValue(input, ends, at, comma);
+      budget -= (value?.next ?? comma) - at + 1;
+      if (value === null || !value.closed || !/^\s*$/.test(input.slice(value.next, comma)))
+        continue;
+      if (!isPlaceholder(input, value.start, value.end)) {
+        out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+      }
+      break;
+    }
   }
 }
 
