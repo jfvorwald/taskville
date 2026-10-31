@@ -1,7 +1,11 @@
-import type { EventBatchResponse, IngestResult } from "@taskville/protocol";
+import { type EventBatchResponse, type IngestResult, parseInputEvent } from "@taskville/protocol";
 import type { Logger } from "pino";
-import type { IngestPipeline } from "../../ingest/index.ts";
-import type { StorageReads } from "../../storage/index.ts";
+import { type IngestPipeline, normalizePayload } from "../../ingest/index.ts";
+import {
+  clientContentHash,
+  type StorageReads,
+  type StoredEventRecord,
+} from "../../storage/index.ts";
 import { type ResolveOptions, resolveProjectId } from "./resolve-project.ts";
 
 /**
@@ -135,9 +139,10 @@ export class ClaudeCodeSource {
    * hook carries no timestamp, so the mapper's `occurredAt` is the engine clock,
    * and a spool replay sets `late`: both are in the pipeline's content hash, so
    * a retry or a live-then-spooled hook would be a `conflict`. An event whose
-   * key is already in the project's log is reported as `duplicate` with the
-   * original acknowledgment (ARCHITECTURE.md 7.2) and not re-sent; the rest go
-   * through the pipeline. The check and the ingest run in the same tick, with
+   * key is already in the project's log is compared with it on everything but
+   * those two fields and reported as `duplicate` (with the original
+   * acknowledgment) or `conflict` (ARCHITECTURE.md 7.2), and is not re-sent;
+   * the rest go through the pipeline. The check and the ingest run in the same tick, with
    * no await between them, so no other request can interleave.
    */
   #ingestOnce(projectId: string, events: readonly unknown[]): EventBatchResponse {
@@ -150,12 +155,7 @@ export class ClaudeCodeSource {
           ? this.#options.storage.findEventBySourceKey(projectId, CLAUDE_CODE_SOURCE_ID, key)
           : undefined;
       if (typeof key === "string" && existing !== undefined) {
-        known.set(index, {
-          sourceEventId: key,
-          status: "duplicate",
-          ingestSequence: existing.ingestSequence,
-          eventId: existing.eventId,
-        });
+        known.set(index, compareWithLogged(key, event, existing));
       } else {
         fresh.push(event);
       }
@@ -176,6 +176,38 @@ export class ClaudeCodeSource {
         : { ...ingested.heads, [projectId]: head };
     return { results, heads };
   }
+}
+
+/**
+ * The pipeline's dedupe hash (ingest `#ingestOne`: parse, mask, then
+ * `clientContentHash`) of `event` with the logged event's `occurredAt` and
+ * `late` put in, so only those two transport fields are ignored. Equal to the
+ * logged hash means the same content: `duplicate`. Anything else, including an
+ * event that no longer parses, is a `conflict`.
+ */
+function compareWithLogged(
+  sourceEventId: string,
+  event: unknown,
+  logged: StoredEventRecord,
+): IngestResult {
+  const parsed = parseInputEvent({
+    ...(event as Record<string, unknown>),
+    occurredAt: logged.envelope.occurredAt,
+    late: logged.envelope.late,
+  });
+  if (parsed.ok) {
+    const { hashed } = normalizePayload(parsed.event);
+    const hash = clientContentHash({ ...parsed.event, payload: hashed });
+    if (hash === logged.contentHash) {
+      return {
+        sourceEventId,
+        status: "duplicate",
+        ingestSequence: logged.ingestSequence,
+        eventId: logged.eventId,
+      };
+    }
+  }
+  return { sourceEventId, status: "conflict", existingEventId: logged.eventId };
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
