@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-43: A memory criterion on RSS measures allocator noise at this scale
+- **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #103 · **Recorded by:** storage teammate (M1.21)
+- **What happened:** SC-006 (RSS growth under 10% from hour 1 to hour 8) missed twice: 14.1% then 26.6% on the same seeded input, while heap retained after GC stayed flat (16.6 to 16.7 MiB). The soak also showed projection state growing linearly (148 KiB calm, 474 KiB lively after 8 hours) because closed requests, terminal tasks and finished subagents are never pruned.
+- **Lesson:** Define memory criteria on retained memory (heap after GC) or a long steady-state real-time run; run a realistic soak early, since it finds unbounded state that unit tests never do.
+- **Action:** Follow-ups #166 (RSS miss) and #167 (unbounded state); decision #168 (what SC-006 measures).
+
+### L-42: Run the quickstart by hand before the gate
+- **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #19 · **Recorded by:** lead
+- **What happened:** Running spec 001's quickstart on main found two stale expectations: the status header shows `2 trouble` (heuristic, because fixture timestamps are in the past) where the doc said `0 trouble`, and an unauthenticated POST with no Origin returns `403 forbidden_origin` where the doc said `401`. Everything else matched, including resume at N+1 with no gaps and stable offline hashes.
+- **Lesson:** Goldens with injected clocks can hide what a person sees with the real clock; the lead runs the quickstart once per milestone before the gate.
+- **Action:** quickstart.md corrected in the same lead PR.
+
 ### L-41: Settle regex-semantics review claims with one line of the target runtime
 - **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** hardening teammate (M1.18 F4, F6)
 - **What happened:** roborev (job 4990, medium) claimed the session-ID regex accepts `"s\n"` because `$` matches before a trailing newline. That is PCRE behavior; in JavaScript `/^...$/.test("s\n")` is false, shown with `node -e` and a passing test row.
