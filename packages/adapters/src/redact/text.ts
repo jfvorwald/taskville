@@ -149,7 +149,7 @@ const FLAG = /(?<![A-Za-z0-9_-])--([A-Za-z][A-Za-z0-9-]{0,63})(=|[ \t]+)/g;
 // not taken for a parameter list. An empty or space-led quoted value (`a="",` or
 // `a=" x",`) counts when a comma follows it, since a closing shell quote does not.
 const AUTH_PARAMS =
-  /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+(?=[A-Za-z0-9_.-]{1,64}[ \t]*=[ \t]*(?:\\?"(?![\s"]|$)|\\?"[^"\r\n]{0,256}"[ \t]*,|[A-Za-z0-9_.~+/-]))/gi;
+  /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+(?=[A-Za-z0-9_.-]{1,64}[ \t]*=[ \t]*(?:\\?"(?![\s"]|$)|\\?"(?:[^"\\\r\n]|\\.){0,256}?\\?"[ \t]*,|[A-Za-z0-9_.~+/-]))/gi;
 
 // curl's `-u user:password` (also attached, `-uuser:password`), `--user user:password`,
 // `--user=user:password`, and the proxy forms `-U` and `--proxy-user`.

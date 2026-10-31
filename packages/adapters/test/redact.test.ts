@@ -475,6 +475,12 @@ const positives: Positive[] = [
     kind: "bearer-token",
   },
   {
+    name: "shell-escaped Digest parameters with a space-led first value",
+    input: `curl -H "Authorization: Digest username=\\" a\\", response=\\"${fake.hexResponse}\\""`,
+    secret: `username=\\" a\\", response=\\"${fake.hexResponse}\\""`,
+    kind: "bearer-token",
+  },
+  {
     name: "AWS SigV4 parameters",
     input: `Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
     secret: `Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
