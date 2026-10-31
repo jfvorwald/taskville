@@ -1,0 +1,51 @@
+{
+  "fixture": "conflicts.jsonl",
+  "knownProjects": ["demo", "unsorted"],
+  "startHead": 1,
+  "after": ["basic-two-agents.jsonl"],
+  "results": [
+    {
+      "line": 4,
+      "sourceEventId": "basic-07",
+      "status": "conflict",
+      "of": {
+        "fixture": "basic-two-agents.jsonl",
+        "line": 10
+      }
+    },
+    {
+      "line": 5,
+      "sourceEventId": "basic-09",
+      "status": "conflict",
+      "of": {
+        "fixture": "basic-two-agents.jsonl",
+        "line": 12
+      }
+    },
+    {
+      "line": 6,
+      "sourceEventId": "basic-12",
+      "status": "conflict",
+      "of": {
+        "fixture": "basic-two-agents.jsonl",
+        "line": 15
+      }
+    },
+    {
+      "line": 7,
+      "sourceEventId": "basic-01",
+      "status": "duplicate",
+      "ingestSequence": 2,
+      "of": {
+        "fixture": "basic-two-agents.jsonl",
+        "line": 4
+      }
+    }
+  ],
+  "summary": {
+    "accepted": 0,
+    "duplicate": 1,
+    "conflict": 3,
+    "rejected": 0
+  }
+}

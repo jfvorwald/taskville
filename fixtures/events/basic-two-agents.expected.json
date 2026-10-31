@@ -1,0 +1,86 @@
+{
+  "fixture": "basic-two-agents.jsonl",
+  "knownProjects": ["demo", "unsorted"],
+  "startHead": 1,
+  "after": [],
+  "results": [
+    {
+      "line": 4,
+      "sourceEventId": "basic-01",
+      "status": "accepted",
+      "ingestSequence": 2
+    },
+    {
+      "line": 5,
+      "sourceEventId": "basic-02",
+      "status": "accepted",
+      "ingestSequence": 3
+    },
+    {
+      "line": 6,
+      "sourceEventId": "basic-03",
+      "status": "accepted",
+      "ingestSequence": 4
+    },
+    {
+      "line": 7,
+      "sourceEventId": "basic-04",
+      "status": "accepted",
+      "ingestSequence": 5
+    },
+    {
+      "line": 8,
+      "sourceEventId": "basic-05",
+      "status": "accepted",
+      "ingestSequence": 6
+    },
+    {
+      "line": 9,
+      "sourceEventId": "basic-06",
+      "status": "accepted",
+      "ingestSequence": 7
+    },
+    {
+      "line": 10,
+      "sourceEventId": "basic-07",
+      "status": "accepted",
+      "ingestSequence": 8
+    },
+    {
+      "line": 11,
+      "sourceEventId": "basic-08",
+      "status": "accepted",
+      "ingestSequence": 9
+    },
+    {
+      "line": 12,
+      "sourceEventId": "basic-09",
+      "status": "accepted",
+      "ingestSequence": 10
+    },
+    {
+      "line": 13,
+      "sourceEventId": "basic-10",
+      "status": "accepted",
+      "ingestSequence": 11
+    },
+    {
+      "line": 14,
+      "sourceEventId": "basic-11",
+      "status": "accepted",
+      "ingestSequence": 12
+    },
+    {
+      "line": 15,
+      "sourceEventId": "basic-12",
+      "status": "accepted",
+      "ingestSequence": 13
+    }
+  ],
+  "summary": {
+    "accepted": 12,
+    "duplicate": 0,
+    "conflict": 0,
+    "rejected": 0
+  }
+}

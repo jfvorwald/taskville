@@ -1,0 +1,89 @@
+{
+  "fixture": "invalid.jsonl",
+  "knownProjects": ["demo", "unsorted"],
+  "startHead": 1,
+  "after": [],
+  "results": [
+    {
+      "line": 4,
+      "sourceEventId": "inv-01",
+      "status": "rejected",
+      "code": "unsupported_schema_version",
+      "path": "schemaVersion"
+    },
+    {
+      "line": 5,
+      "sourceEventId": "inv-02",
+      "status": "rejected",
+      "code": "unknown_type",
+      "path": "type"
+    },
+    {
+      "line": 6,
+      "sourceEventId": "inv-03",
+      "status": "rejected",
+      "code": "invalid_envelope",
+      "path": "occurredAt"
+    },
+    {
+      "line": 7,
+      "sourceEventId": "inv-04",
+      "status": "rejected",
+      "code": "invalid_envelope",
+      "path": "agentId"
+    },
+    {
+      "line": 8,
+      "status": "rejected",
+      "code": "invalid_envelope"
+    },
+    {
+      "line": 9,
+      "sourceEventId": "inv-05",
+      "status": "rejected",
+      "code": "invalid_payload",
+      "path": "payload.status"
+    },
+    {
+      "line": 10,
+      "sourceEventId": "inv-06",
+      "status": "rejected",
+      "code": "invalid_payload",
+      "path": "payload.parentAgentId"
+    },
+    {
+      "line": 11,
+      "sourceEventId": "inv-07",
+      "status": "rejected",
+      "code": "engine_only_type",
+      "path": "type"
+    },
+    {
+      "line": 12,
+      "sourceEventId": "inv-08",
+      "status": "rejected",
+      "code": "reserved_source",
+      "path": "sourceId"
+    },
+    {
+      "line": 13,
+      "sourceEventId": "inv-09",
+      "status": "rejected",
+      "code": "provenance_mismatch",
+      "path": "provenance"
+    },
+    {
+      "line": 14,
+      "sourceEventId": "inv-10",
+      "status": "rejected",
+      "code": "unknown_project",
+      "path": "projectId"
+    }
+  ],
+  "summary": {
+    "accepted": 0,
+    "duplicate": 0,
+    "conflict": 0,
+    "rejected": 11
+  }
+}
