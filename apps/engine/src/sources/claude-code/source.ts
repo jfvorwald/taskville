@@ -1,6 +1,7 @@
 import { type EventBatchResponse, type IngestResult, parseInputEvent } from "@taskville/protocol";
 import type { Logger } from "pino";
 import { type IngestPipeline, normalizePayload } from "../../ingest/index.ts";
+import { textProblem } from "../../ingest/text-check.ts";
 import {
   clientContentHash,
   type StorageReads,
@@ -195,7 +196,8 @@ function compareWithLogged(
     occurredAt: logged.envelope.occurredAt,
     late: logged.envelope.late,
   });
-  if (parsed.ok) {
+  // Text the pipeline would reject (a lone surrogate) cannot be hashed (L-31): it differs.
+  if (parsed.ok && textProblem(parsed.event) === undefined) {
     const { hashed } = normalizePayload(parsed.event);
     const hash = clientContentHash({ ...parsed.event, payload: hashed });
     if (hash === logged.contentHash) {
