@@ -1,6 +1,6 @@
 // `taskville status` rendering (contracts/cli.md "status output"), pure over a snapshot.
 
-import type { Agent, ProjectState } from "@taskville/domain/reducer";
+import { type Agent, compareTimestamps, type ProjectState } from "@taskville/domain/reducer";
 import type { Attention, StoredReason } from "@taskville/protocol";
 
 export interface StatusSnapshot {
@@ -95,7 +95,9 @@ function attentionText(record: Attention, state: ProjectState): string {
 function highest(records: Attention[], agentId: string): Attention | undefined {
   return records
     .filter((r) => r.agentId === agentId)
-    .sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level] || a.since.localeCompare(b.since))[0];
+    .sort(
+      (a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level] || compareTimestamps(a.since, b.since),
+    )[0];
 }
 
 function line(agent: Agent, state: ProjectState, attention: Attention[]): string {

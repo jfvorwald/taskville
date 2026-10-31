@@ -18,6 +18,7 @@ ProjectState
   activity:  Map<AgentId, AgentActivity>
   requests:  Map<RequestId, PendingRequest>
   commands:  Map<CommandId, Command>
+  retired:   { agents, tasks, requests }      (counts dropped by retention)
 ```
 
 | Entity | Fields | Rules |
@@ -39,6 +40,30 @@ ProjectState
 recent finished ToolCall per agent; older finished calls stay in the event log and
 are served by the agent feed in M5. Counters (`toolCallCount`,
 `consecutiveToolFailures`) carry what the reducer needs from the rest.
+
+**Retention (M2.16, decision #202 D1 default).** Closed and finished records are
+kept in the projection only while they are among the newest, so state stays bounded
+however long a project runs. The event log keeps everything, and history (M6) reads
+the log, not the projection. After every event, as the last step of `reduce`:
+
+- **Finished agents** (`finishedAt` set) beyond the newest
+  `RETAIN_FINISHED_AGENTS` (50), ordered by `finishedAt` then ID, are dropped. An
+  agent is never dropped while an unfinished agent names it as `parentAgentId`,
+  while it leads a team that has not ended, while it has an `open` request, or while
+  it has a running tool call. Dropping an agent also drops its activity, its tool
+  calls, the sessions it owns, and its place in team member lists.
+- **Terminal tasks** (`completed`, `failed`, `cancelled`) beyond the newest
+  `RETAIN_TERMINAL_TASKS` (50), ordered by `updatedAt` then ID, are dropped.
+  Activity that names a dropped task keeps its `taskId`.
+- **Closed requests** (state not `open`) beyond the newest `RETAIN_CLOSED_REQUESTS`
+  (50), ordered by `openedAt` then ID, are dropped.
+- `retired` counts what was dropped (`agents`, `tasks`, `requests`), so totals stay
+  countable: totals are the kept records plus `retired`.
+
+The rule reads only state, never a clock, so replay and a resumed checkpoint give
+the same state and `stateHash`. An event that names a dropped record afterwards
+(for example a very late event for a subagent dropped long ago) is applied like an
+event for a record never seen: it creates a new record, and `retired` is unchanged.
 
 **Unfinished tool calls (M2.13).** A `tool_call.started` may never get its
 `tool_call.finished`: a permission denied by a hook or answered No in the terminal

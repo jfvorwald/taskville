@@ -45,6 +45,7 @@ describe("root reducer", () => {
       activity: {},
       requests: {},
       commands: {},
+      retired: { agents: 0, tasks: 0, requests: 0 },
     });
   });
 
@@ -90,7 +91,7 @@ describe("root reducer", () => {
   it("hashes state as <reducerVersion>:<sha256 of canonical JSON>", () => {
     const state = initialState("p1");
     expect(projectStateHash(state)).toBe(stateHash(REDUCER_VERSION, state));
-    expect(projectStateHash(state)).toMatch(/^4:[0-9a-f]{64}$/);
+    expect(projectStateHash(state)).toMatch(/^5:[0-9a-f]{64}$/);
   });
 
   it("rejects an event from another project", () => {

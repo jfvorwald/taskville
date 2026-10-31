@@ -1,6 +1,6 @@
 {
   "projectId": "demo",
-  "reducerVersion": 4,
+  "reducerVersion": 5,
   "head": 32,
   "agents": {
     "main": {
@@ -200,5 +200,6 @@
       "mergedRequestIds": []
     }
   },
-  "commands": {}
+  "commands": {},
+  "retired": { "agents": 0, "tasks": 0, "requests": 0 }
 }

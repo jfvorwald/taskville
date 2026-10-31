@@ -101,3 +101,39 @@ describe("status with real Claude Code session rules (M2.13)", () => {
     expect(out).not.toMatch(/pip.*waiting/);
   });
 });
+
+describe("status picks an agent's earliest record by instant (M2.16)", () => {
+  it("orders `since` by time, not text, when offsets differ", () => {
+    const emit = stream();
+    const state = replay("p1", [
+      emit(
+        "agent.registered",
+        { sourceAgentId: "s1", displayName: "proj", role: "main", kind: "session" },
+        LEAD,
+        "s1",
+      ),
+    ]);
+    // 10:30+02:00 is 08:30Z, earlier than 09:00Z, though its text sorts later.
+    const records = [
+      {
+        agentId: LEAD,
+        level: "trouble" as const,
+        kind: "tool_failures" as const,
+        since: "2026-10-30T09:00:00Z",
+        heuristic: false,
+      },
+      {
+        agentId: LEAD,
+        level: "trouble" as const,
+        kind: "stop_failure" as const,
+        since: "2026-10-30T10:30:00+02:00",
+        heuristic: false,
+      },
+    ];
+    const out = renderStatus(
+      { projectId: "p1", cursor: state.head, stateHash: "x", state, attention: records },
+      { projectName: "Demo", all: false },
+    );
+    expect(out).toContain("trouble: stop_failure");
+  });
+});
