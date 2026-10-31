@@ -135,6 +135,8 @@ interface Entry {
   sourceEventId: string;
   payload: Record<string, unknown>;
   spooledAt: string;
+  /** The spool file it was read from. */
+  file: string;
 }
 
 interface FilePlan {
@@ -234,24 +236,22 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
       break;
     }
   }
-  if (!report.failed) {
-    // This run's files are about to be removed or advanced past every hook it read.
-    for (const entry of batch) {
-      if (quarantined.delete(entry.sourceEventId)) attemptsChanged = true;
-    }
-  }
+  // New quarantines are on disk before any spool file is touched.
   if (attemptsChanged) writeRetry(spoolDir, retry);
 
   if (!report.failed) {
+    const done = new Set<string>();
     for (const plan of plans) {
       try {
         if (plan.cut !== undefined) {
           // The rest waits for the next run, which starts reading at the offset.
           writeOffset(spoolDir, plan.path, plan.cut);
+          done.add(plan.path);
           report.deferredFiles += 1;
           continue;
         }
         unlinkSync(plan.path);
+        done.add(plan.path);
         rmSync(offsetPath(plan.path), { force: true });
         report.removedFiles += 1;
       } catch (error) {
@@ -259,6 +259,12 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
         logger?.error({ errName: (error as Error).name }, "spool file not removed");
       }
     }
+    // A quarantine marker goes only once its line can no longer be read again.
+    let cleared = false;
+    for (const entry of batch) {
+      if (done.has(entry.file) && quarantined.delete(entry.sourceEventId)) cleared = true;
+    }
+    if (cleared) writeRetry(spoolDir, retry);
   }
 
   if (hasActivity(report)) logger?.info({ ...report }, "spool replayed");
@@ -379,7 +385,7 @@ async function readSpoolFile(
       budget.bytes += lineBytes;
       const before = out.entries.length;
       if (overflow) out.invalid += 1;
-      else if (partBytes > 0) classify(Buffer.concat(parts, partBytes).toString("utf8"), out);
+      else if (partBytes > 0) classify(Buffer.concat(parts, partBytes).toString("utf8"), out, path);
       budget.hooks += out.entries.length - before;
       parts = [];
       partBytes = 0;
@@ -422,7 +428,7 @@ async function readSpoolFile(
 }
 
 /** Parses one line into an entry, an oversized marker, or an invalid line. */
-function classify(text: string, out: FileRead): void {
+function classify(text: string, out: FileRead, file: string): void {
   if (text.trim() === "") return;
   let value: unknown;
   try {
@@ -434,11 +440,11 @@ function classify(text: string, out: FileRead): void {
   const entry = spoolEntry(value);
   if (entry === "oversized") out.oversized += 1;
   else if (entry === undefined) out.invalid += 1;
-  else out.entries.push(entry);
+  else out.entries.push({ ...entry, file });
 }
 
 /** The shim's line shape exactly; read with `Object.hasOwn`, unknown keys refused (L-18, L-29). */
-function spoolEntry(value: unknown): Entry | "oversized" | undefined {
+function spoolEntry(value: unknown): Omit<Entry, "file"> | "oversized" | undefined {
   if (!isPlainRecord(value)) return undefined;
   if (!Object.keys(value).every((key) => LINE_KEYS.has(key))) return undefined;
   if (!Object.hasOwn(value, "sourceEventId") || !Object.hasOwn(value, "spooledAt"))
