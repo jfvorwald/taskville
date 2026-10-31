@@ -26,14 +26,31 @@ function ownSession(s: EntitiesState, agentId: string, sessionId: string): Sessi
   return session?.agentId === agentId ? session : undefined;
 }
 
-/** The session, created as open (with no start time) if this is the first we hear of it. */
+/** Claude Code's ID for an agent running inside another agent's session (`<session>:<agent>`). */
+const NESTED_CLAUDE_CODE_AGENT = /^claude-code:[^:]+:[^:]+$/;
+
+/**
+ * Whether `agentId` may own a session it names first (M2.13). A subagent never does, nor does
+ * an agent that runs inside another agent's session (in-process teammates, helpers, and
+ * subagents whose registration has not arrived), since the session they name is their lead's.
+ * A split-pane teammate has its own session and keeps it.
+ */
+function mayOwnSession(s: EntitiesState, agentId: string): boolean {
+  if (getOwn(s.agents, agentId)?.kind === "subagent") return false;
+  return !NESTED_CLAUDE_CODE_AGENT.test(agentId);
+}
+
+/**
+ * The session, created as open (with no start time) if this is the first we hear of it and the
+ * agent may own it.
+ */
 function ensureSession(
   s: EntitiesState,
   e: DomainEvent,
   agentId: string,
   sessionId: string,
 ): EntitiesState {
-  if (Object.hasOwn(s.sessions, sessionId)) return s;
+  if (Object.hasOwn(s.sessions, sessionId) || !mayOwnSession(s, agentId)) return s;
   const session: Session = {
     id: sessionId,
     agentId,
@@ -54,6 +71,7 @@ export function applySessionStarted(
 ): EntitiesState {
   const existing = getOwn(s.sessions, sessionId);
   if (existing !== undefined && existing.agentId !== agentId) return s;
+  if (existing === undefined && !mayOwnSession(s, agentId)) return s;
   const workingDirectory = optional("workingDirectory", e.payload.workingDirectory);
   // A start older than the recorded end arrived late (async hooks race, S-2): it fills in the
   // start time but does not reopen the session.

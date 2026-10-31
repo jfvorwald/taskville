@@ -32,7 +32,7 @@ export function reduceRequests(state: RequestsState, event: StoredEnvelope): Req
     case "session.turn_failed":
     case "session.prompt_submitted":
     case "session.ended":
-      return event.sessionId === undefined ? state : closeSession(state, event.sessionId);
+      return event.sessionId === undefined ? state : closeSession(state, event);
     case "command.requested":
       return isEngineSource(event.sourceId) ? commandRequested(state, event) : state;
     case "command.delivered":
@@ -156,15 +156,39 @@ function close(state: RequestsState, requestId: string, to: RequestState): Reque
  * `answered_here` when a Taskville `permission.decide` for the request already succeeded, otherwise
  * `answered_elsewhere`.
  */
-function closeSession(state: RequestsState, sessionId: string): RequestsState {
+function closeSession(state: RequestsState, event: StoredEnvelope): RequestsState {
   let requests: Record<string, PendingRequest> | undefined;
   for (const request of Object.values(state.requests)) {
-    if (request.state !== "open" || request.sessionId !== sessionId) continue;
+    if (request.state !== "open" || request.sessionId !== event.sessionId) continue;
+    if (!closesRequest(request, event)) continue;
     requests ??= { ...state.requests };
     const to = answeredHere(state.commands, request) ? "answered_here" : "answered_elsewhere";
     requests[request.id] = { ...request, state: to };
   }
   return requests === undefined ? state : { ...state, requests };
+}
+
+/**
+ * Which same-session events close an open request. Kept as one rule so decision #184 can be
+ * switched in one place.
+ *
+ * #184 D1 (default): a telemetry request (not answerable) closes only on its owning agent's
+ * events, or on a session boundary (`session.turn_ended`, `session.prompt_submitted`,
+ * `session.ended`) from any agent. Subagents and in-process teammates share their lead's
+ * session (S-2), so a subagent's unrelated tool call no longer clears its lead's red state.
+ * The D1 alternative (#135 D2, any agent's event closes it) is `return true`. A bridge-held
+ * request keeps #135 D2.
+ */
+export function closesRequest(request: PendingRequest, event: StoredEnvelope): boolean {
+  if (request.answerable) return true;
+  if (
+    event.type === "session.turn_ended" ||
+    event.type === "session.prompt_submitted" ||
+    event.type === "session.ended"
+  ) {
+    return true;
+  }
+  return event.agentId === request.agentId;
 }
 
 function answeredHere(commands: Record<string, Command>, request: PendingRequest): boolean {

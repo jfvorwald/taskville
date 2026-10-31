@@ -89,13 +89,19 @@ export interface Session {
   readonly activity: ActivityEntry;
 }
 
+/**
+ * A ToolCall's phase. `unfinished` is domain only (never an input value): no result was recorded
+ * before a later boundary closed the call (data-model.md "Unfinished tool calls", M2.13).
+ */
+export type ToolCallState = ToolCallPhase | "unfinished";
+
 export interface ToolCall {
   readonly id: string;
   readonly agentId: string;
   readonly sessionId?: string;
   /** Absent only for a finish whose start was never seen. */
   readonly toolName?: string;
-  readonly phase: ToolCallPhase;
+  readonly phase: ToolCallState;
   readonly filePaths: readonly string[];
   readonly summary?: string;
   readonly evidenceIds: readonly string[];
