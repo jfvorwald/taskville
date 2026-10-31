@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryPairingRecords, PairingStore } from "../../src/auth/pairing.ts";
+import { MemoryPairingRecords, PAIRING_CODE_TTL_MS, PairingStore } from "../../src/auth/pairing.ts";
 
 describe("PairingStore", () => {
   it("exchanges a fresh code for a session secret that is not the code", () => {
@@ -80,5 +80,54 @@ describe("PairingStore", () => {
     records.add("not-hex");
     const store = new PairingStore({ records });
     expect(store.hasSession("anything")).toBe(false);
+  });
+
+  describe("code expiry (M1.18 F4)", () => {
+    function clocked() {
+      let ms = 1_000_000;
+      const store = new PairingStore({ now: () => ms });
+      return {
+        store,
+        advance(by: number) {
+          ms += by;
+        },
+      };
+    }
+
+    it("is about ten minutes", () => {
+      expect(PAIRING_CODE_TTL_MS).toBe(10 * 60 * 1000);
+    });
+
+    it("accepts a code just before it expires", () => {
+      const { store, advance } = clocked();
+      const code = store.issueCode();
+      advance(PAIRING_CODE_TTL_MS - 1);
+      expect(store.exchange(code)).not.toBeNull();
+    });
+
+    it("rejects a code once its time is up, and keeps rejecting it", () => {
+      const { store, advance } = clocked();
+      const code = store.issueCode();
+      advance(PAIRING_CODE_TTL_MS);
+      expect(store.exchange(code)).toBeNull();
+      advance(-PAIRING_CODE_TTL_MS);
+      expect(store.exchange(code)).toBeNull();
+    });
+
+    it("counts from the latest issue: a new code gets a full window", () => {
+      const { store, advance } = clocked();
+      store.issueCode();
+      advance(PAIRING_CODE_TTL_MS - 1);
+      const fresh = store.issueCode();
+      advance(PAIRING_CODE_TTL_MS - 1);
+      expect(store.exchange(fresh)).not.toBeNull();
+    });
+
+    it("does not affect sessions already paired", () => {
+      const { store, advance } = clocked();
+      const session = store.exchange(store.issueCode()) ?? "";
+      advance(PAIRING_CODE_TTL_MS * 10);
+      expect(store.hasSession(session)).toBe(true);
+    });
   });
 });

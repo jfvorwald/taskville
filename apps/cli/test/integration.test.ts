@@ -43,6 +43,8 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
 
   it("prints the one-time pairing URL, whose code pairs a browser exactly once", async () => {
     const match = /(http:\/\/127\.0\.0\.1:\d+)\/#pair=([A-Za-z0-9_-]+)/.exec(serve.output());
+    // M1.18 F4: the link says how long it is valid.
+    expect(serve.output()).toMatch(/one-time link, valid for 10 minutes/);
     expect(match?.[1]).toBe(url);
     const pair = () =>
       fetch(`${url}/v1/pairing`, {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigError, parseConfig } from "../../src/config/config.ts";
-import { renderOpener } from "../../src/config/opener.ts";
+import { OpenerValueError, renderOpener } from "../../src/config/opener.ts";
 
 const ctx = { homedir: "/home/user", rootExists: () => true };
 
@@ -76,5 +76,39 @@ describe("renderOpener", () => {
       sessionId: "s",
     });
     expect(args).toEqual(["/tmp/x; rm -rf ~ $(whoami) {sessionId}"]);
+  });
+
+  // M1.18 F6: a value must not be able to become an option of the opener program.
+  it("rejects a {cwd} that is not an absolute path", () => {
+    for (const cwd of ["--user-data-dir=/tmp/x", "-n", "relative/dir", "", "~/src"]) {
+      expect(() => renderOpener(["code", "{cwd}"], { cwd, sessionId: "s" }), cwd).toThrow(
+        OpenerValueError,
+      );
+    }
+  });
+
+  it("rejects a {sessionId} outside [A-Za-z0-9][A-Za-z0-9._-]*", () => {
+    for (const sessionId of ["--inspect", "-s", "", "a b", "a/b", ".hidden", "s;x", "s\n"]) {
+      expect(
+        () => renderOpener(["open", "--session={sessionId}"], { cwd: "/src", sessionId }),
+        JSON.stringify(sessionId),
+      ).toThrow(OpenerValueError);
+    }
+  });
+
+  it("accepts ordinary values", () => {
+    expect(
+      renderOpener(["open", "{cwd}", "{sessionId}"], {
+        cwd: "/Users/example/src/tv",
+        sessionId: "4f1c2b7e-9a0d.session_1",
+      }).args,
+    ).toEqual(["/Users/example/src/tv", "4f1c2b7e-9a0d.session_1"]);
+  });
+
+  it("checks only the placeholders the template uses", () => {
+    expect(renderOpener(["open", "{sessionId}"], { cwd: "", sessionId: "s1" }).args).toEqual([
+      "s1",
+    ]);
+    expect(renderOpener(["open", "{cwd}"], { cwd: "/src", sessionId: "" }).args).toEqual(["/src"]);
   });
 });
