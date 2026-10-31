@@ -36,7 +36,9 @@ Body: an indented tree, two spaces per level (FR-012 clarification):
   (with `(heuristic)` when flagged), task, and the highest attention record:
   `needs you: <kind> <tool> - <reason>`, `trouble: <kind> - <reason>`, or
   `waiting`. Heuristic attention is labeled, for example `trouble (heuristic):
-  quiet for 12 min`. Masked or truncated reasons show a `[masked]` or `[truncated]`
+  quiet for 12 min` or `needs you (heuristic): ...`. A guessed name and kind from a
+  heuristic registration (decision #120) is shown after the activity as
+  `maybe <name> (<kind>, heuristic)`, never in place of the recorded name. Masked or truncated reasons show a `[masked]` or `[truncated]`
   marker.
 
 `--json` prints `{ "projectId", "cursor", "stateHash", "agents": [...],

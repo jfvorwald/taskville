@@ -1,0 +1,1151 @@
+[
+  {
+    "seq": 0,
+    "hook": "SessionStart",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 1,
+    "hook": "UserPromptSubmit",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 2,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 3,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-3:crew:0",
+        "occurredAt": "2026-10-30T12:00:14.496Z",
+        "type": "team.started",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "teamId": "claude-code:team:session-a7286c33",
+          "leadAgentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+          "name": "session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-3:crew:1",
+        "occurredAt": "2026-10-30T12:00:14.496Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "sourceAgentId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+          "displayName": "proj",
+          "role": "lead",
+          "kind": "lead",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 4,
+    "hook": "SessionStart",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 5,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 6,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 7,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-7:crew:0",
+        "occurredAt": "2026-10-30T12:00:15.797Z",
+        "type": "team.started",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "teamId": "claude-code:team:session-a7286c33",
+          "leadAgentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+          "name": "session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-7:crew:1",
+        "occurredAt": "2026-10-30T12:00:15.797Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "sourceAgentId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+          "displayName": "proj",
+          "role": "lead",
+          "kind": "lead",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 8,
+    "hook": "SessionStart",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 9,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 10,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 11,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 12,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 13,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 14,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 15,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 16,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 17,
+    "hook": "Notification",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-17:crew:0",
+        "occurredAt": "2026-10-30T12:00:20.868Z",
+        "type": "request.opened",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "requestId": "claude-code:request:team-split-pane-17:worker",
+          "kind": "permission",
+          "reason": "for: pip (Bash)",
+          "heuristic": true
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 18,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 19,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 20,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 21,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 22,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 23,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 24,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 25,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 26,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 27,
+    "hook": "TeammateIdle",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-27:crew:0",
+        "occurredAt": "2026-10-30T12:00:25.956Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "displayName": "bo",
+          "role": "teammate",
+          "kind": "teammate",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-27:crew:1",
+        "occurredAt": "2026-10-30T12:00:25.956Z",
+        "type": "activity.ended",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {},
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 28,
+    "hook": "Notification",
+    "events": [],
+    "ignored": "not a crew notification"
+  },
+  {
+    "seq": 29,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 30,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 31,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 32,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 33,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 34,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 35,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 36,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 37,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-37:crew:0",
+        "occurredAt": "2026-10-30T12:01:38.927Z",
+        "type": "team.message",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "to": "bo",
+          "kind": "message",
+          "summary": "Greet bo as pip"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-37:crew:1",
+        "occurredAt": "2026-10-30T12:01:38.927Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "displayName": "pip",
+          "role": "teammate",
+          "kind": "teammate",
+          "heuristic": true
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 38,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 39,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 40,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 41,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 42,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 43,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 44,
+    "hook": "TeammateIdle",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-44:crew:0",
+        "occurredAt": "2026-10-30T12:01:40.474Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "displayName": "pip",
+          "role": "teammate",
+          "kind": "teammate",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-44:crew:1",
+        "occurredAt": "2026-10-30T12:01:40.474Z",
+        "type": "activity.ended",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {},
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 45,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 46,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-46:crew:0",
+        "occurredAt": "2026-10-30T12:01:41.807Z",
+        "type": "team.message",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "to": "pip",
+          "kind": "message",
+          "summary": "hi pip"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-46:crew:1",
+        "occurredAt": "2026-10-30T12:01:41.807Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "displayName": "bo",
+          "role": "teammate",
+          "kind": "teammate",
+          "heuristic": true
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 47,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 48,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 49,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 50,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 51,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 52,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 53,
+    "hook": "TeammateIdle",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-53:crew:0",
+        "occurredAt": "2026-10-30T12:01:43.235Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "displayName": "bo",
+          "role": "teammate",
+          "kind": "teammate",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-53:crew:1",
+        "occurredAt": "2026-10-30T12:01:43.235Z",
+        "type": "activity.ended",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {},
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 54,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 55,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 56,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 57,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-57:crew:0",
+        "occurredAt": "2026-10-30T12:01:44.657Z",
+        "type": "team.message",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "to": "bo",
+          "kind": "message",
+          "summary": "Reply to bo's greeting"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-57:crew:1",
+        "occurredAt": "2026-10-30T12:01:44.657Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "displayName": "pip",
+          "role": "teammate",
+          "kind": "teammate",
+          "heuristic": true
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 58,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 59,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 60,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 61,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 62,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 63,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 64,
+    "hook": "TeammateIdle",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-64:crew:0",
+        "occurredAt": "2026-10-30T12:01:45.901Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "displayName": "pip",
+          "role": "teammate",
+          "kind": "teammate",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-64:crew:1",
+        "occurredAt": "2026-10-30T12:01:45.901Z",
+        "type": "activity.ended",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {},
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 65,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 66,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-66:crew:0",
+        "occurredAt": "2026-10-30T12:01:46.782Z",
+        "type": "team.message",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "to": "pip",
+          "kind": "shutdown_request",
+          "summary": "Request pip shutdown after completed task"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 67,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 68,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-68:crew:0",
+        "occurredAt": "2026-10-30T12:01:47.215Z",
+        "type": "team.message",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+        "payload": {
+          "to": "bo",
+          "kind": "shutdown_request",
+          "summary": "Request bo shutdown after completed task"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 69,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 70,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 71,
+    "hook": "TeammateIdle",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-71:crew:0",
+        "occurredAt": "2026-10-30T12:01:47.481Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "displayName": "bo",
+          "role": "teammate",
+          "kind": "teammate",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-71:crew:1",
+        "occurredAt": "2026-10-30T12:01:47.481Z",
+        "type": "activity.ended",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {},
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 72,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 73,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 74,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 75,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 76,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 77,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 78,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 79,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 80,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-80:crew:0",
+        "occurredAt": "2026-10-30T12:01:49.525Z",
+        "type": "team.message",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "payload": {
+          "to": "team-lead",
+          "kind": "shutdown_response",
+          "summary": "Approve shutdown request"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 81,
+    "hook": "SessionEnd",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 82,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 83,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 84,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 85,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 86,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 87,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 88,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 89,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 90,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 91,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 92,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 93,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-93:crew:0",
+        "occurredAt": "2026-10-30T12:01:53.789Z",
+        "type": "team.message",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "to": "team-lead",
+          "kind": "message",
+          "summary": "bo approves the shutdown request. My steps are complete: notes.txt updated (gamma to GAMMA), wc -l gave 3, and hi pip was sent."
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-93:crew:1",
+        "occurredAt": "2026-10-30T12:01:53.789Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "displayName": "bo",
+          "role": "teammate",
+          "kind": "teammate",
+          "heuristic": true
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 94,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 95,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 96,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 97,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 98,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 99,
+    "hook": "TeammateIdle",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-99:crew:0",
+        "occurredAt": "2026-10-30T12:01:55.910Z",
+        "type": "agent.registered",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "displayName": "bo",
+          "role": "teammate",
+          "kind": "teammate",
+          "teamId": "claude-code:team:session-a7286c33"
+        },
+        "provenance": "live",
+        "late": false
+      },
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "team-split-pane-99:crew:1",
+        "occurredAt": "2026-10-30T12:01:55.910Z",
+        "type": "activity.ended",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "payload": {},
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 100,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 101,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 102,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 103,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 104,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 105,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 106,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 107,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 108,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 109,
+    "hook": "SubagentStop",
+    "events": [],
+    "ignored": "internal helper agent"
+  },
+  {
+    "seq": 110,
+    "hook": "SessionEnd",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 111,
+    "hook": "SessionEnd",
+    "events": [],
+    "ignored": "not a crew hook"
+  }
+]

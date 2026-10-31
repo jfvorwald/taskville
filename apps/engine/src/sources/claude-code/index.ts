@@ -1,5 +1,7 @@
 // Claude Code telemetry source (ARCHITECTURE.md 8.1): the hooks route, project
 // resolution from `cwd`, and the entry point the spool replay (M2.07) calls.
+/** The real mapper (M2.03), re-exported so `taskville serve` composes the source from here. */
+export { mapClaudeCodeHook } from "@taskville/adapters/claude-code";
 export {
   MAX_CWD_LENGTH,
   matchProjectRoot,

@@ -23,6 +23,7 @@ const UNMASKED_FIELDS: Partial<Record<EventType, readonly string[]>> = {
   "agent.registered": ["sourceAgentId", "kind", "parentAgentId", "teamId"],
   "team.started": ["teamId", "leadAgentId"],
   "team.ended": ["teamId"],
+  "team.message": ["kind"],
   "task.created": ["relatedTaskIds"],
   "task.assigned": ["agentIds"],
   "task.status_changed": ["status"],

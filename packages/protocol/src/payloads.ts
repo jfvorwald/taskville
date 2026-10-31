@@ -9,6 +9,7 @@ import {
   sourceEnumValueSchema,
   sourceValueSchema,
   TASK_STATUSES,
+  TEAM_MESSAGE_KINDS,
   TOOL_CALL_FINISH_PHASES,
 } from "./enums.ts";
 import type { EventType } from "./event-types.ts";
@@ -52,6 +53,13 @@ const commonPayloadSchemas = {
     name: textSchema.optional(),
   }),
   "team.ended": z.strictObject({ teamId: idSchema }),
+  // A message between agents (Claude Code SendMessage). The envelope agentId is the sender;
+  // `to` is the recipient's name as the sender wrote it, since it may not name a known agent.
+  "team.message": z.strictObject({
+    to: nonEmptyTextSchema,
+    kind: z.enum(TEAM_MESSAGE_KINDS),
+    summary: textSchema.optional(),
+  }),
   "session.started": z.strictObject({ workingDirectory: textSchema.optional() }),
   "session.ended": z.strictObject({ outcome: textSchema.optional() }),
   "session.prompt_submitted": empty,
@@ -127,6 +135,8 @@ const agentRegisteredShape = {
   role: textSchema,
   parentAgentId: idSchema.optional(),
   teamId: idSchema.optional(),
+  /** True when the source guessed this identity or link instead of recording it (#120). */
+  heuristic: z.boolean().optional(),
 };
 
 const requestOpenedShape = {
@@ -135,6 +145,8 @@ const requestOpenedShape = {
   toolName: textSchema.optional(),
   inputPreview: inputPreviewSchema.optional(),
   expiresAt: timestampSchema.optional(),
+  /** True when the source guessed which agent the request belongs to (#120). */
+  heuristic: z.boolean().optional(),
 };
 
 /** `{ [field]: value, sourceValue? }` for a normalized open enum field. */

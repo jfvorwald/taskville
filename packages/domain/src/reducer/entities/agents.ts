@@ -72,6 +72,7 @@ export function applyRegistration(
   }
   const touched = touchAgent(s, e, agentId);
   const agent = getOwn(touched.agents, agentId) as Agent;
+  if (p.heuristic === true) return applyGuess(touched, agent, p.displayName, p.kind);
 
   const mayHaveParent = p.kind === "subagent" || p.kind === "unknown";
   const mayHaveTeam = p.kind === "lead" || p.kind === "teammate" || p.kind === "unknown";
@@ -80,7 +81,7 @@ export function applyRegistration(
   const teamId = mayHaveTeam ? (p.teamId ?? agent.teamId) : undefined;
 
   const next: Agent = {
-    ...omit(agent, ["parentAgentId", "teamId", "sourceValue"]),
+    ...omit(agent, ["parentAgentId", "teamId", "sourceValue", "heuristic"]),
     sourceId: e.sourceId,
     sourceAgentId: p.sourceAgentId,
     displayName: p.displayName,
@@ -94,6 +95,23 @@ export function applyRegistration(
   };
   const withAgent = { ...touched, agents: put(touched.agents, agentId, next) };
   return moveTeamMember(withAgent, agentId, agent.teamId, teamId);
+}
+
+/**
+ * A heuristic registration only records its guess as the agent's suggestion: it never changes
+ * the recorded name, kind, identity, or links, so it cannot override a recorded registration
+ * whichever arrives first. A guess that repeats the recorded name and kind adds nothing.
+ */
+function applyGuess(
+  s: EntitiesState,
+  agent: Agent,
+  displayName: string,
+  kind: Agent["kind"],
+): EntitiesState {
+  if (agent.registered && agent.displayName === displayName && agent.kind === kind) return s;
+  const current = agent.heuristic;
+  if (current?.displayName === displayName && current.kind === kind) return s;
+  return { ...s, agents: put(s.agents, agent.id, { ...agent, heuristic: { displayName, kind } }) };
 }
 
 function moveTeamMember(

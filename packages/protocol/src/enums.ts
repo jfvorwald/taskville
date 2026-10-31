@@ -38,6 +38,18 @@ export const ACTIVITIES = [
 ] as const;
 export type Activity = (typeof ACTIVITIES)[number];
 
+/**
+ * Kinds of `team.message`. Closed: the Claude Code adapter maps any other SendMessage type to
+ * `unknown` itself, so a producer never needs a new value to send one.
+ */
+export const TEAM_MESSAGE_KINDS = [
+  "message",
+  "shutdown_request",
+  "shutdown_response",
+  "unknown",
+] as const;
+export type TeamMessageKind = (typeof TEAM_MESSAGE_KINDS)[number];
+
 export const CONNECTIONS = ["connected", "disconnected", "unknown"] as const;
 export type Connection = (typeof CONNECTIONS)[number];
 

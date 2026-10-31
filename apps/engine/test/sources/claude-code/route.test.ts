@@ -207,6 +207,62 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     ]);
   });
 
+  it("stores no evidence for a retry whose events were all duplicates (roborev 5142)", async () => {
+    // A retry under a logged key can carry a tool_response the logged hook did not have; its
+    // events still match (they do not include the output), so only fresh events admit evidence.
+    const stored: readonly HookEvidence[][] = [];
+    const { app } = setup({
+      evidence: {
+        store: (_projectId, evidence) => (stored as HookEvidence[][]).push([...evidence]),
+      },
+    });
+    await app.request(
+      URL,
+      postJson(
+        { sourceEventId: "u-15", payload: hook({ tool_use_id: "tu-9" }) },
+        bearer(CLI_TOKEN),
+      ),
+    );
+    const retry = await app.request(
+      URL,
+      postJson(
+        { sourceEventId: "u-15", payload: hook({ tool_use_id: "tu-9", tool_response: "forged" }) },
+        bearer(CLI_TOKEN),
+      ),
+    );
+    expect((await read(retry)).results.map((r) => r.status)).toEqual(["duplicate"]);
+    expect(stored).toEqual([[{ toolCallId: "tu-9", input: undefined, output: undefined }]]);
+  });
+
+  it("stores no evidence when any event of the hook conflicts, even if another is accepted (roborev)", async () => {
+    let calls = 0;
+    const event = (sourceEventId: string, agentId: string) => ({
+      schemaVersion: 1,
+      sourceEventId,
+      occurredAt: T0,
+      type: "agent.connected",
+      agentId,
+      payload: {},
+      provenance: "live",
+    });
+    const stored: HookEvidence[][] = [];
+    const { source } = makeSource(db(), {
+      // First delivery: one event. Retry: the same key with changed content, plus a new event.
+      mapper: () =>
+        ++calls === 1
+          ? { events: [event("c-1:a", "a")], evidence: [{ toolCallId: "tu-c", input: "orig" }] }
+          : {
+              events: [event("c-1:a", "changed"), event("c-1:b", "b")],
+              evidence: [{ toolCallId: "tu-c", input: "forged" }],
+            },
+      evidence: { store: (_projectId, evidence) => stored.push([...evidence]) },
+    });
+    await source.ingestHook({ sourceEventId: "c-1", payload: hook() });
+    const retry = await source.ingestHook({ sourceEventId: "c-1", payload: hook() });
+    expect(retry.results.map((r) => r.status)).toEqual(["conflict", "accepted"]);
+    expect(stored).toEqual([[{ toolCallId: "tu-c", input: "orig" }]]);
+  });
+
   it("keeps the ingested events when the evidence sink throws, and logs no request content", async () => {
     const logLines: string[] = [];
     const { app } = setup({
