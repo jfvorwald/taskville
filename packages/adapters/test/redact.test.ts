@@ -657,6 +657,9 @@ describe("adversarial input", () => {
   it.each(cases)("%s finishes quickly", (_name, input) => {
     const started = performance.now();
     redactText(input);
-    expect(performance.now() - started).toBeLessThan(250);
+    // Linear scans take about 20 ms here when run alone. The bound is loose so a
+    // busy parallel run does not flake, yet far below the tens of seconds a
+    // quadratic scan of 100,000 characters takes (one such regression took 55 s).
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 });
