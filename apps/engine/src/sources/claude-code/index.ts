@@ -33,6 +33,7 @@ export {
   DEFAULT_MAX_HOOKS,
   type DrainOptions,
   drainSpool,
+  MAX_IDLE_DRAIN_RUNS,
   MAX_SPOOL_LINE_BYTES,
   replaySpool,
   SPOOL_FILE,

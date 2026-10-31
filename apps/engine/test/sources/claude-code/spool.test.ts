@@ -378,6 +378,42 @@ describe("replaySpool", () => {
     expect(spoolNames()).toEqual([]);
   });
 
+  it("keeps draining while a live shim holds the lock, then takes the main file", async () => {
+    const holder = spawn("sleep", ["30"], { stdio: "ignore" });
+    const lock = join(spoolDir, "claude-code.lock");
+    try {
+      mkdirSync(lock, { mode: 0o700 });
+      writeFileSync(join(lock, "pid"), `${holder.pid}\n`);
+      writeFileSync(main(), line(), { mode: 0o600 });
+      const { source, mapper } = makeSource(db());
+      const draining = drainSpool({ spoolDir, source, lockWaitMs: 20, pauseMs: 20 });
+      // The shim finishes its append and lets go while the drain is waiting.
+      setTimeout(() => rmSync(lock, { recursive: true, force: true }), 60);
+      const total = await draining;
+      expect(total).toMatchObject({ hooks: 1, mainFile: "claimed", failed: false });
+      expect(mapper.calls).toHaveLength(1);
+      expect(spoolNames()).toEqual([]);
+    } finally {
+      holder.kill();
+    }
+  });
+
+  it("gives up draining after a few idle runs on a lock that is never released", async () => {
+    const holder = spawn("sleep", ["30"], { stdio: "ignore" });
+    try {
+      const lock = join(spoolDir, "claude-code.lock");
+      mkdirSync(lock, { mode: 0o700 });
+      writeFileSync(join(lock, "pid"), `${holder.pid}\n`);
+      writeFileSync(main(), line(), { mode: 0o600 });
+      const { source } = makeSource(db());
+      const total = await drainSpool({ spoolDir, source, lockWaitMs: 10, pauseMs: 1 });
+      expect(total).toMatchObject({ hooks: 0, mainFile: "busy" });
+      expect(existsSync(main())).toBe(true);
+    } finally {
+      holder.kill();
+    }
+  });
+
   it("stops draining on a failed run", async () => {
     writeFileSync(main(), line() + line() + line(), { mode: 0o600 });
     const failing = { ingestHook: () => Promise.reject(new Error("boom")) };

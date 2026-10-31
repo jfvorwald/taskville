@@ -423,7 +423,12 @@ async function keepRest(dir: string, plan: FilePlan): Promise<void> {
       for (;;) {
         const { bytesRead } = await src.read(buffer, 0, CHUNK, position);
         if (bytesRead === 0) break;
-        await dst.write(buffer, 0, bytesRead);
+        // A write may be short: loop until this chunk is all on disk.
+        let written = 0;
+        while (written < bytesRead) {
+          const { bytesWritten } = await dst.write(buffer, written, bytesRead - written);
+          written += bytesWritten;
+        }
         position += bytesRead;
       }
       await dst.sync();
@@ -582,25 +587,33 @@ export interface DrainOptions extends SpoolReplayOptions {
 /** Default pause between drain runs. */
 export const DEFAULT_DRAIN_PAUSE_MS = 250;
 
+/** Runs in a row that make no progress before a drain gives up until the next start. */
+export const MAX_IDLE_DRAIN_RUNS = 5;
+
 /**
- * Runs `replaySpool` until nothing is deferred, a run fails or makes no
- * progress, or `signal` aborts: for after listen, so a huge spool is worked off
- * in bounded runs instead of holding the start. Returns the summed counts.
+ * Runs `replaySpool` until nothing is left (no deferred file and the main file
+ * not left busy), a run fails, `signal` aborts, or MAX_IDLE_DRAIN_RUNS runs in a
+ * row make no progress (a lock held by a live process that never lets go): for
+ * after listen, so a huge spool is worked off in bounded runs instead of
+ * holding the start. Returns the summed counts.
  */
 export async function drainSpool(options: DrainOptions): Promise<SpoolReplayReport> {
   const total = emptyReport();
+  let idle = 0;
   for (;;) {
     if (options.signal?.aborted === true) return total;
     const run = await replaySpool(options);
     addReport(total, run);
-    const progressed = run.hooks > 0 || run.removedFiles > 0;
-    if (run.failed || run.deferredFiles === 0 || !progressed) return total;
+    const left = run.deferredFiles > 0 || run.mainFile === "busy";
+    idle = run.hooks > 0 || run.removedFiles > 0 ? 0 : idle + 1;
+    if (run.failed || !left || idle >= MAX_IDLE_DRAIN_RUNS) return total;
     await new Promise((resolve) => setTimeout(resolve, options.pauseMs ?? DEFAULT_DRAIN_PAUSE_MS));
   }
 }
 
 function addReport(total: SpoolReplayReport, run: SpoolReplayReport): void {
-  if (total.mainFile === "absent") total.mainFile = run.mainFile;
+  // The latest run that saw a main file decides: "busy" means it is still waiting.
+  if (run.mainFile !== "absent") total.mainFile = run.mainFile;
   for (const key of COUNT_KEYS) total[key] += run[key];
   total.deferredFiles = run.deferredFiles;
   total.failed = total.failed || run.failed;
