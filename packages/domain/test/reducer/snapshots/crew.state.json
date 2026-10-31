@@ -1,0 +1,204 @@
+{
+  "projectId": "demo",
+  "reducerVersion": 1,
+  "head": 32,
+  "agents": {
+    "main": {
+      "id": "main",
+      "sourceId": "adapter:generic",
+      "kind": "lead",
+      "registered": true,
+      "connection": "connected",
+      "firstSeenAt": "2026-10-30T10:00:00Z",
+      "lastSeenAt": "2026-10-30T10:00:30Z",
+      "toolCallCount": 2,
+      "consecutiveToolFailures": 0,
+      "sourceAgentId": "session-main",
+      "displayName": "Main session",
+      "role": "main",
+      "registeredSeq": 2,
+      "teamId": "team-1"
+    },
+    "sub-1": {
+      "id": "sub-1",
+      "sourceId": "adapter:generic",
+      "kind": "subagent",
+      "registered": true,
+      "connection": "unknown",
+      "firstSeenAt": "2026-10-30T10:00:05Z",
+      "lastSeenAt": "2026-10-30T10:00:15Z",
+      "toolCallCount": 1,
+      "consecutiveToolFailures": 0,
+      "sourceAgentId": "a0000000000000001",
+      "displayName": "explorer",
+      "role": "Explore",
+      "registeredSeq": 7,
+      "parentAgentId": "main",
+      "finishedAt": "2026-10-30T10:00:15Z"
+    },
+    "sub-2": {
+      "id": "sub-2",
+      "sourceId": "adapter:generic",
+      "kind": "subagent",
+      "registered": true,
+      "connection": "unknown",
+      "firstSeenAt": "2026-10-30T10:00:10Z",
+      "lastSeenAt": "2026-10-30T10:00:14Z",
+      "toolCallCount": 0,
+      "consecutiveToolFailures": 0,
+      "sourceAgentId": "a0000000000000002",
+      "displayName": "searcher",
+      "role": "general-purpose",
+      "registeredSeq": 12,
+      "parentAgentId": "sub-1",
+      "finishedAt": "2026-10-30T10:00:14Z"
+    },
+    "mate-1": {
+      "id": "mate-1",
+      "sourceId": "adapter:generic",
+      "kind": "teammate",
+      "registered": true,
+      "connection": "unknown",
+      "firstSeenAt": "2026-10-30T10:00:20Z",
+      "lastSeenAt": "2026-10-30T10:00:28Z",
+      "toolCallCount": 1,
+      "consecutiveToolFailures": 0,
+      "sourceAgentId": "a0000000000000003",
+      "displayName": "tester",
+      "role": "tester",
+      "teamId": "team-1",
+      "registeredSeq": 22,
+      "finishedAt": "2026-10-30T10:00:28Z"
+    }
+  },
+  "teams": {
+    "team-1": {
+      "id": "team-1",
+      "leadAgentId": "main",
+      "name": "demo-team",
+      "memberAgentIds": ["main", "mate-1"],
+      "startedAt": "2026-10-30T10:00:18Z",
+      "endedAt": "2026-10-30T10:00:29Z"
+    }
+  },
+  "sessions": {
+    "sess-main": {
+      "id": "sess-main",
+      "agentId": "main",
+      "sourceId": "adapter:generic",
+      "provenance": "live",
+      "firstSeenAt": "2026-10-30T10:00:01Z",
+      "startedAt": "2026-10-30T10:00:01Z",
+      "startSeq": 3,
+      "workingDirectory": "/repo/demo",
+      "activity": {
+        "activity": "unknown",
+        "heuristic": false,
+        "since": "2026-10-30T10:00:01Z"
+      },
+      "endedAt": "2026-10-30T10:00:30Z"
+    }
+  },
+  "toolCalls": {
+    "tc-agent-2": {
+      "id": "tc-agent-2",
+      "agentId": "sub-1",
+      "sessionId": "sess-main",
+      "toolName": "Agent",
+      "phase": "succeeded",
+      "filePaths": [],
+      "summary": "async_launched",
+      "evidenceIds": [],
+      "startedAt": "2026-10-30T10:00:09Z",
+      "startSeq": 11,
+      "finishedAt": "2026-10-30T10:00:11Z"
+    },
+    "tc-agent-3": {
+      "id": "tc-agent-3",
+      "agentId": "main",
+      "sessionId": "sess-main",
+      "toolName": "Agent",
+      "phase": "succeeded",
+      "filePaths": [],
+      "summary": "teammate_spawned",
+      "evidenceIds": [],
+      "startedAt": "2026-10-30T10:00:17Z",
+      "startSeq": 19,
+      "finishedAt": "2026-10-30T10:00:21Z"
+    },
+    "tc-bash-1": {
+      "id": "tc-bash-1",
+      "agentId": "mate-1",
+      "sessionId": "sess-main",
+      "toolName": "Bash",
+      "phase": "succeeded",
+      "filePaths": [],
+      "summary": "pnpm test",
+      "evidenceIds": [],
+      "startedAt": "2026-10-30T10:00:23Z",
+      "startSeq": 25,
+      "finishedAt": "2026-10-30T10:00:25Z",
+      "durationMs": 4200
+    }
+  },
+  "tasks": {},
+  "activity": {
+    "main": {
+      "agentId": "main",
+      "openSessionCount": 0,
+      "activity": "idle",
+      "heuristic": false,
+      "since": "2026-10-30T10:00:30Z"
+    },
+    "sub-1": {
+      "agentId": "sub-1",
+      "openSessionCount": 0,
+      "activity": "researching",
+      "heuristic": false,
+      "since": "2026-10-30T10:00:08Z"
+    },
+    "sub-2": {
+      "agentId": "sub-2",
+      "activity": "unknown",
+      "heuristic": false,
+      "since": "2026-10-30T10:00:10Z",
+      "openSessionCount": 0
+    },
+    "mate-1": {
+      "agentId": "mate-1",
+      "latestEvidence": {
+        "kind": "test_result",
+        "eventId": "00000000-0000-4000-8000-00000000001c",
+        "at": "2026-10-30T10:00:26Z",
+        "passed": 41,
+        "failed": 0,
+        "skipped": 2
+      },
+      "openSessionCount": 0,
+      "activity": "idle",
+      "heuristic": false,
+      "since": "2026-10-30T10:00:27Z"
+    }
+  },
+  "requests": {
+    "req-1": {
+      "id": "req-1",
+      "agentId": "mate-1",
+      "sessionId": "sess-main",
+      "kind": "permission",
+      "toolName": "Bash",
+      "inputPreview": "pnpm test",
+      "reason": {
+        "text": "Bash wants to run pnpm test",
+        "masked": false,
+        "truncated": false
+      },
+      "answerable": false,
+      "openedAt": "2026-10-30T10:00:24Z",
+      "state": "answered_elsewhere",
+      "late": false,
+      "mergedRequestIds": []
+    }
+  },
+  "commands": {}
+}
