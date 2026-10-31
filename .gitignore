@@ -4,3 +4,6 @@ dist/
 *.tsbuildinfo
 .DS_Store
 .worktrees/
+apps/web/.vitest/
+test-results/
+playwright-report/

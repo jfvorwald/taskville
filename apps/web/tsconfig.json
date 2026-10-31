@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    // Vite types CSS Module class lookups as an index signature, which this flag makes `string | undefined`.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src", "test", "e2e", "*.ts"]
+}

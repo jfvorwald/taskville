@@ -1,0 +1,41 @@
+.page {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 16px;
+}
+
+.card {
+  max-width: 28rem;
+  padding: 24px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.body {
+  margin: 0;
+  color: var(--tv-text-muted);
+  line-height: 1.5;
+}
+
+.button {
+  margin-top: 16px;
+  padding: 8px 16px;
+  border: 1px solid var(--tv-accent);
+  border-radius: var(--tv-radius);
+  background: transparent;
+  color: var(--tv-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button[data-focus-visible] {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
