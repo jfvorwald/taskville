@@ -7,9 +7,10 @@
 //
 // Crash safety: the main file is renamed aside under the shim's lock before it
 // is read, so shim appends during replay go to a fresh main file and are never
-// lost; a file is deleted only after every hook read from it committed. A crash
-// at any point leaves the file for the next start, where the shim's
-// `sourceEventId` makes every already-committed hook a duplicate.
+// lost; a file is deleted, or its read offset advanced, only after every hook
+// read from it committed. A crash at any point leaves the file (and the old
+// offset) for the next start, where the shim's `sourceEventId` makes every
+// already-committed hook a duplicate.
 
 import { randomUUID } from "node:crypto";
 import {
@@ -22,7 +23,6 @@ import {
   rmdirSync,
   rmSync,
   unlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
@@ -39,7 +39,8 @@ const LOCK = "claude-code.lock";
 const BREAKER = `${LOCK}.break`;
 /** Files to replay: per-event files `claude-code.<uuid>.jsonl` and claimed `claude-code.replay-<uuid>.jsonl`. */
 const SPOOL_NAME = /^claude-code\.[A-Za-z0-9-]+\.jsonl$/;
-/** Shim temporaries and set-aside locks. Never read; removed once stale. */
+const OFFSET_NAME = /^claude-code\.[A-Za-z0-9-]+\.jsonl\.offset$/;
+/** Shim temporaries, set-aside locks, and offset temporaries. Never read; removed once stale. */
 const TEMP_PREFIX = ".claude-code.";
 
 /** The shim never writes a line longer than its cap plus the wrapper; anything longer is junk. */
@@ -102,7 +103,7 @@ export interface SpoolReplayReport {
   unreadableFiles: number;
   /** Files deleted after their hooks committed. */
   removedFiles: number;
-  /** Files left for the next run by the bound (a partly read file keeps only its unread rest). */
+  /** Files left for the next run by the bound (a partly read file records where to resume in `<file>.offset`). */
   deferredFiles: number;
   /** An ingest threw; every file read this run was kept for the next start. */
   failed: boolean;
@@ -118,7 +119,6 @@ interface FilePlan {
   path: string;
   /** Byte offset just past the last line read; undefined when the whole file was read. */
   cut: number | undefined;
-  mtime: Date;
 }
 
 /**
@@ -151,7 +151,8 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
       report.deferredFiles += 1;
       continue;
     }
-    const read = await readSpoolFile(path, budget);
+    const start = readOffset(path);
+    const read = await readSpoolFile(path, budget, start);
     if (read === undefined) {
       report.unreadableFiles += 1;
       continue;
@@ -159,13 +160,13 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
     report.invalidLines += read.invalid;
     report.oversized += read.oversized;
     batch.push(...read.entries);
-    if (read.cut === 0) {
+    if (read.cut === start) {
       // Not one line fitted: the file waits, untouched.
       report.deferredFiles += 1;
       continue;
     }
     report.files += 1;
-    plans.push({ path, cut: read.cut, mtime: read.mtime });
+    plans.push({ path, cut: read.cut });
   }
 
   // Ingest order is history order: oldest hook first; ties keep spool order (sort is stable).
@@ -198,10 +199,13 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
     for (const plan of plans) {
       try {
         if (plan.cut !== undefined) {
-          await keepRest(spoolDir, plan);
+          // The rest waits for the next run, which starts reading at the offset.
+          writeOffset(spoolDir, plan.path, plan.cut);
           report.deferredFiles += 1;
+          continue;
         }
         unlinkSync(plan.path);
+        rmSync(offsetPath(plan.path), { force: true });
         report.removedFiles += 1;
       } catch (error) {
         // The file stays; its hooks are duplicates next time.
@@ -280,7 +284,6 @@ interface FileRead {
   invalid: number;
   oversized: number;
   cut: number | undefined;
-  mtime: Date;
 }
 
 /**
@@ -288,7 +291,11 @@ interface FileRead {
  * is not a regular file owned by this user, without following a symlink. A line
  * over MAX_SPOOL_LINE_BYTES is skipped without being held in memory.
  */
-async function readSpoolFile(path: string, budget: Budget): Promise<FileRead | undefined> {
+async function readSpoolFile(
+  path: string,
+  budget: Budget,
+  start: number,
+): Promise<FileRead | undefined> {
   let handle: FileHandle;
   try {
     handle = await open(path, constants.O_RDONLY | NOFOLLOW | NONBLOCK);
@@ -304,13 +311,14 @@ async function readSpoolFile(path: string, budget: Budget): Promise<FileRead | u
       invalid: 0,
       oversized: 0,
       cut: undefined,
-      mtime: stats.mtime,
     };
+    // An offset past the end belongs to some earlier file of the same name: read it all.
+    const from = start <= stats.size ? start : 0;
     let parts: Buffer[] = [];
     let partBytes = 0;
     let overflow = false;
-    let lineStart = 0;
-    let position = 0;
+    let lineStart = from;
+    let position = from;
     const buffer = Buffer.alloc(CHUNK);
 
     // Returns false to stop reading (budget spent).
@@ -404,42 +412,30 @@ function spoolEntry(value: unknown): Entry | "oversized" | undefined {
 }
 
 /**
- * Copies the unread rest of a partly read file to a new `claude-code.replay-*`
- * file (written under a temporary name, then renamed, so it is complete when it
- * appears) with the original's mtime, so it keeps its place in the order.
+ * A partly read file keeps its place in `<file>.offset`: the byte offset of
+ * the first unread line, written only after the hooks before it committed (a
+ * crash before the write re-reads them as duplicates, never skips any).
  */
-async function keepRest(dir: string, plan: FilePlan): Promise<void> {
-  const tmp = join(dir, `${TEMP_PREFIX}rest-${randomUUID()}`);
-  const src = await open(plan.path, constants.O_RDONLY | NOFOLLOW | NONBLOCK);
+function offsetPath(path: string): string {
+  return `${path}.offset`;
+}
+
+function readOffset(path: string): number {
   try {
-    const dst = await open(
-      tmp,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW,
-      0o600,
-    );
-    try {
-      const buffer = Buffer.alloc(CHUNK);
-      let position = plan.cut ?? 0;
-      for (;;) {
-        const { bytesRead } = await src.read(buffer, 0, CHUNK, position);
-        if (bytesRead === 0) break;
-        // A write may be short: loop until this chunk is all on disk.
-        let written = 0;
-        while (written < bytesRead) {
-          const { bytesWritten } = await dst.write(buffer, written, bytesRead - written);
-          written += bytesWritten;
-        }
-        position += bytesRead;
-      }
-      await dst.sync();
-    } finally {
-      await dst.close();
-    }
-  } finally {
-    await src.close();
+    const at = offsetPath(path);
+    if (!lstatSync(at).isFile()) return 0;
+    const text = readFileSync(at, "utf8").trim();
+    return /^\d{1,15}$/.test(text) ? Number(text) : 0;
+  } catch {
+    return 0;
   }
-  utimesSync(tmp, plan.mtime, plan.mtime);
-  renameSync(tmp, join(dir, `claude-code.replay-${randomUUID()}.jsonl`));
+}
+
+/** Written to a temporary and renamed, so the offset file is never torn. */
+function writeOffset(dir: string, path: string, cut: number): void {
+  const tmp = join(dir, `${TEMP_PREFIX}offset-${randomUUID()}`);
+  writeFileSync(tmp, `${cut}\n`, { mode: 0o600, flag: "wx" });
+  renameSync(tmp, offsetPath(path));
 }
 
 // --- The shim's lock (mkdir protocol, claude-code-shim.sh header) --------------------------
@@ -553,6 +549,13 @@ function running(pid: number): boolean {
  */
 function clearStale(dir: string, nowMs: number): void {
   for (const name of readdirSync(dir)) {
+    // An offset whose spool file is gone (a crash between the two deletes).
+    if (OFFSET_NAME.test(name)) {
+      if (lstatOrUndefined(join(dir, name.slice(0, -".offset".length))) === undefined) {
+        rmSync(join(dir, name), { force: true });
+      }
+      continue;
+    }
     if (name !== BREAKER && !name.startsWith(TEMP_PREFIX)) continue;
     const path = join(dir, name);
     const stats = lstatOrUndefined(path);

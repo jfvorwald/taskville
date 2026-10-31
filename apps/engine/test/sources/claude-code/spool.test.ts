@@ -357,8 +357,13 @@ describe("replaySpool", () => {
 
     const first = await replaySpool({ spoolDir, source, maxHooks: 3 });
     expect(first).toMatchObject({ hooks: 3, deferredFiles: 1 });
+    // The partly read file is not copied: it stays put with a resume offset beside it.
+    const [claimed, offset] = spoolNames();
+    expect(claimed).toMatch(/^claude-code\.replay-[0-9a-f-]{36}\.jsonl$/);
+    expect(offset).toBe(`${claimed}.offset`);
     const second = await replaySpool({ spoolDir, source, maxHooks: 3 });
     expect(second).toMatchObject({ hooks: 3, deferredFiles: 1 });
+    expect(spoolNames()).toEqual([claimed, offset]);
     const third = await replaySpool({ spoolDir, source, maxHooks: 3 });
     expect(third).toMatchObject({ hooks: 1, deferredFiles: 0 });
     // Every hook replayed exactly once, in order, across the three runs.
@@ -420,6 +425,13 @@ describe("replaySpool", () => {
     const total = await drainSpool({ spoolDir, source: failing, maxHooks: 1, pauseMs: 1 });
     expect(total).toMatchObject({ hooks: 0, failed: true });
     expect(spoolNames().filter((n) => n.endsWith(".jsonl"))).toHaveLength(1);
+  });
+
+  it("removes an offset whose spool file is gone", async () => {
+    const orphan = join(spoolDir, `claude-code.replay-${uuid()}.jsonl.offset`);
+    writeFileSync(orphan, "123\n", { mode: 0o600 });
+    await replaySpool({ spoolDir, source: makeSource(db()).source });
+    expect(existsSync(orphan)).toBe(false);
   });
 
   it("bounds one run by bytes too", async () => {
