@@ -41,7 +41,7 @@ describe("SSE over a real socket", () => {
       pairing,
       logger: pino({ level: "silent" }),
     });
-    engine = bootEngine({ app, dbPath: dbPath(), heartbeatMs: 60_000 });
+    engine = bootEngine({ app, dbPath: dbPath(), pairing, heartbeatMs: 60_000 });
     addProject(engine.storage, "demo");
     server = await startServer({ app, port });
     const base = `http://127.0.0.1:${port}`;

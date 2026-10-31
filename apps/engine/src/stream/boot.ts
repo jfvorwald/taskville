@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import type { Logger } from "pino";
+import type { PairingStore } from "../auth/pairing.ts";
 import type { AppEnv } from "../http/app.ts";
 import { domainReducer, IngestPipeline, registerIngestRoute } from "../ingest/index.ts";
 import {
@@ -10,17 +11,21 @@ import {
 } from "../storage/index.ts";
 import { type ExpiredRequest, expireOpenRequests } from "./expire.ts";
 import { StreamHub } from "./hub.ts";
-import { registerStreamRoutes } from "./routes.ts";
+import { CUTOFF_DRAIN_TIMEOUT_MS, MAX_SSE_STREAMS, registerStreamRoutes } from "./routes.ts";
 
 export interface BootOptions {
   /** The app from `createApp`, so every route gets its security middleware. */
   app: Hono<AppEnv>;
   /** `$TASKVILLE_HOME/taskville.db` (config `homePaths(home).db`). */
   dbPath: string;
+  /** The same PairingStore passed to `createApp`, so `unpair` ends browser streams. */
+  pairing: PairingStore;
   now?: () => Date;
   logger?: Logger;
   heartbeatMs?: number;
   queueLimit?: number;
+  maxStreams?: number;
+  drainTimeoutMs?: number;
 }
 
 export interface Engine {
@@ -32,6 +37,8 @@ export interface Engine {
   /** Requests that were still open and got `request.expired` at this boot. */
   expired: ExpiredRequest[];
   queueLimit: number;
+  maxStreams: number;
+  drainTimeoutMs: number;
   /** For `createApp({ health })`: database readable and in WAL mode. */
   health(): { db: "ok" | "error"; walMode: boolean };
   /** Ends every open stream, then closes the database. Call before closing the HTTP server. */
@@ -65,12 +72,17 @@ export function bootEngine(options: BootOptions): Engine {
       ...(options.logger ? { logger: options.logger } : {}),
     });
     const queueLimit = options.queueLimit ?? 1000;
+    const maxStreams = options.maxStreams ?? MAX_SSE_STREAMS;
+    const drainTimeoutMs = options.drainTimeoutMs ?? CUTOFF_DRAIN_TIMEOUT_MS;
     registerIngestRoute(options.app, pipeline);
     registerStreamRoutes(options.app, {
       storage,
       hub,
+      pairing: options.pairing,
       now,
       queueLimit,
+      maxStreams,
+      drainTimeoutMs,
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
     });
     return {
@@ -80,6 +92,8 @@ export function bootEngine(options: BootOptions): Engine {
       rebuilt,
       expired,
       queueLimit,
+      maxStreams,
+      drainTimeoutMs,
       health: () => {
         if (closed) return { db: "error", walMode: false };
         try {

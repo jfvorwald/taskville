@@ -10,6 +10,7 @@ export type ErrorCode =
   | "invalid_pairing_code"
   | "not_found"
   | "not_implemented"
+  | "too_many_streams"
   | "payload_too_large"
   | "project_exists"
   | "unauthorized"

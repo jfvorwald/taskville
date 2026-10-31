@@ -13,7 +13,6 @@ The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typechec
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
 | [#16](https://github.com/jfvorwald/taskville/issues/16) M1.14 CLI: serve, status, events, requests | CLI | domain | in progress |
-| [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 fixes F1, F2, F5 (stream revoke, poison event, SSE limits) | Engine | storage | in progress |
 | [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 fix F3 (redaction gaps), then F4 and F6 (pairing TTL, opener args) | Adapter | hardening | in progress |
 
 Ready, waiting for a free teammate: none (storage teammate takes #103 after its security fixes). Blocked: #18 on #16; #103 on #18; #95 (retro) on everything.
@@ -22,6 +21,7 @@ Ready, waiting for a free teammate: none (storage teammate takes #103 after its 
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 security fixes F1, F2, F5 | [#152](https://github.com/jfvorwald/taskville/pull/152) | 4930 pass, no findings | engine 253 tests, `pnpm check` 1123 tests on main; a mutation per fix ([report](tasks/M1.18-F1.md)) |
 | [#15](https://github.com/jfvorwald/taskville/issues/15) M1.13 Snapshots and resumable SSE streams | [#149](https://github.com/jfvorwald/taskville/pull/149) | 4903 pass; re-review 4909 pass; post-commit 4899 (1 high, 1 medium) and 4906 (1 medium) fixed | engine 245 tests (31 stream) incl. crash-resume, 100 disconnect cycles, slow consumer; `pnpm check` 1115 tests on main ([report](tasks/M1.13.md)) |
 | [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 Seeded six-agent demo producer | [#146](https://github.com/jfvorwald/taskville/pull/146) | 4876: 4 medium fixed; re-review 4882: 2 medium fixed; post-commit 4886 pass | demo 92 tests incl. US3-2 over 20 seeds; `pnpm check` 1084 tests on main ([report](tasks/M1.15.md)) |
 | [#13](https://github.com/jfvorwald/taskville/issues/13) M1.12 Ingest pipeline | [#145](https://github.com/jfvorwald/taskville/pull/145) | 4872 and post-commit: 2 medium, several low fixed; re-review 4885 pass (1 low fixed) | engine 214 tests (41 ingest) incl. golden fixtures, concurrency; `pnpm check` 993 tests on main; mutation checks ([report](tasks/M1.12.md)) |
@@ -73,6 +73,8 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 Targets in the spec are not measurements until a ticket records them here with the command that produced them.
 
 ## Known follow-ups
+
+- M1.18 F5 residual: a client that stalls before catching up on the backlog is not cut off (memory bounded, sockets capped at 64, no write timeout in that phase). `bootEngine` now requires `pairing`. NOT RUN: real file-descriptor exhaustion.
 
 - Security review #17: F3 (redaction misses `Authorization: Token` and `curl -u`) is rated medium as the redactor is heuristic; `.roborev.toml` would rate a broken masking invariant high. Fixed before G1 either way. The reviewer recommends memory-only pairings for #113. Reviewer NOT RUN: engine tests and probe scripts (read-only shell); each fix PR reproduces its finding with a failing test.
 

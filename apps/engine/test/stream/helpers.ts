@@ -24,10 +24,10 @@ export function useDbPath(): () => string {
 /** Boots an engine on an in-process app (no socket) and returns it with the app. */
 export function bootInProcess(
   dbPath: string,
-  options: Partial<Omit<BootOptions, "app" | "dbPath">> = {},
+  options: Partial<Omit<BootOptions, "app" | "dbPath" | "pairing">> = {},
 ) {
   const { app, pairing } = makeApp();
-  const engine = bootEngine({ app, dbPath, heartbeatMs: 60_000, ...options });
+  const engine = bootEngine({ app, dbPath, pairing, heartbeatMs: 60_000, ...options });
   return { app, pairing, engine };
 }
 

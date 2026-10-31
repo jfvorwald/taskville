@@ -122,6 +122,39 @@ describe("POST /v1/events/batch", () => {
     expect(db.storage().head("demo")).toBe(1);
   });
 
+  it("rejects a deeply nested engine-only event alone and keeps its siblings (security F2)", async () => {
+    const { app } = setup();
+    // command.requested with payload.payload nested a million levels: about 2 MB, under the limit.
+    const depth = 1_000_000;
+    const poison = JSON.stringify(
+      input("poison", {
+        type: "command.requested",
+        payload: {
+          commandId: "c1",
+          commandType: "session.open",
+          requestId: "r1",
+          idempotencyKey: "k1",
+          payload: { x: "@" },
+        },
+      }),
+    ).replace('"@"', `${"[".repeat(depth)}${"]".repeat(depth)}`);
+    const body = `{"events":[${JSON.stringify(input("e1"))},${poison},${JSON.stringify(input("e2"))}]}`;
+    expect(body.length).toBeLessThan(5 * 1024 * 1024);
+    const res = await app.request(URL, {
+      method: "POST",
+      headers: { ...bearer(CLI_TOKEN), "Content-Type": "application/json" },
+      body,
+    });
+    expect(res.status).toBe(200);
+    const parsed = eventBatchResponseSchema.parse(await res.json());
+    expect(parsed.results.map((r) => (r.status === "rejected" ? r.error.code : r.status))).toEqual([
+      "accepted",
+      "engine_only_type",
+      "accepted",
+    ]);
+    expect(db.storage().head("demo")).toBe(3);
+  });
+
   it("keeps the sequence gap-free and duplicate-free under concurrent requests", async () => {
     const { app } = setup();
     const requests = Array.from({ length: 20 }, (_, r) =>

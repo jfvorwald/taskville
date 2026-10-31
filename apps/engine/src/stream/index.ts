@@ -4,5 +4,10 @@
 export { type BootOptions, bootEngine, type Engine } from "./boot.ts";
 export { type ExpiredRequest, expireOpenRequests } from "./expire.ts";
 export { type HubSubscriber, StreamHub } from "./hub.ts";
-export { registerStreamRoutes, type StreamRouteOptions } from "./routes.ts";
+export {
+  CUTOFF_DRAIN_TIMEOUT_MS,
+  MAX_SSE_STREAMS,
+  registerStreamRoutes,
+  type StreamRouteOptions,
+} from "./routes.ts";
 export { StreamSubscriber, type SubscriberOptions } from "./subscriber.ts";
