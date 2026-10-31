@@ -673,7 +673,23 @@ describe("repository config that names a program to run", () => {
     return `http://127.0.0.1:${(server.address() as AddressInfo).port}/repo`;
   }
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const variants: Array<[string, (repo: string, marker: string) => void | Promise<void>]> = [
+    [
+      "a git-remote-<name> helper on PATH",
+      (repo, marker) => {
+        const bin = join(dir, "bin");
+        mkdirSync(bin);
+        const helper = join(bin, "git-remote-evil");
+        writeFileSync(helper, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o755 });
+        vi.stubEnv("PATH", `${bin}:${process.env.PATH ?? ""}`);
+        git(repo, "config", "remote.evil.url", "evil::anything");
+        git(repo, "config", "protocol.evil.allow", "always");
+      },
+    ],
     [
       "remote.<r>.uploadpack on a local path",
       (repo, marker) => {
@@ -717,4 +733,17 @@ describe("repository config that names a program to run", () => {
 
     expect(existsSync(marker)).toBe(false);
   });
+
+  // The transport guard on its own, without the lazy-fetch switch: an explicit fetch through the
+  // same runner must not start anything either.
+  it.each(variants)(
+    "refuses the transport even for an explicit fetch: %s",
+    async (_name, configure) => {
+      const { repo, marker } = await promisorTrap(configure);
+
+      await runGit(repo, ["fetch", "evil"]).catch(() => undefined);
+
+      expect(existsSync(marker)).toBe(false);
+    },
+  );
 });
