@@ -175,3 +175,43 @@ describe("context", () => {
     expect(String(e?.payload.displayName).isWellFormed()).toBe(true);
   });
 });
+
+describe("composed IDs stay within the 200-character protocol limit", () => {
+  const longest = (n: number) => "a".repeat(n);
+
+  it("bounds a worker requestId built from the longest accepted sourceEventId", () => {
+    const note = {
+      session_id: SESSION,
+      hook_event_name: "Notification",
+      notification_type: "worker_permission_prompt",
+      message: "pip needs permission for Bash",
+    };
+    for (const n of [150, 170, 171, 180]) {
+      for (const e of map(note, { sourceEventId: longest(n) }).events) {
+        expect(parseInputEvent(e).ok, `${n}`).toBe(true);
+      }
+    }
+  });
+
+  it("ignores a team task whose composed taskId would be too long", () => {
+    const hook = {
+      session_id: SESSION,
+      hook_event_name: "TaskCreated",
+      task_id: longest(64),
+      team_name: longest(128),
+      task_subject: "x",
+    };
+    const result = map(hook);
+    for (const e of result.events) expect(parseInputEvent(e).ok).toBe(true);
+  });
+
+  it("ignores a team spawn whose composed teamId would be too long", () => {
+    const hook = {
+      session_id: SESSION,
+      hook_event_name: "PostToolUse",
+      tool_name: "Agent",
+      tool_response: { status: "teammate_spawned", team_name: longest(199), is_splitpane: true },
+    };
+    for (const e of map(hook).events) expect(parseInputEvent(e).ok).toBe(true);
+  });
+});

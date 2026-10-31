@@ -4,7 +4,6 @@ import {
   attributeHook,
   childAgentId,
   NAME_MAX,
-  SESSION_ID_MAX,
 } from "./attribution.ts";
 import { idToken, own, ownRecord, ownString, safeText } from "./fields.ts";
 
@@ -66,8 +65,18 @@ const TITLE_MAX = 200;
 const TEAM_PREFIX = "claude-code:team:";
 const TASK_PREFIX = "claude-code:task:";
 const REQUEST_PREFIX = "claude-code:request:";
-/** Longest shim event ID that still leaves room for the `:crew:<n>` suffix within 200. */
-const SOURCE_EVENT_ID_MAX = 180;
+/** Protocol v1 ID limit (`ID_MAX_LENGTH`). Every ID built below is checked against it. */
+const ID_MAX = 200;
+/**
+ * Longest shim event ID accepted, as in the core mapper: leaves room for `:crew:<n>` and for
+ * `claude-code:request:<id>:worker` within 200.
+ */
+const SOURCE_EVENT_ID_MAX = 170;
+/** Longest `team_name` accepted. Real ones are `session-<8 hex>`. */
+const TEAM_NAME_MAX = 128;
+
+/** `id` if it fits the protocol ID limit, else undefined. */
+const fits = (id: string): string | undefined => (id.length <= ID_MAX ? id : undefined);
 /** The name Claude Code gives a team's lead as a message sender or recipient. */
 const LEAD_NAME = "team-lead";
 
@@ -176,8 +185,8 @@ function subagentStop(p: unknown, who: Attribution): Draft[] | string {
 }
 
 const teamIdOf = (teamName: unknown): string | undefined => {
-  const name = idToken(teamName, SESSION_ID_MAX * 2);
-  return name === undefined ? undefined : `${TEAM_PREFIX}${name}`;
+  const name = idToken(teamName, TEAM_NAME_MAX);
+  return name === undefined ? undefined : fits(`${TEAM_PREFIX}${name}`);
 };
 
 /**
@@ -248,7 +257,7 @@ function teammateSpawned(
 ): Draft[] | string {
   // Teammates cannot spawn teammates, so only a session's own agent can lead.
   if (who.role !== "session") return "teammate spawn from a non-session agent";
-  const teamName = idToken(own(response, "team_name"), SESSION_ID_MAX * 2);
+  const teamName = idToken(own(response, "team_name"), TEAM_NAME_MAX);
   const teamId = teamIdOf(teamName);
   if (teamName === undefined || teamId === undefined) return "teammate spawn without team_name";
   const drafts: Draft[] = [
@@ -401,8 +410,9 @@ function teamTask(
 ): Draft[] | string {
   const taskKey = idToken(own(p, "task_id"), AGENT_ID_MAX);
   if (taskKey === undefined) return `${hook} without task_id`;
-  const scope = idToken(own(p, "team_name"), SESSION_ID_MAX * 2) ?? who.sessionId;
-  const taskId = `${TASK_PREFIX}${scope}:${taskKey}`;
+  const scope = idToken(own(p, "team_name"), TEAM_NAME_MAX) ?? who.sessionId;
+  const taskId = fits(`${TASK_PREFIX}${scope}:${taskKey}`);
+  if (taskId === undefined) return `${hook} task ID too long`;
   if (hook === "TaskCreated") {
     const title = safeText(own(p, "task_subject"), TITLE_MAX) ?? `Task ${taskKey}`;
     return [{ type: "task.created", ...at(who), taskId, payload: { title } }];
