@@ -82,7 +82,15 @@ describe("parentDirProblem (injected stat)", () => {
 });
 
 describe("install against a home that is not private", () => {
-  const args = (box: Sandbox) => ["install", "claude-code", "--scope", "user", "--yes", "--home", box.tv];
+  const args = (box: Sandbox) => [
+    "install",
+    "claude-code",
+    "--scope",
+    "user",
+    "--yes",
+    "--home",
+    box.tv,
+  ];
 
   it("refuses a 0777 Taskville home and changes nothing", async () => {
     sb = sandbox();

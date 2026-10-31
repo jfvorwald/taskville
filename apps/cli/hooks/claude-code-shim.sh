@@ -102,7 +102,9 @@
 #   the shell's builtin printf, so it never appears in the process list. curl
 #   runs with -q (ignores ~/.curlrc), --noproxy '*' (ignores proxy variables),
 #   --proto =http, and no redirect following. The home and spool directories
-#   are refused if they are symlinks.
+#   are refused if they are symlinks, if another user owns them, or if group or
+#   other can write them: nothing is read from or written to them, the event is
+#   not posted, and the shim exits 0 silently (M2.23).
 
 umask 077
 exec 1>/dev/null 2>&1 3<&0 || exit 0
@@ -172,13 +174,26 @@ home=$(strip_slashes "$home")
 # A relative home such as "-data" must never be read as an option.
 case $home in /*) ;; *) home=./$home ;; esac
 
+# True when the directory is ours and neither group nor other can write it
+# (the engine's rule, apps/engine/src/config/home.ts, ensurePrivateDir). Anyone
+# who can write the home can swap the token or the spool; if find fails the
+# answer is no.
+private_dir() {
+  [ -O "$1" ] || return 1
+  _loose=$(find "$1" -prune \( -perm -0020 -o -perm -0002 \) -print 2>/dev/null) || return 1
+  [ -z "$_loose" ]
+}
+
 # A concurrent hook may create either directory first: a failed mkdir is not
-# fatal, the checks after it decide.
+# fatal, the checks after it decide. The home is vetted before the spool is
+# made inside it, and before anything is read from it or written to it.
 if [ ! -e "$home" ] && [ ! -h "$home" ]; then mkdir -p "$home" 2>/dev/null; fi
 if [ -h "$home" ] || [ ! -d "$home" ]; then bail; fi
+private_dir "$home" || bail
 spool=$home/spool
 if [ ! -e "$spool" ] && [ ! -h "$spool" ]; then mkdir "$spool" 2>/dev/null; fi
 if [ -h "$spool" ] || [ ! -d "$spool" ] || [ ! -w "$spool" ]; then bail; fi
+private_dir "$spool" || bail
 
 work=$(mktemp -d "$spool/.claude-code.XXXXXX") || work=
 [ -n "$work" ] || bail
