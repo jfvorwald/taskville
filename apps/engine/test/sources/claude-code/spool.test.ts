@@ -474,6 +474,37 @@ describe("replaySpool", () => {
     expect(spoolNames()).toEqual(["claude-code.poison.jsonl"]);
   });
 
+  it("never retries a quarantined hook when a later hook fails in the same run", async () => {
+    const [p1, p2, b] = [uuid(), uuid(), uuid()];
+    const lines = [
+      line({ sourceEventId: p1 }),
+      line({ sourceEventId: p2 }),
+      line({ sourceEventId: b }),
+    ];
+    writeFileSync(main(), lines.join(""), { mode: 0o600 });
+    const { source, mapper } = makeSource(db());
+    const tries = new Map<string, number>();
+    const throwing = {
+      ingestHook(input: HookInput) {
+        tries.set(input.sourceEventId, (tries.get(input.sourceEventId) ?? 0) + 1);
+        if (input.sourceEventId === p1 || input.sourceEventId === p2) {
+          return Promise.reject(new Error("always"));
+        }
+        return source.ingestHook(input);
+      },
+    };
+    const reports: SpoolReplayReport[] = [];
+    for (let i = 0; i < 5; i++) reports.push(await replaySpool({ spoolDir, source: throwing }));
+    // p1 is quarantined on run 3 and never tried again; p2 on run 5; then b replays.
+    expect(reports.map((r) => r.poisoned)).toEqual([0, 0, 1, 0, 1]);
+    expect(tries.get(p1)).toBe(3);
+    expect(tries.get(p2)).toBe(3);
+    expect(mapper.calls.map((c) => c.sourceEventId)).toEqual([b]);
+    const poisonFile = join(spoolDir, "claude-code.poison.jsonl");
+    expect(readFileSync(poisonFile, "utf8")).toBe(lines[0] + lines[1]);
+    expect(spoolNames()).toEqual(["claude-code.poison.jsonl"]);
+  });
+
   it("does not quarantine a hook that fails once and then succeeds", async () => {
     const id = uuid();
     writeFileSync(main(), line({ sourceEventId: id }), { mode: 0o600 });
