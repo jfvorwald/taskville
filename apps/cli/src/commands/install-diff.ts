@@ -52,8 +52,9 @@ interface Sensitive {
 
 /**
  * Values in `text` (a JSON document) that redaction would mask: strings by JSON path or content,
- * and numbers under a sensitive key (#194). Booleans are masked in stored data too but carry one
- * bit, so the diff leaves `true` and `false` readable.
+ * and everything inside a sensitive key's sealed value (#194): strings, numbers and keys.
+ * Booleans are sealed in stored data too but carry one bit, so the diff leaves `true` and `false`
+ * readable.
  */
 function sensitiveValues(text: string | undefined, into: Sensitive): void {
   if (text === undefined) return;
@@ -71,8 +72,23 @@ function sensitiveValues(text: string | undefined, into: Sensitive): void {
           ? (node as Record<string | number, unknown>)[step]
           : undefined;
     }
-    if (typeof node === "string" && node !== "") into.strings.add(node);
-    if (typeof node === "number") into.numbers.add(node);
+    collect(node, into);
+  }
+}
+
+/** Every string, number and key inside a masked value: a sealed object hides its keys too. */
+function collect(node: unknown, into: Sensitive): void {
+  if (typeof node === "string") {
+    if (node !== "") into.strings.add(node);
+  } else if (typeof node === "number") {
+    into.numbers.add(node);
+  } else if (Array.isArray(node)) {
+    for (const item of node) collect(item, into);
+  } else if (node !== null && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== "") into.strings.add(key);
+      collect(value, into);
+    }
   }
 }
 
@@ -126,6 +142,9 @@ export function settingsDiff(
 ): string {
   if (before === after) return "";
   const ops = diffLines(lines(before), lines(after));
+  const sensitive: Sensitive = { strings: new Set(), numbers: new Set() };
+  sensitiveValues(before, sensitive);
+  sensitiveValues(after, sensitive);
   const keep = ops.map((_op, k) =>
     ops.slice(Math.max(0, k - CONTEXT), k + CONTEXT + 1).some((o) => o.kind !== " "),
   );
@@ -141,14 +160,12 @@ export function settingsDiff(
     }
     if (gap) out.push("@@");
     gap = false;
-    out.push(`${op.kind}${op.line}`);
+    // Masked before the prefix, so "-" never joins a number or a token on the line (roborev 5260).
+    out.push(`${op.kind}${maskLine(op.line, sensitive)}`);
   });
   const missingNewline = (text: string | undefined) =>
     text !== undefined && text !== "" && !text.endsWith("\n");
   if (missingNewline(before) || missingNewline(after))
     out.push("\\ (no newline at end of the original file)");
-  const sensitive: Sensitive = { strings: new Set(), numbers: new Set() };
-  sensitiveValues(before, sensitive);
-  sensitiveValues(after, sensitive);
-  return `${out.map((line) => maskLine(line, sensitive)).join("\n")}\n`;
+  return `${out.map((line, k) => (k < 2 ? redactText(line).text : line)).join("\n")}\n`;
 }
