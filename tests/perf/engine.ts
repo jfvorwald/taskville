@@ -33,10 +33,10 @@ function freePort(): Promise<number> {
   });
 }
 
-function waitForListening(child: ChildProcess): Promise<string> {
+function waitForListening(child: ChildProcess, timeoutMs: number): Promise<string> {
   return new Promise((done, fail) => {
     let out = "";
-    const timer = setTimeout(() => fail(new Error(`engine did not start:\n${out}`)), 20_000);
+    const timer = setTimeout(() => fail(new Error(`engine did not start:\n${out}`)), timeoutMs);
     child.stdout?.on("data", (chunk: Buffer) => {
       out += chunk.toString();
       const match = /listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(out);
@@ -52,8 +52,15 @@ function waitForListening(child: ChildProcess): Promise<string> {
   });
 }
 
+export interface StartOptions {
+  /** How long the engine may take to print its listening line. Default 20 s. */
+  startupTimeoutMs?: number;
+  /** Called with the child's pid and home right after spawn (tests). */
+  onSpawn?: (pid: number, home: string) => void;
+}
+
 /** Starts `node apps/cli/src/main.ts serve --headless` on a free port in a new home. */
-export async function startEngine(): Promise<RunningEngine> {
+export async function startEngine(options: StartOptions = {}): Promise<RunningEngine> {
   const home = mkdtempSync(join(tmpdir(), "taskville-perf-"));
   const port = await freePort();
   const child = spawn(
@@ -63,9 +70,20 @@ export async function startEngine(): Promise<RunningEngine> {
   );
   // Tracked from spawn, so stop() also returns if the engine already exited on its own.
   const exited = new Promise<void>((done) => child.once("exit", () => done()));
-  const base = await waitForListening(child);
   const pid = child.pid ?? 0;
-  const token = readFileSync(join(home, "token"), "utf8").trim();
+  options.onSpawn?.(pid, home);
+  let base: string;
+  let token: string;
+  try {
+    base = await waitForListening(child, options.startupTimeoutMs ?? 20_000);
+    token = readFileSync(join(home, "token"), "utf8").trim();
+  } catch (error) {
+    // A failed start must not leave the engine running or its home behind.
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await exited;
+    rmSync(home, { recursive: true, force: true });
+    throw error;
+  }
   const headers = { Authorization: `Bearer ${token}` };
   const post = (path: string, body: unknown) =>
     fetch(`${base}${path}`, {

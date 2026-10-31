@@ -28,7 +28,13 @@ export interface LatencyResult {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function probe(
+/**
+ * Sends `count` single-event probes, one at a time, and times each from just before its POST to
+ * its acknowledgment and to the viewer receiving it. Both waits are observed together, so a
+ * viewer timeout during a slow ingest rejects here (and reaches the caller's cleanup) instead of
+ * surfacing as an unhandled rejection.
+ */
+export async function probe(
   engine: RunningEngine,
   viewer: Viewer,
   phase: string,
@@ -41,22 +47,26 @@ async function probe(
     const sourceEventId = `${PROBE_PREFIX}${phase}-${i}`;
     const arrival = viewer.arrival(sourceEventId);
     const start = performance.now();
-    const response = await engine.ingest([
-      {
-        schemaVersion: 1,
-        projectId: "perf",
-        sourceId: "perf:probe",
-        sourceEventId,
-        occurredAt: new Date().toISOString(),
-        type: "agent.connected",
-        agentId: "probe-agent",
-        payload: {},
-        provenance: "live",
-      },
-    ]);
-    toAck.push(performance.now() - start);
-    if (response.results[0]?.status !== "accepted") throw new Error(`probe ${i} not accepted`);
-    toViewer.push((await arrival) - start);
+    const ack = engine
+      .ingest([
+        {
+          schemaVersion: 1,
+          projectId: "perf",
+          sourceId: "perf:probe",
+          sourceEventId,
+          occurredAt: new Date().toISOString(),
+          type: "agent.connected",
+          agentId: "probe-agent",
+          payload: {},
+          provenance: "live",
+        },
+      ])
+      .then((response) => {
+        toAck.push(performance.now() - start);
+        if (response.results[0]?.status !== "accepted") throw new Error(`probe ${i} not accepted`);
+      });
+    const [, at] = await Promise.all([ack, arrival]);
+    toViewer.push(at - start);
     await sleep(gapMs);
   }
   return { viewer: summarize(toViewer), ack: summarize(toAck) };
