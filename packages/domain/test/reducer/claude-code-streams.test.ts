@@ -83,35 +83,39 @@ const isTurnEnd = (h: Hook) =>
   (h.input.hook_event_name === "Stop" || h.input.hook_event_name === "UserPromptSubmit");
 
 describe("S-1 permission log: denied calls fire no PostToolUse", () => {
-  it("leaves no call running after each turn ends, and the denied ones unfinished", () => {
+  it("leaves no call of a session running after that session's turn ends", () => {
     const afterTurns: number[] = [];
     const state = play(serverLog(), (hook, s) => {
-      if (isTurnEnd(hook)) afterTurns.push(running(s).length);
+      if (!isTurnEnd(hook)) return;
+      afterTurns.push(running(s).filter((c) => c.sessionId === hook.input.session_id).length);
     });
     expect(afterTurns.length).toBeGreaterThan(0);
     expect(afterTurns.every((n) => n === 0)).toBe(true);
-    expect(running(state)).toEqual([]);
     expect(Object.values(state.toolCalls).some((c) => c.phase === "succeeded")).toBe(true);
   });
 
-  it("closes the three denied calls as unfinished, never succeeded", () => {
+  it("closes exp5 and exp7 as unfinished; exp6 stays running, its session never reports again", () => {
+    // exp5 (hook deny, then Stop) and exp7 (terminal No, then the next prompt) get a later turn
+    // event in their session. exp6 (terminal No) is the last hook of the first session: the
+    // spike moved to a second session and had no SessionEnd hook, so nothing can close it.
     const hooks = serverLog();
-    const pre = hooks.filter((h) => h.input.hook_event_name === "PreToolUse");
-    const posted = new Set(
-      hooks
-        .filter((h) => h.input.hook_event_name === "PostToolUse")
-        .map((h) => h.input.tool_use_id),
-    );
-    const denied = pre.map((h) => h.input.tool_use_id as string).filter((id) => !posted.has(id));
-    expect(denied).toHaveLength(3);
-    const outcomes: Record<string, string> = {};
+    const command = (h: Hook) => (h.input.tool_input as { command?: string } | undefined)?.command;
+    const idOf = (exp: string) =>
+      hooks.find(
+        (h) => h.input.hook_event_name === "PreToolUse" && command(h) === `touch ${exp}.txt`,
+      )?.input.tool_use_id as string;
+    const outcomes = new Map<string, string>();
     play(hooks, (_, s) => {
-      for (const id of denied) {
-        const call = s.toolCalls[id];
-        if (call !== undefined) outcomes[id] = call.phase;
+      for (const exp of ["exp5", "exp6", "exp7"]) {
+        const phase = s.toolCalls[idOf(exp)]?.phase;
+        if (phase !== undefined) outcomes.set(exp, phase);
       }
     });
-    expect(Object.values(outcomes)).toEqual(["unfinished", "unfinished", "unfinished"]);
+    expect(Object.fromEntries(outcomes)).toEqual({
+      exp5: "unfinished",
+      exp6: "running",
+      exp7: "unfinished",
+    });
   });
 });
 

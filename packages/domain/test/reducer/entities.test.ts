@@ -90,7 +90,7 @@ describe("root reducer", () => {
   it("hashes state as <reducerVersion>:<sha256 of canonical JSON>", () => {
     const state = initialState("p1");
     expect(projectStateHash(state)).toBe(stateHash(REDUCER_VERSION, state));
-    expect(projectStateHash(state)).toMatch(/^2:[0-9a-f]{64}$/);
+    expect(projectStateHash(state)).toMatch(/^3:[0-9a-f]{64}$/);
   });
 
   it("rejects an event from another project", () => {

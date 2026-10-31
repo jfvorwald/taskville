@@ -16,7 +16,7 @@ const golden = (name: string, actual: string) => {
 /** stateHash covers engine-assigned event IDs (test evidence), so it is checked, then masked. */
 const stable = (json: string) => {
   const parsed = JSON.parse(json) as { stateHash: string };
-  expect(parsed.stateHash).toMatch(/^2:[0-9a-f]{64}$/);
+  expect(parsed.stateHash).toMatch(/^3:[0-9a-f]{64}$/);
   return `${JSON.stringify({ ...parsed, stateHash: "<stateHash>" }, null, 2)}\n`;
 };
 const expected = (fixture: string) =>
