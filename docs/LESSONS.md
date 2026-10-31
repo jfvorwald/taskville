@@ -30,7 +30,7 @@ Entry format:
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #18 · **Recorded by:** domain teammate (M1.16)
 - **What happened:** A digits-only regex accepted hundreds of 9s, which parse to `Infinity`; review found it three times, one flag at a time (`--duration` medium in job 4957, then custom pace intervals high and `--speed` medium in job 4962). Separately, macOS has no `timeout`, so a red run that could hang was not run, and its empty output was briefly misread as a reproduced hang.
 - **Lesson:** Check `Number.isFinite` and an upper bound wherever input becomes a duration, interval or loop count, in the library and not only the CLI; write red tests against parser return values when the failing behavior is a hang.
-- **Action:** Fixed in the CLI in PR #156; library parsers fixed in a follow-up PR (`M1.15-fix`).
+- **Action:** Fixed in the CLI in PR #156; library parsers bounded (30 days simulated, `MAX_DURATION_MS`) in PR #159.
 
 ### L-38: Engine-authored events built from user input skip ingest masking
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #16 · **Recorded by:** domain teammate (M1.14)

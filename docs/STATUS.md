@@ -13,7 +13,6 @@ The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typechec
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
 | [#103](https://github.com/jfvorwald/taskville/issues/103) M1.21 Performance and soak checks | Engine | storage | in progress |
-| [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 fix: demo parsers reject non-finite values | Domain | domain | in progress |
 | [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 fixes F4 and F6 (pairing TTL, opener args) | Engine | hardening | in progress |
 
 Ready, waiting for a free teammate: none (storage teammate takes #103 after its security fixes). Blocked: #95 (retro) on #17 and #103.
@@ -22,6 +21,7 @@ Ready, waiting for a free teammate: none (storage teammate takes #103 after its 
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 fix: demo parsers reject non-finite values | [#159](https://github.com/jfvorwald/taskville/pull/159) | 4979 pass, no findings | demo 97, CLI 60, `pnpm check` 1278 tests on main ([report](tasks/M1.15-fix.md)) |
 | [#18](https://github.com/jfvorwald/taskville/issues/18) M1.16 CLI demo commands | [#156](https://github.com/jfvorwald/taskville/pull/156) | 4957: 1 medium fixed; re-review 4962: 1 high, 1 medium fixed; post-commit 4964 pass | CLI 60 tests incl. `demo start` against a real `serve`; `pnpm check` 1203 tests on main ([report](tasks/M1.16.md)) |
 | [#16](https://github.com/jfvorwald/taskville/issues/16) M1.14 CLI: serve, status, events, requests | [#153](https://github.com/jfvorwald/taskville/pull/153) | 4918: 2 high, 1 medium fixed; re-review 4924: 1 medium fixed; post-commit 4931: 1 medium fixed | CLI 39 tests incl. quickstart goldens, engine 266, `pnpm check` 1182 tests on main; first CI run failed on the merge ref, fixed ([report](tasks/M1.14.md)) |
 | [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 security fix F3 (redaction gaps) | [#158](https://github.com/jfvorwald/taskville/pull/158) | 4935: 2 high; re-review 4945: 3 high; post-commit 4950, 4958, 4965: 7 high; all fixed test-first; 4970 pass | adapters 213 tests, 41 adversarial inputs within 30 ms; `pnpm check` 1273 tests on main ([report](tasks/M1.18-F3.md)) |
