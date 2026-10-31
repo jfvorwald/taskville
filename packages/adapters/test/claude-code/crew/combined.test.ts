@@ -35,6 +35,16 @@ describe.each(STREAMS)("mapClaudeCodeHook over %s", (name) => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("matches the composed golden (core then crew events per hook)", async () => {
+    const lines = results.flatMap(({ line, result }) => [
+      `#${line.seq} ${String(line.input.hook_event_name)}${result.events.length === 0 ? "  (ignored)" : ""}`,
+      ...result.events.map((e) => `  ${e.type} ${e.agentId ?? "-"} ${JSON.stringify(e.payload)}`),
+    ]);
+    await expect(`${lines.join("\n")}\n`).toMatchFileSnapshot(
+      `golden/composed-${name.replace("/", "-")}.txt`,
+    );
+  });
+
   it("explains every hook that produced nothing", () => {
     for (const { result } of results) {
       if (result.events.length === 0) expect(result.ignored).toMatch(/^core: .+; crew: .+$/);
