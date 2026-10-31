@@ -59,14 +59,15 @@ async function ingest(io: Io, args: string[]): Promise<number> {
   const valid: { line: number; value: unknown }[] = [];
   for (const l of lines) {
     if (!l.ok) continue;
-    // An event that alone exceeds a batch would get 413 and stop the whole file; reject it here.
-    if (Buffer.byteLength(JSON.stringify(l.value)) + 1 > BATCH_BYTES) {
+    // An event that would not fit even a request of its own gets 413 and would stop the whole
+    // file, so it is rejected here. Larger-than-budget events that do fit go alone in a batch.
+    if (Buffer.byteLength(JSON.stringify({ events: [l.value] })) > MAX_BATCH_BYTES) {
       results.push({
         line: l.line,
         status: "rejected",
         error: {
           code: "event_too_large",
-          message: `Larger than ${BATCH_BYTES} bytes, the most one request can carry`,
+          message: `A request holding only this event is over ${MAX_BATCH_BYTES} bytes, the engine's limit`,
         },
       });
     } else valid.push({ line: l.line, value: l.value });

@@ -216,6 +216,26 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
     expect(result.stdout).toMatch(/^line 2: event_too_large/m);
   });
 
+  it("still posts an event that fits one request, even above the batching budget", async () => {
+    const file = join(home.path, "fits.jsonl");
+    const event = {
+      schemaVersion: 1,
+      projectId: "demo",
+      sourceId: "adapter:big",
+      sourceEventId: "fits-1",
+      occurredAt: "2026-10-30T09:01:00Z",
+      type: "agent.finished",
+      agentId: "big-agent-1",
+      payload: { summary: "y".repeat(5_200_000) },
+      provenance: "live",
+    };
+    expect(JSON.stringify({ events: [event] }).length).toBeLessThan(5 * 1024 * 1024);
+    writeFileSync(file, JSON.stringify(event));
+    const result = await at("events", "ingest", "--file", file);
+    expect(result.stdout).toContain("accepted 1 / duplicate 0 / conflict 0 / rejected 0");
+    expect(result.code).toBe(0);
+  });
+
   it("revokes browser pairings", async () => {
     const result = await at("unpair");
     expect(result.code).toBe(0);
