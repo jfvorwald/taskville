@@ -4,7 +4,7 @@ import { type ProjectState, projectStateHash, replay } from "@taskville/domain/r
 import { eventBatchResponseSchema, storedEnvelopeSchema } from "@taskville/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { type CommittedBatch, domainReducer, IngestPipeline } from "../../src/ingest/index.ts";
-import { fakeGithubToken, fixedNow, input, useStorage } from "./helpers.ts";
+import { addProject, fakeGithubToken, fixedNow, input, useStorage } from "./helpers.ts";
 
 const db = useStorage(["demo", "other"]);
 
@@ -190,6 +190,54 @@ describe("IngestPipeline.ingest", () => {
   });
 });
 
+describe("hostile input", () => {
+  it("rejects a string with a lone surrogate per event, keeping its valid siblings", () => {
+    const response = pipeline().ingest([
+      input("e1"),
+      input("t1", {
+        type: "task.created",
+        taskId: "task-1",
+        payload: { title: "bad \ud800 title" },
+      }),
+      input("e2", { agentId: "agent-\udc00" }),
+      input("e3"),
+    ]);
+    expect(response.results.map((r) => (r.status === "rejected" ? r.error : r.status))).toEqual([
+      "accepted",
+      expect.objectContaining({ code: "invalid_payload", path: "payload.title" }),
+      expect.objectContaining({ code: "invalid_envelope", path: "agentId" }),
+      "accepted",
+    ]);
+    expect(db.storage().head("demo")).toBe(3);
+  });
+
+  it("reports the head of a project whose ID is __proto__", () => {
+    addProject(db.storage(), "__proto__");
+    const onCommit = vi.fn();
+    const response = pipeline({ onCommit }).ingest([input("e1", { projectId: "__proto__" })]);
+    expect(Object.hasOwn(response.heads, "__proto__")).toBe(true);
+    expect(JSON.parse(JSON.stringify(response)).heads).toEqual(JSON.parse('{"__proto__":2}'));
+    expect(Object.hasOwn(onCommit.mock.calls[0]?.[0].heads ?? {}, "__proto__")).toBe(true);
+  });
+
+  it("keeps a masked sourceValue within its 200 UTF-16 unit limit", () => {
+    const sourceValue = `${"\u{1F600}".repeat(90)} password=x`;
+    expect(sourceValue.length).toBeLessThanOrEqual(200);
+    const response = pipeline().ingest([
+      input("t1", {
+        type: "task.status_changed",
+        taskId: "task-1",
+        payload: { status: sourceValue },
+      }),
+    ]);
+    expect(response.results[0]?.status).toBe("accepted");
+    const stored = [...db.storage().events("demo", 1)][0]?.payload as { sourceValue: string };
+    expect(stored.sourceValue.length).toBeLessThanOrEqual(200);
+    expect(stored.sourceValue).not.toContain("password=x");
+    expect(stored.sourceValue.isWellFormed()).toBe(true);
+  });
+});
+
 describe("commit and broadcast", () => {
   it("calls onCommit after COMMIT with only the accepted envelopes", () => {
     const seen: number[] = [];
@@ -202,8 +250,6 @@ describe("commit and broadcast", () => {
       } finally {
         raw.close();
       }
-      expect(batch.events.map((e) => e.sourceEventId)).toEqual(["e1", "e2"]);
-      expect(batch.heads).toEqual({ demo: 3 });
     });
     pipeline({ onCommit }).ingest([
       input("e1"),
@@ -213,6 +259,10 @@ describe("commit and broadcast", () => {
     ]);
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(seen).toEqual([3]);
+    // Asserted here, not in the hook: the pipeline swallows hook errors.
+    const batch = onCommit.mock.calls[0]?.[0];
+    expect(batch?.events.map((e) => e.sourceEventId)).toEqual(["e1", "e2"]);
+    expect(batch?.heads).toEqual({ demo: 3 });
   });
 
   it("does not call onCommit when nothing was accepted", () => {
