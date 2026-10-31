@@ -1,4 +1,4 @@
-import { PairingStore } from "@taskville/engine/src/auth/pairing.ts";
+import { PAIRING_CODE_TTL_MS, PairingStore } from "@taskville/engine/src/auth/pairing.ts";
 import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { ensureHome } from "@taskville/engine/src/config/home.ts";
 import { createApp } from "@taskville/engine/src/http/app.ts";
@@ -82,7 +82,10 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     const server = await startServer({ app, port: config.port });
     const base = `http://${LOOPBACK_ADDRESS}:${server.port}`;
     io.stdout(`Taskville engine listening on ${base} (home ${home})\n`);
-    io.stdout(`Pair a browser (one-time link): ${base}/#pair=${pairing.issueCode()}\n`);
+    const minutes = PAIRING_CODE_TTL_MS / 60_000;
+    io.stdout(
+      `Pair a browser (one-time link, valid for ${minutes} minutes): ${base}/#pair=${pairing.issueCode()}\n`,
+    );
     await new Promise<void>((resolve) => {
       if (io.signal === undefined) return;
       if (io.signal.aborted) resolve();
