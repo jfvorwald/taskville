@@ -303,6 +303,18 @@ const positives: Positive[] = [
     kind: "sensitive-value",
   },
   {
+    name: "sensitive value followed by another object property",
+    input: "connect({password: hunter2,port:5432})",
+    secret: "hunter2",
+    kind: "sensitive-value",
+  },
+  {
+    name: "standalone token after an underscored segment and a slash",
+    input: `see abc_def/${fake.generic32} now`,
+    secret: `abc_def/${fake.generic32}`,
+    kind: "high-entropy",
+  },
+  {
     name: "upper-case basic auth header",
     input: `AUTHORIZATION: BASIC ${fake.basic}`,
     secret: fake.basic,
