@@ -60,6 +60,14 @@ const fake = {
   generic32: body(32, 17),
   slashed: [body(12, 22), "/", body(14, 23), "/", body(12, 24)].join(""),
   slashedWord: [body(16, 27), "/abc/", body(19, 28)].join(""),
+  // A 32-character hex credential, as in the M1.18 F3 finding: hex-only, so the
+  // high-entropy rule never sees it.
+  hexToken: ["5f4d", chars(28, "0123456789abcdef", 29)].join(""),
+  shortToken: [chars(11, B62, 30), "7"].join(""),
+  password: ["s3", "cr3t", "pa", "ss"].join(""),
+  lettersToken: chars(16, "abcdefghijklmnopqrstuvwxyz", 31),
+  hexResponse: chars(32, "0123456789abcdef", 32),
+  hexSignature: chars(64, "0123456789abcdef", 33),
 };
 
 const pem = (label: string) =>
@@ -368,6 +376,213 @@ const positives: Positive[] = [
     secret: "pässwörd🔑x",
     kind: "sensitive-value",
   },
+  // M1.18 F3 (a): Authorization schemes other than Bearer and Basic.
+  {
+    name: "Token scheme in a curl Authorization header",
+    input: `curl -H "Authorization: Token ${fake.hexToken}" https://api.example`,
+    secret: fake.hexToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "lower-case token scheme in single quotes",
+    input: `curl -H 'authorization: token ${fake.hexToken}' https://api.example`,
+    secret: fake.hexToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "short alphanumeric credential under a scheme",
+    input: `Authorization: ApiKey ${fake.shortToken}`,
+    secret: fake.shortToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "Proxy-Authorization with a Negotiate scheme",
+    input: `Proxy-Authorization: Negotiate ${fake.generic40}`,
+    secret: fake.generic40,
+    kind: "bearer-token",
+  },
+  {
+    name: "Authorization assignment with a scheme",
+    input: `authorization = Token ${fake.hexToken}`,
+    secret: fake.hexToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "lower-case letters-only credential under a known scheme",
+    input: `curl -H "Authorization: Token ${fake.lettersToken}" https://x`,
+    secret: fake.lettersToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "short lower-case Bearer credential",
+    input: "Authorization: Bearer abcdefghij",
+    secret: "abcdefghij",
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters in a raw header",
+    input: `Authorization: Digest username="admin", response="${fake.hexResponse}"\nHost: x`,
+    secret: `username="admin", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with shell-escaped quotes",
+    input: `curl -H "Authorization: Digest username=\\"admin\\", response=\\"${fake.hexResponse}\\"" https://x`,
+    // The whole rest of the line is masked, trailing URL included.
+    secret: `username=\\"admin\\", response=\\"${fake.hexResponse}\\"" https://x`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with an escaped quote in a value",
+    input: `Authorization: Digest username="ad\\"min", response="${fake.hexResponse}"`,
+    secret: `username="ad\\"min", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with spaces around the equals signs",
+    input: `Authorization: Digest username = "admin", response = "${fake.hexResponse}"`,
+    secret: `username = "admin", response = "${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters after a very long uri",
+    input: `Authorization: Digest uri="/${"a".repeat(5000)}", response="${fake.hexResponse}"`,
+    secret: `uri="/${"a".repeat(5000)}", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Basic credential with one pad is not read as a parameter list",
+    input: `curl -H "Authorization: Basic ${fake.basic.slice(0, 31)}=" https://x`,
+    secret: `${fake.basic.slice(0, 31)}=`,
+    kind: "basic-auth",
+  },
+  {
+    name: "Digest parameters with an empty first value",
+    input: `Authorization: Digest username="", response="${fake.hexResponse}"`,
+    secret: `username="", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with a space-led first value",
+    input: `Authorization: Digest username=" admin", response="${fake.hexResponse}"`,
+    secret: `username=" admin", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with a space-led first value holding an escaped quote",
+    input: `Authorization: Digest username=" a\\"b", response="${fake.hexResponse}"`,
+    secret: `username=" a\\"b", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "shell-escaped Digest parameters with a space-led first value",
+    input: `curl -H "Authorization: Digest username=\\" a\\", response=\\"${fake.hexResponse}\\""`,
+    secret: `username=\\" a\\", response=\\"${fake.hexResponse}\\""`,
+    kind: "bearer-token",
+  },
+  {
+    name: "AWS SigV4 parameters",
+    input: `Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
+    secret: `Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
+    kind: "bearer-token",
+  },
+  // M1.18 F3 (b): curl user credentials. Only the password is masked.
+  {
+    name: "curl -u user:password",
+    input: `curl -u admin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --user user:password",
+    input: `curl --user admin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --user=user:password",
+    input: `curl --user=admin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -u with the value attached",
+    input: `curl -uadmin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -u with an email user and an API token, quoted",
+    input: `curl -u 'me@example.com:${fake.hexToken}' https://x`,
+    secret: fake.hexToken,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --user with a quoted password containing a space",
+    input: `curl --user "admin:${fake.password} two" https://x`,
+    secret: `${fake.password} two`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password starting with a slash",
+    input: `curl -u admin:/${fake.password} https://x`,
+    secret: `/${fake.password}`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password starting with a tilde",
+    input: `curl -u admin:~${fake.password} https://x`,
+    secret: `~${fake.password}`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password after a quoted user",
+    input: `curl -u "$API_USER":${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password after a quoted user segment and a suffix",
+    input: `curl -u "$API_USER"suffix:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password with a quoted segment inside it",
+    input: `curl -u admin:pre"${fake.password}" https://x`,
+    secret: `pre"${fake.password}"`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl credentials inside a command substitution used as a user",
+    input: `curl -u $(curl -u admin:${fake.password} https://users.example) https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl quoted user and quoted password",
+    input: `curl -u 'admin':'${fake.password}' https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl numeric user and numeric password",
+    input: "curl -u 1000:123456 https://x",
+    secret: "123456",
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --proxy-user",
+    input: `curl --proxy-user proxy:${fake.password} -x http://p:3128 https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -U proxy credentials",
+    input: `curl -U proxy:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
 ];
 
 describe("redactText true positives", () => {
@@ -377,6 +592,13 @@ describe("redactText true positives", () => {
     const span = result.spans.find((s) => input.slice(s.start, s.end) === secret);
     expect(span, `no span covering exactly the secret in ${JSON.stringify(result)}`).toBeDefined();
     expect(span?.kind).toBe(kind);
+    expectWellFormed(input, result);
+  });
+
+  it("masks a curl password equal to the user name, keeping the user", () => {
+    const input = "curl -u admin:admin http://localhost:8080";
+    const result = redactText(input);
+    expect(result.text).toBe(`curl -u admin:${maskMarker("basic-auth")} http://localhost:8080`);
     expectWellFormed(input, result);
   });
 
@@ -499,6 +721,49 @@ const negatives: Array<{ name: string; input: string }> = [
   { name: "URL without credentials", input: "https://example.test:8443/path?q=1&page=2" },
   { name: "URL with user but no password", input: "ssh://git@github.com/jfvorwald/taskville.git" },
   { name: "semver and dates", input: "v1.2.3 released 2026-10-30T12:00:00Z" },
+  // M1.18 F3: Authorization prose and placeholders.
+  { name: "Authorization prose with one word", input: "Authorization: required" },
+  {
+    name: "Authorization prose with several words",
+    input: "Authorization: handled internally by the gateway",
+  },
+  {
+    name: "prose naming the Token scheme",
+    input: "The Authorization: Token scheme is described in the docs.",
+  },
+  {
+    name: "Authorization scheme with a starred placeholder",
+    input: "Authorization: Token ********",
+  },
+  {
+    name: "Authorization scheme with a variable",
+    input: 'curl -H "Authorization: Token $API_TOKEN" https://x',
+  },
+  {
+    name: "Authorization scheme with an angle placeholder",
+    input: 'curl -H "Authorization: Token <your-token>" https://x',
+  },
+  // M1.18 F3: -u and --user in other meanings.
+  { name: "sort -u", input: "sort -u names.txt > unique.txt" },
+  { name: "git add -u", input: "git add -u && git commit" },
+  { name: "git push -u", input: "git push -u origin main" },
+  { name: "python -u", input: "python -u -m pytest tests" },
+  { name: "sudo -u", input: "sudo -u postgres psql" },
+  {
+    name: "--user with no colon",
+    input: "pip install --user requests; docker run --user root alpine",
+  },
+  { name: "docker uid:gid from id", input: 'docker run -u "$(id -u):$(id -g)" alpine id' },
+  {
+    name: "docker uid:gid from id unquoted",
+    input: "docker run --user $(id -u):$(id -g) alpine id",
+  },
+  { name: "curl user with an empty password", input: "curl -u admin: https://x" },
+  {
+    name: "curl user and password from variables",
+    input: 'curl -u "$API_USER:$API_TOKEN" https://x',
+  },
+  { name: "curl user-agent flag", input: 'curl --user-agent "agent:1" https://x' },
 ];
 
 describe("redactText false positives", () => {
@@ -652,6 +917,24 @@ describe("adversarial input", () => {
     ["unclosed braced references", ["PASSWORD=$", "{{ ".repeat(n / 3)].join("")],
     ["mask markers", "PASSWORD=[REDACTED:x]".repeat(n / 21)],
     ["random base62", body(n, 19)],
+    ["Authorization schemes", "Authorization: Token ".repeat(n / 21)],
+    ["Authorization spaces", `Authorization: Token${" ".repeat(n)}`],
+    ["Authorization values", `Authorization: Token ${"a".repeat(n)}`],
+    ["-u flags", "-u ".repeat(n / 3)],
+    ["attached -u flags", "-u".repeat(n / 2)],
+    ["--user= chains", "--user=".repeat(n / 7)],
+    ["--user=a: chains", "--user=a:".repeat(n / 9)],
+    ["-u long user", `-u ${"a".repeat(n)}:b`],
+    ["-u long password", `-u a:${"b".repeat(n)}`],
+    ["quoted -u users", '-u "a":'.repeat(n / 7)],
+    ["Authorization parameters", "Authorization: Digest a=1, ".repeat(n / 27)],
+    ["unterminated Authorization parameter", `Authorization: Digest a="${"x".repeat(n)}`],
+    ["escaped Authorization parameters", 'Authorization: Digest a=\\"'.repeat(n / 26)],
+    ["Authorization parameter lists", `Authorization: Digest ${"a=b,".repeat(n / 4)}`],
+    ["Authorization headers on one line", "Authorization: Digest a=1 ".repeat(n / 25)],
+    ["quoted -u segments", '-u "a"'.repeat(n / 6)],
+    ["-u references", "-u $(a)".repeat(n / 7)],
+    ["escaped space-led Authorization values", `Authorization: Digest a=" ${'\\"'.repeat(n / 2)}`],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
