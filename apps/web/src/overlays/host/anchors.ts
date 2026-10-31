@@ -1,4 +1,9 @@
-import { type ProjectedPoint, type ProjectionOptions, projectToViewport, type Viewport } from "./projection.ts";
+import {
+  type ProjectedPoint,
+  type ProjectionOptions,
+  projectToViewport,
+  type Viewport,
+} from "./projection.ts";
 import type { AnchorSource, WorldPoint } from "./types.ts";
 
 /**
@@ -47,7 +52,9 @@ export function createAnchorSource(): AnchorSource {
     getAnchor: (id) => anchors.get(id),
     setProjection(viewProjection, size) {
       const sameMatrix =
-        matrix !== null && matrix.length === viewProjection.length && matrix.every((v, i) => v === viewProjection[i]);
+        matrix !== null &&
+        matrix.length === viewProjection.length &&
+        matrix.every((v, i) => v === viewProjection[i]);
       const sameSize = viewport?.width === size.width && viewport?.height === size.height;
       if (sameMatrix && sameSize) return;
       matrix = Array.from(viewProjection);

@@ -13,6 +13,7 @@ function overlay(
   modes: OverlayDefinition["modes"] = ["live", "history"],
   text = id,
 ): OverlayDefinition {
+  // biome-ignore lint/correctness/noComponentHookFactories: test fixture, built once per test
   return { id, slot, modes, Component: () => <p>{text}</p> };
 }
 
@@ -21,7 +22,9 @@ function host(over: Partial<OverlayHostProps> = {}): OverlayHostProps {
     registry: createOverlayRegistry(),
     mode: "live",
     enabled: [],
-    selectors: { counts: { subscribe: () => () => {}, getSnapshot: () => ({ active: 0, needsYou: 0 }) } },
+    selectors: {
+      counts: { subscribe: () => () => {}, getSnapshot: () => ({ active: 0, needsYou: 0 }) },
+    },
     selection: { selectedId: null, select: () => {} },
     anchors: createAnchorSource(),
     runIntent: () => {},
@@ -32,7 +35,10 @@ function host(over: Partial<OverlayHostProps> = {}): OverlayHostProps {
 
 describe("OverlayHost: registry and modes", () => {
   it("renders enabled overlays and only those", async () => {
-    const registry = createOverlayRegistry([overlay("alpha", "header"), overlay("beta", "timeline")]);
+    const registry = createOverlayRegistry([
+      overlay("alpha", "header"),
+      overlay("beta", "timeline"),
+    ]);
     await render(<OverlayHost {...host({ registry, enabled: ["alpha"] })} />);
     await expect.element(page.getByText("alpha")).toBeVisible();
     expect(page.getByText("beta").elements()).toHaveLength(0);
@@ -67,6 +73,7 @@ describe("OverlayHost: registry and modes", () => {
         id: "probe",
         slot: "header",
         modes: ["live", "history"],
+        // biome-ignore lint/correctness/noComponentHookFactories: test fixture, built once per test
         Component: (props) => {
           seen.push(props);
           return <p>probe</p>;
@@ -93,8 +100,12 @@ describe("OverlayHost: single sidebar", () => {
   });
 
   it("switches to the chosen sidebar", async () => {
-    const screen = await render(<OverlayHost {...host({ registry, enabled: ["panel", "queue"] })} />);
-    await screen.rerender(<OverlayHost {...host({ registry, enabled: ["panel", "queue"], sidebar: "queue" })} />);
+    const screen = await render(
+      <OverlayHost {...host({ registry, enabled: ["panel", "queue"] })} />,
+    );
+    await screen.rerender(
+      <OverlayHost {...host({ registry, enabled: ["panel", "queue"], sidebar: "queue" })} />,
+    );
     await expect.element(page.getByText("queue")).toBeVisible();
     expect(page.getByText("panel").elements()).toHaveLength(0);
   });
@@ -108,6 +119,7 @@ describe("OverlayHost: a broken overlay", () => {
         id: "bad",
         slot: "header",
         modes: ["live"],
+        // biome-ignore lint/correctness/noComponentHookFactories: test fixture, built once per test
         Component: () => {
           throw new Error("boom");
         },
@@ -129,6 +141,7 @@ describe("OverlayHost: pointer routing", () => {
         id: "card",
         slot: "sidebar",
         modes: ["live"],
+        // biome-ignore lint/correctness/noComponentHookFactories: test fixture, built once per test
         Component: () => (
           <InteractiveRegion>
             <button type="button" onClick={onOverlay}>

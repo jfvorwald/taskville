@@ -12,11 +12,15 @@ function rectOf(name: string) {
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return <div style={{ position: "relative", width: SIZE.width, height: SIZE.height }}>{children}</div>;
+  return (
+    <div style={{ position: "relative", width: SIZE.width, height: SIZE.height }}>{children}</div>
+  );
 }
 
 function Label({ text }: { text: string }) {
-  return <span style={{ display: "block", width: 100, height: 20, background: "#ccc" }}>{text}</span>;
+  return (
+    <span style={{ display: "block", width: 100, height: 20, background: "#ccc" }}>{text}</span>
+  );
 }
 
 describe("AnchorLayer", () => {
@@ -35,7 +39,11 @@ describe("AnchorLayer", () => {
     );
     await expect.element(page.getByText("Alice")).toBeVisible();
     const r = rectOf("Alice");
-    const layer = page.getByText("Alice").element().closest("[data-anchor-layer]")?.getBoundingClientRect();
+    const layer = page
+      .getByText("Alice")
+      .element()
+      .closest("[data-anchor-layer]")
+      ?.getBoundingClientRect();
     expect(layer).toBeDefined();
     expect(r.left + r.width / 2 - (layer?.left ?? 0)).toBeCloseTo(300, 0);
     expect(r.bottom - (layer?.top ?? 0)).toBeCloseTo(200, 0);
@@ -118,7 +126,11 @@ describe("AnchorLayer", () => {
       </Frame>,
     );
     await expect.element(page.getByText("Plain")).toBeVisible();
-    const r = rectOf("Plain");
-    expect(document.elementFromPoint(r.left + 10, r.top + 5)?.textContent).not.toBe("Plain");
+    const label = page.getByText("Plain").element();
+    const r = label.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + 10, r.top + 5);
+    // The point is over the label, but the label must not be what the pointer lands on.
+    expect(hit).not.toBeNull();
+    expect(label.contains(hit) || hit?.closest("[data-anchor-layer]") !== null).toBe(false);
   });
 });

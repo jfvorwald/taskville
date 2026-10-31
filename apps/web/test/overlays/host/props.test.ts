@@ -15,7 +15,9 @@ class MemoryStorage {
 function context(over: Partial<OverlayHostContext> = {}): OverlayHostContext {
   return {
     mode: "live",
-    selectors: { counts: { subscribe: () => () => {}, getSnapshot: () => ({ active: 0, needsYou: 0 }) } },
+    selectors: {
+      counts: { subscribe: () => () => {}, getSnapshot: () => ({ active: 0, needsYou: 0 }) },
+    },
     selection: { selectedId: null, select: () => {} },
     anchors: createAnchorSource(),
     runIntent: () => {},

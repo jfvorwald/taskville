@@ -11,7 +11,12 @@ function byId(result: ReturnType<typeof layoutAnchored>) {
   return new Map(result.map((r) => [r.id, r]));
 }
 
-function overlap(a: { left: number; top: number }, b: { left: number; top: number }, w = 100, h = 20) {
+function overlap(
+  a: { left: number; top: number },
+  b: { left: number; top: number },
+  w = 100,
+  h = 20,
+) {
   return a.left < b.left + w && b.left < a.left + w && a.top < b.top + h && b.top < a.top + h;
 }
 
@@ -29,12 +34,17 @@ describe("layoutAnchored", () => {
 
   it("keeps the higher priority box in place and lifts the lower one clear", () => {
     const r = byId(
-      layoutAnchored([box("low", 400, 300, { priority: 1 }), box("high", 410, 300, { priority: 5 })], BOUNDS),
+      layoutAnchored(
+        [box("low", 400, 300, { priority: 1 }), box("high", 410, 300, { priority: 5 })],
+        BOUNDS,
+      ),
     );
     expect(r.get("high")).toMatchObject({ top: 280, visible: true });
     const low = r.get("low");
     expect(low?.visible).toBe(true);
-    expect(low && r.get("high") && overlap(low, r.get("high") as { left: number; top: number })).toBe(false);
+    expect(
+      low && r.get("high") && overlap(low, r.get("high") as { left: number; top: number }),
+    ).toBe(false);
     expect(low?.top).toBeLessThan(280);
   });
 
@@ -69,7 +79,10 @@ describe("layoutAnchored", () => {
 
   it("passes invisible boxes through hidden and does not let them take space", () => {
     const r = byId(
-      layoutAnchored([box("ghost", 400, 300, { visible: false, priority: 9 }), box("a", 400, 300)], BOUNDS),
+      layoutAnchored(
+        [box("ghost", 400, 300, { visible: false, priority: 9 }), box("a", 400, 300)],
+        BOUNDS,
+      ),
     );
     expect(r.get("ghost")?.visible).toBe(false);
     expect(r.get("a")).toMatchObject({ top: 280, visible: true });

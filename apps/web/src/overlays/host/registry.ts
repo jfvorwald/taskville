@@ -70,7 +70,7 @@ export interface ActiveOverlayState {
   /** Ids of overlays switched on (by preset or by the user). */
   enabled: readonly string[];
   /** The sidebar to show when several are enabled. Defaults to the first one. */
-  sidebar?: string | null;
+  sidebar?: string | null | undefined;
 }
 
 /**
@@ -83,10 +83,9 @@ export function resolveActiveOverlays(
   state: ActiveOverlayState,
 ): Record<OverlaySlot, OverlayDefinition[]> {
   const enabled = new Set(state.enabled);
-  const result = Object.fromEntries(SLOTS.map((slot) => [slot, [] as OverlayDefinition[]])) as Record<
-    OverlaySlot,
-    OverlayDefinition[]
-  >;
+  const result = Object.fromEntries(
+    SLOTS.map((slot) => [slot, [] as OverlayDefinition[]]),
+  ) as Record<OverlaySlot, OverlayDefinition[]>;
   for (const definition of definitions) {
     if (enabled.has(definition.id) && definition.modes.includes(state.mode)) {
       result[definition.slot].push(definition);

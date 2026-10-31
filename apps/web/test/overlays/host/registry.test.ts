@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createOverlayRegistry, resolveActiveOverlays } from "../../../src/overlays/host/registry.ts";
+import {
+  createOverlayRegistry,
+  resolveActiveOverlays,
+} from "../../../src/overlays/host/registry.ts";
 import type { OverlayDefinition } from "../../../src/overlays/host/types.ts";
 
 const Nothing = () => null;
@@ -102,7 +105,11 @@ describe("resolveActiveOverlays: modes and slots", () => {
 });
 
 describe("resolveActiveOverlays: slot exclusivity", () => {
-  const list = [def("agent-panel", "sidebar"), def("task-queue", "sidebar"), def("settings", "sidebar")];
+  const list = [
+    def("agent-panel", "sidebar"),
+    def("task-queue", "sidebar"),
+    def("settings", "sidebar"),
+  ];
   const enabled = ["agent-panel", "task-queue", "settings"];
 
   it("allows only one sidebar, the first enabled by default", () => {
@@ -116,7 +123,10 @@ describe("resolveActiveOverlays: slot exclusivity", () => {
   });
 
   it("falls back to the first candidate when the chosen sidebar is unavailable", () => {
-    const withHistoryOnly = [def("agent-panel", "sidebar", ["live"]), def("evidence", "sidebar", ["history"])];
+    const withHistoryOnly = [
+      def("agent-panel", "sidebar", ["live"]),
+      def("evidence", "sidebar", ["history"]),
+    ];
     const active = resolveActiveOverlays(withHistoryOnly, {
       mode: "history",
       enabled: ["agent-panel", "evidence"],
