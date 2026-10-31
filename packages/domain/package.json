@@ -4,10 +4,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./hash": "./src/hash/index.ts"
+    "./hash": "./src/hash/index.ts",
+    "./reducer/attention": "./src/reducer/attention/index.ts",
+    "./selectors": "./src/selectors/index.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. --project @taskville/domain"
+  },
+  "dependencies": {
+    "@taskville/protocol": "workspace:*"
   },
   "devDependencies": {
     "fast-check": "4.10.2"
