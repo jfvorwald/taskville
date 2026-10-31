@@ -207,7 +207,18 @@ importers:
 
   packages/adapters: {}
 
-  packages/demo: {}
+  packages/demo:
+    dependencies:
+      '@taskville/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@taskville/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@taskville/adapters':
+        specifier: workspace:*
+        version: link:../adapters
 
   packages/domain:
     dependencies:
