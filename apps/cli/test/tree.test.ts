@@ -172,6 +172,35 @@ describe("renderStatus", () => {
     expect(out).toContain("Nell · connected · unknown");
   });
 
+  it("labels a guessed teammate name and a guessed request as heuristic (#120)", () => {
+    const guessed = {
+      ...snapshot,
+      state: {
+        ...state,
+        agents: {
+          pane: agent("pane", "proj", "session", {
+            heuristic: { displayName: "pip", kind: "teammate" },
+          }),
+        },
+        activity: { pane: activity("pane", "idle") },
+      } as unknown as ProjectState,
+      attention: [
+        {
+          agentId: "pane",
+          level: "needs_you",
+          kind: "permission",
+          reason: { text: "for: pip (Bash)", masked: false, truncated: false },
+          since: "2026-10-30T10:00:00Z",
+          requestId: "w1",
+          heuristic: true,
+        },
+      ] satisfies Attention[],
+    };
+    expect(renderStatus(guessed, { projectName: "Demo", all: false }).split("\n")[1]).toBe(
+      "proj · connected · idle · maybe pip (teammate, heuristic) · needs you (heuristic): permission - for: pip (Bash)",
+    );
+  });
+
   it("prints a line for an empty project", () => {
     const empty = {
       ...snapshot,

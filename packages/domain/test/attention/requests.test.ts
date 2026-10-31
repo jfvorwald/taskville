@@ -290,6 +290,32 @@ describe("one prompt, one red state", () => {
   });
 });
 
+describe("heuristic requests (#120)", () => {
+  it("keeps the heuristic marker on the projected request", () => {
+    const emit = eventStream();
+    const state = run([opened(emit, "r1", { heuristic: true, reason: reason("for: pip") })]);
+    expect(state.requests.r1?.heuristic).toBe(true);
+    expect(run([opened(eventStream(), "r1")]).requests.r1).not.toHaveProperty("heuristic");
+  });
+
+  it("merging keeps the marker of the record whose fields are shown", () => {
+    const emit = eventStream();
+    // A worker prompt (guessed "for: pip") then the lead's own permission_prompt.
+    const guessedFirst = run([
+      opened(emit, "w1", { heuristic: true, reason: reason("for: pip") }),
+      opened(emit, "n1", { reason: reason("Claude needs your permission") }),
+    ]);
+    expect(guessedFirst.requests.w1).toMatchObject({ heuristic: true, mergedRequestIds: ["n1"] });
+    const emit2 = eventStream();
+    const recordedFirst = run([
+      opened(emit2, "n1", { reason: reason("Claude needs your permission") }),
+      opened(emit2, "w1", { heuristic: true, reason: reason("for: pip") }),
+    ]);
+    expect(recordedFirst.requests.n1).toMatchObject({ mergedRequestIds: ["w1"] });
+    expect(recordedFirst.requests.n1).not.toHaveProperty("heuristic");
+  });
+});
+
 describe("late request.opened", () => {
   it("is recorded as expired and late, never open and never answerable", () => {
     const emit = eventStream();

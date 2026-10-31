@@ -90,7 +90,7 @@ describe("root reducer", () => {
   it("hashes state as <reducerVersion>:<sha256 of canonical JSON>", () => {
     const state = initialState("p1");
     expect(projectStateHash(state)).toBe(stateHash(REDUCER_VERSION, state));
-    expect(projectStateHash(state)).toMatch(/^1:[0-9a-f]{64}$/);
+    expect(projectStateHash(state)).toMatch(/^2:[0-9a-f]{64}$/);
   });
 
   it("rejects an event from another project", () => {
@@ -306,6 +306,72 @@ describe("agents", () => {
     expect(Object.hasOwn(state.agents, "__proto__")).toBe(true);
     expect(state.agents.constructor).toMatchObject({ kind: "session", registered: true });
     expect(JSON.parse(JSON.stringify(state.agents))).toEqual(state.agents);
+  });
+});
+
+describe("heuristic registrations (#120): suggestions, never facts", () => {
+  // The Claude Code adapter names a split-pane teammate from its first SendMessage before any
+  // recorded TeammateIdle, and marks that registration heuristic. Constitution IV: a heuristic
+  // link is a suggestion. It never overrides a recorded name or kind, and never sets a link.
+  const guess = (emit: Emit, agentId: string, extra: { teamId?: string } = {}) =>
+    emit(
+      "agent.registered",
+      {
+        sourceAgentId: `src-${agentId}`,
+        displayName: "pip",
+        role: "teammate",
+        kind: "teammate",
+        heuristic: true,
+        ...extra,
+      },
+      { agentId },
+    );
+
+  it("recorded first: keeps the recorded name and kind, and holds the guess as a suggestion", () => {
+    const emit = eventStream();
+    const state = run([registered(emit, "s", "session"), guess(emit, "s")]);
+    expect(state.agents.s).toMatchObject({
+      displayName: "s",
+      kind: "session",
+      registered: true,
+      heuristic: { displayName: "pip", kind: "teammate" },
+    });
+  });
+
+  it("heuristic first: a later recorded registration replaces the suggestion", () => {
+    const emit = eventStream();
+    const guessed = run([guess(emit, "s")]);
+    // The guess alone does not register the agent or name it.
+    expect(guessed.agents.s).toMatchObject({
+      registered: false,
+      kind: "unknown",
+      heuristic: { displayName: "pip", kind: "teammate" },
+    });
+    expect(guessed.agents.s?.displayName).toBeUndefined();
+    const recorded = run([guess(emit, "s"), registered(emit, "s", "teammate", { teamId: "t1" })]);
+    expect(recorded.agents.s).toMatchObject({ displayName: "s", kind: "teammate", teamId: "t1" });
+    expect(recorded.agents.s?.heuristic).toBeUndefined();
+  });
+
+  it("drops a guess that only repeats what is recorded", () => {
+    const emit = eventStream();
+    const recorded = emit(
+      "agent.registered",
+      { sourceAgentId: "src-s", displayName: "pip", role: "teammate", kind: "teammate" },
+      { agentId: "s" },
+    );
+    const state = run([recorded, guess(emit, "s")]);
+    expect(state.agents.s?.heuristic).toBeUndefined();
+  });
+
+  it("never sets a team or parent link from a guess", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("team.started", { teamId: "t1", leadAgentId: "lead" }, {}),
+      guess(emit, "s", { teamId: "t1" }),
+    ]);
+    expect(state.agents.s?.teamId).toBeUndefined();
+    expect(state.teams.t1?.memberAgentIds).toEqual([]);
   });
 });
 

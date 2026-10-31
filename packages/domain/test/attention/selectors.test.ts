@@ -138,6 +138,15 @@ describe("needs_you", () => {
   });
 });
 
+describe("heuristic needs_you (#120)", () => {
+  it("labels a needs_you record heuristic when its request was guessed", () => {
+    const state = stateOf([agent("a1")], [request("r1", { heuristic: true }), request("r2")]);
+    const records = attention(state, now);
+    expect(records.find((r) => r.requestId === "r1")?.heuristic).toBe(true);
+    expect(records.find((r) => r.requestId === "r2")?.heuristic).toBe(false);
+  });
+});
+
 describe("trouble and waiting from agent records", () => {
   it("raises stop_failure from a failed latest turn", () => {
     const state = stateOf([
