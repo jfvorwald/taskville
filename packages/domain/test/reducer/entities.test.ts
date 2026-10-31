@@ -358,6 +358,19 @@ describe("parentage", () => {
     expect(state.teams.team1?.memberAgentIds).toEqual(["lead", "pip"]);
   });
 
+  it("keeps registration order when an agent leaves a team and rejoins it", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("team.started", { teamId: "t1", leadAgentId: "lead" }),
+      registered(emit, "lead", "lead", { teamId: "t1" }),
+      registered(emit, "pip", "teammate", { teamId: "t1" }),
+      registered(emit, "bo", "teammate", { teamId: "t1" }),
+      registered(emit, "pip", "teammate", { teamId: "t2" }),
+      registered(emit, "pip", "teammate", { teamId: "t1" }),
+    ]);
+    expect(state.teams.t1?.memberAgentIds).toEqual(["lead", "pip", "bo"]);
+  });
+
   it("moves an agent between teams and ends a team without dropping members", () => {
     const emit = eventStream();
     const state = run([
@@ -530,6 +543,35 @@ describe("sessions and activity", () => {
     expect(state.sessions.s1).toMatchObject({ agentId: "a1" });
     expect(state.sessions.s1?.endedAt).toBeUndefined();
     expect(state.sessions.s1?.workingDirectory).toBeUndefined();
+  });
+
+  it("picks the primary session by start time, not by when Taskville first heard of it", () => {
+    const emit = eventStream();
+    const state = run([
+      // s1 is first heard of through a turn event; its start arrives late (async hooks race).
+      emit("session.turn_ended", {}, { agentId: "a1", sessionId: "s1" }),
+      emit("session.started", {}, { agentId: "a1", sessionId: "s2" }),
+      emit(
+        "session.started",
+        {},
+        { agentId: "a1", sessionId: "s1", occurredAt: "2026-10-30T09:00:00Z" },
+      ),
+    ]);
+    expect(state.sessions.s1?.startedAt).toBe("2026-10-30T09:00:00Z");
+    expect(state.activity.a1?.sessionId).toBe("s2");
+
+    const emit2 = eventStream();
+    const later = run([
+      emit2("session.turn_ended", {}, { agentId: "a1", sessionId: "s1" }),
+      emit2("session.started", {}, { agentId: "a1", sessionId: "s2" }),
+      // s1's start is reported as later than s2's, so s1 becomes primary.
+      emit2(
+        "session.started",
+        {},
+        { agentId: "a1", sessionId: "s1", occurredAt: "2026-10-30T11:00:00Z" },
+      ),
+    ]);
+    expect(later.activity.a1?.sessionId).toBe("s1");
   });
 
   it("reopens an ended session when it starts again", () => {
@@ -718,6 +760,16 @@ describe("tasks", () => {
     });
   });
 
+  it("marks a sender handing_off even when the handoff is the first event naming it", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("task.handoff", { fromAgentId: "lead", toAgentId: "pip" }, { taskId: "k1" }),
+    ]);
+    expect(state.agents.lead).toMatchObject({ registered: false, kind: "unknown" });
+    expect(state.activity.lead).toMatchObject({ activity: "handing_off", taskId: "k1" });
+    expect(state.agents.pip).toBeUndefined();
+  });
+
   it("hands a task off: reassigns it and marks the sender handing_off", () => {
     const emit = eventStream();
     const state = run([
@@ -851,7 +903,49 @@ describe("tool calls", () => {
       durationMs: 26,
       startSeq: 1,
     });
-    expect(state.agents.a).toMatchObject({ toolCallCount: 1, consecutiveToolFailures: 1 });
+    // Counted when its start arrives, not before (a start may still come; see below).
+    expect(state.agents.a).toMatchObject({ toolCallCount: 0, consecutiveToolFailures: 1 });
+  });
+
+  it("fills in a finish-first call when its start arrives late, counting it once", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("tool_call.finished", { toolCallId: "t1", phase: "succeeded" }, { agentId: "a" }),
+      emit(
+        "tool_call.started",
+        { toolCallId: "t1", toolName: "Edit", filePaths: ["a.ts"], summary: "s" },
+        { agentId: "a", evidenceIds: ["ev1"] },
+      ),
+    ]);
+    expect(state.toolCalls.t1).toEqual({
+      id: "t1",
+      agentId: "a",
+      toolName: "Edit",
+      phase: "succeeded",
+      filePaths: ["a.ts"],
+      summary: "s",
+      evidenceIds: ["ev1"],
+      startedAt: "2026-10-30T10:00:02Z",
+      finishedAt: "2026-10-30T10:00:01Z",
+      startSeq: 1,
+    });
+    expect(state.agents.a?.toolCallCount).toBe(1);
+  });
+
+  it("does not count a call twice when it finishes after being dropped from the projection", () => {
+    const emit = eventStream();
+    const events: StoredEnvelope[] = [];
+    for (let i = 0; i <= MAX_OPEN_TOOL_CALLS_PER_AGENT; i++) {
+      events.push(
+        emit("tool_call.started", { toolCallId: `t${i}`, toolName: "Bash" }, { agentId: "a" }),
+      );
+    }
+    events.push(
+      emit("tool_call.finished", { toolCallId: "t0", phase: "succeeded" }, { agentId: "a" }),
+    );
+    const state = run(events);
+    expect(state.toolCalls.t0?.phase).toBe("succeeded");
+    expect(state.agents.a?.toolCallCount).toBe(MAX_OPEN_TOOL_CALLS_PER_AGENT + 1);
   });
 
   it("ignores a repeated start or finish for the same call", () => {
