@@ -269,6 +269,32 @@ describe("restarts", () => {
     expect(c1).not.toBe(c2);
   });
 
+  it("resumes a branch whose name the ingest pipeline masked (roborev 5188)", async () => {
+    const repo = newRepo("repo");
+    commit(repo, "a.txt", "first");
+    const branch = ["fix-", "gh", "p_", "Zq8".repeat(12)].join("");
+    git(repo, "branch", branch);
+    addProject("p", [repo]);
+    const first = watcher();
+    await first.scanAll();
+    await first.stop();
+    const stored = ofType(gitEvents("p"), "git.ref_moved").map((e) => e.payload.ref);
+    expect(stored.some((ref) => ref.includes("[REDACTED:"))).toBe(true);
+    const head = storage.head("p");
+
+    await watcher().scanAll();
+    expect(storage.head("p")).toBe(head);
+
+    const tip = git(repo, "rev-parse", branch);
+    git(repo, "checkout", "-q", branch);
+    const next = commit(repo, "b.txt", "on the masked branch");
+    await watcher().scanAll();
+    const moves = ofType(gitEvents("p"), "git.ref_moved").filter(
+      (e) => e.ingestSequence > (head ?? 0),
+    );
+    expect(moves.map((e) => [e.payload.from, e.payload.to])).toEqual([[tip, next]]);
+  });
+
   it("survives a recorded tip whose commit no longer exists", async () => {
     const repo = newRepo("repo");
     const c1 = commit(repo, "a.txt", "first");
@@ -305,7 +331,12 @@ describe("honest ref events", () => {
     const b = commit(repo, "b.txt", "b");
     addProject("p", [repo]);
     let tick = Date.parse(T0);
-    const w = watcher({ now: () => new Date((tick += 1000)) });
+    const w = watcher({
+      now: () => {
+        tick += 1000;
+        return new Date(tick);
+      },
+    });
     await w.scanAll();
     git(repo, "reset", "-q", "--hard", a);
     await w.scanAll();
