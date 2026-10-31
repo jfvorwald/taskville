@@ -426,6 +426,58 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(existsSync(join(home.root, "tilde-home", "spool", "claude-code.jsonl"))).toBe(true);
   });
 
+  it("loses nothing when concurrent hooks create the spool directory together", async () => {
+    rmSync(home.home, { recursive: true });
+    const url = await deadUrl();
+    const payloads = Array.from({ length: 12 }, (_, i) => hookPayload(200 + i));
+    await Promise.all(
+      payloads.map((payload) =>
+        runShim({ shell, input: JSON.stringify(payload), env: shimEnv(home, url) }),
+      ),
+    );
+    expect(spoolLines(home)).toHaveLength(payloads.length);
+    expect(statSync(home.home).mode & 0o777).toBe(0o700);
+  }, 30_000);
+
+  it("recovers a dead lock once when many hooks wait on it together", async () => {
+    const lock = join(home.spoolDir, "claude-code.lock");
+    mkdirSync(lock, { mode: 0o700 });
+    const dead = (await exec("sh", ["-c", "sh -c 'echo $$'"])).stdout.trim();
+    writeFileSync(join(lock, "pid"), `${dead}\n`);
+    const url = await deadUrl();
+    const payloads = Array.from({ length: 16 }, (_, i) => hookPayload(300 + i, 900_000));
+    await Promise.all(
+      payloads.map((payload) =>
+        runShim({ shell, input: JSON.stringify(payload), env: shimEnv(home, url) }),
+      ),
+    );
+    const lines = spoolLines(home);
+    expect(lines).toHaveLength(payloads.length);
+    const ids = new Set(lines.map((l) => (l.payload as { tool_use_id: string }).tool_use_id));
+    expect(ids.size).toBe(payloads.length);
+    expect(existsSync(lock)).toBe(false);
+    expect(existsSync(`${lock}.break`)).toBe(false);
+  }, 30_000);
+
+  it("falls back to its own file while a stale lock cannot be broken", async () => {
+    const lock = join(home.spoolDir, "claude-code.lock");
+    mkdirSync(lock, { mode: 0o700 });
+    const dead = (await exec("sh", ["-c", "sh -c 'echo $$'"])).stdout.trim();
+    writeFileSync(join(lock, "pid"), `${dead}\n`);
+    // A break lock left by a shim killed while breaking.
+    mkdirSync(`${lock}.break`, { mode: 0o700 });
+    const run = await runShim({
+      shell,
+      input: JSON.stringify(hookPayload(400)),
+      env: shimEnv(home, await deadUrl()),
+    });
+    expect(run.code).toBe(0);
+    expect(run.ms).toBeLessThan(3000);
+    expect(existsSync(lock)).toBe(true);
+    expect(existsSync(home.spoolFile)).toBe(false);
+    expect(spoolLines(home)).toHaveLength(1);
+  });
+
   it("does not corrupt the spool under concurrent invocations", async () => {
     const url = await deadUrl();
     const count = 24;

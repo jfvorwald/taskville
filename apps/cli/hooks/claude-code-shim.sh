@@ -64,9 +64,16 @@
 #   Lock       claude-code.lock, a directory made with mkdir (atomic), holding
 #              a file "pid" with the holder's PID. Any reader that renames or
 #              truncates claude-code.jsonl must hold this lock while doing so.
-#              A lock is stale when its PID is not running or it is more than
-#              a minute old; a waiter breaks a stale lock by renaming it aside
-#              and re-checking the PID it judged.
+#              A lock is stale when its PID is not running, or when it has no
+#              PID file and is more than a minute old. A lock whose PID is
+#              running is never broken (a reused PID only costs per-event
+#              files). Breaking is serialized by a second mkdir lock,
+#              claude-code.lock.break: only its holder may judge and remove
+#              claude-code.lock, and holders only ever remove their own lock,
+#              so the lock judged stale is the lock removed. The break lock is
+#              held for a few milliseconds and never reclaimed automatically;
+#              if a shim is killed while holding it, later events go to
+#              per-event files until it is removed by hand. Nothing is lost.
 #
 # LIMITS
 #   At most 1 MiB (1,048,576 bytes) of hook JSON is kept. A larger payload is
@@ -159,10 +166,12 @@ esac
 home=$(strip_slashes "$home")
 [ -n "$home" ] || bail
 
-if [ ! -e "$home" ] && [ ! -h "$home" ]; then mkdir -p "$home" || bail; fi
+# A concurrent hook may create either directory first: a failed mkdir is not
+# fatal, the checks after it decide.
+if [ ! -e "$home" ] && [ ! -h "$home" ]; then mkdir -p "$home" 2>/dev/null; fi
 if [ -h "$home" ] || [ ! -d "$home" ]; then bail; fi
 spool=$home/spool
-if [ ! -e "$spool" ] && [ ! -h "$spool" ]; then mkdir "$spool" || bail; fi
+if [ ! -e "$spool" ] && [ ! -h "$spool" ]; then mkdir "$spool" 2>/dev/null; fi
 if [ -h "$spool" ] || [ ! -d "$spool" ] || [ ! -w "$spool" ]; then bail; fi
 
 work=$(mktemp -d "$spool/.claude-code.XXXXXX") || work=
@@ -283,25 +292,23 @@ release_lock() {
   if [ "$(lock_owner "$lock")" = "$$" ]; then rm -rf "$lock"; fi
 }
 
-# Renames a stale lock aside; returns 0 only if the lock it moved is the one it judged.
+# Removes claude-code.lock if it is stale. Serialized by claude-code.lock.break,
+# so no other waiter can remove or replace the lock between judging and moving
+# it; a live holder never loses its lock (one with a running PID is not stale).
 break_stale_lock() {
+  breaker=$lock.break
+  mkdir "$breaker" 2>/dev/null || return 1
+  broke=no
   owner=$(lock_owner "$lock")
   stale=no
   case $owner in
-    '' | *[!0-9]*) ;;
+    '') [ -n "$(find "$lock" -prune -mmin +1 2>/dev/null)" ] && stale=yes ;;
+    *[!0-9]*) ;;
     *) kill -0 "$owner" 2>/dev/null || stale=yes ;;
   esac
-  if [ "$stale" = no ] && [ -n "$(find "$lock" -prune -mmin +1 2>/dev/null)" ]; then
-    stale=yes
-  fi
-  [ "$stale" = yes ] || return 1
-  mv "$lock" "$work/stale-lock" 2>/dev/null || return 1
-  if [ "$(lock_owner "$work/stale-lock")" != "$owner" ]; then
-    # Someone else's fresh lock: put it back if the name is still free.
-    [ -e "$lock" ] || mv "$work/stale-lock" "$lock" 2>/dev/null
-    return 1
-  fi
-  return 0
+  if [ "$stale" = yes ] && mv "$lock" "$work/stale-lock" 2>/dev/null; then broke=yes; fi
+  rmdir "$breaker" 2>/dev/null
+  [ "$broke" = yes ]
 }
 
 acquire_lock() {
