@@ -107,7 +107,8 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       // The sender acted, so it counts as seen; the recipient did not, so it is not touched.
       const from = e.payload.fromAgentId;
       if (from !== agentId) s = touchAgent(s, e, from);
-      s = setActivity(s, e, from, {
+      // The envelope's session is the sender's only if the sender is the envelope's agent.
+      s = setActivity(s, e, from, from === agentId ? e.sessionId : undefined, {
         activity: "handing_off",
         heuristic: false,
         since: e.occurredAt,
@@ -130,7 +131,7 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
               ...(e.taskId === undefined ? {} : { taskId: e.taskId }),
             }
           : { activity: "idle" as const, heuristic: false, since: e.occurredAt };
-      return refreshActivity(setActivity(s, e, agentId, entry), e, agentId);
+      return refreshActivity(setActivity(s, e, agentId, e.sessionId, entry), e, agentId);
     }
     case "tool_call.started":
       return agentId === undefined ? s : applyToolCallStarted(s, e, agentId);

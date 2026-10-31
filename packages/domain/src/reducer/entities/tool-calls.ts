@@ -25,6 +25,7 @@ export function applyToolCallStarted(
   const p = e.payload;
   const existing = getOwn(s.toolCalls, p.toolCallId);
   if (existing?.startedAt !== undefined) return s; // repeated start: already recorded
+  if (existing !== undefined && existing.agentId !== agentId) return s; // another agent's call
   const call: ToolCall =
     existing === undefined
       ? {
@@ -65,6 +66,7 @@ export function applyToolCallFinished(
   const p = e.payload;
   const existing = getOwn(s.toolCalls, p.toolCallId);
   if (existing !== undefined && existing.phase !== "running") return s; // repeated finish
+  if (existing !== undefined && existing.agentId !== agentId) return s; // another agent's call
   const summary = p.summary ?? existing?.summary;
   const finished: ToolCall =
     existing === undefined

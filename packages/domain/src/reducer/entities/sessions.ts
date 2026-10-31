@@ -55,8 +55,13 @@ export function applySessionStarted(
   const existing = getOwn(s.sessions, sessionId);
   if (existing !== undefined && existing.agentId !== agentId) return s;
   const workingDirectory = optional("workingDirectory", e.payload.workingDirectory);
+  // A start older than the recorded end arrived late (async hooks race, S-2): it fills in the
+  // start time but does not reopen the session.
+  const reopens =
+    existing === undefined ||
+    (existing.endedAt !== undefined && compareTimestamps(e.occurredAt, existing.endedAt) > 0);
   let session: Session;
-  if (existing === undefined || existing.endedAt !== undefined) {
+  if (reopens) {
     // New, or reopened after it ended: it becomes the most recently started session.
     session = {
       ...(existing === undefined ? {} : omit(existing, ["endedAt"])),
@@ -71,7 +76,7 @@ export function applySessionStarted(
       activity: unknownActivity(e.occurredAt),
     };
   } else {
-    // Already open: a repeated start fills in what was missing and keeps its place.
+    // Already open, or a late start for an ended session: fill in what was missing.
     session = {
       ...existing,
       startedAt: existing.startedAt ?? e.occurredAt,
@@ -121,24 +126,32 @@ function startsAfter(a: Session, b: Session): boolean {
 }
 
 /**
- * Sets an activity for `agentId`. With a `sessionId` the agent owns, it goes to that session.
- * Otherwise it goes to the agent's primary session, or, with no open session, to the agent.
+ * Sets an activity for `agentId`. A named session the agent owns gets it; a named session no one
+ * has reported yet is recorded as the agent's. A session named by an event but owned by another
+ * agent is never written; the activity goes to the agent itself. With no session named, it goes
+ * to the agent's primary session, or, with no open session, to the agent.
  */
 export function setActivity(
   s: EntitiesState,
   e: DomainEvent,
   agentId: string,
+  sessionId: string | undefined,
   entry: ActivityEntry,
 ): EntitiesState {
-  const target =
-    (e.sessionId === undefined ? undefined : ownSession(s, agentId, e.sessionId)) ??
-    primarySession(s, agentId);
-  if (target !== undefined) {
-    return { ...s, sessions: put(s.sessions, target.id, { ...target, activity: entry }) };
+  let state = s;
+  let target: Session | undefined;
+  if (sessionId === undefined) {
+    target = primarySession(state, agentId);
+  } else {
+    state = ensureSession(state, e, agentId, sessionId);
+    target = ownSession(state, agentId, sessionId);
   }
-  const current = getOwn(s.activity, agentId);
-  if (current === undefined) return s;
-  return { ...s, activity: put(s.activity, agentId, { ...viewBase(current), ...entry }) };
+  if (target !== undefined) {
+    return { ...state, sessions: put(state.sessions, target.id, { ...target, activity: entry }) };
+  }
+  const current = getOwn(state.activity, agentId);
+  if (current === undefined) return state;
+  return { ...state, activity: put(state.activity, agentId, { ...viewBase(current), ...entry }) };
 }
 
 export function setLatestEvidence(
