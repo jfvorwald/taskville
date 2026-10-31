@@ -10,6 +10,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -429,6 +430,70 @@ describe("replaySpool", () => {
     } finally {
       holder.kill();
     }
+  });
+
+  it("quarantines a hook that fails 3 times across runs and replays the lines after it", async () => {
+    const [a, poison, b] = [uuid(), uuid(), uuid()];
+    const poisonLine = line({
+      sourceEventId: poison,
+      payload: hook({ prompt: "poison SECRET-P" }),
+    });
+    writeFileSync(main(), line({ sourceEventId: a }) + poisonLine + line({ sourceEventId: b }), {
+      mode: 0o600,
+    });
+    const { source, mapper } = makeSource(db());
+    const throwing = {
+      ingestHook(input: HookInput) {
+        if (input.sourceEventId === poison) {
+          return Promise.reject(new TypeError("mapper choked on SECRET-P"));
+        }
+        return source.ingestHook(input);
+      },
+    };
+    const log = captureLogger();
+    const run = () => replaySpool({ spoolDir, source: throwing, logger: log.logger });
+
+    for (const attempt of [1, 2]) {
+      const report = await run();
+      expect(report, `run ${attempt}`).toMatchObject({ failed: true, poisoned: 0 });
+      expect(mapper.calls.some((c) => c.sourceEventId === b)).toBe(false);
+    }
+    const third = await run();
+    expect(third).toMatchObject({ failed: false, poisoned: 1 });
+    // The line after the poison line is replayed, once.
+    expect(mapper.calls.filter((c) => c.sourceEventId === b)).toHaveLength(1);
+
+    const poisonFile = join(spoolDir, "claude-code.poison.jsonl");
+    expect(readFileSync(poisonFile, "utf8")).toBe(poisonLine);
+    expect(statSync(poisonFile).mode & 0o777).toBe(0o600);
+    expect(log.text()).toContain("TypeError");
+    expect(log.text()).not.toContain("SECRET-P");
+    // Nothing left to retry: the poison file itself is never replayed.
+    const fourth = await run();
+    expect(fourth).toMatchObject({ hooks: 0, failed: false, poisoned: 0 });
+    expect(spoolNames()).toEqual(["claude-code.poison.jsonl"]);
+  });
+
+  it("does not quarantine a hook that fails once and then succeeds", async () => {
+    const id = uuid();
+    writeFileSync(main(), line({ sourceEventId: id }), { mode: 0o600 });
+    const { source, mapper } = makeSource(db());
+    let calls = 0;
+    const flaky = {
+      ingestHook(input: HookInput) {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error("busy")) : source.ingestHook(input);
+      },
+    };
+    expect(await replaySpool({ spoolDir, source: flaky })).toMatchObject({ failed: true });
+    expect(await replaySpool({ spoolDir, source: flaky })).toMatchObject({
+      failed: false,
+      poisoned: 0,
+      hooks: 1,
+    });
+    expect(mapper.calls).toHaveLength(1);
+    // The attempt count is cleared on success, so nothing is left behind.
+    expect(spoolNames()).toEqual([]);
   });
 
   it("stops draining on a failed run", async () => {
