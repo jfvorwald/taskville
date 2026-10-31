@@ -1,0 +1,80 @@
+{
+  "fixture": "duplicates.jsonl",
+  "knownProjects": ["demo", "unsorted"],
+  "startHead": 1,
+  "after": [],
+  "results": [
+    {
+      "line": 4,
+      "sourceEventId": "dup-01",
+      "status": "accepted",
+      "ingestSequence": 2
+    },
+    {
+      "line": 5,
+      "sourceEventId": "dup-02",
+      "status": "accepted",
+      "ingestSequence": 3
+    },
+    {
+      "line": 6,
+      "sourceEventId": "dup-01",
+      "status": "duplicate",
+      "ingestSequence": 2,
+      "of": {
+        "fixture": "duplicates.jsonl",
+        "line": 4
+      }
+    },
+    {
+      "line": 7,
+      "sourceEventId": "dup-03",
+      "status": "accepted",
+      "ingestSequence": 4
+    },
+    {
+      "line": 8,
+      "sourceEventId": "dup-02",
+      "status": "duplicate",
+      "ingestSequence": 3,
+      "of": {
+        "fixture": "duplicates.jsonl",
+        "line": 5
+      }
+    },
+    {
+      "line": 9,
+      "sourceEventId": "dup-04",
+      "status": "accepted",
+      "ingestSequence": 5
+    },
+    {
+      "line": 10,
+      "sourceEventId": "dup-03",
+      "status": "duplicate",
+      "ingestSequence": 4,
+      "of": {
+        "fixture": "duplicates.jsonl",
+        "line": 7
+      }
+    },
+    {
+      "line": 11,
+      "sourceEventId": "dup-01",
+      "status": "accepted",
+      "ingestSequence": 6
+    },
+    {
+      "line": 12,
+      "sourceEventId": "dup-01",
+      "status": "accepted",
+      "ingestSequence": 2
+    }
+  ],
+  "summary": {
+    "accepted": 6,
+    "duplicate": 3,
+    "conflict": 0,
+    "rejected": 0
+  }
+}

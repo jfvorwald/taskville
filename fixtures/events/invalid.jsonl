@@ -1,0 +1,14 @@
+// Every line is rejected, one rejection code each; together they cover all eight codes.
+// Line 8 is not valid JSON and is reported as invalid_envelope. Project ghost was never added.
+
+{"schemaVersion":2,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-01","occurredAt":"2026-10-30T12:00:00Z","type":"agent.connected","agentId":"agent-x","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-02","occurredAt":"2026-10-30T12:00:01Z","type":"agent.exploded","agentId":"agent-x","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-03","occurredAt":"2026-10-30T12:00:02","type":"agent.connected","agentId":"agent-x","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-04","occurredAt":"2026-10-30T12:00:03Z","type":"agent.connected","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic",
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-05","occurredAt":"2026-10-30T12:00:05Z","type":"task.status_changed","taskId":"task-x","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-06","occurredAt":"2026-10-30T12:00:06Z","type":"agent.registered","agentId":"agent-x","payload":{"sourceAgentId":"x","displayName":"X","role":"r","kind":"session","parentAgentId":"agent-y"},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"inv-07","occurredAt":"2026-10-30T12:00:07Z","type":"request.resolved","payload":{"requestId":"req-x","resolution":"answered_here"},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"taskville:bridge","sourceEventId":"inv-08","occurredAt":"2026-10-30T12:00:08Z","type":"agent.connected","agentId":"agent-x","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"demo:42","sourceEventId":"inv-09","occurredAt":"2026-10-30T12:00:09Z","type":"agent.connected","agentId":"agent-x","payload":{},"provenance":"live"}
+{"schemaVersion":1,"projectId":"ghost","sourceId":"adapter:generic","sourceEventId":"inv-10","occurredAt":"2026-10-30T12:00:10Z","type":"agent.connected","agentId":"agent-x","payload":{},"provenance":"live"}

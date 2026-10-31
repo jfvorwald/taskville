@@ -1,0 +1,7 @@
+// Ingest after basic-two-agents.jsonl. Reusing a key with different content is a conflict,
+// never an overwrite; an unchanged resend is a duplicate.
+
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"basic-07","occurredAt":"2026-10-30T09:00:06Z","type":"task.created","taskId":"task-1","payload":{"title":"Add signup form"},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"basic-09","occurredAt":"2026-10-30T09:00:08Z","type":"task.status_changed","taskId":"task-1","payload":{"status":"blocked"},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"basic-12","occurredAt":"2026-10-30T09:00:30Z","type":"tool_call.finished","agentId":"agent-a","sessionId":"sess-a","payload":{"toolCallId":"tc-1","phase":"succeeded","durationMs":850},"provenance":"live"}
+{"schemaVersion":1,"projectId":"demo","sourceId":"adapter:generic","sourceEventId":"basic-01","occurredAt":"2026-10-30T09:00:00Z","type":"agent.registered","agentId":"agent-a","payload":{"sourceAgentId":"builder","displayName":"Builder","role":"implementer","kind":"session"},"provenance":"live"}

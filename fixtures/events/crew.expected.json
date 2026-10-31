@@ -1,0 +1,200 @@
+{
+  "fixture": "crew.jsonl",
+  "knownProjects": ["demo", "unsorted"],
+  "startHead": 1,
+  "after": [],
+  "results": [
+    {
+      "line": 6,
+      "sourceEventId": "crew-01",
+      "status": "accepted",
+      "ingestSequence": 2
+    },
+    {
+      "line": 7,
+      "sourceEventId": "crew-02",
+      "status": "accepted",
+      "ingestSequence": 3
+    },
+    {
+      "line": 8,
+      "sourceEventId": "crew-03",
+      "status": "accepted",
+      "ingestSequence": 4
+    },
+    {
+      "line": 9,
+      "sourceEventId": "crew-04",
+      "status": "accepted",
+      "ingestSequence": 5
+    },
+    {
+      "line": 10,
+      "sourceEventId": "crew-05",
+      "status": "accepted",
+      "ingestSequence": 6
+    },
+    {
+      "line": 11,
+      "sourceEventId": "crew-06",
+      "status": "accepted",
+      "ingestSequence": 7
+    },
+    {
+      "line": 12,
+      "sourceEventId": "crew-07",
+      "status": "accepted",
+      "ingestSequence": 8
+    },
+    {
+      "line": 13,
+      "sourceEventId": "crew-08",
+      "status": "accepted",
+      "ingestSequence": 9
+    },
+    {
+      "line": 14,
+      "sourceEventId": "crew-09",
+      "status": "accepted",
+      "ingestSequence": 10
+    },
+    {
+      "line": 15,
+      "sourceEventId": "crew-10",
+      "status": "accepted",
+      "ingestSequence": 11
+    },
+    {
+      "line": 16,
+      "sourceEventId": "crew-11",
+      "status": "accepted",
+      "ingestSequence": 12
+    },
+    {
+      "line": 17,
+      "sourceEventId": "crew-12",
+      "status": "accepted",
+      "ingestSequence": 13
+    },
+    {
+      "line": 18,
+      "sourceEventId": "crew-13",
+      "status": "accepted",
+      "ingestSequence": 14
+    },
+    {
+      "line": 19,
+      "sourceEventId": "crew-14",
+      "status": "accepted",
+      "ingestSequence": 15
+    },
+    {
+      "line": 20,
+      "sourceEventId": "crew-15",
+      "status": "accepted",
+      "ingestSequence": 16
+    },
+    {
+      "line": 21,
+      "sourceEventId": "crew-16",
+      "status": "accepted",
+      "ingestSequence": 17
+    },
+    {
+      "line": 22,
+      "sourceEventId": "crew-17",
+      "status": "accepted",
+      "ingestSequence": 18
+    },
+    {
+      "line": 23,
+      "sourceEventId": "crew-18",
+      "status": "accepted",
+      "ingestSequence": 19
+    },
+    {
+      "line": 24,
+      "sourceEventId": "crew-19",
+      "status": "accepted",
+      "ingestSequence": 20
+    },
+    {
+      "line": 25,
+      "sourceEventId": "crew-20",
+      "status": "accepted",
+      "ingestSequence": 21
+    },
+    {
+      "line": 26,
+      "sourceEventId": "crew-21",
+      "status": "accepted",
+      "ingestSequence": 22
+    },
+    {
+      "line": 27,
+      "sourceEventId": "crew-22",
+      "status": "accepted",
+      "ingestSequence": 23
+    },
+    {
+      "line": 28,
+      "sourceEventId": "crew-23",
+      "status": "accepted",
+      "ingestSequence": 24
+    },
+    {
+      "line": 29,
+      "sourceEventId": "crew-24",
+      "status": "accepted",
+      "ingestSequence": 25
+    },
+    {
+      "line": 30,
+      "sourceEventId": "crew-25",
+      "status": "accepted",
+      "ingestSequence": 26
+    },
+    {
+      "line": 31,
+      "sourceEventId": "crew-26",
+      "status": "accepted",
+      "ingestSequence": 27
+    },
+    {
+      "line": 32,
+      "sourceEventId": "crew-27",
+      "status": "accepted",
+      "ingestSequence": 28
+    },
+    {
+      "line": 33,
+      "sourceEventId": "crew-28",
+      "status": "accepted",
+      "ingestSequence": 29
+    },
+    {
+      "line": 34,
+      "sourceEventId": "crew-29",
+      "status": "accepted",
+      "ingestSequence": 30
+    },
+    {
+      "line": 35,
+      "sourceEventId": "crew-30",
+      "status": "accepted",
+      "ingestSequence": 31
+    },
+    {
+      "line": 36,
+      "sourceEventId": "crew-31",
+      "status": "accepted",
+      "ingestSequence": 32
+    }
+  ],
+  "summary": {
+    "accepted": 31,
+    "duplicate": 0,
+    "conflict": 0,
+    "rejected": 0
+  }
+}
