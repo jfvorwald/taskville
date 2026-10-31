@@ -59,6 +59,7 @@ const fake = {
   generic40: body(40, 16),
   generic32: body(32, 17),
   slashed: [body(12, 22), "/", body(14, 23), "/", body(12, 24)].join(""),
+  slashedWord: [body(16, 27), "/abc/", body(19, 28)].join(""),
 };
 
 const pem = (label: string) =>
@@ -272,6 +273,54 @@ const positives: Positive[] = [
     kind: "high-entropy",
   },
   {
+    name: "sensitive value that starts with a mask marker",
+    input: "PASSWORD=[REDACTED:sensitive-value]hunter2 ./start",
+    secret: "[REDACTED:sensitive-value]hunter2",
+    kind: "sensitive-value",
+  },
+  {
+    name: "sensitive value with text after a command substitution",
+    input: "PASSWORD=$(cat x)hunter2 ./start",
+    secret: "$(cat x)hunter2",
+    kind: "sensitive-value",
+  },
+  {
+    name: "sensitive value that is an unclosed brace",
+    input: ["PASSWORD='$", "{hunter2'"].join(""),
+    secret: ["$", "{hunter2"].join(""),
+    kind: "sensitive-value",
+  },
+  {
+    name: "sensitive shell value containing a bracket",
+    input: "PASSWORD=abc]def)ghi ./start",
+    secret: "abc]def)ghi",
+    kind: "sensitive-value",
+  },
+  {
+    name: "sensitive value in a JavaScript object literal",
+    input: "connect({ password: hunter2 })",
+    secret: "hunter2",
+    kind: "sensitive-value",
+  },
+  {
+    name: "upper-case basic auth header",
+    input: `AUTHORIZATION: BASIC ${fake.basic}`,
+    secret: fake.basic,
+    kind: "basic-auth",
+  },
+  {
+    name: "lower-case bearer scheme",
+    input: `authorization: bearer ${fake.bearer}`,
+    secret: fake.bearer,
+    kind: "bearer-token",
+  },
+  {
+    name: "standalone base64 secret with a lowercase segment",
+    input: `rotated to ${fake.slashedWord} yesterday`,
+    secret: fake.slashedWord,
+    kind: "high-entropy",
+  },
+  {
     name: "query parameter",
     input: "GET https://example.test/cb?access_token=abc123def456&state=1",
     secret: "abc123def456",
@@ -424,6 +473,7 @@ const negatives: Array<{ name: string; input: string }> = [
   { name: "braced shell reference", input: ["API_TOKEN=$", "{API_TOKEN:-} make"].join("") },
   { name: "command substitution", input: "PASSWORD=$(cat ~/.pw) ./start" },
   { name: "build asset path with a hash", input: "loaded assets/index-B3kd8Fj2xQ.js" },
+  { name: "rooted asset path with a hash", input: "GET /assets/index-B3kd8Fj2xQ.js 200" },
   { name: "nanoid-free prose with long words", input: "internationalization and characterization" },
   {
     name: "Claude Code tool and message IDs in prose",
@@ -516,6 +566,36 @@ describe("redactJson", () => {
   it("masks a dollar-prefixed sensitive value", () => {
     expect(redactJson({ password: "$ecret123" }).value).toEqual({
       password: maskMarker("sensitive-value"),
+    });
+  });
+
+  it("masks a value that is only a reference prefix", () => {
+    const literal = ["$", "{hunter2"].join("");
+    expect(redactJson({ password: literal }).value).toEqual({
+      password: maskMarker("sensitive-value"),
+    });
+  });
+
+  it("keeps complete references readable", () => {
+    const refs = ["$DB_PASSWORD", ["$", "{DB_PASSWORD}"].join(""), "$(cat ~/.pw)"];
+    for (const ref of refs) expect(redactJson({ password: ref }).value).toEqual({ password: ref });
+  });
+
+  it("masks a value that starts with a mask marker", () => {
+    expect(redactJson({ password: `${maskMarker("sensitive-value")}hunter2` }).value).toEqual({
+      password: maskMarker("sensitive-value"),
+    });
+  });
+
+  it("masks an Authorization header property", () => {
+    expect(redactJson({ headers: { Authorization: "Basic dXNlcjpwYXNz" } }).value).toEqual({
+      headers: { Authorization: maskMarker("sensitive-value") },
+    });
+  });
+
+  it("masks strings in an array under a sensitive name", () => {
+    expect(redactJson({ password: ["hunter2", ["x1"], { note: "plain" }] }).value).toEqual({
+      password: [maskMarker("sensitive-value"), [maskMarker("sensitive-value")], { note: "plain" }],
     });
   });
 
