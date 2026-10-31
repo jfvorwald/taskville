@@ -204,6 +204,10 @@ importers:
   packages/demo: {}
 
   packages/domain:
+    dependencies:
+      '@taskville/protocol':
+        specifier: workspace:*
+        version: link:../protocol
     devDependencies:
       fast-check:
         specifier: 4.10.2
