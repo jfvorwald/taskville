@@ -110,11 +110,13 @@ export class IngestPipeline {
       if (outcome.stored) accepted.push(outcome.stored);
     }
 
+    const acceptedProjects = new Set(accepted.map((event) => event.projectId));
     const heads: Record<string, number> = {};
     const acceptedHeads: Record<string, number> = {};
     for (const projectId of [...touched].sort()) {
       const projectWork = work.get(projectId);
-      if (projectWork) {
+      // Only projects that accepted an event get a projection write and a broadcast head.
+      if (projectWork && acceptedProjects.has(projectId)) {
         tx.writeProjection({
           projectId,
           reducerVersion: this.#reducer.version,
