@@ -20,6 +20,24 @@ Entry format:
 
 ## Entries
 
+### L-19: Wall-time bounds in tests should separate linear from quadratic, not measure speed
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #24 · **Recorded by:** adapter teammate (M1.20)
+- **What happened:** Flake F-1: adversarial redaction timing tests with a 250 ms bound took 260 and 285 ms with 21 test files running in parallel under `pnpm check`, and 18 to 19 ms alone. The real regression they exist to catch was a quadratic scan that took 55 s.
+- **Lesson:** Set timing bounds in seconds (here 2,000 ms) so they catch complexity regressions, never machine load.
+- **Action:** Bound raised in PR #127.
+
+### L-18: Rebuilding objects from untrusted JSON must not assign `__proto__`
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #24 · **Recorded by:** adapter teammate (M1.20)
+- **What happened:** Plain assignment of a parsed `__proto__` key changes the prototype of the rebuilt object, and the JSON walker lost property-name context inside arrays until it carried it down.
+- **Lesson:** Use `Object.defineProperty` (or null-prototype objects) when rebuilding untrusted JSON, and carry the parent key through arrays.
+- **Action:** Fixed in PR #127.
+
+### L-17: A redactor's skip rules are bypass surface
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #24 · **Recorded by:** adapter teammate (M1.20)
+- **What happened:** Every "this is a placeholder" exemption (`$` prefix, marker prefix, path-like runs) drew a roborev high finding until it was exact: 2 high and 1 medium in the first panel, 3 new highs in the re-review, and 2 highs in a post-commit review that were regressions from an earlier fix.
+- **Lesson:** An exemption must match one complete reference or marker spanning the whole value. Land each fix with its failing test first, since fixes to a redactor regress easily.
+- **Action:** Fixed in PR #127; the security review (#17) includes the redaction path at ingest.
+
 ### L-16: Grep Unicode tests for literal non-ASCII after writing them
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #6 · **Recorded by:** domain-hash teammate (M1.06)
 - **What happened:** The agent file-write tool saved `\uXXXX` escapes as the literal characters, including invisible U+FFFF and U+2028. Tests still passed, so it was nearly missed; it was caught in a diff. Separately, TypeScript 7 only accepts `Uint8Array<ArrayBuffer>` for `crypto.subtle.digest`.
