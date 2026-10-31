@@ -1,6 +1,7 @@
 import { PAIRING_CODE_TTL_MS, PairingStore } from "@taskville/engine/src/auth/pairing.ts";
 import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { ensureHome } from "@taskville/engine/src/config/home.ts";
+import { type EvidenceStore, openEvidenceStore } from "@taskville/engine/src/evidence/index.ts";
 import { createApp } from "@taskville/engine/src/http/app.ts";
 import { LOOPBACK_ADDRESS, startServer } from "@taskville/engine/src/http/server.ts";
 import {
@@ -8,6 +9,11 @@ import {
   ProjectInputError,
   registerProjectRoutes,
 } from "@taskville/engine/src/projects/index.ts";
+import {
+  ClaudeCodeSource,
+  mapClaudeCodeHook,
+  registerClaudeCodeRoutes,
+} from "@taskville/engine/src/sources/claude-code/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
 import pino from "pino";
 import packageJson from "../../package.json" with { type: "json" };
@@ -53,6 +59,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
   const now = io.now ?? (() => new Date());
   const logger = pino({ level: "info" }, { write: (line: string) => io.stderr(line) });
   let engine: Engine | undefined;
+  let evidence: EvidenceStore | undefined;
   try {
     const prepared = ensureHome(home);
     const { config, warnings } = loadConfig({ home, port: portFlag });
@@ -69,6 +76,19 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     });
     engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now, pairing });
     registerProjectRoutes(app, { storage: engine.storage, now });
+    // Claude Code telemetry (M2.02, M2.03, M2.06): hooks from the shim, tool bodies to evidence.db.
+    evidence = openEvidenceStore(prepared.paths.evidenceDb, { now, logger });
+    registerClaudeCodeRoutes(
+      app,
+      new ClaudeCodeSource({
+        pipeline: engine.pipeline,
+        storage: engine.storage,
+        mapper: mapClaudeCodeHook,
+        evidence,
+        logger,
+        now,
+      }),
+    );
     for (const project of config.projects) {
       try {
         if (createProject(engine.storage, project, { now })) {
@@ -92,11 +112,13 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       else io.signal.addEventListener("abort", () => resolve(), { once: true });
     });
     engine.close();
+    evidence.close();
     await server.close();
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
     engine?.close();
+    evidence?.close();
     if (error instanceof CliError) throw error;
     throw new CliError(EXIT.failure, `Cannot start the engine: ${(error as Error).message}`);
   }
