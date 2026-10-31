@@ -30,7 +30,7 @@ Gate summary: [G2 #40](https://github.com/jfvorwald/taskville/issues/40). Retro:
 | M2.19 #207 CLI retired counts | #221 | [report](tasks/M2.19.md) |
 | M2.20 #209 crew mapper team task | #217 | 8-hex scope trade-off accepted; [report](tasks/M2.20.md) |
 | M2.21 #210 Git lazy fetch (F1) | #218 | [report](tasks/M2.21.md) |
-| M2.22 #211 redaction gaps (F2) | #219 | 4 crafted gaps pre-existing on main: #222, decision #223; [report](tasks/M2.22.md) |
+| M2.22 #211 redaction gaps (F2) | #219 | 4 crafted gaps pre-existing on main: #222 (decision #223 closed on default); [report](tasks/M2.22.md) |
 | M2.23 #212 private home (F3) | #220 | [report](tasks/M2.23.md) |
 | M2.RT #96 retro | #224 | [report](tasks/M2.RT.md) |
 
@@ -40,7 +40,7 @@ Workers this session (all stopped after handoff, branches frozen, worktrees kept
 
 ## Remaining decisions
 
-Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206, #213, #223. Defaults remain in force; none blocks M2.
+Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206. Defaults remain in force; none blocks M2. Closed on the owner's "accept defaults": #213 (CLI token keeps root registration; residual risk in the G2 summary) and #223 (#219 merged; targeted linear rules, #222 after G2).
 
 SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16's overlap invalid). The 1x eight-hour run remains M7 work.
 
@@ -162,4 +162,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Stopped at G2 #40 for the owner. Do not start M3 or close the gate. Follow-ups for scheduling: #214, #215, #222 (after decision #223), and the M4 residuals listed in the G2 summary.
+Stopped at G2 #40 for the owner. Do not start M3 or close the gate. Follow-ups for scheduling: #214, #215, #222 (targeted linear rules per #223), and the M4 residuals listed in the G2 summary.
