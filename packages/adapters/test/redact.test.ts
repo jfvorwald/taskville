@@ -818,6 +818,25 @@ const positives: Positive[] = [
     secret: fake.password,
     kind: "sensitive-value",
   },
+  // roborev 5388: global options with quoted or escaped values, and an exhausted scan budget.
+  {
+    name: "docker login after a global option with a quoted path",
+    input: `docker --config "/tmp/docker config" login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login after a global option with a single quoted path",
+    input: `docker --config '/tmp/docker config' login -u me -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "podman login after a global option with an escaped space",
+    input: `podman --root /srv/my\\ containers login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
   // roborev 5357: a backslash escapes the next character in an unquoted shell word.
   {
     name: "mysql -p with an escaped space",
@@ -1497,6 +1516,13 @@ describe("M2.22 names and flags", () => {
     expectWellFormed(input, result);
   });
 
+  it("masks an outer value whose scan used up the budget on a nested name (roborev 5388)", () => {
+    const input = `{"value":{"x":"${fake.password}","pad":"${"a".repeat(500_001)}","name":"DB_PASS","value":"z"},"name":"API_TOKEN"}`;
+    const result = redactText(input);
+    expect(result.text).not.toContain(fake.password);
+    expectWellFormed(input, result);
+  });
+
   it("is idempotent", () => {
     const input = `mysql -p${fake.password} app; sshpass -p ${fake.password} ssh host; docker login -p ${fake.password} r`;
     const once = redactText(input).text;
@@ -1575,6 +1601,8 @@ describe("adversarial input", () => {
     ["name pairs with long values", `{"name":"A_PASS","value":"${"a".repeat(n)}`],
     ["name pairs without values", '{"name":"A_PASS",'.repeat(n / 17)],
     ["name pairs with quotes", `{"name":"${"A_".repeat(n / 2)}`],
+    ["docker quoted global options", 'docker --config "a b" '.repeat(n / 23)],
+    ["docker unclosed quote options", 'docker --config "'.repeat(n / 17)],
     ["docker global options", "docker --config /tmp ".repeat(n / 22)],
     ["docker flags", `docker ${"-a b ".repeat(n / 5)}login`],
     ["docker flags repeated", "docker -a -b -c -d -e -f -g login ".repeat(n / 33)],
