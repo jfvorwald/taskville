@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { CITY_LAYOUT } from "../../../src/city/layout/index.ts";
+import { parseHex } from "../../../src/themes/core/color.ts";
 import {
   CITY_PALETTE_KEYS,
   cityPaletteFromTokens,
-  parseHex,
   resolveTokens,
   validateAccents,
   validateTheme,
