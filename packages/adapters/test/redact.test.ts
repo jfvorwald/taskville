@@ -726,6 +726,80 @@ const positives: Positive[] = [
     secret: "123456789",
     kind: "sensitive-value",
   },
+  // roborev 5357: either property order, line breaks, and object or array values.
+  {
+    name: "JSON value before name",
+    input: `{"value":"${fake.password}","name":"DB_PASSWORD"}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON numeric value before name",
+    input: '{"value": 123456789, "key": "DB_PASS"}',
+    secret: "123456789",
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON name and value on separate lines",
+    input: `{\n  "name": "DB_PASSWORD",\n  "value": "${fake.password}"\n}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON value and name on separate lines",
+    input: `{\n  "value": "${fake.password}",\n  "name": "DB_PASSWORD"\n}`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON name with an object value",
+    input: `{"name":"API_TOKEN","value":{"x":"${fake.password}"}}`,
+    secret: `{"x":"${fake.password}"}`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON name with an object value holding a brace in a string",
+    input: `{"name":"API_TOKEN","value":{"x":"}${fake.password}","y":[1,{"z":2}]},"note":"after"}`,
+    secret: `{"x":"}${fake.password}","y":[1,{"z":2}]}`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON name with an array value",
+    input: `{"name":"API_TOKEN","value":["a","${fake.password}"]}`,
+    secret: `["a","${fake.password}"]`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON object value before name",
+    input: `{"value":{"x":"${fake.password}"},"name":"API_TOKEN"}`,
+    secret: `{"x":"${fake.password}"}`,
+    kind: "sensitive-value",
+  },
+  // roborev 5357: a backslash escapes the next character in an unquoted shell word.
+  {
+    name: "mysql -p with an escaped space",
+    input: `mysql -u root -p${fake.password}\\ tail app`,
+    secret: `${fake.password}\\ tail`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "sshpass -p with an escaped space",
+    input: `sshpass -p ${fake.password}\\ tail ssh host`,
+    secret: `${fake.password}\\ tail`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login -p with an escaped semicolon",
+    input: `docker login -p ${fake.password}\\;tail registry.example.test`,
+    secret: `${fake.password}\\;tail`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "mysql -p after a line continuation",
+    input: `mysql -u root \\\n  -p${fake.password} app`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
 ];
 
 describe("redactText true positives", () => {
@@ -946,6 +1020,12 @@ const negatives: Array<{ name: string; input: string }> = [
     name: "JSON name pair with a reference",
     input: '{"name":"DB_PASSWORD","value":"$DB_PASSWORD"}',
   },
+  { name: "JSON value before a PATH name", input: '{"value":"/usr/bin","name":"PATH"}' },
+  {
+    name: "JSON value and name in different objects",
+    input: '{"value":"keep"},{"name":"DB_PASSWORD","note":"x"}',
+  },
+  { name: "JSON object value of an ordinary name", input: '{"name":"PATH","value":{"x":"keep"}}' },
   { name: "JSON key alone", input: '{"name": "DB_PASSWORD", "description": "the database login"}' },
 ];
 
@@ -1440,6 +1520,18 @@ describe("adversarial input", () => {
     ["name pairs with long values", `{"name":"A_PASS","value":"${"a".repeat(n)}`],
     ["name pairs without values", '{"name":"A_PASS",'.repeat(n / 17)],
     ["name pairs with quotes", `{"name":"${"A_".repeat(n / 2)}`],
+    ["value keys", '"value":'.repeat(n / 8)],
+    ["value keys with objects", '"value":{'.repeat(n / 9)],
+    ["value keys with objects and a name", `${'"value":{'.repeat(n / 20)},"name":"A_PASS"`],
+    ["value objects then names", `${'"value":{'.repeat(450)},"name":"A_PASS"`.repeat(n / 4100)],
+    ["unclosed name object values", '{"name":"A_PASS","value":{'.repeat(n / 26)],
+    ["unclosed name array values", '{"name":"A_PASS","value":['.repeat(n / 26)],
+    ["unclosed name string values", '{"name":"A_PASS","value":"'.repeat(n / 26)],
+    ["names alone", ',"name":"A_PASS"'.repeat(n / 16)],
+    ["name pair newlines", `{"name":"A_PASS"${",\n".repeat(n / 2)}`],
+    ["escapes after mysql", `mysql -p${"\\ ".repeat(n / 2)}`],
+    ["escapes after sshpass", `sshpass -p ${"a\\ ".repeat(n / 3)}`],
+    ["backslashes", "\\".repeat(n)],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
