@@ -11,6 +11,38 @@ export interface StatusSnapshot {
   attention: Attention[];
 }
 
+/** Records retention dropped from the projection; they stay in the event log (M2.16, #202 D2). */
+export interface RetiredCounts {
+  agents: number;
+  tasks: number;
+  requests: number;
+}
+
+export type RetiredKind = keyof RetiredCounts;
+
+const RETIRED_WORDS: Record<RetiredKind, readonly [string, string]> = {
+  agents: ["finished agent", "finished agents"],
+  tasks: ["finished task", "finished tasks"],
+  requests: ["closed request", "closed requests"],
+};
+
+/** The snapshot's counts; zero for a snapshot from an engine that predates retention. */
+export function retiredOf(state: ProjectState): RetiredCounts {
+  const raw = (state as { retired?: Partial<RetiredCounts> }).retired;
+  return { agents: raw?.agents ?? 0, tasks: raw?.tasks ?? 0, requests: raw?.requests ?? 0 };
+}
+
+/** One line per kind (in the order given) with a non-zero count, no trailing newline. */
+export function retiredNotes(counts: RetiredCounts, kinds: readonly RetiredKind[]): string[] {
+  return kinds
+    .filter((kind) => counts[kind] > 0)
+    .map((kind) => {
+      const n = counts[kind];
+      const [one, many] = RETIRED_WORDS[kind];
+      return `${n} older ${n === 1 ? `${one} is` : `${many} are`} in the event log`;
+    });
+}
+
 const LEVEL_RANK = { needs_you: 0, trouble: 1, waiting: 2 } as const;
 const byName = (a: Agent, b: Agent) =>
   (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id, "en", { sensitivity: "base" }) ||
@@ -138,7 +170,8 @@ export function renderStatus(
   const rows = treeOrder(state, visibleAgents(state, options.all)).map(
     ({ agent, depth }) => `${"  ".repeat(depth)}${line(agent, state, attention)}`,
   );
-  return `${[header, ...(rows.length === 0 ? ["(no agents)"] : rows)].join("\n")}\n`;
+  const notes = options.all ? retiredNotes(retiredOf(state), ["agents", "tasks"]) : [];
+  return `${[header, ...(rows.length === 0 ? ["(no agents)"] : rows), ...notes].join("\n")}\n`;
 }
 
 export function statusJson(snapshot: StatusSnapshot, options: { all: boolean }) {
@@ -152,5 +185,7 @@ export function statusJson(snapshot: StatusSnapshot, options: { all: boolean }) 
     stateHash: snapshot.stateHash,
     agents,
     attention: snapshot.attention.filter((r) => shown.has(r.agentId)),
+    // Counts of older records kept only in the event log; with --all, like the text line.
+    ...(options.all ? { retired: retiredOf(snapshot.state) } : {}),
   };
 }

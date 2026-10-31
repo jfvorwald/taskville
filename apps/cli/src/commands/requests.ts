@@ -2,7 +2,7 @@ import type { ProjectsResponse } from "@taskville/protocol";
 import type { Io } from "../context.ts";
 import { parseCommand, printJson } from "../context.ts";
 import { EXIT } from "../errors.ts";
-import { reasonText } from "../status.ts";
+import { reasonText, retiredNotes, retiredOf } from "../status.ts";
 import { fetchSnapshot } from "./status.ts";
 
 const USAGE = "taskville requests [--project <id>] [--all] [--json]";
@@ -27,8 +27,13 @@ export async function requests(io: Io, args: string[]): Promise<number> {
       ? [values.project]
       : (await client.json<ProjectsResponse>("GET", "/v1/projects")).projects.map((p) => p.id);
   const rows = [];
+  const retired = { agents: 0, tasks: 0, requests: 0 };
   for (const projectId of projectIds) {
     const { state } = await fetchSnapshot(client, projectId);
+    const counts = retiredOf(state);
+    retired.agents += counts.agents;
+    retired.tasks += counts.tasks;
+    retired.requests += counts.requests;
     for (const request of Object.values(state.requests).sort(
       (a, b) => a.openedAt.localeCompare(b.openedAt) || a.id.localeCompare(b.id),
     )) {
@@ -41,7 +46,7 @@ export async function requests(io: Io, args: string[]): Promise<number> {
     }
   }
   if (context.json) {
-    printJson(io, { requests: rows });
+    printJson(io, all ? { requests: rows, retired } : { requests: rows });
     return EXIT.ok;
   }
   if (rows.length === 0) io.stdout(all ? "No requests.\n" : "No open requests.\n");
@@ -50,6 +55,7 @@ export async function requests(io: Io, args: string[]): Promise<number> {
       `${[r.projectId, r.agentName, r.kind, r.toolName ?? "-", `since ${r.openedAt}`, `answerable: ${r.answerable ? "yes" : "no"}`, r.state, reasonText(r.reason) || "-"].join("\t")}\n`,
     );
   }
+  if (all) for (const note of retiredNotes(retired, ["requests"])) io.stdout(`${note}\n`);
   io.stdout(`${ANSWER_HINT}\n`);
   return EXIT.ok;
 }

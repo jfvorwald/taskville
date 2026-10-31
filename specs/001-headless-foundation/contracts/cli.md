@@ -43,10 +43,17 @@ Body: an indented tree, two spaces per level (FR-012 clarification):
   `maybe <name> (<kind>, heuristic)`, never in place of the recorded name. Masked or truncated reasons show a `[masked]` or `[truncated]`
   marker.
 
+With `--all`, one line follows the tree for each of finished agents and terminal tasks
+that projection retention dropped (`retired`, data-model.md "Retention", decision #202
+D2), only when its count is above zero, for example `12 older finished agents are in the
+event log` or `1 older finished task is in the event log`. Without `--all`, or when the
+counts are zero, there is no such line.
+
 `--json` prints `{ "projectId", "cursor", "stateHash", "agents": [...],
 "attention": [...] }`: the snapshot's agents sorted by ID (with `kind`,
 `parentAgentId`, `teamId`, `finishedAt`), filtered by `--all` the same way,
-stable enough to diff in tests.
+stable enough to diff in tests. With `--all` it also carries `"retired": { "agents",
+"tasks", "requests" }`, the snapshot's counts.
 
 ## `requests` output
 
@@ -54,6 +61,12 @@ Without `--project`, lists every project's requests. One line per request: proje
 agent, kind, tool, waiting since, `answerable: yes|no` (yes only for bridge-held
 requests, M4), and reason. Only `open` requests unless `--all`. The command reads
 the `requests` map from each project's snapshot; there is no separate route.
+
+With `--all`, a line `N older closed requests are in the event log` (singular `1 older
+closed request is in the event log`) follows the rows, before the hint, when the
+`retired.requests` count, summed over the listed projects, is above zero. `--json` prints
+`{ "requests": [...] }`, and with `--all` also `"retired": { "agents", "tasks", "requests" }`
+summed over the listed projects.
 
 The CLI never answers a request. It has no flag or subcommand for allow, deny, or
 reply, and the engine refuses its token on the command route (ARCHITECTURE.md
