@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-25: Merge rules that combine trusted and untrusted sources need a direction test
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #10 · **Recorded by:** domain-attn teammate (M1.08)
+- **What happened:** Read literally, "the existing record is kept" on a merge would let a forged telemetry request that arrives before the bridge's supply the preview on an answerable card. roborev (job 4827, medium) also found that a succeeded `session.open` command counted as an answer.
+- **Lesson:** When a trusted record (bridge) and an untrusted one (telemetry) merge, the trusted one wins regardless of order, with a test for each arrival order; only the specific answering command type counts as an answer.
+- **Action:** Fixed in PR #137; decision ticket #135 D3.
+
+### L-24: Never pick a record by map iteration order
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #10 · **Recorded by:** domain-attn teammate (M1.08)
+- **What happened:** A projection restored from canonical JSON has sorted keys, and integer-like IDs ("3" before "20") reorder even in a live object, so "the first matching record" differed between live and restored state.
+- **Lesson:** Choose by explicit fields (here `openedAt`, then ID) and pin it with a canonical-JSON round-trip test.
+- **Action:** Done in PR #137.
+
 ### L-23: SQLite triggers alone need care to make a table insert-only
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #11 · **Recorded by:** storage teammate (M1.09)
 - **What happened:** `INSERT OR REPLACE` deletes the conflicting row without firing DELETE triggers (unless `recursive_triggers` is on), and SQLite fired a later-created BEFORE INSERT trigger first, so ordered checks split across triggers misbehaved. SQLite creates `-wal` and `-shm` with the database file's mode bits.
