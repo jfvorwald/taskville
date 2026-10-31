@@ -20,7 +20,7 @@ import {
   sessionHeaders,
 } from "../../http/helpers.ts";
 import { fakeGithubToken } from "../../ingest/helpers.ts";
-import { fixedNow, makeSource, T0, useProjects } from "./helpers.ts";
+import { fixedNow, hookId, makeSource, T0, useProjects } from "./helpers.ts";
 
 const db = useProjects([{ id: "repo", roots: ["/work/repo"] }]);
 const URL = `http://127.0.0.1:4807${CLAUDE_CODE_HOOKS_PATH}`;
@@ -56,19 +56,22 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const { app, mapper } = setup();
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "u-1", payload: hook() }, bearer(CLI_TOKEN)),
+      postJson({ sourceEventId: hookId("u-1"), payload: hook() }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
     const body = await read(res);
     expect(body).toEqual({
       projectId: "repo",
       results: [
-        expect.objectContaining({ sourceEventId: "u-1:agent.connected", status: "accepted" }),
+        expect.objectContaining({
+          sourceEventId: `${hookId("u-1")}:agent.connected`,
+          status: "accepted",
+        }),
       ],
       heads: { repo: 2 },
     });
     expect(mapper.calls).toEqual([
-      { projectId: "repo", sourceEventId: "u-1", receivedAt: T0, late: false },
+      { projectId: "repo", sourceEventId: hookId("u-1"), receivedAt: T0, late: false },
     ]);
     const [event] = storedEvents("repo");
     expect(event).toMatchObject({
@@ -76,7 +79,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       sessionId: "sess-1",
       projectId: "repo",
       sourceId: CLAUDE_CODE_SOURCE_ID,
-      sourceEventId: "u-1:agent.connected",
+      sourceEventId: `${hookId("u-1")}:agent.connected`,
       late: false,
     });
   });
@@ -86,7 +89,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const res = await app.request(
       URL,
       postJson(
-        { sourceEventId: "u-2", payload: hook({ cwd: "/work/repo-evil" }) },
+        { sourceEventId: hookId("u-2"), payload: hook({ cwd: "/work/repo-evil" }) },
         bearer(CLI_TOKEN),
       ),
     );
@@ -98,7 +101,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
 
   it("deduplicates a retried hook by its sourceEventId", async () => {
     const { app } = setup();
-    const body = { sourceEventId: "u-3", payload: hook() };
+    const body = { sourceEventId: hookId("u-3"), payload: hook() };
     await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
     const again = await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
     expect((await read(again)).results[0]?.status).toBe("duplicate");
@@ -113,7 +116,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
             schemaVersion: 1,
             projectId: "unsorted",
             sourceId: "taskville:engine",
-            sourceEventId: "x-1",
+            sourceEventId: hookId("x-1"),
             occurredAt: T0,
             type: "agent.connected",
             agentId: "a",
@@ -126,7 +129,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     });
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "u-4", payload: hook() }, bearer(CLI_TOKEN)),
+      postJson({ sourceEventId: hookId("u-4"), payload: hook() }, bearer(CLI_TOKEN)),
     );
     expect((await read(res)).results[0]?.status).toBe("accepted");
     expect(storedEvents("repo")[0]).toMatchObject({
@@ -142,7 +145,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
         events: [
           {
             schemaVersion: 1,
-            sourceEventId: "x-2",
+            sourceEventId: hookId("x-2"),
             occurredAt: T0,
             type: "request.resolved",
             payload: { requestId: "r", resolution: "answered_here" },
@@ -154,7 +157,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     });
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "u-5", payload: hook() }, bearer(CLI_TOKEN)),
+      postJson({ sourceEventId: hookId("u-5"), payload: hook() }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
     const { results } = await read(res);
@@ -168,7 +171,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const res = await app.request(
       URL,
       postJson(
-        { sourceEventId: "u-6", payload: hook({ hook_event_name: "Ignored" }) },
+        { sourceEventId: hookId("u-6"), payload: hook({ hook_event_name: "Ignored" }) },
         bearer(CLI_TOKEN),
       ),
     );
@@ -192,7 +195,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       URL,
       postJson(
         {
-          sourceEventId: "u-7",
+          sourceEventId: hookId("u-7"),
           payload: hook({ tool_use_id: "tu-1", tool_input: { a: 1 }, tool_response: "out" }),
         },
         bearer(CLI_TOKEN),
@@ -219,14 +222,17 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     await app.request(
       URL,
       postJson(
-        { sourceEventId: "u-15", payload: hook({ tool_use_id: "tu-9" }) },
+        { sourceEventId: hookId("u-15"), payload: hook({ tool_use_id: "tu-9" }) },
         bearer(CLI_TOKEN),
       ),
     );
     const retry = await app.request(
       URL,
       postJson(
-        { sourceEventId: "u-15", payload: hook({ tool_use_id: "tu-9", tool_response: "forged" }) },
+        {
+          sourceEventId: hookId("u-15"),
+          payload: hook({ tool_use_id: "tu-9", tool_response: "forged" }),
+        },
         bearer(CLI_TOKEN),
       ),
     );
@@ -257,8 +263,8 @@ describe("POST /v1/sources/claude-code/hooks", () => {
             },
       evidence: { store: (_projectId, evidence) => stored.push([...evidence]) },
     });
-    await source.ingestHook({ sourceEventId: "c-1", payload: hook() });
-    const retry = await source.ingestHook({ sourceEventId: "c-1", payload: hook() });
+    await source.ingestHook({ sourceEventId: hookId("c-1"), payload: hook() });
+    const retry = await source.ingestHook({ sourceEventId: hookId("c-1"), payload: hook() });
     expect(retry.results.map((r) => r.status)).toEqual(["conflict", "accepted"]);
     expect(stored).toEqual([[{ toolCallId: "tu-c", input: "orig" }]]);
   });
@@ -275,7 +281,10 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     });
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "u-8", payload: hook({ tool_use_id: "tu-2" }) }, bearer(CLI_TOKEN)),
+      postJson(
+        { sourceEventId: hookId("u-8"), payload: hook({ tool_use_id: "tu-2" }) },
+        bearer(CLI_TOKEN),
+      ),
     );
     expect(res.status).toBe(200);
     expect(storedEvents("repo")).toHaveLength(1);
@@ -289,7 +298,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     for (const headers of [{ ...sessionHeaders(session), Origin: ORIGIN }, bearer(BRIDGE_TOKEN)]) {
       const res = await app.request(
         URL,
-        postJson({ sourceEventId: "u-9", payload: hook() }, headers),
+        postJson({ sourceEventId: hookId("u-9"), payload: hook() }, headers),
       );
       expect(res.status).toBe(403);
       expect((await read(res)).error.code).toBe("credential_not_allowed");
@@ -299,7 +308,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
 
   it("refuses no credential, a foreign Host, and a foreign Origin", async () => {
     const { app } = setup();
-    const body = { sourceEventId: "u-10", payload: hook() };
+    const body = { sourceEventId: hookId("u-10"), payload: hook() };
     const anonymous = await app.request(URL, postJson(body, { Host: HOST, Origin: ORIGIN }));
     expect(anonymous.status).toBe(401);
     const foreignHost = await app.request(
@@ -327,12 +336,23 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       { sourceEventId: "x".repeat(10_000), payload: hook() },
       // Over M2.03's MAX_SOURCE_EVENT_ID the mapper would ignore the hook: a contract error instead.
       { sourceEventId: "x".repeat(MAX_HOOK_SOURCE_EVENT_ID + 1), payload: hook() },
-      { sourceEventId: "u", payload: [] },
-      { sourceEventId: "u", payload: null },
-      { sourceEventId: "u", payload: "hook" },
+      { sourceEventId: hookId("u"), payload: [] },
+      { sourceEventId: hookId("u"), payload: null },
+      { sourceEventId: hookId("u"), payload: "hook" },
       // `late` is never accepted over HTTP: only the spool (M2.07) sets it.
-      { sourceEventId: "u", payload: hook(), late: true },
-      { sourceEventId: "u", payload: hook(), extra: 1 },
+      { sourceEventId: hookId("u"), payload: hook(), late: true },
+      { sourceEventId: hookId("u"), payload: hook(), extra: 1 },
+      // Only the shim's shape, a lowercase UUID v4: mappers build unmasked IDs from it (roborev 5161).
+      { sourceEventId: "u-1", payload: hook() },
+      { sourceEventId: "y".repeat(170), payload: hook() },
+      { sourceEventId: hookId("u").toUpperCase(), payload: hook() },
+      { sourceEventId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8", payload: hook() },
+      { sourceEventId: "6ba7b810-9dad-41d1-c0b4-00c04fd430c8", payload: hook() },
+      { sourceEventId: hookId("u").replaceAll("-", ""), payload: hook() },
+      { sourceEventId: `{${hookId("u")}}`, payload: hook() },
+      { sourceEventId: `${hookId("u")}\n`, payload: hook() },
+      { sourceEventId: ` ${hookId("u")}`, payload: hook() },
+      { sourceEventId: `ghp_${"A".repeat(36)}`, payload: hook() },
     ];
     for (const body of bad) {
       const res = await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
@@ -348,12 +368,14 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     expect(mapper.calls).toHaveLength(0);
   });
 
-  it("accepts a sourceEventId of exactly 170 characters, M2.03's limit", async () => {
+  it("accepts a lowercase UUID v4, the shim's sourceEventId", async () => {
     const { app } = setup();
-    expect(MAX_HOOK_SOURCE_EVENT_ID).toBe(170);
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "y".repeat(170), payload: hook() }, bearer(CLI_TOKEN)),
+      postJson(
+        { sourceEventId: "3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f7a93", payload: hook() },
+        bearer(CLI_TOKEN),
+      ),
     );
     expect(res.status).toBe(200);
     expect((await read(res)).results.map((r) => r.status)).toEqual(["accepted"]);
@@ -361,14 +383,14 @@ describe("POST /v1/sources/claude-code/hooks", () => {
 
   it("treats a __proto__ key as data, not as a prototype", async () => {
     const { app } = setup();
-    const raw = `{"sourceEventId":"u-11","__proto__":{"late":true}, "payload": {"__proto__": {"cwd": "/work/repo"}, "session_id": "s"}}`;
+    const raw = `{"sourceEventId":"${hookId("u-11")}","__proto__":{"late":true}, "payload": {"__proto__": {"cwd": "/work/repo"}, "session_id": "s"}}`;
     const res = await app.request(URL, {
       method: "POST",
       headers: { ...bearer(CLI_TOKEN), "Content-Type": "application/json" },
       body: raw,
     });
     expect(res.status).toBe(400);
-    const inPayload = `{"sourceEventId":"u-12","payload":{"__proto__":{"cwd":"/work/repo"},"session_id":"s"}}`;
+    const inPayload = `{"sourceEventId":"${hookId("u-12")}","payload":{"__proto__":{"cwd":"/work/repo"},"session_id":"s"}}`;
     const res2 = await app.request(URL, {
       method: "POST",
       headers: { ...bearer(CLI_TOKEN), "Content-Type": "application/json" },
@@ -384,7 +406,10 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const big = "x".repeat(MAX_HOOK_BODY_BYTES);
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "u-13", payload: hook({ tool_response: big }) }, bearer(CLI_TOKEN)),
+      postJson(
+        { sourceEventId: hookId("u-13"), payload: hook({ tool_response: big }) },
+        bearer(CLI_TOKEN),
+      ),
     );
     expect(res.status).toBe(413);
     expect((await read(res)).error.code).toBe("payload_too_large");
@@ -393,7 +418,10 @@ describe("POST /v1/sources/claude-code/hooks", () => {
 
   it("uses the engine clock for receivedAt", async () => {
     const { app, mapper } = setup({ now: () => new Date(Date.parse("2026-10-31T13:00:00Z")) });
-    await app.request(URL, postJson({ sourceEventId: "u-14", payload: hook() }, bearer(CLI_TOKEN)));
+    await app.request(
+      URL,
+      postJson({ sourceEventId: hookId("u-14"), payload: hook() }, bearer(CLI_TOKEN)),
+    );
     expect(mapper.calls[0]?.receivedAt).toBe("2026-10-31T13:00:00.000Z");
     expect(fixedNow().toISOString()).toBe(T0);
   });
@@ -403,7 +431,7 @@ describe("ClaudeCodeSource.ingestHook (the spool's entry point)", () => {
   it("passes late: true through to the mapper and the stored events", async () => {
     const { source, mapper } = makeSource(db());
     const response = await source.ingestHook({
-      sourceEventId: "s-1",
+      sourceEventId: hookId("s-1"),
       payload: hook(),
       late: true,
     });
@@ -414,7 +442,7 @@ describe("ClaudeCodeSource.ingestHook (the spool's entry point)", () => {
 
   it("defaults late to false", async () => {
     const { source } = makeSource(db());
-    await source.ingestHook({ sourceEventId: "s-2", payload: hook() });
+    await source.ingestHook({ sourceEventId: hookId("s-2"), payload: hook() });
     expect(storedEvents("repo")[0]?.late).toBe(false);
   });
 
@@ -423,7 +451,7 @@ describe("ClaudeCodeSource.ingestHook (the spool's entry point)", () => {
     const { createProject } = await import("../../../src/projects/index.ts");
     createProject(db(), { id: "late-add", name: "late-add", roots: ["/work/new"] });
     const response = await source.ingestHook({
-      sourceEventId: "s-3",
+      sourceEventId: hookId("s-3"),
       payload: hook({ cwd: "/work/new/x" }),
     });
     expect(response.projectId).toBe("late-add");
@@ -436,13 +464,17 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
   it("reports a spool replay of a hook that already landed live as duplicate, not conflict", async () => {
     let clock = Date.parse(T0);
     const { source } = makeSource(db(), { now: () => new Date(clock) });
-    const live = await source.ingestHook({ sourceEventId: "r-1", payload: hook() });
+    const live = await source.ingestHook({ sourceEventId: hookId("r-1"), payload: hook() });
     clock += 60_000;
-    const replay = await source.ingestHook({ sourceEventId: "r-1", payload: hook(), late: true });
+    const replay = await source.ingestHook({
+      sourceEventId: hookId("r-1"),
+      payload: hook(),
+      late: true,
+    });
     const first = live.results[0];
     expect(replay.results).toEqual([
       {
-        sourceEventId: "r-1:agent.connected",
+        sourceEventId: `${hookId("r-1")}:agent.connected`,
         status: "duplicate",
         ingestSequence: first?.status === "accepted" ? first.ingestSequence : -1,
         eventId: first?.status === "accepted" ? first.eventId : "",
@@ -456,9 +488,13 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
   it("reports a retry at a later engine time as duplicate", async () => {
     let clock = Date.parse(T0);
     const { source } = makeSource(db(), { now: () => new Date(clock) });
-    await source.ingestHook({ sourceEventId: "r-2", payload: hook(), late: true });
+    await source.ingestHook({ sourceEventId: hookId("r-2"), payload: hook(), late: true });
     clock += 5_000;
-    const again = await source.ingestHook({ sourceEventId: "r-2", payload: hook(), late: true });
+    const again = await source.ingestHook({
+      sourceEventId: hookId("r-2"),
+      payload: hook(),
+      late: true,
+    });
     expect(again.results.map((r) => r.status)).toEqual(["duplicate"]);
     expect(storedEvents("repo")).toHaveLength(1);
   });
@@ -466,17 +502,17 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
   it("reports the same sourceEventId with different hook content as conflict (roborev 5072)", async () => {
     let clock = Date.parse(T0);
     const { source } = makeSource(db(), { now: () => new Date(clock) });
-    const first = await source.ingestHook({ sourceEventId: "r-4", payload: hook() });
+    const first = await source.ingestHook({ sourceEventId: hookId("r-4"), payload: hook() });
     clock += 1_000;
     const changed = await source.ingestHook({
-      sourceEventId: "r-4",
+      sourceEventId: hookId("r-4"),
       payload: hook({ session_id: "sess-other" }),
       late: true,
     });
     const original = first.results[0];
     expect(changed.results).toEqual([
       {
-        sourceEventId: "r-4:agent.connected",
+        sourceEventId: `${hookId("r-4")}:agent.connected`,
         status: "conflict",
         existingEventId: original?.status === "accepted" ? original.eventId : "",
       },
@@ -501,8 +537,12 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
         ],
       }),
     });
-    await source.ingestHook({ sourceEventId: "r-5", payload: hook() });
-    const again = await source.ingestHook({ sourceEventId: "r-5", payload: hook(), late: true });
+    await source.ingestHook({ sourceEventId: hookId("r-5"), payload: hook() });
+    const again = await source.ingestHook({
+      sourceEventId: hookId("r-5"),
+      payload: hook(),
+      late: true,
+    });
     expect(again.results.map((r) => r.status)).toEqual(["duplicate"]);
     expect(JSON.stringify(storedEvents("repo"))).not.toContain(secret);
   });
@@ -524,9 +564,9 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
         ],
       }),
     });
-    await source.ingestHook({ sourceEventId: "r-6", payload: hook() });
+    await source.ingestHook({ sourceEventId: hookId("r-6"), payload: hook() });
     title = "bad \uD800";
-    const again = await source.ingestHook({ sourceEventId: "r-6", payload: hook() });
+    const again = await source.ingestHook({ sourceEventId: hookId("r-6"), payload: hook() });
     expect(again.results.map((r) => r.status)).toEqual(["conflict"]);
   });
 
@@ -545,8 +585,8 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
     const { source } = makeSource(db(), {
       mapper: () => ({ events: ++calls === 1 ? [event(0)] : [event(0), event(1)] }),
     });
-    await source.ingestHook({ sourceEventId: "r-3", payload: hook() });
-    const second = await source.ingestHook({ sourceEventId: "r-3", payload: hook() });
+    await source.ingestHook({ sourceEventId: hookId("r-3"), payload: hook() });
+    const second = await source.ingestHook({ sourceEventId: hookId("r-3"), payload: hook() });
     expect(second.results.map((r) => r.status)).toEqual(["duplicate", "accepted"]);
     expect(second.heads).toEqual({ repo: 3 });
   });

@@ -11,8 +11,10 @@ import {
 } from "@taskville/engine/src/projects/index.ts";
 import {
   ClaudeCodeSource,
+  drainSpool,
   mapClaudeCodeHook,
   registerClaudeCodeRoutes,
+  replaySpool,
 } from "@taskville/engine/src/sources/claude-code/index.ts";
 import { GitWatcher } from "@taskville/engine/src/sources/git/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
@@ -28,7 +30,8 @@ const USAGE = "taskville serve --headless [--port N] [--home <dir>]";
  * `taskville serve --headless`: runs the engine in the foreground on 127.0.0.1 only (contracts/
  * cli.md). Creates the home, tokens, database, and Unsorted project on first run; registers the
  * config file's projects when absent (decision #110 default; the file is never edited); rebuilds
- * stale projections and expires open requests before listening; prints the one-time pairing URL.
+ * stale projections, expires open requests, and replays the telemetry spool (bounded; any rest
+ * is drained after listening) before listening; prints the one-time pairing URL.
  *
  * Pairings stay in memory (MemoryPairingRecords): decision #113 on persisted pairings is still
  * open, so a restart requires pairing the browser again.
@@ -62,6 +65,8 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
   let engine: Engine | undefined;
   let evidence: EvidenceStore | undefined;
   let gitWatcher: GitWatcher | undefined;
+  const stopDrain = new AbortController();
+  let draining: Promise<unknown> = Promise.resolve();
   try {
     const prepared = ensureHome(home);
     const { config, warnings } = loadConfig({ home, port: portFlag });
@@ -80,17 +85,15 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     registerProjectRoutes(app, { storage: engine.storage, now });
     // Claude Code telemetry (M2.02, M2.03, M2.06): hooks from the shim, tool bodies to evidence.db.
     evidence = openEvidenceStore(prepared.paths.evidenceDb, { now, logger });
-    registerClaudeCodeRoutes(
-      app,
-      new ClaudeCodeSource({
-        pipeline: engine.pipeline,
-        storage: engine.storage,
-        mapper: mapClaudeCodeHook,
-        evidence,
-        logger,
-        now,
-      }),
-    );
+    const claudeCode = new ClaudeCodeSource({
+      pipeline: engine.pipeline,
+      storage: engine.storage,
+      mapper: mapClaudeCodeHook,
+      evidence,
+      logger,
+      now,
+    });
+    registerClaudeCodeRoutes(app, claudeCode);
     for (const project of config.projects) {
       try {
         if (createProject(engine.storage, project, { now })) {
@@ -110,8 +113,17 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       now,
       logger,
     });
+    // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
+    // run before listening, the rest worked off in bounded runs afterwards.
+    const spool = { spoolDir: prepared.paths.spoolDir, source: claudeCode, logger };
+    const first = await replaySpool(spool);
     const server = await startServer({ app, port: config.port });
     gitWatcher.start();
+    if (!first.failed && (first.deferredFiles > 0 || first.mainFile === "busy")) {
+      draining = drainSpool({ ...spool, signal: stopDrain.signal }).catch((error: unknown) => {
+        logger.error({ errName: (error as Error).name }, "spool drain failed");
+      });
+    }
     const base = `http://${LOOPBACK_ADDRESS}:${server.port}`;
     io.stdout(`Taskville engine listening on ${base} (home ${home})\n`);
     const minutes = PAIRING_CODE_TTL_MS / 60_000;
@@ -123,6 +135,8 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       if (io.signal.aborted) resolve();
       else io.signal.addEventListener("abort", () => resolve(), { once: true });
     });
+    stopDrain.abort();
+    await draining;
     await gitWatcher.stop();
     engine.close();
     evidence.close();
@@ -130,6 +144,8 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
+    stopDrain.abort();
+    await draining;
     await gitWatcher?.stop();
     engine?.close();
     evidence?.close();
