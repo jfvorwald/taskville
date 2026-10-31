@@ -60,6 +60,11 @@ const fake = {
   generic32: body(32, 17),
   slashed: [body(12, 22), "/", body(14, 23), "/", body(12, 24)].join(""),
   slashedWord: [body(16, 27), "/abc/", body(19, 28)].join(""),
+  // A 32-character hex credential, as in the M1.18 F3 finding: hex-only, so the
+  // high-entropy rule never sees it.
+  hexToken: ["5f4d", chars(28, "0123456789abcdef", 29)].join(""),
+  shortToken: [chars(11, B62, 30), "7"].join(""),
+  password: ["s3", "cr3t", "pa", "ss"].join(""),
 };
 
 const pem = (label: string) =>
@@ -368,6 +373,92 @@ const positives: Positive[] = [
     secret: "pässwörd🔑x",
     kind: "sensitive-value",
   },
+  // M1.18 F3 (a): Authorization schemes other than Bearer and Basic.
+  {
+    name: "Token scheme in a curl Authorization header",
+    input: `curl -H "Authorization: Token ${fake.hexToken}" https://api.example`,
+    secret: fake.hexToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "lower-case token scheme in single quotes",
+    input: `curl -H 'authorization: token ${fake.hexToken}' https://api.example`,
+    secret: fake.hexToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "short alphanumeric credential under a scheme",
+    input: `Authorization: ApiKey ${fake.shortToken}`,
+    secret: fake.shortToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "Proxy-Authorization with a Negotiate scheme",
+    input: `Proxy-Authorization: Negotiate ${fake.generic40}`,
+    secret: fake.generic40,
+    kind: "bearer-token",
+  },
+  {
+    name: "Authorization assignment with a scheme",
+    input: `authorization = Token ${fake.hexToken}`,
+    secret: fake.hexToken,
+    kind: "bearer-token",
+  },
+  // M1.18 F3 (b): curl user credentials. Only the password is masked.
+  {
+    name: "curl -u user:password",
+    input: `curl -u admin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --user user:password",
+    input: `curl --user admin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --user=user:password",
+    input: `curl --user=admin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -u with the value attached",
+    input: `curl -uadmin:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -u with an email user and an API token, quoted",
+    input: `curl -u 'me@example.com:${fake.hexToken}' https://x`,
+    secret: fake.hexToken,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --user with a quoted password containing a space",
+    input: `curl --user "admin:${fake.password} two" https://x`,
+    secret: `${fake.password} two`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl --proxy-user",
+    input: `curl --proxy-user proxy:${fake.password} -x http://p:3128 https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -U proxy credentials",
+    input: `curl -U proxy:${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl -u with the same user and password",
+    input: "curl -u admin:admin http://localhost:8080",
+    secret: "admin",
+    kind: "basic-auth",
+  },
 ];
 
 describe("redactText true positives", () => {
@@ -499,6 +590,51 @@ const negatives: Array<{ name: string; input: string }> = [
   { name: "URL without credentials", input: "https://example.test:8443/path?q=1&page=2" },
   { name: "URL with user but no password", input: "ssh://git@github.com/jfvorwald/taskville.git" },
   { name: "semver and dates", input: "v1.2.3 released 2026-10-30T12:00:00Z" },
+  // M1.18 F3: Authorization prose and placeholders.
+  { name: "Authorization prose with one word", input: "Authorization: required" },
+  {
+    name: "Authorization prose with several words",
+    input: "Authorization: handled internally by the gateway",
+  },
+  {
+    name: "prose naming the Token scheme",
+    input: "The Authorization: Token scheme is described in the docs.",
+  },
+  {
+    name: "Authorization scheme with a letters-only placeholder",
+    input: "Authorization: Token xxxxxxxx",
+  },
+  {
+    name: "Authorization scheme with a variable",
+    input: 'curl -H "Authorization: Token $API_TOKEN" https://x',
+  },
+  {
+    name: "Authorization scheme with an angle placeholder",
+    input: 'curl -H "Authorization: Token <your-token>" https://x',
+  },
+  // M1.18 F3: -u and --user in other meanings.
+  { name: "sort -u", input: "sort -u names.txt > unique.txt" },
+  { name: "git add -u", input: "git add -u && git commit" },
+  { name: "git push -u", input: "git push -u origin main" },
+  { name: "python -u", input: "python -u -m pytest tests" },
+  { name: "sudo -u", input: "sudo -u postgres psql" },
+  {
+    name: "--user with no colon",
+    input: "pip install --user requests; docker run --user root alpine",
+  },
+  { name: "docker uid:gid", input: "docker run -u 1000:1000 alpine id" },
+  { name: "docker uid:gid from id", input: 'docker run -u "$(id -u):$(id -g)" alpine id' },
+  {
+    name: "docker uid:gid from id unquoted",
+    input: "docker run --user $(id -u):$(id -g) alpine id",
+  },
+  { name: "rsync -u with a host path", input: "rsync -u backup:/srv/data ./data" },
+  { name: "curl user with an empty password", input: "curl -u admin: https://x" },
+  {
+    name: "curl user and password from variables",
+    input: 'curl -u "$API_USER:$API_TOKEN" https://x',
+  },
+  { name: "curl user-agent flag", input: 'curl --user-agent "agent:1" https://x' },
 ];
 
 describe("redactText false positives", () => {
@@ -652,6 +788,15 @@ describe("adversarial input", () => {
     ["unclosed braced references", ["PASSWORD=$", "{{ ".repeat(n / 3)].join("")],
     ["mask markers", "PASSWORD=[REDACTED:x]".repeat(n / 21)],
     ["random base62", body(n, 19)],
+    ["Authorization schemes", "Authorization: Token ".repeat(n / 21)],
+    ["Authorization spaces", `Authorization: Token${" ".repeat(n)}`],
+    ["Authorization values", `Authorization: Token ${"a".repeat(n)}`],
+    ["-u flags", "-u ".repeat(n / 3)],
+    ["attached -u flags", "-u".repeat(n / 2)],
+    ["--user= chains", "--user=".repeat(n / 7)],
+    ["--user=a: chains", "--user=a:".repeat(n / 9)],
+    ["-u long user", `-u ${"a".repeat(n)}:b`],
+    ["-u long password", `-u a:${"b".repeat(n)}`],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
