@@ -1,10 +1,18 @@
 import {
-  AGENT_ID_MAX,
-  type Attribution,
-  attributeHook,
-  childAgentId,
-  NAME_MAX,
-} from "./attribution.ts";
+  MAX_AGENT_ID,
+  MAX_SOURCE_EVENT_ID,
+  requestIdFor,
+  SOURCE_ID,
+  subagentAgentId,
+} from "../core/index.ts";
+import {
+  baseName,
+  NAME_MAX as CORE_NAME_MAX,
+  cleanReason,
+  cleanText,
+  PATH_MAX,
+} from "../core/text.ts";
+import { type Attribution, attributeHook, NAME_MAX } from "./attribution.ts";
 import { idToken, own, ownRecord, ownString, safeText } from "./fields.ts";
 
 // Crew mapping for Claude Code hooks: subagents and agent teams (ARCHITECTURE.md 2.9 and 8.1,
@@ -16,8 +24,6 @@ import { idToken, own, ownRecord, ownString, safeText } from "./fields.ts";
 // attribution setting can hide them (#120 D2 alternative). Never reads ~/.claude/teams or
 // ~/.claude/tasks; only the hook payload.
 
-export const SOURCE_ID = "claude-code";
-
 export interface CrewContext {
   projectId: string;
   /** The shim's ID for this hook call. Each event gets `<sourceEventId>:crew:<n>`. */
@@ -27,7 +33,10 @@ export interface CrewContext {
   late: boolean;
 }
 
-/** A protocol v1 input event (contracts/events.md). */
+/**
+ * A protocol v1 input event (contracts/events.md). Structurally an `InputEventWire`; the tests
+ * parse every one with the protocol's schema.
+ */
 export interface CrewEvent {
   schemaVersion: 1;
   projectId: string;
@@ -49,29 +58,12 @@ export interface CrewMapResult {
   ignored?: string;
 }
 
-/** Hooks this module maps. Core maps everything else (and the tool calls of these tools). */
-export const CREW_HOOKS = [
-  "SubagentStart",
-  "SubagentStop",
-  "TeammateIdle",
-  "TaskCreated",
-  "TaskCompleted",
-] as const;
-
 const SUMMARY_MAX = 280;
-/** Same cap as the core mapper's names. */
-const SESSION_NAME_MAX = 200;
 const TITLE_MAX = 200;
-const TEAM_PREFIX = "claude-code:team:";
-const TASK_PREFIX = "claude-code:task:";
-const REQUEST_PREFIX = "claude-code:request:";
+const TEAM_PREFIX = `${SOURCE_ID}:team:`;
+const TASK_PREFIX = `${SOURCE_ID}:task:`;
 /** Protocol v1 ID limit (`ID_MAX_LENGTH`). Every ID built below is checked against it. */
 const ID_MAX = 200;
-/**
- * Longest shim event ID accepted, as in the core mapper: leaves room for `:crew:<n>` and for
- * `claude-code:request:<id>:worker` within 200.
- */
-const SOURCE_EVENT_ID_MAX = 170;
 /** Longest `team_name` accepted. Real ones are `session-<8 hex>`. */
 const TEAM_NAME_MAX = 128;
 
@@ -86,8 +78,9 @@ type Draft = Pick<CrewEvent, "type" | "payload"> &
 const ignore = (reason: string): CrewMapResult => ({ events: [], ignored: reason });
 
 export function mapCrewHook(payload: unknown, ctx: CrewContext): CrewMapResult {
-  if (idToken(ctx.sourceEventId, SOURCE_EVENT_ID_MAX) === undefined) {
-    return ignore("unusable sourceEventId");
+  // The core mapper's bound: leaves room for `:crew:<n>` and `...:request:<id>:worker` in 200.
+  if (ctx.sourceEventId.length > MAX_SOURCE_EVENT_ID) {
+    return ignore("sourceEventId too long to derive event IDs from");
   }
   const hook = ownString(payload, "hook_event_name");
   const who = attributeHook(payload);
@@ -227,13 +220,13 @@ function agentSpawned(p: unknown, who: Attribution): Draft[] | string {
   if (response === undefined) return "Agent call without a response";
   if (own(response, "status") === "teammate_spawned") return teammateSpawned(p, response, who);
 
-  const child = idToken(own(response, "agentId"), AGENT_ID_MAX);
+  const child = idToken(own(response, "agentId"), MAX_AGENT_ID);
   if (child === undefined) return "Agent response without agentId";
   const name =
     safeText(own(response, "agentType"), NAME_MAX) ??
     safeText(own(ownRecord(p, "tool_input"), "subagent_type"), NAME_MAX) ??
     "subagent";
-  const childId = childAgentId(who.sessionId, child);
+  const childId = subagentAgentId(who.sessionId, child);
   return [
     {
       type: "agent.registered",
@@ -281,10 +274,10 @@ function teammateSpawned(
     },
   ];
   const inProcess = own(response, "is_splitpane") === false;
-  const agentId = idToken(own(response, "agent_id"), AGENT_ID_MAX);
+  const agentId = idToken(own(response, "agent_id"), MAX_AGENT_ID);
   const name = safeText(own(response, "name"), NAME_MAX);
   if (inProcess && agentId !== undefined && name !== undefined) {
-    const teammateId = childAgentId(who.sessionId, agentId);
+    const teammateId = subagentAgentId(who.sessionId, agentId);
     drafts.push({
       type: "agent.registered",
       agentId: teammateId,
@@ -351,19 +344,10 @@ function messageSent(p: unknown, who: Attribution): Draft[] | string {
   return drafts;
 }
 
-/** The core mapper's session name: the working directory's last segment (core/map.ts). */
+/** The core mapper's session name (core/map.ts sessionStart), so becoming a lead keeps it. */
 function sessionDisplayName(p: unknown): string {
-  const cwd = ownString(p, "cwd");
-  return (
-    (cwd === undefined ? undefined : safeText(baseName(cwd), SESSION_NAME_MAX)) ?? "Claude Code"
-  );
-}
-
-function baseName(path: string): string {
-  let end = path.length;
-  while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end -= 1;
-  const trimmed = path.slice(0, end);
-  return trimmed.slice(Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\")) + 1);
+  const cwd = cleanText(own(p, "cwd"), PATH_MAX);
+  return (cwd === undefined ? undefined : cleanText(baseName(cwd), CORE_NAME_MAX)) ?? "Claude Code";
 }
 
 // "pip needs permission for Bash" (S-2 answer 3). English text a Claude Code update could change.
@@ -379,8 +363,13 @@ function workerPermissionPrompt(p: unknown, who: Attribution, ctx: CrewContext):
   if (who.role !== "session") return "worker prompt outside a lead session";
   const message = ownString(p, "message");
   const match = message === undefined ? null : WORKER_PROMPT.exec(message.slice(0, 256));
-  const name = safeText(match?.[1], NAME_MAX);
-  const tool = safeText(match?.[2], NAME_MAX);
+  // Like the core mapper's reasons, this one goes to the engine unmasked so the engine masks it
+  // and records `masked: true` (FR-017); the regex already bounds both parts to 64 characters.
+  const name = match?.[1]?.toWellFormed();
+  const tool = match?.[2]?.toWellFormed();
+  const reason = cleanReason(
+    `for: ${name ?? "a teammate"}${tool === undefined ? "" : ` (${tool})`}`,
+  );
   // No toolName: the lead's `permission_prompt` notification that follows (core mapper) has none
   // either, so the reducer merges the two into one red state ("one prompt, one red state").
   return [
@@ -389,9 +378,9 @@ function workerPermissionPrompt(p: unknown, who: Attribution, ctx: CrewContext):
       ...at(who),
       payload: {
         // One request per notification; a retried hook keeps its sourceEventId, so its ID too.
-        requestId: `${REQUEST_PREFIX}${ctx.sourceEventId}:worker`,
+        requestId: `${requestIdFor(ctx.sourceEventId)}:worker`,
         kind: "permission",
-        reason: `for: ${name ?? "a teammate"}${tool === undefined ? "" : ` (${tool})`}`,
+        ...(reason === undefined ? {} : { reason }),
         heuristic: true,
       },
     },
@@ -408,7 +397,7 @@ function teamTask(
   p: unknown,
   who: Attribution,
 ): Draft[] | string {
-  const taskKey = idToken(own(p, "task_id"), AGENT_ID_MAX);
+  const taskKey = idToken(own(p, "task_id"), MAX_AGENT_ID);
   if (taskKey === undefined) return `${hook} without task_id`;
   const scope = idToken(own(p, "team_name"), TEAM_NAME_MAX) ?? who.sessionId;
   const taskId = fits(`${TASK_PREFIX}${scope}:${taskKey}`);

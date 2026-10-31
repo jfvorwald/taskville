@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseInputEvent, producerPolicyViolation } from "@taskville/protocol";
 import { describe, expect, it } from "vitest";
-import { type MapResult, mapClaudeCodeHook } from "../../../src/claude-code/index.ts";
+import { type MapResult, mapCoreHook } from "../../../src/claude-code/index.ts";
 
 // Golden tests (M2.03 Done when): each recorded hook stream from spikes S-1 and S-2 maps to the
 // event list in __golden__/<stream>.txt. Regenerate with `vitest -u` and review the diff by
@@ -53,7 +53,7 @@ const STREAMS: Record<string, Hook[]> = {
 
 function mapStream(name: string, hooks: Hook[], late = false): MapResult[] {
   return hooks.map((h) =>
-    mapClaudeCodeHook(h.input, {
+    mapCoreHook(h.input, {
       projectId: "proj-1",
       sourceEventId: `${name}-${h.seq}`,
       receivedAt: h.receivedAt,

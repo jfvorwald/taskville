@@ -1,4 +1,5 @@
 import { redactText } from "../../redact/index.ts";
+import { isHookId } from "../core/index.ts";
 
 // Reading untrusted hook JSON (L-18, L-29): only own properties, never a prototype; strings are
 // bounded before any work; IDs must be plain tokens the redaction rules would leave alone, since
@@ -25,17 +26,12 @@ export const ownString = (obj: unknown, key: string): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
-const TOKEN = /^[A-Za-z0-9][A-Za-z0-9._@-]*$/;
-
 /**
- * `value` if it is a plain token of at most `max` characters that redaction would not mask, so
- * it can be stored as an unmasked ID. Anything else is undefined.
+ * `value` if the core mapper would accept it as an ID (`isHookId`: a plain bounded token the
+ * redaction rules leave alone, since ID fields are stored unmasked), else undefined.
  */
-export function idToken(value: unknown, max: number): string | undefined {
-  if (typeof value !== "string" || value.length === 0 || value.length > max) return undefined;
-  if (!TOKEN.test(value)) return undefined;
-  return redactText(value).spans.length === 0 ? value : undefined;
-}
+export const idToken = (value: unknown, max: number): string | undefined =>
+  isHookId(value, max) ? value : undefined;
 
 /** Work bound for free text: longer input is cut before masking. Far above any field cap. */
 const SCAN_MAX = 8192;

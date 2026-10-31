@@ -1,7 +1,10 @@
+import { MAX_AGENT_ID, MAX_SESSION_ID, sessionAgentId, subagentAgentId } from "../core/index.ts";
 import { idToken, isRecord, own, ownString, safeText } from "./fields.ts";
 
 // Which agent a Claude Code hook belongs to (ARCHITECTURE.md 8.1 Mapping, docs/spikes/S-2-crews.md,
 // decision #120 D1). Uses only fields of the one hook, so the mapper stays pure.
+//
+// Agent IDs, bounds and ID checks are the core mapper's (core/ids.ts), so both name an agent alike.
 //
 // - No `agent_id`: the session's own agent (the main session, a lead, or a split-pane teammate,
 //   which is its own session).
@@ -31,23 +34,8 @@ export interface Attribution {
   agentType?: string;
 }
 
-/**
- * Bounds on IDs taken from hooks, and the agent ID scheme, match the core mapper (M2.03, #22:
- * `core/ids.ts`) so both mappers name the same agent the same way.
- */
-export const SESSION_ID_MAX = 100;
-export const AGENT_ID_MAX = 64;
 /** Display names (`agent_type`, teammate names). */
 export const NAME_MAX = 64;
-
-const AGENT_PREFIX = "claude-code:";
-
-/** The agent ID for a session's own agent. */
-export const sessionAgentId = (sessionId: string): string => `${AGENT_PREFIX}${sessionId}`;
-
-/** The agent ID for a subagent or in-process teammate of a session. */
-export const childAgentId = (sessionId: string, agentId: string): string =>
-  `${AGENT_PREFIX}${sessionId}:${agentId}`;
 
 const TEAMMATE_SUFFIX = /^-[0-9a-f]{16}$/;
 
@@ -63,7 +51,7 @@ export function isTeammateAgentId(agentId: string, agentType: string): boolean {
 
 export function attributeHook(payload: unknown): Attribution | undefined {
   if (!isRecord(payload)) return undefined;
-  const sessionId = idToken(own(payload, "session_id"), SESSION_ID_MAX);
+  const sessionId = idToken(own(payload, "session_id"), MAX_SESSION_ID);
   if (sessionId === undefined) return undefined;
 
   const rawAgentId = own(payload, "agent_id");
@@ -75,10 +63,10 @@ export function attributeHook(payload: unknown): Attribution | undefined {
       sourceAgentId: sessionId,
     };
   }
-  const agentId = idToken(rawAgentId, AGENT_ID_MAX);
+  const agentId = idToken(rawAgentId, MAX_AGENT_ID);
   if (agentId === undefined) return undefined;
 
-  const id = childAgentId(sessionId, agentId);
+  const id = subagentAgentId(sessionId, agentId);
   const rawType = ownString(payload, "agent_type") ?? "";
   const agentType = safeText(rawType, NAME_MAX);
   if (agentType === undefined) {

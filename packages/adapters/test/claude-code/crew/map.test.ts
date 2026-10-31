@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseInputEvent } from "../../../../protocol/src/index.ts";
 import { type CrewContext, mapCrewHook } from "../../../src/claude-code/crew/index.ts";
+import { redactText } from "../../../src/redact/index.ts";
 
 // Edge cases the recorded streams do not cover: unrecorded team task hooks, failed or odd
 // SendMessage calls, unparseable worker prompts, secrets in agent text, hostile JSON.
@@ -138,9 +139,13 @@ describe("worker permission prompt", () => {
     ).toEqual(a);
   });
 
-  it("masks a secret-looking teammate name", () => {
+  it("leaves a secret in the reason to the engine, which masks it and records masked: true", () => {
+    // Same convention as the core mapper's reasons (core/text.ts cleanReason, FR-017): masking
+    // here would make the engine store `masked: false` for masked text.
     const [e] = valid(note(`${SECRET} needs permission for Bash`));
-    expect(JSON.stringify(e)).not.toContain(SECRET);
+    const reason = String(e?.payload.reason);
+    expect(reason).toBe(`for: ${SECRET} (Bash)`);
+    expect(redactText(reason).spans).toHaveLength(1);
   });
 });
 
