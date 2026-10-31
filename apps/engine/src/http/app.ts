@@ -1,5 +1,5 @@
 import { serveStatic } from "@hono/node-server/serve-static";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import pino, { type Logger } from "pino";
@@ -31,9 +31,12 @@ export interface AppOptions {
   /** Directory of the built web client, served without credentials. */
   staticDir?: string;
   logger?: Logger;
+  /** Storage health, supplied by the storage module. Without it /health reports the process only. */
+  health?: () => { db: "ok" | "error"; walMode: boolean };
+  version?: string;
 }
 
-const PAIRING_EXCHANGE = "/v1/pairing/exchange";
+const PAIRING_EXCHANGE = "/v1/pairing";
 const PUBLIC_ROUTES: ReadonlySet<string> = new Set([`POST ${PAIRING_EXCHANGE}`]);
 
 const ExchangeBody = z.strictObject({ code: z.string().min(1).max(256) });
@@ -56,14 +59,24 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
   app.use(accessLog(logger));
   app.use(secureHeaders({ strictTransportSecurity: false }));
   app.use(hostCheck(new Set([`127.0.0.1:${port}`, `localhost:${port}`])));
-  app.use(authenticate({ cliToken, bridgeToken, pairing }));
   app.use(originCheck(new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`])));
+  app.use(authenticate({ cliToken, bridgeToken, pairing }));
   app.use("/v1/*", noStore, requireCredential(PUBLIC_ROUTES));
   app.use("/health", noStore);
 
-  app.get("/health", requireScope("read"), (c) =>
-    c.json({ status: "ok", uptimeSeconds: Math.floor(process.uptime()) }),
-  );
+  app.get("/health", requireScope("read"), (c) => {
+    const storage = options.health?.();
+    const healthy = storage === undefined || storage.db === "ok";
+    return c.json(
+      {
+        status: healthy ? "ok" : "error",
+        ...storage,
+        uptimeSeconds: Math.floor(process.uptime()),
+        ...(options.version === undefined ? {} : { version: options.version }),
+      },
+      healthy ? 200 : 503,
+    );
+  });
 
   app.post(
     PAIRING_EXCHANGE,
@@ -89,11 +102,17 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     },
   );
 
-  app.post("/v1/pairing/unpair", requireScope("unpair"), (c) => {
+  app.post("/v1/pairing/revoke", requireScope("unpair"), (c) => {
     const revoked = pairing.unpairAll();
     logger.info({ revoked }, "browser pairings revoked");
     return c.json({ revoked });
   });
+
+  // Command stub: the full credential rules apply now; the command service lands in M4.
+  const notYet = (c: Context<AppEnv>) =>
+    apiError(c, 501, "not_implemented", "Commands arrive with the command service (M4)");
+  app.post("/v1/commands", requireScope("command"), notYet);
+  app.get("/v1/commands/:id", requireScope("command"), notYet);
 
   if (options.staticDir !== undefined) {
     const files = serveStatic<AppEnv>({ root: options.staticDir });

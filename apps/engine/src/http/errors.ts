@@ -3,12 +3,13 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export type ErrorCode =
   | "bad_request"
-  | "forbidden"
+  | "credential_not_allowed"
   | "forbidden_host"
   | "forbidden_origin"
   | "internal"
   | "invalid_pairing_code"
   | "not_found"
+  | "not_implemented"
   | "payload_too_large"
   | "unauthorized";
 

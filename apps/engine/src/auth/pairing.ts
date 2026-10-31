@@ -1,71 +1,87 @@
 import { timingSafeEqual } from "node:crypto";
 import { digest, generateSecret, safeEqual } from "./secrets.ts";
 
-export const DEFAULT_CODE_TTL_MS = 10 * 60 * 1000;
+/**
+ * Where paired sessions live: SHA-256 hex digests of session secrets, never
+ * the secrets. The storage module backs this with the `pairings` table so a
+ * pairing survives engine restarts (spec 001 data-model); tests and a
+ * storage-less engine use `MemoryPairingRecords`.
+ */
+export interface PairingRecords {
+  list(): readonly string[];
+  add(secretHash: string): void;
+  /** Removes every record and returns how many there were. */
+  clear(): number;
+}
+
+export class MemoryPairingRecords implements PairingRecords {
+  #hashes: string[] = [];
+
+  list(): readonly string[] {
+    return [...this.#hashes];
+  }
+
+  add(secretHash: string): void {
+    this.#hashes.push(secretHash);
+  }
+
+  clear(): number {
+    const count = this.#hashes.length;
+    this.#hashes = [];
+    return count;
+  }
+}
 
 export interface PairingOptions {
-  /** Clock in milliseconds; injected for tests. */
-  now?: () => number;
-  /** How long an issued pairing code stays valid. */
-  codeTtlMs?: number;
+  records?: PairingRecords;
 }
 
-interface PendingCode {
-  value: string;
-  expiresAt: number;
-}
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /**
- * Browser pairing state, held in memory only. A pairing code is issued
- * in-process by `taskville serve` (never over HTTP, so a token holder cannot
- * mint one), shown once in a URL fragment, and exchanged exactly once for a
- * session secret. Only SHA-256 digests of session secrets are kept. Pairings
- * end when the engine stops or on `unpairAll`.
+ * Browser pairing. A pairing code is issued in-process by `taskville serve`
+ * (never over HTTP, so a token holder cannot mint one), shown once in a URL
+ * fragment, and exchanged exactly once for a session secret. The code lives in
+ * memory only and stays valid until used, replaced, or the engine stops.
  */
 export class PairingStore {
-  readonly #now: () => number;
-  readonly #ttlMs: number;
-  #pending: PendingCode | null = null;
-  #sessions: Buffer[] = [];
+  readonly #records: PairingRecords;
+  #pendingCode: string | null = null;
 
   constructor(options: PairingOptions = {}) {
-    this.#now = options.now ?? Date.now;
-    this.#ttlMs = options.codeTtlMs ?? DEFAULT_CODE_TTL_MS;
+    this.#records = options.records ?? new MemoryPairingRecords();
   }
 
   /** Issues a new single-use code. Any earlier unused code stops working. */
   issueCode(): string {
-    const value = generateSecret();
-    this.#pending = { value, expiresAt: this.#now() + this.#ttlMs };
-    return value;
+    this.#pendingCode = generateSecret();
+    return this.#pendingCode;
   }
 
   /** Exchanges a valid code for a new session secret, or returns null. */
   exchange(code: string): string | null {
-    const pending = this.#pending;
-    if (pending === null || this.#now() >= pending.expiresAt) return null;
-    if (!safeEqual(code, pending.value)) return null;
-    this.#pending = null;
+    const pending = this.#pendingCode;
+    if (pending === null || !safeEqual(code, pending)) return null;
+    this.#pendingCode = null;
     const session = generateSecret();
-    this.#sessions.push(digest(session));
+    this.#records.add(digest(session).toString("hex"));
     return session;
   }
 
-  /** Whether `secret` belongs to a paired session. Compares in constant time per session. */
+  /** Whether `secret` belongs to a paired session. Compares every record in constant time. */
   hasSession(secret: string): boolean {
     const candidate = digest(secret);
     let found = false;
-    for (const stored of this.#sessions) {
-      if (timingSafeEqual(stored, candidate)) found = true;
+    for (const stored of this.#records.list()) {
+      if (!SHA256_HEX.test(stored)) continue;
+      if (timingSafeEqual(Buffer.from(stored, "hex"), candidate)) found = true;
     }
     return found;
   }
 
   /** Revokes every paired session and any outstanding code. Returns the number of sessions revoked. */
   unpairAll(): number {
-    const revoked = this.#sessions.length;
-    this.#sessions = [];
-    this.#pending = null;
-    return revoked;
+    this.#pendingCode = null;
+    return this.#records.clear();
   }
 }

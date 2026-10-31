@@ -74,10 +74,11 @@ export function authenticate(opts: {
 }
 
 /**
- * Origin rules. Any request carrying an Origin must carry an allowed one.
- * A state-changing request that does not use a bearer token (a browser
- * session, or the unauthenticated pairing exchange) must carry an allowed
- * Origin. Runs after `authenticate`.
+ * Origin rules, checked before credentials. Any request carrying an Origin
+ * must carry an allowed one. A state-changing request that does not use a
+ * bearer token (a browser session, or the unauthenticated pairing exchange)
+ * must carry an allowed Origin. A bearer request that skips this still has to
+ * pass `authenticate`.
  */
 export function originCheck(allowedOrigins: ReadonlySet<string>): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
@@ -85,8 +86,7 @@ export function originCheck(allowedOrigins: ReadonlySet<string>): MiddlewareHand
     if (origin !== undefined && !allowedOrigins.has(origin.toLowerCase())) {
       return apiError(c, 403, "forbidden_origin", "Origin is not allowed");
     }
-    const credential = c.get("credential");
-    const usesToken = credential === "cli" || credential === "bridge";
+    const usesToken = c.req.header("authorization") !== undefined;
     if (STATE_CHANGING.has(c.req.method) && !usesToken && origin === undefined) {
       return apiError(c, 403, "forbidden_origin", "Origin header required");
     }
@@ -110,7 +110,7 @@ export function requireScope(scope: Scope): MiddlewareHandler<AppEnv> {
     const credential = c.get("credential");
     if (credential === null) return apiError(c, 401, "unauthorized", "Credentials required");
     if (!allows(credential, scope)) {
-      return apiError(c, 403, "forbidden", "This credential cannot use this route");
+      return apiError(c, 403, "credential_not_allowed", "This credential cannot use this route");
     }
     return next();
   };
