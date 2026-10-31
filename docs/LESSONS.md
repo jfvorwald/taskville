@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-23: SQLite triggers alone need care to make a table insert-only
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #11 · **Recorded by:** storage teammate (M1.09)
+- **What happened:** `INSERT OR REPLACE` deletes the conflicting row without firing DELETE triggers (unless `recursive_triggers` is on), and SQLite fired a later-created BEFORE INSERT trigger first, so ordered checks split across triggers misbehaved. SQLite creates `-wal` and `-shm` with the database file's mode bits.
+- **Lesson:** Put ordered checks in one trigger body as `SELECT RAISE(...) WHERE ...`, block REPLACE explicitly, and create the database file 0600 before opening it.
+- **Action:** Done in PR #134.
+
+### L-22: Verify "use the new API names" against the pinned runtime
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #11 · **Recorded by:** storage teammate (M1.09)
+- **What happened:** ARCHITECTURE.md, research.md, plan.md and data-model.md all say to use `Database` and `Statement` from `node:sqlite`, but the pinned Node 26.8.2 exports only `DatabaseSync` and `StatementSync`.
+- **Lesson:** Check an API-name claim with `Object.keys(require("node:sqlite"))` on the pinned Node before building on it.
+- **Action:** `storage/sqlite.ts` aliases the classes in one place; decision ticket #133 for the docs fix.
+
 ### L-21: A golden file needs something independent that reproduces it
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #12 · **Recorded by:** domain teammate (M1.17)
 - **What happened:** Expected ingest results were hand-written per fixture line. On their own they would only restate the author's assumptions.
