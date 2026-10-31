@@ -12,10 +12,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IngestPipeline } from "../../../src/ingest/index.ts";
 import { createProject } from "../../../src/projects/index.ts";
-import { GitWatcher, type GitWatcherOptions } from "../../../src/sources/git/index.ts";
+import { GitWatcher, type GitWatcherOptions, runGit } from "../../../src/sources/git/index.ts";
+import { parseLog, parseRefs } from "../../../src/sources/git/parse.ts";
 import { ensureUnsortedProject, openStorage, type Storage } from "../../../src/storage/index.ts";
 
 // M2.09 (ARCHITECTURE.md 8.2): read-only polling of each configured repository root, emitting
@@ -279,6 +280,42 @@ describe("read-only", () => {
   });
 });
 
+describe("arguments passed to git", () => {
+  it("are fixed literals or validated object names, never text from the repository", async () => {
+    const repo = newRepo("repo");
+    const c1 = commit(repo, "a.txt", "first");
+    git(repo, "update-ref", "refs/heads/--output=pwned", c1);
+    addProject("p", [repo]);
+    const calls: string[][] = [];
+    const w = watcher({
+      git: (cwd, args) => {
+        calls.push([...args]);
+        return runGit(cwd, args);
+      },
+    });
+    await w.scanAll();
+    commit(repo, "b.txt", "second");
+    await w.scanAll();
+
+    const logs = calls.filter((args) => args[0] === "log");
+    expect(logs.length).toBe(2);
+    for (const args of logs) {
+      const at = args.indexOf("--end-of-options");
+      expect(at).toBeGreaterThan(0);
+      expect(args.slice(1, at).every((a) => /^(?:-z|--format=.*|--max-count=\d+)$/.test(a))).toBe(
+        true,
+      );
+      expect(
+        args.slice(at + 1, -1).every((a) => /^\^?(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(a)),
+      ).toBe(true);
+      expect(args.at(-1)).toBe("--");
+    }
+    for (const args of calls.filter((a) => a[0] !== "log")) {
+      expect(args.join(" ")).not.toContain("pwned");
+    }
+  });
+});
+
 describe("roots and failures", () => {
   it("ignores a root that is not a git repository", async () => {
     const plain = join(dir, "plain");
@@ -326,5 +363,123 @@ describe("roots and failures", () => {
     const [c] = ofType(gitEvents("p"), "git.commit");
     expect(c?.payload.subject).not.toContain(token);
     expect(c?.payload.subject).toContain("[REDACTED:");
+  });
+});
+
+describe("more bounds and isolation", () => {
+  it("does not watch a root that sits inside a larger repository", async () => {
+    const outer = newRepo("outer");
+    commit(outer, "a.txt", "outer commit");
+    const inner = join(outer, "pkg");
+    mkdirSync(inner);
+    addProject("p", [inner]);
+    await watcher().scanAll();
+    expect(gitEvents("p")).toEqual([]);
+  });
+
+  it("bounds a later scan to its newest commits", async () => {
+    const repo = newRepo("repo");
+    commit(repo, "f.txt", "base");
+    addProject("p", [repo]);
+    const w = watcher({ scanCommitLimit: 2 });
+    await w.scanAll();
+    const shas = [1, 2, 3, 4].map((i) => commit(repo, "f.txt", `more ${i}`));
+    await w.scanAll();
+    const seen = ofType(gitEvents("p"), "git.commit").map((e) => e.payload.sha);
+    expect(seen.slice(1)).toEqual(shas.slice(2));
+  });
+
+  it("ignores a stray GIT_DIR in the engine's environment", async () => {
+    const repo = newRepo("repo");
+    const c1 = commit(repo, "a.txt", "mine");
+    const other = newRepo("other");
+    commit(other, "a.txt", "not mine");
+    addProject("p", [repo]);
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    try {
+      await watcher().scanAll();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(ofType(gitEvents("p"), "git.commit").map((e) => e.payload.sha)).toEqual([c1]);
+  });
+
+  it("scans soon after a ref changes on disk, without waiting for the poll", async () => {
+    const repo = newRepo("repo");
+    const c1 = commit(repo, "a.txt", "first");
+    addProject("p", [repo]);
+    const w = watcher({ watchFiles: true, pollIntervalMs: 3_600_000 });
+    w.start();
+    await vi.waitFor(() => expect(gitEvents("p").length).toBeGreaterThan(0), { timeout: 5_000 });
+    const c2 = commit(repo, "b.txt", "second");
+    await vi.waitFor(
+      () =>
+        expect(ofType(gitEvents("p"), "git.ref_moved").map((e) => e.payload)).toContainEqual({
+          repo,
+          ref: "refs/heads/main",
+          from: c1,
+          to: c2,
+        }),
+      { timeout: 5_000 },
+    );
+  });
+
+  it("emits nothing after stop", async () => {
+    const repo = newRepo("repo");
+    commit(repo, "a.txt", "first");
+    addProject("p", [repo]);
+    const w = watcher();
+    await w.stop();
+    await w.scanAll();
+    expect(gitEvents("p")).toEqual([]);
+  });
+});
+
+describe("parsing git output", () => {
+  const sha = "a".repeat(40);
+  const sha2 = "b".repeat(40);
+
+  it("reads branch tips and skips symbolic refs and malformed lines", () => {
+    const out = [
+      `${sha}\t1790000000\t\trefs/heads/main`,
+      `${sha2}\t1790000000\trefs/remotes/origin/main\trefs/remotes/origin/HEAD`,
+      `${sha}\t\t\trefs/heads/no-date`,
+      `${sha}\t${"9".repeat(400)}\t\trefs/heads/huge-date`,
+      `nothex\t1790000000\t\trefs/heads/bad`,
+      `${sha}\t1790000000\t\trefs/heads/extra\tfield`,
+      "",
+    ].join("\n");
+    expect(parseRefs(out, 10)).toEqual([
+      { ref: "refs/heads/main", sha, committedAt: new Date(1_790_000_000_000).toISOString() },
+    ]);
+  });
+
+  it("keeps at most the ref limit", () => {
+    const out = [1, 2, 3].map((i) => `${sha}\t1790000000\t\trefs/heads/b${i}`).join("\n");
+    expect(parseRefs(out, 2).map((t) => t.ref)).toEqual(["refs/heads/b1", "refs/heads/b2"]);
+  });
+
+  it("reads commits, keeping separators inside a subject and skipping bad records", () => {
+    const out = [
+      `${sha}\x1f${sha2}\x1f1790000000\x1fa \x1f subject`,
+      `${sha2}\x1f\x1f1790000000\x1froot`,
+      `${sha}\x1fnot-a-sha\x1f1790000000\x1fbad parent`,
+      `${sha}\x1f\x1fsoon\x1fbad date`,
+      "",
+    ].join("\0");
+    expect(parseLog(out)).toEqual([
+      {
+        sha,
+        parents: [sha2],
+        committedAt: new Date(1_790_000_000_000).toISOString(),
+        subject: "a \x1f subject",
+      },
+      {
+        sha: sha2,
+        parents: [],
+        committedAt: new Date(1_790_000_000_000).toISOString(),
+        subject: "root",
+      },
+    ]);
   });
 });
