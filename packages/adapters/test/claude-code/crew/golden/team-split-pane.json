@@ -28,11 +28,11 @@
         "sourceEventId": "team-split-pane-3:crew:0",
         "occurredAt": "2026-10-30T12:00:14.496Z",
         "type": "team.started",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
-          "teamId": "cc-team:session-a7286c33",
-          "leadAgentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+          "teamId": "claude-code:team:session-a7286c33",
+          "leadAgentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
           "name": "session-a7286c33"
         },
         "provenance": "live",
@@ -45,14 +45,14 @@
         "sourceEventId": "team-split-pane-3:crew:1",
         "occurredAt": "2026-10-30T12:00:14.496Z",
         "type": "agent.registered",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
-          "sourceAgentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
-          "displayName": "team-lead",
+          "sourceAgentId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+          "displayName": "proj",
           "role": "lead",
           "kind": "lead",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -88,11 +88,11 @@
         "sourceEventId": "team-split-pane-7:crew:0",
         "occurredAt": "2026-10-30T12:00:15.797Z",
         "type": "team.started",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
-          "teamId": "cc-team:session-a7286c33",
-          "leadAgentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+          "teamId": "claude-code:team:session-a7286c33",
+          "leadAgentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
           "name": "session-a7286c33"
         },
         "provenance": "live",
@@ -105,14 +105,14 @@
         "sourceEventId": "team-split-pane-7:crew:1",
         "occurredAt": "2026-10-30T12:00:15.797Z",
         "type": "agent.registered",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
-          "sourceAgentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
-          "displayName": "team-lead",
+          "sourceAgentId": "a7286c33-05b8-4a44-af6b-76733867aab0",
+          "displayName": "proj",
           "role": "lead",
           "kind": "lead",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -184,13 +184,12 @@
         "sourceEventId": "team-split-pane-17:crew:0",
         "occurredAt": "2026-10-30T12:00:20.868Z",
         "type": "request.opened",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
-          "requestId": "cc-req:team-split-pane-17",
+          "requestId": "claude-code:request:team-split-pane-17:worker",
           "kind": "permission",
-          "toolName": "Bash",
-          "reason": "for: pip",
+          "reason": "for: pip (Bash)",
           "heuristic": true
         },
         "provenance": "live",
@@ -263,14 +262,14 @@
         "sourceEventId": "team-split-pane-27:crew:0",
         "occurredAt": "2026-10-30T12:00:25.956Z",
         "type": "agent.registered",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
-          "sourceAgentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -282,7 +281,7 @@
         "sourceEventId": "team-split-pane-27:crew:1",
         "occurredAt": "2026-10-30T12:00:25.956Z",
         "type": "activity.ended",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {},
         "provenance": "live",
@@ -355,7 +354,7 @@
         "sourceEventId": "team-split-pane-37:crew:0",
         "occurredAt": "2026-10-30T12:01:38.927Z",
         "type": "team.message",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
           "to": "bo",
@@ -372,10 +371,10 @@
         "sourceEventId": "team-split-pane-37:crew:1",
         "occurredAt": "2026-10-30T12:01:38.927Z",
         "type": "agent.registered",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
-          "sourceAgentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
@@ -433,14 +432,14 @@
         "sourceEventId": "team-split-pane-44:crew:0",
         "occurredAt": "2026-10-30T12:01:40.474Z",
         "type": "agent.registered",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
-          "sourceAgentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -452,7 +451,7 @@
         "sourceEventId": "team-split-pane-44:crew:1",
         "occurredAt": "2026-10-30T12:01:40.474Z",
         "type": "activity.ended",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {},
         "provenance": "live",
@@ -477,7 +476,7 @@
         "sourceEventId": "team-split-pane-46:crew:0",
         "occurredAt": "2026-10-30T12:01:41.807Z",
         "type": "team.message",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
           "to": "pip",
@@ -494,10 +493,10 @@
         "sourceEventId": "team-split-pane-46:crew:1",
         "occurredAt": "2026-10-30T12:01:41.807Z",
         "type": "agent.registered",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
-          "sourceAgentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
@@ -555,14 +554,14 @@
         "sourceEventId": "team-split-pane-53:crew:0",
         "occurredAt": "2026-10-30T12:01:43.235Z",
         "type": "agent.registered",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
-          "sourceAgentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -574,7 +573,7 @@
         "sourceEventId": "team-split-pane-53:crew:1",
         "occurredAt": "2026-10-30T12:01:43.235Z",
         "type": "activity.ended",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {},
         "provenance": "live",
@@ -611,7 +610,7 @@
         "sourceEventId": "team-split-pane-57:crew:0",
         "occurredAt": "2026-10-30T12:01:44.657Z",
         "type": "team.message",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
           "to": "bo",
@@ -628,10 +627,10 @@
         "sourceEventId": "team-split-pane-57:crew:1",
         "occurredAt": "2026-10-30T12:01:44.657Z",
         "type": "agent.registered",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
-          "sourceAgentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
@@ -689,14 +688,14 @@
         "sourceEventId": "team-split-pane-64:crew:0",
         "occurredAt": "2026-10-30T12:01:45.901Z",
         "type": "agent.registered",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
-          "sourceAgentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+          "sourceAgentId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -708,7 +707,7 @@
         "sourceEventId": "team-split-pane-64:crew:1",
         "occurredAt": "2026-10-30T12:01:45.901Z",
         "type": "activity.ended",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {},
         "provenance": "live",
@@ -733,7 +732,7 @@
         "sourceEventId": "team-split-pane-66:crew:0",
         "occurredAt": "2026-10-30T12:01:46.782Z",
         "type": "team.message",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
           "to": "pip",
@@ -762,7 +761,7 @@
         "sourceEventId": "team-split-pane-68:crew:0",
         "occurredAt": "2026-10-30T12:01:47.215Z",
         "type": "team.message",
-        "agentId": "cc:a7286c33-05b8-4a44-af6b-76733867aab0",
+        "agentId": "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0",
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
           "to": "bo",
@@ -797,14 +796,14 @@
         "sourceEventId": "team-split-pane-71:crew:0",
         "occurredAt": "2026-10-30T12:01:47.481Z",
         "type": "agent.registered",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
-          "sourceAgentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -816,7 +815,7 @@
         "sourceEventId": "team-split-pane-71:crew:1",
         "occurredAt": "2026-10-30T12:01:47.481Z",
         "type": "activity.ended",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {},
         "provenance": "live",
@@ -883,7 +882,7 @@
         "sourceEventId": "team-split-pane-80:crew:0",
         "occurredAt": "2026-10-30T12:01:49.525Z",
         "type": "team.message",
-        "agentId": "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+        "agentId": "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "sessionId": "cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
         "payload": {
           "to": "team-lead",
@@ -978,7 +977,7 @@
         "sourceEventId": "team-split-pane-93:crew:0",
         "occurredAt": "2026-10-30T12:01:53.789Z",
         "type": "team.message",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
           "to": "team-lead",
@@ -995,10 +994,10 @@
         "sourceEventId": "team-split-pane-93:crew:1",
         "occurredAt": "2026-10-30T12:01:53.789Z",
         "type": "agent.registered",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
-          "sourceAgentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
@@ -1050,14 +1049,14 @@
         "sourceEventId": "team-split-pane-99:crew:0",
         "occurredAt": "2026-10-30T12:01:55.910Z",
         "type": "agent.registered",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {
-          "sourceAgentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+          "sourceAgentId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a7286c33"
+          "teamId": "claude-code:team:session-a7286c33"
         },
         "provenance": "live",
         "late": false
@@ -1069,7 +1068,7 @@
         "sourceEventId": "team-split-pane-99:crew:1",
         "occurredAt": "2026-10-30T12:01:55.910Z",
         "type": "activity.ended",
-        "agentId": "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+        "agentId": "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
         "sessionId": "f1b7a717-fe78-44d8-b68b-a12643262b81",
         "payload": {},
         "provenance": "live",

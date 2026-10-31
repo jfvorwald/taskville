@@ -28,10 +28,10 @@
         "sourceEventId": "subagent-nested-3:crew:0",
         "occurredAt": "2026-10-30T12:00:01.504Z",
         "type": "agent.registered",
-        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+        "agentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
         "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
         "payload": {
-          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+          "sourceAgentId": "ac5497782768787b9",
           "displayName": "outer",
           "role": "outer",
           "kind": "subagent"
@@ -52,14 +52,14 @@
         "sourceEventId": "subagent-nested-4:crew:0",
         "occurredAt": "2026-10-30T12:00:01.507Z",
         "type": "agent.registered",
-        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+        "agentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
         "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
         "payload": {
-          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+          "sourceAgentId": "ac5497782768787b9",
           "displayName": "outer",
           "role": "outer",
           "kind": "subagent",
-          "parentAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83"
+          "parentAgentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83"
         },
         "provenance": "live",
         "late": false
@@ -83,10 +83,10 @@
         "sourceEventId": "subagent-nested-6:crew:0",
         "occurredAt": "2026-10-30T12:00:02.593Z",
         "type": "agent.registered",
-        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+        "agentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
         "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
         "payload": {
-          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+          "sourceAgentId": "a0c1bc9a2c30e80b6",
           "displayName": "inner",
           "role": "inner",
           "kind": "subagent"
@@ -131,7 +131,7 @@
         "sourceEventId": "subagent-nested-11:crew:0",
         "occurredAt": "2026-10-30T12:00:05.437Z",
         "type": "agent.finished",
-        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+        "agentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
         "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
         "payload": {
           "summary": "The command `echo nested-ok` printed:\n\n```\nnested-ok\n```"
@@ -152,14 +152,14 @@
         "sourceEventId": "subagent-nested-12:crew:0",
         "occurredAt": "2026-10-30T12:00:05.467Z",
         "type": "agent.registered",
-        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+        "agentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
         "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
         "payload": {
-          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+          "sourceAgentId": "a0c1bc9a2c30e80b6",
           "displayName": "inner",
           "role": "inner",
           "kind": "subagent",
-          "parentAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9"
+          "parentAgentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9"
         },
         "provenance": "live",
         "late": false
@@ -177,7 +177,7 @@
         "sourceEventId": "subagent-nested-13:crew:0",
         "occurredAt": "2026-10-30T12:00:07.259Z",
         "type": "agent.finished",
-        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+        "agentId": "claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
         "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
         "payload": {
           "summary": "The inner subagent ran `echo nested-ok` and printed:\n\n```\nnested-ok\n```\n\nIts report said: \"The command `echo nested-ok` printed: nested-ok.\""

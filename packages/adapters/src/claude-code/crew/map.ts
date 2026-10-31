@@ -1,4 +1,5 @@
 import {
+  AGENT_ID_MAX,
   type Attribution,
   attributeHook,
   childAgentId,
@@ -59,13 +60,15 @@ export const CREW_HOOKS = [
 ] as const;
 
 const SUMMARY_MAX = 280;
+/** Same cap as the core mapper's names. */
+const SESSION_NAME_MAX = 200;
 const TITLE_MAX = 200;
-const TEAM_PREFIX = "cc-team:";
-const TASK_PREFIX = "cc-task:";
-const REQUEST_PREFIX = "cc-req:";
+const TEAM_PREFIX = "claude-code:team:";
+const TASK_PREFIX = "claude-code:task:";
+const REQUEST_PREFIX = "claude-code:request:";
 /** Longest shim event ID that still leaves room for the `:crew:<n>` suffix within 200. */
 const SOURCE_EVENT_ID_MAX = 180;
-/** The name Claude Code gives a team's lead as a message recipient or sender. */
+/** The name Claude Code gives a team's lead as a message sender or recipient. */
 const LEAD_NAME = "team-lead";
 
 type Draft = Pick<CrewEvent, "type" | "payload"> &
@@ -148,7 +151,12 @@ function subagentStart(who: Attribution): Draft[] | string {
     {
       type: "agent.registered",
       ...at(who),
-      payload: { sourceAgentId: who.agentId, displayName: name, role: name, kind: "subagent" },
+      payload: {
+        sourceAgentId: who.sourceAgentId,
+        displayName: name,
+        role: name,
+        kind: "subagent",
+      },
     },
   ];
 }
@@ -186,7 +194,7 @@ function teammateIdle(p: unknown, who: Attribution): Draft[] {
       type: "agent.registered",
       ...at(who),
       payload: {
-        sourceAgentId: who.agentId,
+        sourceAgentId: who.sourceAgentId,
         displayName: name,
         role: "teammate",
         kind: "teammate",
@@ -208,9 +216,9 @@ function teammateIdle(p: unknown, who: Attribution): Draft[] {
 function agentSpawned(p: unknown, who: Attribution): Draft[] | string {
   const response = ownRecord(p, "tool_response");
   if (response === undefined) return "Agent call without a response";
-  if (own(response, "status") === "teammate_spawned") return teammateSpawned(response, who);
+  if (own(response, "status") === "teammate_spawned") return teammateSpawned(p, response, who);
 
-  const child = idToken(own(response, "agentId"), 128);
+  const child = idToken(own(response, "agentId"), AGENT_ID_MAX);
   if (child === undefined) return "Agent response without agentId";
   const name =
     safeText(own(response, "agentType"), NAME_MAX) ??
@@ -223,7 +231,7 @@ function agentSpawned(p: unknown, who: Attribution): Draft[] | string {
       agentId: childId,
       sessionId: who.sessionId,
       payload: {
-        sourceAgentId: childId,
+        sourceAgentId: child,
         displayName: name,
         role: name,
         kind: "subagent",
@@ -233,7 +241,11 @@ function agentSpawned(p: unknown, who: Attribution): Draft[] | string {
   ];
 }
 
-function teammateSpawned(response: Record<string, unknown>, who: Attribution): Draft[] | string {
+function teammateSpawned(
+  p: unknown,
+  response: Record<string, unknown>,
+  who: Attribution,
+): Draft[] | string {
   // Teammates cannot spawn teammates, so only a session's own agent can lead.
   if (who.role !== "session") return "teammate spawn from a non-session agent";
   const teamName = idToken(own(response, "team_name"), SESSION_ID_MAX * 2);
@@ -249,8 +261,10 @@ function teammateSpawned(response: Record<string, unknown>, who: Attribution): D
       type: "agent.registered",
       ...at(who),
       payload: {
-        sourceAgentId: who.agentId,
-        displayName: LEAD_NAME,
+        sourceAgentId: who.sourceAgentId,
+        // The same name the core mapper gives the session on SessionStart, so becoming a lead
+        // does not rename it.
+        displayName: sessionDisplayName(p),
         role: "lead",
         kind: "lead",
         teamId,
@@ -258,7 +272,7 @@ function teammateSpawned(response: Record<string, unknown>, who: Attribution): D
     },
   ];
   const inProcess = own(response, "is_splitpane") === false;
-  const agentId = idToken(own(response, "agent_id"), 128);
+  const agentId = idToken(own(response, "agent_id"), AGENT_ID_MAX);
   const name = safeText(own(response, "name"), NAME_MAX);
   if (inProcess && agentId !== undefined && name !== undefined) {
     const teammateId = childAgentId(who.sessionId, agentId);
@@ -267,7 +281,7 @@ function teammateSpawned(response: Record<string, unknown>, who: Attribution): D
       agentId: teammateId,
       sessionId: who.sessionId,
       payload: {
-        sourceAgentId: teammateId,
+        sourceAgentId: agentId,
         displayName: name,
         role: "teammate",
         kind: "teammate",
@@ -317,7 +331,7 @@ function messageSent(p: unknown, who: Attribution): Draft[] | string {
       type: "agent.registered",
       ...at(who),
       payload: {
-        sourceAgentId: who.agentId,
+        sourceAgentId: who.sourceAgentId,
         displayName: sender,
         role: "teammate",
         kind: "teammate",
@@ -326,6 +340,21 @@ function messageSent(p: unknown, who: Attribution): Draft[] | string {
     });
   }
   return drafts;
+}
+
+/** The core mapper's session name: the working directory's last segment (core/map.ts). */
+function sessionDisplayName(p: unknown): string {
+  const cwd = ownString(p, "cwd");
+  return (
+    (cwd === undefined ? undefined : safeText(baseName(cwd), SESSION_NAME_MAX)) ?? "Claude Code"
+  );
+}
+
+function baseName(path: string): string {
+  let end = path.length;
+  while (end > 0 && (path[end - 1] === "/" || path[end - 1] === "\\")) end -= 1;
+  const trimmed = path.slice(0, end);
+  return trimmed.slice(Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\")) + 1);
 }
 
 // "pip needs permission for Bash" (S-2 answer 3). English text a Claude Code update could change.
@@ -342,17 +371,18 @@ function workerPermissionPrompt(p: unknown, who: Attribution, ctx: CrewContext):
   const message = ownString(p, "message");
   const match = message === undefined ? null : WORKER_PROMPT.exec(message.slice(0, 256));
   const name = safeText(match?.[1], NAME_MAX);
-  const toolName = safeText(match?.[2], NAME_MAX);
+  const tool = safeText(match?.[2], NAME_MAX);
+  // No toolName: the lead's `permission_prompt` notification that follows (core mapper) has none
+  // either, so the reducer merges the two into one red state ("one prompt, one red state").
   return [
     {
       type: "request.opened",
       ...at(who),
       payload: {
         // One request per notification; a retried hook keeps its sourceEventId, so its ID too.
-        requestId: `${REQUEST_PREFIX}${ctx.sourceEventId}`,
+        requestId: `${REQUEST_PREFIX}${ctx.sourceEventId}:worker`,
         kind: "permission",
-        ...(toolName === undefined ? {} : { toolName }),
-        reason: `for: ${name ?? "a teammate"}`,
+        reason: `for: ${name ?? "a teammate"}${tool === undefined ? "" : ` (${tool})`}`,
         heuristic: true,
       },
     },
@@ -369,7 +399,7 @@ function teamTask(
   p: unknown,
   who: Attribution,
 ): Draft[] | string {
-  const taskKey = idToken(own(p, "task_id"), 128);
+  const taskKey = idToken(own(p, "task_id"), AGENT_ID_MAX);
   if (taskKey === undefined) return `${hook} without task_id`;
   const scope = idToken(own(p, "team_name"), SESSION_ID_MAX * 2) ?? who.sessionId;
   const taskId = `${TASK_PREFIX}${scope}:${taskKey}`;

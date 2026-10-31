@@ -6,7 +6,7 @@ import { type CrewContext, mapCrewHook } from "../../../src/claude-code/crew/ind
 // SendMessage calls, unparseable worker prompts, secrets in agent text, hostile JSON.
 
 const SESSION = "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5";
-const LEAD = `cc:${SESSION}`;
+const LEAD = `claude-code:${SESSION}`;
 const ctx: CrewContext = {
   projectId: "proj-1",
   sourceEventId: "evt-1",
@@ -32,7 +32,7 @@ describe("team task hooks (documented fields; not recorded in S-2)", () => {
       {
         type: "task.created",
         agentId: LEAD,
-        taskId: "cc-task:session-1469cdbe:7",
+        taskId: "claude-code:task:session-1469cdbe:7",
         payload: { title: "Write docs" },
       },
     ]);

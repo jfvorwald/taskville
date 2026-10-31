@@ -28,10 +28,10 @@
         "sourceEventId": "subagent-parallel-3:crew:0",
         "occurredAt": "2026-10-30T12:00:01.394Z",
         "type": "agent.registered",
-        "agentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
         "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
         "payload": {
-          "sourceAgentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+          "sourceAgentId": "afdf84bea07a9064c",
           "displayName": "general-purpose",
           "role": "general-purpose",
           "kind": "subagent"
@@ -52,14 +52,14 @@
         "sourceEventId": "subagent-parallel-4:crew:0",
         "occurredAt": "2026-10-30T12:00:01.414Z",
         "type": "agent.registered",
-        "agentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
         "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
         "payload": {
-          "sourceAgentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+          "sourceAgentId": "afdf84bea07a9064c",
           "displayName": "general-purpose",
           "role": "general-purpose",
           "kind": "subagent",
-          "parentAgentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5"
+          "parentAgentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5"
         },
         "provenance": "live",
         "late": false
@@ -83,10 +83,10 @@
         "sourceEventId": "subagent-parallel-6:crew:0",
         "occurredAt": "2026-10-30T12:00:01.789Z",
         "type": "agent.registered",
-        "agentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
         "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
         "payload": {
-          "sourceAgentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+          "sourceAgentId": "a0b4668e13e056653",
           "displayName": "general-purpose",
           "role": "general-purpose",
           "kind": "subagent"
@@ -107,14 +107,14 @@
         "sourceEventId": "subagent-parallel-7:crew:0",
         "occurredAt": "2026-10-30T12:00:01.798Z",
         "type": "agent.registered",
-        "agentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
         "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
         "payload": {
-          "sourceAgentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+          "sourceAgentId": "a0b4668e13e056653",
           "displayName": "general-purpose",
           "role": "general-purpose",
           "kind": "subagent",
-          "parentAgentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5"
+          "parentAgentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5"
         },
         "provenance": "live",
         "late": false
@@ -192,7 +192,7 @@
         "sourceEventId": "subagent-parallel-18:crew:0",
         "occurredAt": "2026-10-30T12:00:05.167Z",
         "type": "agent.finished",
-        "agentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
         "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
         "payload": {
           "summary": "The output of `cat hello.txt` was:\n\n```\nhello from B\n```\n\nI created `hello.txt` in the project directory with the line `hello from B`."
@@ -231,7 +231,7 @@
         "sourceEventId": "subagent-parallel-22:crew:0",
         "occurredAt": "2026-10-30T12:00:06.331Z",
         "type": "agent.finished",
-        "agentId": "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
         "sessionId": "1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
         "payload": {
           "summary": "The line count is **3**.\n\nI replaced `beta` with `BETA` in `/tmp/spike-s2/proj/notes.txt` using the Edit tool, then ran `wc -l` on the same file."

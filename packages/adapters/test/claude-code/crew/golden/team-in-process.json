@@ -124,11 +124,11 @@
         "sourceEventId": "team-in-process-19:crew:0",
         "occurredAt": "2026-10-30T12:02:03.363Z",
         "type": "team.started",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "teamId": "cc-team:session-cf46f41b",
-          "leadAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+          "teamId": "claude-code:team:session-cf46f41b",
+          "leadAgentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
           "name": "session-cf46f41b"
         },
         "provenance": "live",
@@ -141,14 +141,14 @@
         "sourceEventId": "team-in-process-19:crew:1",
         "occurredAt": "2026-10-30T12:02:03.363Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
-          "displayName": "team-lead",
+          "sourceAgentId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
+          "displayName": "proj",
           "role": "lead",
           "kind": "lead",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -160,14 +160,14 @@
         "sourceEventId": "team-in-process-19:crew:2",
         "occurredAt": "2026-10-30T12:02:03.363Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+          "sourceAgentId": "apip-5cb5e9bb3f2f1097",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -197,11 +197,11 @@
         "sourceEventId": "team-in-process-22:crew:0",
         "occurredAt": "2026-10-30T12:02:05.172Z",
         "type": "team.started",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "teamId": "cc-team:session-cf46f41b",
-          "leadAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+          "teamId": "claude-code:team:session-cf46f41b",
+          "leadAgentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
           "name": "session-cf46f41b"
         },
         "provenance": "live",
@@ -214,14 +214,14 @@
         "sourceEventId": "team-in-process-22:crew:1",
         "occurredAt": "2026-10-30T12:02:05.172Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
-          "displayName": "team-lead",
+          "sourceAgentId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
+          "displayName": "proj",
           "role": "lead",
           "kind": "lead",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -233,14 +233,14 @@
         "sourceEventId": "team-in-process-22:crew:2",
         "occurredAt": "2026-10-30T12:02:05.172Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+          "sourceAgentId": "abo-4381c522227780d5",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -330,7 +330,7 @@
         "sourceEventId": "team-in-process-35:crew:0",
         "occurredAt": "2026-10-30T12:02:10.008Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -349,14 +349,14 @@
         "sourceEventId": "team-in-process-36:crew:0",
         "occurredAt": "2026-10-30T12:02:10.014Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+          "sourceAgentId": "abo-4381c522227780d5",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -368,7 +368,7 @@
         "sourceEventId": "team-in-process-36:crew:1",
         "occurredAt": "2026-10-30T12:02:10.014Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -405,7 +405,7 @@
         "sourceEventId": "team-in-process-40:crew:0",
         "occurredAt": "2026-10-30T12:02:22.476Z",
         "type": "team.message",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "bo",
@@ -452,7 +452,7 @@
         "sourceEventId": "team-in-process-45:crew:0",
         "occurredAt": "2026-10-30T12:02:23.902Z",
         "type": "team.message",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "pip",
@@ -475,7 +475,7 @@
         "sourceEventId": "team-in-process-46:crew:0",
         "occurredAt": "2026-10-30T12:02:24.422Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -494,14 +494,14 @@
         "sourceEventId": "team-in-process-47:crew:0",
         "occurredAt": "2026-10-30T12:02:24.436Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+          "sourceAgentId": "apip-5cb5e9bb3f2f1097",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -513,7 +513,7 @@
         "sourceEventId": "team-in-process-47:crew:1",
         "occurredAt": "2026-10-30T12:02:24.436Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -538,7 +538,7 @@
         "sourceEventId": "team-in-process-49:crew:0",
         "occurredAt": "2026-10-30T12:02:24.789Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -557,14 +557,14 @@
         "sourceEventId": "team-in-process-50:crew:0",
         "occurredAt": "2026-10-30T12:02:24.791Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+          "sourceAgentId": "abo-4381c522227780d5",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -576,7 +576,7 @@
         "sourceEventId": "team-in-process-50:crew:1",
         "occurredAt": "2026-10-30T12:02:24.791Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -601,7 +601,7 @@
         "sourceEventId": "team-in-process-52:crew:0",
         "occurredAt": "2026-10-30T12:02:26.533Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -620,14 +620,14 @@
         "sourceEventId": "team-in-process-53:crew:0",
         "occurredAt": "2026-10-30T12:02:26.550Z",
         "type": "agent.registered",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
-          "sourceAgentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+          "sourceAgentId": "apip-5cb5e9bb3f2f1097",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-cf46f41b"
+          "teamId": "claude-code:team:session-cf46f41b"
         },
         "provenance": "live",
         "late": false
@@ -639,7 +639,7 @@
         "sourceEventId": "team-in-process-53:crew:1",
         "occurredAt": "2026-10-30T12:02:26.550Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -676,7 +676,7 @@
         "sourceEventId": "team-in-process-57:crew:0",
         "occurredAt": "2026-10-30T12:02:27.615Z",
         "type": "team.message",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "pip",
@@ -704,7 +704,7 @@
         "sourceEventId": "team-in-process-59:crew:0",
         "occurredAt": "2026-10-30T12:02:27.838Z",
         "type": "team.message",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "bo",
@@ -786,7 +786,7 @@
         "sourceEventId": "team-in-process-70:crew:0",
         "occurredAt": "2026-10-30T12:02:29.717Z",
         "type": "team.message",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "team-lead",
@@ -809,7 +809,7 @@
         "sourceEventId": "team-in-process-71:crew:0",
         "occurredAt": "2026-10-30T12:02:29.733Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",
@@ -828,7 +828,7 @@
         "sourceEventId": "team-in-process-72:crew:0",
         "occurredAt": "2026-10-30T12:02:29.749Z",
         "type": "team.message",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "team-lead",
@@ -851,7 +851,7 @@
         "sourceEventId": "team-in-process-73:crew:0",
         "occurredAt": "2026-10-30T12:02:29.790Z",
         "type": "activity.ended",
-        "agentId": "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
+        "agentId": "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097",
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {},
         "provenance": "live",

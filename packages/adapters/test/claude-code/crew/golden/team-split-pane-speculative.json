@@ -52,11 +52,11 @@
         "sourceEventId": "team-split-pane-speculative-7:crew:0",
         "occurredAt": "2026-10-30T12:00:32.166Z",
         "type": "team.started",
-        "agentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+        "agentId": "claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "sessionId": "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "payload": {
-          "teamId": "cc-team:session-a127629f",
-          "leadAgentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+          "teamId": "claude-code:team:session-a127629f",
+          "leadAgentId": "claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
           "name": "session-a127629f"
         },
         "provenance": "live",
@@ -69,14 +69,14 @@
         "sourceEventId": "team-split-pane-speculative-7:crew:1",
         "occurredAt": "2026-10-30T12:00:32.166Z",
         "type": "agent.registered",
-        "agentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+        "agentId": "claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "sessionId": "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "payload": {
-          "sourceAgentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
-          "displayName": "team-lead",
+          "sourceAgentId": "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+          "displayName": "proj",
           "role": "lead",
           "kind": "lead",
-          "teamId": "cc-team:session-a127629f"
+          "teamId": "claude-code:team:session-a127629f"
         },
         "provenance": "live",
         "late": false
@@ -112,11 +112,11 @@
         "sourceEventId": "team-split-pane-speculative-11:crew:0",
         "occurredAt": "2026-10-30T12:00:34.268Z",
         "type": "team.started",
-        "agentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+        "agentId": "claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "sessionId": "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "payload": {
-          "teamId": "cc-team:session-a127629f",
-          "leadAgentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+          "teamId": "claude-code:team:session-a127629f",
+          "leadAgentId": "claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
           "name": "session-a127629f"
         },
         "provenance": "live",
@@ -129,14 +129,14 @@
         "sourceEventId": "team-split-pane-speculative-11:crew:1",
         "occurredAt": "2026-10-30T12:00:34.268Z",
         "type": "agent.registered",
-        "agentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+        "agentId": "claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "sessionId": "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
         "payload": {
-          "sourceAgentId": "cc:a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
-          "displayName": "team-lead",
+          "sourceAgentId": "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+          "displayName": "proj",
           "role": "lead",
           "kind": "lead",
-          "teamId": "cc-team:session-a127629f"
+          "teamId": "claude-code:team:session-a127629f"
         },
         "provenance": "live",
         "late": false
@@ -286,7 +286,7 @@
         "sourceEventId": "team-split-pane-speculative-34:crew:0",
         "occurredAt": "2026-10-30T12:00:45.107Z",
         "type": "team.message",
-        "agentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+        "agentId": "claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "sessionId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "payload": {
           "to": "bo",
@@ -303,10 +303,10 @@
         "sourceEventId": "team-split-pane-speculative-34:crew:1",
         "occurredAt": "2026-10-30T12:00:45.107Z",
         "type": "agent.registered",
-        "agentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+        "agentId": "claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "sessionId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "payload": {
-          "sourceAgentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+          "sourceAgentId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
@@ -358,14 +358,14 @@
         "sourceEventId": "team-split-pane-speculative-40:crew:0",
         "occurredAt": "2026-10-30T12:00:46.127Z",
         "type": "agent.registered",
-        "agentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+        "agentId": "claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "sessionId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "payload": {
-          "sourceAgentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+          "sourceAgentId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a127629f"
+          "teamId": "claude-code:team:session-a127629f"
         },
         "provenance": "live",
         "late": false
@@ -377,7 +377,7 @@
         "sourceEventId": "team-split-pane-speculative-40:crew:1",
         "occurredAt": "2026-10-30T12:00:46.127Z",
         "type": "activity.ended",
-        "agentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+        "agentId": "claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "sessionId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "payload": {},
         "provenance": "live",
@@ -456,14 +456,14 @@
         "sourceEventId": "team-split-pane-speculative-51:crew:0",
         "occurredAt": "2026-10-30T12:00:48.951Z",
         "type": "agent.registered",
-        "agentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+        "agentId": "claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "sessionId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "payload": {
-          "sourceAgentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+          "sourceAgentId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a127629f"
+          "teamId": "claude-code:team:session-a127629f"
         },
         "provenance": "live",
         "late": false
@@ -475,7 +475,7 @@
         "sourceEventId": "team-split-pane-speculative-51:crew:1",
         "occurredAt": "2026-10-30T12:00:48.951Z",
         "type": "activity.ended",
-        "agentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+        "agentId": "claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "sessionId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "payload": {},
         "provenance": "live",
@@ -500,7 +500,7 @@
         "sourceEventId": "team-split-pane-speculative-53:crew:0",
         "occurredAt": "2026-10-30T12:00:50.113Z",
         "type": "team.message",
-        "agentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+        "agentId": "claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "sessionId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "payload": {
           "to": "pip",
@@ -517,10 +517,10 @@
         "sourceEventId": "team-split-pane-speculative-53:crew:1",
         "occurredAt": "2026-10-30T12:00:50.113Z",
         "type": "agent.registered",
-        "agentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+        "agentId": "claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "sessionId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "payload": {
-          "sourceAgentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+          "sourceAgentId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
@@ -578,14 +578,14 @@
         "sourceEventId": "team-split-pane-speculative-60:crew:0",
         "occurredAt": "2026-10-30T12:00:51.784Z",
         "type": "agent.registered",
-        "agentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+        "agentId": "claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "sessionId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "payload": {
-          "sourceAgentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+          "sourceAgentId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
           "displayName": "bo",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a127629f"
+          "teamId": "claude-code:team:session-a127629f"
         },
         "provenance": "live",
         "late": false
@@ -597,7 +597,7 @@
         "sourceEventId": "team-split-pane-speculative-60:crew:1",
         "occurredAt": "2026-10-30T12:00:51.784Z",
         "type": "activity.ended",
-        "agentId": "cc:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
+        "agentId": "claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "sessionId": "404ff3da-af4b-4a7d-aca5-6cc063afc1e4",
         "payload": {},
         "provenance": "live",
@@ -634,14 +634,14 @@
         "sourceEventId": "team-split-pane-speculative-64:crew:0",
         "occurredAt": "2026-10-30T12:00:53.890Z",
         "type": "agent.registered",
-        "agentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+        "agentId": "claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "sessionId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "payload": {
-          "sourceAgentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+          "sourceAgentId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
           "displayName": "pip",
           "role": "teammate",
           "kind": "teammate",
-          "teamId": "cc-team:session-a127629f"
+          "teamId": "claude-code:team:session-a127629f"
         },
         "provenance": "live",
         "late": false
@@ -653,7 +653,7 @@
         "sourceEventId": "team-split-pane-speculative-64:crew:1",
         "occurredAt": "2026-10-30T12:00:53.890Z",
         "type": "activity.ended",
-        "agentId": "cc:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
+        "agentId": "claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "sessionId": "cb581bf9-f41d-40bf-85fb-b4258ba029ec",
         "payload": {},
         "provenance": "live",

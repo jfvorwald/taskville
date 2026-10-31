@@ -10,7 +10,8 @@ describe("attributeHook", () => {
     expect(attributeHook({ session_id: SESSION, hook_event_name: "Stop" })).toEqual({
       role: "session",
       sessionId: SESSION,
-      agentId: `cc:${SESSION}`,
+      agentId: `claude-code:${SESSION}`,
+      sourceAgentId: SESSION,
     });
   });
 
@@ -19,7 +20,8 @@ describe("attributeHook", () => {
     expect(attributeHook(hook)).toEqual({
       role: "subagent",
       sessionId: SESSION,
-      agentId: `cc:${SESSION}:ac5497782768787b9`,
+      agentId: `claude-code:${SESSION}:ac5497782768787b9`,
+      sourceAgentId: "ac5497782768787b9",
       agentType: "outer",
     });
   });
@@ -29,7 +31,8 @@ describe("attributeHook", () => {
     expect(attributeHook(hook)).toEqual({
       role: "teammate",
       sessionId: SESSION,
-      agentId: `cc:${SESSION}:apip-5cb5e9bb3f2f1097`,
+      agentId: `claude-code:${SESSION}:apip-5cb5e9bb3f2f1097`,
+      sourceAgentId: "apip-5cb5e9bb3f2f1097",
       agentType: "pip",
     });
   });
@@ -47,7 +50,7 @@ describe("attributeHook", () => {
   });
 
   it("returns undefined without a usable session_id", () => {
-    for (const session_id of [undefined, "", 7, "x".repeat(65), "has space", "a\u0000b"]) {
+    for (const session_id of [undefined, "", 7, "x".repeat(101), "has space", "a\u0000b"]) {
       expect(attributeHook({ session_id })).toBeUndefined();
     }
     expect(attributeHook(null)).toBeUndefined();
@@ -56,7 +59,7 @@ describe("attributeHook", () => {
   });
 
   it("returns undefined for an agent_id that is not a plain bounded token", () => {
-    for (const agent_id of ["a".repeat(129), "a b", "a/../b", 12, "a\u{1F600}"]) {
+    for (const agent_id of ["a".repeat(65), "a b", "a/../b", 12, "a\u{1F600}"]) {
       expect(attributeHook({ session_id: SESSION, agent_id, agent_type: "x" })).toBeUndefined();
     }
   });

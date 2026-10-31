@@ -53,7 +53,7 @@ describe.each(STREAMS)("%s", (name) => {
 
 describe("subagent/nested", () => {
   const mapped = replay("subagent/nested");
-  const session = "cc:6effc000-24c8-436e-ae5e-33152b820f83";
+  const session = "claude-code:6effc000-24c8-436e-ae5e-33152b820f83";
   const outer = `${session}:ac5497782768787b9`;
   const inner = `${session}:a0c1bc9a2c30e80b6`;
 
@@ -62,7 +62,7 @@ describe("subagent/nested", () => {
     expect(start).toMatchObject({
       type: "agent.registered",
       agentId: outer,
-      payload: { kind: "subagent", sourceAgentId: outer, displayName: "outer" },
+      payload: { kind: "subagent", sourceAgentId: "ac5497782768787b9", displayName: "outer" },
     });
     expect(start?.payload).not.toHaveProperty("parentAgentId");
   });
@@ -95,8 +95,8 @@ describe("subagent/parallel", () => {
   it("parents both background subagents on the main session", () => {
     const links = of(events, "agent.registered").filter((e) => "parentAgentId" in e.payload);
     expect(links.map((e) => e.payload.parentAgentId)).toEqual([
-      "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
-      "cc:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+      "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+      "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
     ]);
     expect(of(events, "agent.finished")).toHaveLength(2);
   });
@@ -105,15 +105,20 @@ describe("subagent/parallel", () => {
 describe("team/in-process", () => {
   const mapped = replay("team/in-process");
   const events = allEvents(mapped);
-  const lead = "cc:cf46f41b-8048-4a06-b955-b342dd0c7f31";
+  const lead = "claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31";
   const pip = `${lead}:apip-5cb5e9bb3f2f1097`;
   const bo = `${lead}:abo-4381c522227780d5`;
-  const team = "cc-team:session-cf46f41b";
+  const team = "claude-code:team:session-cf46f41b";
 
   it("detects the lead and registers each teammate from the teammate_spawned response", () => {
     expect(at(mapped, 19).events).toMatchObject([
       { type: "team.started", payload: { teamId: team, leadAgentId: lead } },
-      { type: "agent.registered", agentId: lead, payload: { kind: "lead", teamId: team } },
+      {
+        type: "agent.registered",
+        agentId: lead,
+        // Same sourceAgentId and name as the core mapper's SessionStart registration.
+        payload: { kind: "lead", teamId: team, sourceAgentId: lead.slice(12), displayName: "proj" },
+      },
       {
         type: "agent.registered",
         agentId: pip,
@@ -168,8 +173,8 @@ describe("team/in-process", () => {
 describe("team/split-pane", () => {
   const mapped = replay("team/split-pane");
   const events = allEvents(mapped);
-  const lead = "cc:a7286c33-05b8-4a44-af6b-76733867aab0";
-  const team = "cc-team:session-a7286c33";
+  const lead = "claude-code:a7286c33-05b8-4a44-af6b-76733867aab0";
+  const team = "claude-code:team:session-a7286c33";
 
   it("registers no agent for a split-pane spawn, whose agent_id never appears in its hooks", () => {
     const spawn = at(mapped, 3).events;
@@ -182,16 +187,18 @@ describe("team/split-pane", () => {
       {
         type: "request.opened",
         agentId: lead,
-        payload: { kind: "permission", toolName: "Bash", reason: "for: pip", heuristic: true },
+        payload: { kind: "permission", reason: "for: pip (Bash)", heuristic: true },
       },
     ]);
+    // No toolName, so the lead's following permission_prompt request merges into this one.
+    expect(at(mapped, 17).events[0]?.payload).not.toHaveProperty("toolName");
   });
 
   it("links a split-pane teammate session on TeammateIdle, as a recorded fact", () => {
     const [registration, idle] = at(mapped, 27).events;
     expect(registration).toMatchObject({
       type: "agent.registered",
-      agentId: "cc:f1b7a717-fe78-44d8-b68b-a12643262b81",
+      agentId: "claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81",
       payload: { kind: "teammate", displayName: "bo", teamId: team },
     });
     expect(registration?.payload).not.toHaveProperty("heuristic");
@@ -202,7 +209,7 @@ describe("team/split-pane", () => {
     const [message, link] = at(mapped, 37).events;
     expect(message).toMatchObject({
       type: "team.message",
-      agentId: "cc:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
+      agentId: "claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0",
       payload: { to: "bo" },
     });
     expect(link).toMatchObject({
