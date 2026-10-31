@@ -775,6 +775,49 @@ const positives: Positive[] = [
     secret: `{"x":"${fake.password}"}`,
     kind: "sensitive-value",
   },
+  // roborev 5373 and 5377: no length limit on a value, and a global option before `login`.
+  {
+    name: "JSON name with an object value longer than any scan window",
+    input: `{"name":"API_TOKEN","value":{"pad":"${"x".repeat(5000)}","x":"${fake.password}"},"z":1}`,
+    secret: `{"pad":"${"x".repeat(5000)}","x":"${fake.password}"}`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON string value before name, longer than any scan window",
+    input: `{"value":"${"x".repeat(3000)}${fake.password}","name":"DB_PASSWORD"}`,
+    secret: `${"x".repeat(3000)}${fake.password}`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON object value before name, longer than any scan window",
+    input: `{"value":{"pad":"${"x".repeat(5000)}","x":"${fake.password}"},"name":"API_TOKEN"}`,
+    secret: `{"pad":"${"x".repeat(5000)}","x":"${fake.password}"}`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "JSON object value before name that holds a sensitive name of its own",
+    input: `{"value":{"x":"a","name":"DB_PASS","y":"${fake.password}"},"name":"API_TOKEN"}`,
+    secret: `{"x":"a","name":"DB_PASS","y":"${fake.password}"}`,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login after a global option and its value",
+    input: `docker --config /tmp/dc login -p ${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "docker login after several global options",
+    input: `docker -H tcp://127.0.0.1:2375 --tlsverify --context ci login -u me -p ${fake.password} r`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
+  {
+    name: "podman login after a global option",
+    input: `podman --root /srv/containers login -p${fake.password} registry.example.test`,
+    secret: fake.password,
+    kind: "sensitive-value",
+  },
   // roborev 5357: a backslash escapes the next character in an unquoted shell word.
   {
     name: "mysql -p with an escaped space",
@@ -1026,6 +1069,18 @@ const negatives: Array<{ name: string; input: string }> = [
     input: '{"value":"keep"},{"name":"DB_PASSWORD","note":"x"}',
   },
   { name: "JSON object value of an ordinary name", input: '{"name":"PATH","value":{"x":"keep"}}' },
+  {
+    name: "docker run after a global option",
+    input: "docker --config /tmp/dc run -p 8080:80 nginx",
+  },
+  {
+    name: "docker login after a global option without a password flag",
+    input: "docker --config /tmp/dc login registry.example.test",
+  },
+  {
+    name: "JSON string value before a PATH name, longer than any scan window",
+    input: `{"value":"${"x".repeat(3000)}","name":"PATH"}`,
+  },
   { name: "JSON key alone", input: '{"name": "DB_PASSWORD", "description": "the database login"}' },
 ];
 
@@ -1520,6 +1575,14 @@ describe("adversarial input", () => {
     ["name pairs with long values", `{"name":"A_PASS","value":"${"a".repeat(n)}`],
     ["name pairs without values", '{"name":"A_PASS",'.repeat(n / 17)],
     ["name pairs with quotes", `{"name":"${"A_".repeat(n / 2)}`],
+    ["docker global options", "docker --config /tmp ".repeat(n / 22)],
+    ["docker flags", `docker ${"-a b ".repeat(n / 5)}login`],
+    ["docker flags repeated", "docker -a -b -c -d -e -f -g login ".repeat(n / 33)],
+    ["value strings then a name", `${'"value":"'.repeat(n / 20)},"name":"A_PASS"`],
+    ["value objects, balanced, then a name", `${'"value":{},'.repeat(n / 20)}"name":"A_PASS"`],
+    ["nested value objects", `${'{"value":'.repeat(n / 20)}1${"}".repeat(n / 20)},"name":"A_PASS"`],
+    ["long object before a name", `{"value":{${'"a":1,'.repeat(n / 6)}},"name":"A_PASS"}`],
+    ["names and value objects interleaved", '"value":{,"name":"A_PASS"'.repeat(n / 26)],
     ["value keys", '"value":'.repeat(n / 8)],
     ["value keys with objects", '"value":{'.repeat(n / 9)],
     ["value keys with objects and a name", `${'"value":{'.repeat(n / 20)},"name":"A_PASS"`],
