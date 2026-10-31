@@ -2,6 +2,7 @@
 
 import { demo } from "./commands/demo.ts";
 import { events } from "./commands/events.ts";
+import { install, uninstall } from "./commands/install.ts";
 import { project } from "./commands/projects.ts";
 import { requests } from "./commands/requests.ts";
 import { serve } from "./commands/serve.ts";
@@ -23,6 +24,8 @@ Commands:
   events follow --project <id> [--after N]    Stream events
   requests [--project <id>] [--all]           List pending requests (read-only)
   unpair                                      Revoke every paired browser
+  install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
+  uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
   demo run --offline --seed <n> --duration <t> [--pace <pace>]
   demo start --project <id> --seed <n> [--pace <pace>] [--speed <x>] [--duration <t>]
 
@@ -37,6 +40,8 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   requests,
   unpair,
   demo,
+  install,
+  uninstall,
 };
 
 export async function run(argv: string[], io: Io): Promise<number> {
@@ -70,7 +75,20 @@ if (import.meta.main) {
     env: process.env,
     cwd: process.cwd(),
     signal: controller.signal,
+    confirm: process.stdin.isTTY ? askOnTerminal : undefined,
   }).then((code) => {
     process.exitCode = code;
   });
+}
+
+/** A y/N question on the terminal (install and uninstall). Anything but y or yes is no. */
+async function askOnTerminal(question: string): Promise<boolean> {
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer = await rl.question(`${question} [y/N] `);
+    return /^(y|yes)$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
 }

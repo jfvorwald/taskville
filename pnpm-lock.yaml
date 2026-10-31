@@ -181,6 +181,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@taskville/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@taskville/demo':
         specifier: workspace:*
         version: link:../../packages/demo
