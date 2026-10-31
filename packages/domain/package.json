@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./hash": "./src/hash/index.ts",
+    "./reducer": "./src/reducer/index.ts",
     "./reducer/attention": "./src/reducer/attention/index.ts",
     "./selectors": "./src/selectors/index.ts"
   },

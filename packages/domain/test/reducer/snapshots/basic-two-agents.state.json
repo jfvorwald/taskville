@@ -1,0 +1,119 @@
+{
+  "projectId": "demo",
+  "reducerVersion": 1,
+  "head": 13,
+  "agents": {
+    "agent-a": {
+      "id": "agent-a",
+      "sourceId": "adapter:generic",
+      "kind": "session",
+      "registered": true,
+      "connection": "connected",
+      "firstSeenAt": "2026-10-30T09:00:00Z",
+      "lastSeenAt": "2026-10-30T09:00:11Z",
+      "toolCallCount": 1,
+      "consecutiveToolFailures": 0,
+      "sourceAgentId": "builder",
+      "displayName": "Builder",
+      "role": "implementer",
+      "registeredSeq": 2
+    },
+    "agent-b": {
+      "id": "agent-b",
+      "sourceId": "adapter:generic",
+      "kind": "session",
+      "registered": true,
+      "connection": "connected",
+      "firstSeenAt": "2026-10-30T09:00:01Z",
+      "lastSeenAt": "2026-10-30T09:00:05Z",
+      "toolCallCount": 0,
+      "consecutiveToolFailures": 0,
+      "sourceAgentId": "reviewer",
+      "displayName": "Reviewer",
+      "role": "reviewer",
+      "registeredSeq": 3
+    }
+  },
+  "teams": {},
+  "sessions": {
+    "sess-a": {
+      "id": "sess-a",
+      "agentId": "agent-a",
+      "sourceId": "adapter:generic",
+      "provenance": "live",
+      "firstSeenAt": "2026-10-30T09:00:02Z",
+      "startedAt": "2026-10-30T09:00:02Z",
+      "startSeq": 4,
+      "workingDirectory": "/repo/demo",
+      "activity": {
+        "activity": "implementing",
+        "heuristic": false,
+        "since": "2026-10-30T09:00:09Z",
+        "taskId": "task-1"
+      }
+    },
+    "sess-b": {
+      "id": "sess-b",
+      "agentId": "agent-b",
+      "sourceId": "adapter:generic",
+      "provenance": "live",
+      "firstSeenAt": "2026-10-30T09:00:03Z",
+      "startedAt": "2026-10-30T09:00:03Z",
+      "startSeq": 5,
+      "workingDirectory": "/repo/demo",
+      "activity": {
+        "activity": "unknown",
+        "heuristic": false,
+        "since": "2026-10-30T09:00:03Z"
+      }
+    }
+  },
+  "toolCalls": {
+    "tc-1": {
+      "id": "tc-1",
+      "agentId": "agent-a",
+      "sessionId": "sess-a",
+      "toolName": "Edit",
+      "phase": "succeeded",
+      "filePaths": ["src/login.ts"],
+      "summary": "Edit src/login.ts",
+      "evidenceIds": [],
+      "startedAt": "2026-10-30T09:00:10Z",
+      "startSeq": 12,
+      "finishedAt": "2026-10-30T09:00:11Z",
+      "durationMs": 850
+    }
+  },
+  "tasks": {
+    "task-1": {
+      "id": "task-1",
+      "status": "running",
+      "assignedAgentIds": ["agent-a"],
+      "relatedTaskIds": [],
+      "updatedAt": "2026-10-30T09:00:08Z",
+      "title": "Add login form",
+      "createdAt": "2026-10-30T09:00:06Z"
+    }
+  },
+  "activity": {
+    "agent-a": {
+      "agentId": "agent-a",
+      "openSessionCount": 1,
+      "sessionId": "sess-a",
+      "activity": "implementing",
+      "heuristic": false,
+      "since": "2026-10-30T09:00:09Z",
+      "taskId": "task-1"
+    },
+    "agent-b": {
+      "agentId": "agent-b",
+      "openSessionCount": 1,
+      "sessionId": "sess-b",
+      "activity": "unknown",
+      "heuristic": false,
+      "since": "2026-10-30T09:00:03Z"
+    }
+  },
+  "requests": {},
+  "commands": {}
+}
