@@ -7,6 +7,7 @@ import type {
   StoredReason,
 } from "@taskville/protocol";
 import type { PendingRequest } from "../reducer/attention/types.ts";
+import { compareTimestamps, epochMillis } from "../reducer/entities/time.ts";
 
 // Attention selectors (data-model.md "Attention rules"). Attention is derived on read with an
 // injected clock and is never stored in reducer state, so it is never part of stateHash.
@@ -80,7 +81,7 @@ export function attention(
     } else if (agent.lastTurn === "idle_prompt") {
       records.push(record(agent.id, "waiting", "idle_prompt", turnSince));
     }
-    const quietMs = now - Date.parse(agent.lastSeenAt);
+    const quietMs = now - epochMillis(agent.lastSeenAt);
     if (
       agent.connection === "connected" &&
       agent.finishedAt === undefined &&
@@ -154,7 +155,7 @@ function quietReason(quietMs: number): StoredReason {
 function compare(a: Attention, b: Attention): number {
   return (
     LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] ||
-    Date.parse(a.since) - Date.parse(b.since) ||
+    compareTimestamps(a.since, b.since) ||
     order(a.agentId, b.agentId) ||
     order(a.kind, b.kind) ||
     order(a.requestId ?? "", b.requestId ?? "")

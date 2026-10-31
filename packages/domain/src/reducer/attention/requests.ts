@@ -4,6 +4,7 @@ import type {
   StoredEnvelope,
   StoredEnvelopeOf,
 } from "@taskville/protocol";
+import { compareTimestamps } from "../entities/time.ts";
 import { BRIDGE_SOURCE_ID, isEngineSource } from "./sources.ts";
 import type { Command, PendingRequest, RequestsState } from "./types.ts";
 
@@ -130,8 +131,9 @@ function mergeTarget(
   return best;
 }
 
+/** Earlier by exact instant (#143: Date.parse is only millisecond-precise), then by ID. */
 function earlier(a: PendingRequest, b: PendingRequest): boolean {
-  const byTime = Date.parse(a.openedAt) - Date.parse(b.openedAt);
+  const byTime = compareTimestamps(a.openedAt, b.openedAt);
   return byTime !== 0 ? byTime < 0 : a.id < b.id;
 }
 
