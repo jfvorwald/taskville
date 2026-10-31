@@ -152,9 +152,9 @@ function close(state: RequestsState, requestId: string, to: RequestState): Reque
 }
 
 /**
- * The next event from the same session closes its open requests (ARCHITECTURE.md section 6):
- * `answered_here` when a Taskville `permission.decide` for the request already succeeded, otherwise
- * `answered_elsewhere`.
+ * The next event from the same session closes its open telemetry requests as
+ * `answered_elsewhere` (ARCHITECTURE.md section 6), as `closesRequest` allows. A bridge-held
+ * request, the only kind a Taskville command can answer, is closed by the engine instead.
  */
 function closeSession(state: RequestsState, event: StoredEnvelope): RequestsState {
   let requests: Record<string, PendingRequest> | undefined;
@@ -162,8 +162,7 @@ function closeSession(state: RequestsState, event: StoredEnvelope): RequestsStat
     if (request.state !== "open" || request.sessionId !== event.sessionId) continue;
     if (!closesRequest(request, event)) continue;
     requests ??= { ...state.requests };
-    const to = answeredHere(state.commands, request) ? "answered_here" : "answered_elsewhere";
-    requests[request.id] = { ...request, state: to };
+    requests[request.id] = { ...request, state: "answered_elsewhere" };
   }
   return requests === undefined ? state : { ...state, requests };
 }
@@ -175,12 +174,15 @@ function closeSession(state: RequestsState, event: StoredEnvelope): RequestsStat
  * #184 D1 (default): a telemetry request closes only on its owning agent's events, or on a
  * session boundary (`session.turn_ended`, `session.prompt_submitted`, `session.ended`) from
  * any agent. Subagents and in-process teammates share their lead's session (S-2), so a
- * subagent's unrelated tool call no longer clears its lead's red state. A bridge-held request
- * follows the same rule: #116 D3 closes it only on a matching PostToolUse (M4), so another
- * agent's result never closes it either. The D1 alternative (#135 D2: any agent's event closes
- * a telemetry request) is one line at the top: `if (!request.answerable) return true;`.
+ * subagent's unrelated tool call no longer clears its lead's red state. The D1 alternative
+ * (#135 D2: any agent's event closes a telemetry request) replaces the rest with `return true`.
+ *
+ * A bridge-held request is never closed by a same-session event (decision #116): only the
+ * engine closes it, from a matching PostToolUse or a closed hook (M4), `request.resolved`, or
+ * `request.expired`.
  */
 export function closesRequest(request: PendingRequest, event: StoredEnvelope): boolean {
+  if (request.answerable) return false;
   if (
     event.type === "session.turn_ended" ||
     event.type === "session.prompt_submitted" ||
@@ -189,15 +191,6 @@ export function closesRequest(request: PendingRequest, event: StoredEnvelope): b
     return true;
   }
   return event.agentId === request.agentId;
-}
-
-function answeredHere(commands: Record<string, Command>, request: PendingRequest): boolean {
-  return Object.values(commands).some(
-    (c) =>
-      c.type === "permission.decide" &&
-      c.status === "succeeded" &&
-      (c.requestId === request.id || request.mergedRequestIds.includes(c.requestId)),
-  );
 }
 
 // --- commands ---------------------------------------------------------------------------------

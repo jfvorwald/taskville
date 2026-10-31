@@ -486,20 +486,24 @@ describe("answered_elsewhere on the next same-session event", () => {
     ["session.ended", (emit, f) => emit("session.ended", {}, f)],
   ];
 
-  it.each(closers)("%s closes every open request in the session", (_, make) => {
-    const emit = eventStream();
-    const state = run([
-      opened(emit, "r1", { toolName: "Bash" }, { sourceId: BRIDGE }),
-      opened(emit, "r2", { kind: "elicitation" }),
-      opened(emit, "other", { toolName: "Bash" }, { sessionId: "s2" }),
-      opened(emit, "nosession", { toolName: "Bash" }, { sessionId: undefined }),
-      make(emit, LEAD),
-    ]);
-    expect(state.requests.r1?.state).toBe("answered_elsewhere");
-    expect(state.requests.r2?.state).toBe("answered_elsewhere");
-    expect(state.requests.other?.state).toBe("open");
-    expect(state.requests.nosession?.state).toBe("open");
-  });
+  it.each(closers)(
+    "%s closes the session's open telemetry requests, never a bridge-held one",
+    (_, make) => {
+      const emit = eventStream();
+      const state = run([
+        opened(emit, "r1", { toolName: "Bash" }, { sourceId: BRIDGE }),
+        opened(emit, "r2", { kind: "elicitation" }),
+        opened(emit, "other", { toolName: "Bash" }, { sessionId: "s2" }),
+        opened(emit, "nosession", { toolName: "Bash" }, { sessionId: undefined }),
+        make(emit, LEAD),
+      ]);
+      // Decision #116: only the engine closes a bridge-held request (M2.13).
+      expect(state.requests.r1?.state).toBe("open");
+      expect(state.requests.r2?.state).toBe("answered_elsewhere");
+      expect(state.requests.other?.state).toBe("open");
+      expect(state.requests.nosession?.state).toBe("open");
+    },
+  );
 
   it("does not reopen or reclassify a request that is already closed", () => {
     const emit = eventStream();
@@ -527,7 +531,7 @@ describe("answered_elsewhere on the next same-session event", () => {
     expect(state.requests.r2?.state).toBe("open");
   });
 
-  it("closes as answered_here when a Taskville command for the request already succeeded", () => {
+  it("leaves bridge-held requests open on a session event even after their command succeeded (#116)", () => {
     const emit = eventStream();
     const state = run([
       opened(emit, "b1", { toolName: "Bash" }, { sourceId: BRIDGE }),
@@ -560,10 +564,11 @@ describe("answered_elsewhere on the next same-session event", () => {
       emit("command.delivered", { commandId: "c2" }, { sourceId: ENGINE }),
       emit("tool_call.finished", { toolCallId: "t1", phase: "succeeded" }, LEAD),
     ]);
-    expect(state.requests.b1?.state).toBe("answered_here");
-    expect(state.requests.b2?.state).toBe("answered_elsewhere");
+    // The engine closes them (request.resolved, M4), not the session's next event.
+    expect(state.requests.b1?.state).toBe("open");
+    expect(state.requests.b2?.state).toBe("open");
   });
-  it("does not count a succeeded session.open as an answer", () => {
+  it("does not close a bridge-held request after a succeeded session.open either", () => {
     const emit = eventStream();
     const state = run([
       opened(emit, "b1", { toolName: "Bash" }, { sourceId: BRIDGE }),
@@ -582,7 +587,7 @@ describe("answered_elsewhere on the next same-session event", () => {
       emit("command.succeeded", { commandId: "c1" }, { sourceId: ENGINE }),
       emit("tool_call.finished", { toolCallId: "t1", phase: "succeeded" }, LEAD),
     ]);
-    expect(state.requests.b1?.state).toBe("answered_elsewhere");
+    expect(state.requests.b1?.state).toBe("open");
   });
 });
 
