@@ -1,4 +1,4 @@
-import type { IngestResult } from "@taskville/protocol";
+import type { EventBatchResponse, IngestResult } from "@taskville/protocol";
 import type { Logger } from "pino";
 import type { IngestPipeline } from "../../ingest/index.ts";
 import type { StorageReads } from "../../storage/index.ts";
@@ -55,7 +55,7 @@ export const noopEvidenceSink: EvidenceSink = { store: () => {} };
 export interface ClaudeCodeSourceOptions extends ResolveOptions {
   pipeline: IngestPipeline;
   /** Project registry (decision #110): read on every hook, so projects added at runtime route at once. */
-  storage: Pick<StorageReads, "projects">;
+  storage: Pick<StorageReads, "projects" | "findEventBySourceKey" | "head">;
   mapper: ClaudeCodeMapper;
   evidence?: EvidenceSink;
   now?: () => Date;
@@ -116,7 +116,7 @@ export class ClaudeCodeSource {
     const events = mapped.events.map((event) =>
       isPlainRecord(event) ? { ...event, projectId, sourceId: CLAUDE_CODE_SOURCE_ID, late } : event,
     );
-    const { results, heads } = this.#options.pipeline.ingest(events);
+    const { results, heads } = this.#ingestOnce(projectId, events);
     // Evidence only for a hook whose events are in the log (accepted now or before), never orphaned.
     const logged = results.some((r) => r.status === "accepted" || r.status === "duplicate");
     if (logged && mapped.evidence !== undefined && mapped.evidence.length > 0) {
@@ -128,6 +128,53 @@ export class ClaudeCodeSource {
       }
     }
     return { projectId, results, heads };
+  }
+
+  /**
+   * For this source the shim's `sourceEventId` alone is the idempotency key. A
+   * hook carries no timestamp, so the mapper's `occurredAt` is the engine clock,
+   * and a spool replay sets `late`: both are in the pipeline's content hash, so
+   * a retry or a live-then-spooled hook would be a `conflict`. An event whose
+   * key is already in the project's log is reported as `duplicate` with the
+   * original acknowledgment (ARCHITECTURE.md 7.2) and not re-sent; the rest go
+   * through the pipeline. The check and the ingest run in the same tick, with
+   * no await between them, so no other request can interleave.
+   */
+  #ingestOnce(projectId: string, events: readonly unknown[]): EventBatchResponse {
+    const known = new Map<number, IngestResult>();
+    const fresh: unknown[] = [];
+    for (const [index, event] of events.entries()) {
+      const key = isPlainRecord(event) ? event.sourceEventId : undefined;
+      const existing =
+        typeof key === "string"
+          ? this.#options.storage.findEventBySourceKey(projectId, CLAUDE_CODE_SOURCE_ID, key)
+          : undefined;
+      if (typeof key === "string" && existing !== undefined) {
+        known.set(index, {
+          sourceEventId: key,
+          status: "duplicate",
+          ingestSequence: existing.ingestSequence,
+          eventId: existing.eventId,
+        });
+      } else {
+        fresh.push(event);
+      }
+    }
+    if (known.size === 0) return this.#options.pipeline.ingest(events);
+    const ingested =
+      fresh.length === 0 ? { results: [], heads: {} } : this.#options.pipeline.ingest(fresh);
+    const results: IngestResult[] = [];
+    let next = 0;
+    for (const index of events.keys()) {
+      const result = known.get(index) ?? ingested.results[next++];
+      if (result !== undefined) results.push(result);
+    }
+    const head = this.#options.storage.head(projectId);
+    const heads =
+      Object.hasOwn(ingested.heads, projectId) || head === undefined
+        ? ingested.heads
+        : { ...ingested.heads, [projectId]: head };
+    return { results, heads };
   }
 }
 
