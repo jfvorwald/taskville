@@ -1,3 +1,4 @@
+import { MAX_SOURCE_EVENT_ID } from "@taskville/adapters/claude-code";
 import { idSchema, MAX_BATCH_BYTES } from "@taskville/protocol";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -8,12 +9,6 @@ import type { ClaudeCodeSource } from "./source.ts";
 export const CLAUDE_CODE_HOOKS_PATH = "/v1/sources/claude-code/hooks";
 /** The batch route's byte limit (contracts/http-api.md): one hook is never larger than a batch. */
 export const MAX_HOOK_BODY_BYTES = MAX_BATCH_BYTES;
-/**
- * Longest shim `sourceEventId` accepted. The mapper (M2.03 `MAX_SOURCE_EVENT_ID`) ignores a
- * longer one, because `<sourceEventId>:<event type>` and `claude-code:request:<sourceEventId>`
- * must fit the 200-character protocol ID; the route refuses it with 400 instead of dropping it.
- */
-export const MAX_HOOK_SOURCE_EVENT_ID = 170;
 
 const WRAPPER_KEYS: ReadonlySet<string> = new Set(["sourceEventId", "payload"]);
 
@@ -25,14 +20,16 @@ interface Wrapper {
 /**
  * The shim's body (M2.01): exactly `{ sourceEventId, payload }`, read with
  * `Object.hasOwn` so a `__proto__` key is an unknown key, not a prototype.
- * Unknown keys are refused, which also means `late` cannot be set over HTTP.
+ * Unknown keys are refused, which also means `late` cannot be set over HTTP. A
+ * `sourceEventId` over the mapper's `MAX_SOURCE_EVENT_ID` (M2.03) is refused too: the mapper
+ * would ignore the hook, because `<sourceEventId>:<event type>` must fit the 200-character ID.
  */
 function parseWrapper(body: unknown): Wrapper | undefined {
   if (!isPlainRecord(body)) return undefined;
   if (!Object.keys(body).every((key) => WRAPPER_KEYS.has(key))) return undefined;
   if (!Object.hasOwn(body, "sourceEventId") || !Object.hasOwn(body, "payload")) return undefined;
   const id = idSchema.safeParse(body.sourceEventId);
-  if (!id.success || id.data.length > MAX_HOOK_SOURCE_EVENT_ID) return undefined;
+  if (!id.success || id.data.length > MAX_SOURCE_EVENT_ID) return undefined;
   if (!isPlainRecord(body.payload)) return undefined;
   return { sourceEventId: id.data, payload: body.payload };
 }

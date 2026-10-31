@@ -1,3 +1,4 @@
+import { MAX_SOURCE_EVENT_ID } from "@taskville/adapters/claude-code";
 import pino from "pino";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,7 +7,6 @@ import {
   type HookEvidence,
   type HookIngestResponse,
   MAX_HOOK_BODY_BYTES,
-  MAX_HOOK_SOURCE_EVENT_ID,
   registerClaudeCodeRoutes,
 } from "../../../src/sources/claude-code/index.ts";
 import {
@@ -326,7 +326,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       { sourceEventId: 7, payload: hook() },
       { sourceEventId: "x".repeat(10_000), payload: hook() },
       // Over M2.03's MAX_SOURCE_EVENT_ID the mapper would ignore the hook: a contract error instead.
-      { sourceEventId: "x".repeat(MAX_HOOK_SOURCE_EVENT_ID + 1), payload: hook() },
+      { sourceEventId: "x".repeat(MAX_SOURCE_EVENT_ID + 1), payload: hook() },
       { sourceEventId: "u", payload: [] },
       { sourceEventId: "u", payload: null },
       { sourceEventId: "u", payload: "hook" },
@@ -350,10 +350,10 @@ describe("POST /v1/sources/claude-code/hooks", () => {
 
   it("accepts a sourceEventId of exactly 170 characters, M2.03's limit", async () => {
     const { app } = setup();
-    expect(MAX_HOOK_SOURCE_EVENT_ID).toBe(170);
+    expect(MAX_SOURCE_EVENT_ID).toBe(170);
     const res = await app.request(
       URL,
-      postJson({ sourceEventId: "y".repeat(170), payload: hook() }, bearer(CLI_TOKEN)),
+      postJson({ sourceEventId: "y".repeat(MAX_SOURCE_EVENT_ID), payload: hook() }, bearer(CLI_TOKEN)),
     );
     expect(res.status).toBe(200);
     expect((await read(res)).results.map((r) => r.status)).toEqual(["accepted"]);
