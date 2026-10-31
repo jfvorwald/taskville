@@ -235,6 +235,18 @@ describe("install --scope user", () => {
     }
   });
 
+  it("never prints a number under a sensitive key (#194)", async () => {
+    sb = sandbox();
+    write(
+      sb.userSettings,
+      `{\n  "env": {\n    "DB_PASSWORD": 987654321987\n  },\n  "auth": {"token": {"pin": 424242}}\n}\n`,
+    );
+    const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--dry-run"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).not.toContain("987654321987");
+    expect(r.stdout).not.toContain("424242");
+  });
+
   it("reinstalls when a user narrowed an installed group with a matcher (roborev 5200)", async () => {
     sb = sandbox();
     await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);

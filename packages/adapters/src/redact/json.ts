@@ -39,29 +39,45 @@ export interface RedactJsonOptions {
 
 /**
  * Masks every string value in a JSON document, at any depth. Returns a new
- * document (the input is not changed) and, for each string that changed, its path
- * and spans. A string under a sensitive property name (`password`, `apiKey`, ...)
- * or one that is a whole high-entropy token is masked entirely. Property names,
- * numbers, booleans, and null pass through.
+ * document (the input is not changed) and, for each scalar that changed, its path
+ * and spans. Everything under a sensitive property name (`password`, `apiKey`,
+ * ...), at any depth, is masked entirely: strings, numbers, and booleans become
+ * the mask marker, inside nested objects and arrays too, so `{ password: { value } }`
+ * or `{ token: 123 }` never keeps its value (#194). Null carries nothing and stays.
+ * Elsewhere a string that is a whole high-entropy token is masked entirely and any
+ * other string is masked span by span. Property names pass through, and so do
+ * numbers, booleans, and null outside a sensitive key.
  */
 export function redactJson(value: JsonValue, options: RedactJsonOptions = {}): RedactedJson {
   const masks: JsonMask[] = [];
-  const walk = (node: JsonValue, path: Array<string | number>, key: string | null): JsonValue => {
+  const walk = (node: JsonValue, path: Array<string | number>, under: boolean): JsonValue => {
     if (typeof node === "string") {
       if (options.skip?.(path)) return node;
-      const { text, spans } = redactString(node, key);
+      const { text, spans } = redactString(node, under);
       if (spans.length > 0) masks.push({ path: [...path], spans });
       return text;
     }
-    // Array items inherit the property name, so `{ password: ["x"] }` masks "x".
-    if (Array.isArray(node)) return node.map((item, i) => walk(item, [...path, i], key));
+    if (typeof node === "number" || typeof node === "boolean") {
+      if (!under || options.skip?.(path)) return node;
+      const marker = maskMarker("sensitive-value");
+      const end = JSON.stringify(node).length;
+      masks.push({
+        path: [...path],
+        spans: [
+          { kind: "sensitive-value", start: 0, end, maskedStart: 0, maskedEnd: marker.length },
+        ],
+      });
+      return marker;
+    }
+    // Array items inherit their parent's sensitivity, so `{ password: ["x"] }` masks "x".
+    if (Array.isArray(node)) return node.map((item, i) => walk(item, [...path, i], under));
     if (node !== null && typeof node === "object") {
       const out: { [key: string]: JsonValue } = {};
       for (const [k, v] of Object.entries(node)) {
         // defineProperty, not assignment, so a "__proto__" key from parsed JSON stays
         // an own property instead of replacing the output's prototype.
         Object.defineProperty(out, k, {
-          value: walk(v, [...path, k], k),
+          value: walk(v, [...path, k], under || isSensitiveName(k)),
           enumerable: true,
           writable: true,
           configurable: true,
@@ -71,12 +87,12 @@ export function redactJson(value: JsonValue, options: RedactJsonOptions = {}): R
     }
     return node;
   };
-  return { value: walk(value, [], null), masks };
+  return { value: walk(value, [], false), masks };
 }
 
-function redactString(value: string, key: string | null): { text: string; spans: MaskSpan[] } {
+function redactString(value: string, sensitive: boolean): { text: string; spans: MaskSpan[] } {
   let whole: MaskKind | null = null;
-  if (key !== null && isSensitiveName(key) && !isPlaceholder(value, 0, value.length)) {
+  if (sensitive && !isPlaceholder(value, 0, value.length)) {
     whole = "sensitive-value";
   } else {
     const inner = redactText(value);
