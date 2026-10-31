@@ -284,6 +284,20 @@ describe("slow consumers", () => {
     expect(text).not.toContain("slow_consumer");
   });
 
+  it("releases a cut-off stream when its client disconnects before reading the resnapshot", async () => {
+    const { app } = setup({ queueLimit: 5 });
+    const slowRes = await streamRequest(app, "demo", bearer(CLI_TOKEN), "?after=1");
+    for (let i = 0; i < 20; i++) await ingest(app, events(i, 1));
+    expect(engine?.hub.subscriberCount()).toBe(0);
+    expect(engine?.hub.openStreams()).toBe(1);
+
+    await slowRes.body?.cancel();
+    for (let i = 0; i < 50 && (engine?.hub.openStreams() ?? 0) > 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(engine?.hub.openStreams()).toBe(0);
+  });
+
   it("uses a 1,000-frame queue by default", () => {
     setup();
     expect(engine?.queueLimit).toBe(1000);
