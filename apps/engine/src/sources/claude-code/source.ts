@@ -122,8 +122,9 @@ export class ClaudeCodeSource {
       isPlainRecord(event) ? { ...event, projectId, sourceId: CLAUDE_CODE_SOURCE_ID, late } : event,
     );
     const { results, heads } = this.#ingestOnce(projectId, events);
-    // Evidence only for a hook whose events are in the log (accepted now or before), never orphaned.
-    const logged = results.some((r) => r.status === "accepted" || r.status === "duplicate");
+    // Evidence only when this call recorded an event. A retry whose events were all duplicates
+    // can carry a tool_response the logged hook did not (the events omit it), so it adds none.
+    const logged = results.some((r) => r.status === "accepted");
     if (logged && mapped.evidence !== undefined && mapped.evidence.length > 0) {
       try {
         this.#evidence.store(projectId, mapped.evidence);

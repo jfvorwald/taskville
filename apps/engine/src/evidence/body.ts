@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { type JsonValue, redactJson, redactText } from "@taskville/adapters/redact";
+import { type JsonValue, maskMarker, redactJson, redactText } from "@taskville/adapters/redact";
 
 /** ARCHITECTURE.md 7.4: each stored body is at most 64 KB (65,536 UTF-8 bytes). */
 export const MAX_BODY_BYTES = 64 * 1024;
@@ -22,9 +22,12 @@ export interface PreparedBody {
  * Turns a raw tool input or output (agent-supplied, untrusted, unmasked) into
  * the only form that may be written. Order matters:
  *
- * 1. Serialize: a string is kept as is; anything else is masked value by value
- *    with `redactJson` (key-aware: `password`, `apiKey`, ...) and then written
- *    as compact JSON.
+ * 1. Serialize: a string is kept as is. Anything else first has every value
+ *    under a sensitive key (`password`, `apiKey`, ...) replaced whole by the
+ *    mask marker, whatever its type: `redactJson` masks only strings directly
+ *    under such a key, so `{ password: { value } }` or `{ token: 123 }` would
+ *    pass. Then every string is masked with `redactJson`, and the result is
+ *    written as compact JSON.
  * 2. Make it well-formed (a lone surrogate becomes U+FFFD), so the hash covers
  *    exactly the bytes SQLite stores.
  * 3. Mask the whole serialized text with `redactText`. The full body is masked
@@ -44,8 +47,9 @@ export function prepareBody(value: unknown): PreparedBody | undefined {
   if (typeof value === "string") {
     serialized = value;
   } else {
-    const redacted = redactJson(value as JsonValue);
-    masked = redacted.masks.length > 0;
+    const sealed = { masked: false };
+    const redacted = redactJson(maskSensitiveSubtrees(value as JsonValue, sealed));
+    masked = sealed.masked || redacted.masks.length > 0;
     const json: string | undefined = JSON.stringify(redacted.value);
     if (typeof json !== "string") return undefined;
     serialized = json;
@@ -63,6 +67,52 @@ export function prepareBody(value: unknown): PreparedBody | undefined {
   }
   const hash = createHash("sha256").update(text, "utf8").digest("hex");
   return { text, bytes, hash, truncated, masked };
+}
+
+const SENSITIVE_MARKER = maskMarker("sensitive-value");
+// A value the redactor never treats as a placeholder, used to ask it whether a key is sensitive.
+const PROBE = "probe-value";
+
+/**
+ * Whether the redaction module treats `key` as a sensitive name. Asked of
+ * `redactJson` itself, so the rule stays the module's own (L-17: no second
+ * list to drift from it).
+ */
+function isSensitiveKey(key: string, cache: Map<string, boolean>): boolean {
+  let sensitive = cache.get(key);
+  if (sensitive === undefined) {
+    sensitive = redactJson({ [key]: PROBE }).masks.length > 0;
+    cache.set(key, sensitive);
+  }
+  return sensitive;
+}
+
+/**
+ * Replaces the whole value of every sensitive key (any type but null) with the
+ * mask marker. Rebuilt with `defineProperty`, so a `__proto__` key stays data
+ * (L-18). Deep nesting throws `RangeError`, which the caller treats as a body
+ * it cannot store.
+ */
+function maskSensitiveSubtrees(value: JsonValue, sealed: { masked: boolean }): JsonValue {
+  const cache = new Map<string, boolean>();
+  const walk = (node: JsonValue): JsonValue => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node === null || typeof node !== "object") return node;
+    const out: { [key: string]: JsonValue } = {};
+    for (const [key, child] of Object.entries(node)) {
+      const sensitive = child !== null && typeof child !== "string" && isSensitiveKey(key, cache);
+      if (sensitive) sealed.masked = true;
+      const next = sensitive ? SENSITIVE_MARKER : walk(child);
+      Object.defineProperty(out, key, {
+        value: next,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return out;
+  };
+  return walk(value);
 }
 
 /** The longest prefix of well-formed `text` whose UTF-8 encoding fits `maxBytes`, on a character boundary. */
