@@ -354,9 +354,11 @@ describe("redactText true positives", () => {
 
 const sha = "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3";
 const uuid = "123e4567-e89b-12d3-a456-426614174000";
-const png = ["iVBORw0KGgo", "AAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4", chars(400, B64, 18)].join(
-  "",
-);
+const png = [
+  "iVBORw0KGgo",
+  "AAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4",
+  chars(400, B64, 18),
+].join("");
 
 const negatives: Array<{ name: string; input: string }> = [
   { name: "empty string", input: "" },
@@ -365,17 +367,27 @@ const negatives: Array<{ name: string; input: string }> = [
     input:
       "Use a Bearer token in the Authorization header. Set the password in your keychain. The secret is to keep it simple.",
   },
-  { name: "prose with a colon after a sensitive word", input: "Password: required. Token: see the docs." },
+  {
+    name: "prose with a colon after a sensitive word",
+    input: "Password: required. Token: see the docs.",
+  },
   { name: "git SHA in prose", input: `commit ${sha} fixed it` },
   { name: "git SHA assigned", input: `sha=${sha}` },
   { name: "git SHA quoted under an ordinary name", input: `"head": "${sha}"` },
+  {
+    name: "lockfile integrity digest",
+    input: `"integrity": "sha512-${chars(86, B64, 21)}=="`,
+  },
   { name: "short SHA", input: "merged in 08c5c83" },
   { name: "UUID assigned", input: `id=${uuid}` },
   { name: "UUID in JSON text", input: `{"requestId":"${uuid}"}` },
   { name: "base64 PNG data URI", input: `<img src="data:image/png;base64,${png}">` },
   { name: "base64 PNG in JSON text", input: `{"image": "${png}"}` },
   { name: "base64 PNG assigned", input: `thumbnail=${png}` },
-  { name: "POSIX file path", input: "/Users/example/dev/taskville/packages/adapters/src/redact/index.ts" },
+  {
+    name: "POSIX file path",
+    input: "/Users/example/dev/taskville/packages/adapters/src/redact/index.ts",
+  },
   { name: "Windows file path", input: "C:\\Users\\example\\AppData\\Local\\taskville\\events.db" },
   { name: "key file path variable", input: "KEY_FILE=/etc/ssl/private/server.key" },
   { name: "token file path variable", input: "TOKEN_PATH=~/.config/taskville/token" },
@@ -385,7 +397,10 @@ const negatives: Array<{ name: string; input: string }> = [
   { name: "code with a member expression", input: "password = req.body.password" },
   { name: "max tokens setting", input: '{"max_tokens": 4096, "model": "claude"}' },
   { name: "shell variable reference", input: "GITHUB_TOKEN=$GITHUB_TOKEN gh pr list" },
-  { name: "CI secret reference", input: "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" },
+  {
+    name: "CI secret reference",
+    input: ["GITHUB_TOKEN: $", "{{ secrets.GITHUB_TOKEN }}"].join(""),
+  },
   { name: "empty sensitive value", input: "PASSWORD= ./start" },
   { name: "already-masked placeholder", input: "API_KEY=******** " },
   { name: "hyphenated words containing sk-", input: "task-runner-configuration-loader-module-v2" },
@@ -466,7 +481,9 @@ describe("redactJson", () => {
     const copy = structuredClone(value);
     const result = redactJson(value);
     expect(value).toEqual(copy);
-    expect(result.value).toEqual({ a: [1, false, null, { password: maskMarker("sensitive-value") }] });
+    expect(result.value).toEqual({
+      a: [1, false, null, { password: maskMarker("sensitive-value") }],
+    });
   });
 
   it("returns no masks for clean input", () => {

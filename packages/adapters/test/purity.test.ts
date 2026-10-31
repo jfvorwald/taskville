@@ -35,7 +35,11 @@ export function impurities(source: string): string[] {
   for (const pattern of SPECIFIER_PATTERNS) {
     for (const match of source.matchAll(pattern)) {
       const spec = match[1] ?? "";
-      if (spec.startsWith("node:") || BUILTINS.has(spec) || BUILTINS.has(spec.split("/")[0] ?? "")) {
+      if (
+        spec.startsWith("node:") ||
+        BUILTINS.has(spec) ||
+        BUILTINS.has(spec.split("/")[0] ?? "")
+      ) {
         found.push(`imports built-in "${spec}"`);
       }
     }
