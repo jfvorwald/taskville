@@ -28,4 +28,14 @@ describe("PairingNotice", () => {
     await page.getByRole("button", { name: "Try again" }).click();
     expect(onRetry).toHaveBeenCalledOnce();
   });
+
+  it("does not offer a retry that cannot work after the pairing code was spent", async () => {
+    await render(
+      <PairingNotice state={{ status: "failed", reason: "pairing_network" }} onRetry={() => {}} />,
+    );
+    await expect
+      .element(page.getByRole("heading", { name: "Could not finish pairing" }))
+      .toBeVisible();
+    expect(page.getByRole("button", { name: "Try again" }).elements()).toHaveLength(0);
+  });
 });

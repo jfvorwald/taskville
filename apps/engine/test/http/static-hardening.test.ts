@@ -27,6 +27,11 @@ beforeEach(() => {
   // Escapes through the web directory itself: a file link and a directory link.
   symlinkSync(join(root, "secret.txt"), join(webDir, "link.txt"));
   symlinkSync(join(root, "outside-dir"), join(webDir, "linkdir"));
+  // Public-looking names that resolve to hidden files inside the web directory.
+  symlinkSync(join(webDir, ".env"), join(webDir, "public.txt"));
+  mkdirSync(join(webDir, ".private"));
+  writeFileSync(join(webDir, ".private", "key.txt"), "TOKEN=hidden-dir");
+  symlinkSync(join(webDir, ".private"), join(webDir, "docs"));
   // A link that stays inside the web directory is harmless and keeps working.
   symlinkSync(join(webDir, "index.html"), join(webDir, "home.html"));
 });
@@ -62,6 +67,16 @@ describe("static hosting: file system escapes", () => {
     const res = await app.request("/.env", { headers: { Host: HOST } });
     expect(res.status).toBe(404);
     expect(await res.text()).not.toContain("dotfile");
+  });
+
+  it("refuses a public symlink that resolves to a hidden file or a hidden directory", async () => {
+    const { app } = makeApp({ staticDir: webDir });
+    const file = await app.request("/public.txt", { headers: { Host: HOST } });
+    expect(file.status).toBe(404);
+    expect(await file.text()).not.toContain("dotfile");
+    const nested = await app.request("/docs/key.txt", { headers: { Host: HOST } });
+    expect(nested.status).toBe(404);
+    expect(await nested.text()).not.toContain("hidden-dir");
   });
 
   it("refuses encoded separators, backslashes, and NUL bytes in the path", async () => {

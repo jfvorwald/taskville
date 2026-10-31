@@ -117,13 +117,19 @@ describe("establishSession: pairing from the fragment", () => {
     expect(h.env.location.hash).toBe("");
   });
 
-  it("reports network when the engine is unreachable or answers oddly", async () => {
+  it("reports pairing_network when the exchange cannot finish, since the code is gone from the page", async () => {
     const down = harness({ hash: `#pair=${CODE}` }, () => {
       throw new TypeError("fetch failed");
     });
-    expect(await establishSession(down.env)).toEqual({ status: "failed", reason: "network" });
+    expect(await establishSession(down.env)).toEqual({
+      status: "failed",
+      reason: "pairing_network",
+    });
     const odd = harness({ hash: `#pair=${CODE}` }, () => json(200, { session: 7 }));
-    expect(await establishSession(odd.env)).toEqual({ status: "failed", reason: "network" });
+    expect(await establishSession(odd.env)).toEqual({
+      status: "failed",
+      reason: "pairing_network",
+    });
     expect(odd.storage.getItem(SESSION_KEY)).toBeNull();
   });
 
