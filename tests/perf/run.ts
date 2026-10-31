@@ -71,12 +71,12 @@ if (which === "all" || which === "soak") {
     );
     console.log(`RSS growth hour 1 to hour 8: ${(r.growth * 100).toFixed(1)}%`);
     console.log(
-      "| Hour | events | RSS MiB | state KiB | agents | sessions | tool calls | tasks | requests (open) | commands |",
+      "| Hour | events | RSS MiB | WAL KiB | state KiB | agents | sessions | tool calls | tasks | requests (open) | commands |",
     );
-    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const k of r.marks) {
       console.log(
-        `| ${k.hour} | ${k.events} | ${k.rssMiB.toFixed(1)} | ${k.stateKiB.toFixed(1)} | ${k.agents} | ${k.sessions} | ${k.toolCalls} | ${k.tasks} | ${k.requests} (${k.openRequests}) | ${k.commands} |`,
+        `| ${k.hour} | ${k.events} | ${k.rssMiB.toFixed(1)} | ${k.walKiB.toFixed(0)} | ${k.stateKiB.toFixed(1)} | ${k.agents} | ${k.sessions} | ${k.toolCalls} | ${k.tasks} | ${k.requests} (${k.openRequests}) | ${k.commands} |`,
       );
     }
     console.log("");

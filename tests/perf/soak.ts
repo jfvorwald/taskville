@@ -4,6 +4,8 @@
 // streaming the project. At each simulated hour boundary (after every earlier event was
 // acknowledged and received by the viewer) the engine's RSS is sampled with `ps` and the
 // snapshot's state is sized, so unbounded state (requests and commands are never pruned) shows.
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { CALM, LIVELY, type Pace, runProducer } from "../../packages/demo/src/index.ts";
 import { createProject, sampleRss, startEngine } from "./engine.ts";
 import { growth, simulatedHour } from "./stats.ts";
@@ -17,6 +19,8 @@ export interface HourMark {
   events: number;
   rssMiB: number;
   stateKiB: number;
+  /** Size of `taskville.db-wal` at the mark (#166: is the WAL bounded during the run?). */
+  walKiB: number;
   agents: number;
   sessions: number;
   toolCalls: number;
@@ -66,6 +70,8 @@ export async function soakRun(options: {
     const mark = async (hour: number) => {
       await viewer.reach(head);
       const rssMiB = (await sampleRss(engine)) / 1024;
+      const wal = join(engine.home, "taskville.db-wal");
+      const walKiB = existsSync(wal) ? statSync(wal).size / 1024 : 0;
       const snapshot = (await (await engine.get("/v1/projects/soak/snapshot")).json()) as {
         state: Record<string, Record<string, { state?: string }>>;
       };
@@ -75,6 +81,7 @@ export async function soakRun(options: {
         hour,
         events,
         rssMiB,
+        walKiB,
         stateKiB: JSON.stringify(snapshot.state).length / 1024,
         agents: count("agents"),
         sessions: count("sessions"),
