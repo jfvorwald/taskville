@@ -1,6 +1,7 @@
-import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cli, FIXTURES, freePort, GOLDEN, startServe, tempDir } from "./helpers.ts";
 
 // End to end in one process: `taskville serve --headless` on a free loopback port with a fixed
@@ -345,4 +346,50 @@ describe("projects from the config file", () => {
     expect(readFileSync(config, "utf8")).toBe(text);
     home.remove();
   });
+});
+
+describe("git watcher (M2.09)", () => {
+  it("serve records a configured repository's commits and branches", async () => {
+    const home = tempDir();
+    const repoDir = tempDir("taskville-repo-");
+    const repo = realpathSync(repoDir.path);
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env });
+    git("init", "-q", "-b", "main");
+    git(
+      "-c",
+      "user.name=T",
+      "-c",
+      "user.email=t@example.invalid",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "first",
+    );
+    writeFileSync(
+      join(home.path, "config.json"),
+      JSON.stringify({ projects: [{ id: "repo", name: "Repo", roots: [repo] }] }),
+      { mode: 0o600 },
+    );
+    const serve = await startServe(
+      home.path,
+      await freePort(),
+      () => new Date("2026-10-30T09:00:00Z"),
+    );
+    try {
+      // project.created, then git.commit and git.ref_moved for main.
+      await vi.waitFor(
+        async () => {
+          const list = await cli(["project", "list", "--home", home.path, "--url", serve.url]);
+          expect(list.stdout).toMatch(/^repo\tRepo\t.*\t3$/m);
+        },
+        { timeout: 15_000, interval: 200 },
+      );
+    } finally {
+      expect(await serve.stop()).toBe(0);
+      home.remove();
+      repoDir.remove();
+    }
+  }, 20_000);
 });
