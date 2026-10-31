@@ -1,6 +1,7 @@
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync } from "node:fs";
 import { homedir as osHomedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { ACTIVITIES, type Activity } from "@taskville/protocol";
 import { z } from "zod";
 import { expandTilde } from "./home.ts";
 import { openerIssues } from "./opener.ts";
@@ -15,21 +16,6 @@ export const DEFAULT_HOLD_WINDOW_SECONDS = 90;
 export const HOOK_TIMEOUT_MARGIN_SECONDS = 5;
 export const MAX_HOLD_WINDOW_SECONDS = 600;
 export const UNSORTED_PROJECT_ID = "unsorted";
-
-/** Activity values from spec 001 data-model.md. Mirror of the protocol enum until M1.05 exports it. */
-export const ACTIVITIES = [
-  "idle",
-  "implementing",
-  "testing",
-  "reviewing",
-  "researching",
-  "documenting",
-  "dispatching",
-  "handing_off",
-  "waiting",
-  "unknown",
-] as const;
-export type Activity = (typeof ACTIVITIES)[number];
 
 /** City work areas (ARCHITECTURE.md 2.1, 8.3). */
 export const WORK_AREAS = [
