@@ -18,6 +18,7 @@ import {
   postJson,
   sessionHeaders,
 } from "../../http/helpers.ts";
+import { fakeGithubToken } from "../../ingest/helpers.ts";
 import { fixedNow, makeSource, T0, useProjects } from "./helpers.ts";
 
 const db = useProjects([{ id: "repo", roots: ["/work/repo"] }]);
@@ -410,7 +411,7 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
   });
 
   it("compares content after masking, so a retried hook with a secret is still a duplicate", async () => {
-    const secret = ["gh", "p_"].join("") + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";
+    const secret = fakeGithubToken();
     const { source } = makeSource(db(), {
       mapper: (_payload, ctx) => ({
         events: [
