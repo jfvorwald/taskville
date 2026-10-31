@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { establishSession, type PairingEnv, type PairingState } from "./pair.ts";
+import { browserEnv } from "./browser-env.ts";
+import { establishSession, type PairingState } from "./pair.ts";
 
 const SessionContext = createContext<string | null>(null);
 
@@ -10,15 +11,6 @@ export function useSession(): string {
   const secret = useContext(SessionContext);
   if (secret === null) throw new Error("useSession outside a paired app");
   return secret;
-}
-
-function browserEnv(): PairingEnv {
-  return {
-    location: window.location,
-    history: window.history,
-    storage: window.localStorage,
-    fetch: window.fetch.bind(window),
-  };
 }
 
 // One attempt per page load. React StrictMode runs effects twice in development, and a second

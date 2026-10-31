@@ -34,6 +34,16 @@ const COPY = {
     ),
     retry: true,
   },
+  pairing_network: {
+    title: "Could not finish pairing",
+    body: (
+      <>
+        The engine did not answer. Open the pairing link again; if it was already used, press p in
+        the <code>taskville serve</code> terminal for a new one.
+      </>
+    ),
+    retry: false,
+  },
   storage: {
     title: "This browser would not keep the pairing",
     body: "Site storage is blocked for this page. Allow it, then open a fresh pairing link.",

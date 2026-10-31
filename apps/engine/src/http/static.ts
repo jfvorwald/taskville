@@ -60,8 +60,9 @@ const IMMUTABLE_PREFIX = "assets/";
  *   `.`, `..`, hidden (starts with a dot), or that decodes to contain a separator, a
  *   backslash or a NUL is refused, so encoded and double-encoded traversal never reaches the
  *   file system.
- * - The resolved real path (symlinks followed) must stay inside the real root, so a link in
- *   the web directory cannot lead out of it. The file is then opened with `O_NOFOLLOW` and
+ * - The resolved real path (symlinks followed) must stay inside the real root and must not pass
+ *   through a hidden segment, so a link in the web directory can lead neither out of it nor to
+ *   a hidden file inside it. The file is then opened with `O_NOFOLLOW` and
  *   checked to be a regular file. Anyone who can already write to the web directory can
  *   swap a parent directory between the check and the open; that is outside the threat
  *   model (ARCHITECTURE.md section 13), same as editing Claude Code settings.
@@ -95,6 +96,14 @@ export function staticFiles(root: string): MiddlewareHandler<AppEnv> {
       return next();
     }
     if (real !== base && !real.startsWith(base + sep)) return next();
+    // A public-looking name can be a link to a hidden file or directory inside the root.
+    if (
+      real
+        .slice(base.length)
+        .split(sep)
+        .some((part) => part.startsWith("."))
+    )
+      return next();
 
     const file = await openRegularFile(real).catch(() => null);
     if (file === null) {

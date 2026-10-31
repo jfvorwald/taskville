@@ -9,7 +9,12 @@ export type PairingState =
   | { status: "paired"; secret: string }
   /** No pairing code and no (still valid) stored session: the page may not ask for data. */
   | { status: "unpaired" }
-  | { status: "failed"; reason: "invalid_code" | "network" | "storage" };
+  /**
+   * `pairing_network`: the exchange could not finish. The code was already cleared from the
+   * address bar, so retrying from the page cannot work; a new link is needed. `network`: a
+   * stored session could not be verified, and trying again can work.
+   */
+  | { status: "failed"; reason: "invalid_code" | "network" | "pairing_network" | "storage" };
 
 /** The browser pieces pairing needs, injectable so the logic runs without a browser. */
 export interface PairingEnv {
@@ -40,14 +45,15 @@ async function exchange(env: PairingEnv, code: string): Promise<PairingState> {
       body: JSON.stringify({ code }),
     });
   } catch {
-    return { status: "failed", reason: "network" };
+    return { status: "failed", reason: "pairing_network" };
   }
   if (response.status === 401) return { status: "failed", reason: "invalid_code" };
-  if (!response.ok) return { status: "failed", reason: "network" };
+  if (!response.ok) return { status: "failed", reason: "pairing_network" };
   const body: unknown = await response.json().catch(() => undefined);
   const secret =
     typeof body === "object" && body !== null && "session" in body ? body.session : undefined;
-  if (typeof secret !== "string" || secret === "") return { status: "failed", reason: "network" };
+  if (typeof secret !== "string" || secret === "")
+    return { status: "failed", reason: "pairing_network" };
   try {
     env.storage.setItem(SESSION_KEY, secret);
   } catch {
