@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { DEFAULT_PORT, loadConfig } from "@taskville/engine/src/config/config.ts";
+import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { resolveHome } from "@taskville/engine/src/config/home.ts";
 import { type Io, parseCommand, type Values } from "../context.ts";
 import { CliError, EXIT } from "../errors.ts";
@@ -118,8 +118,11 @@ function resolveTaskvilleHome(io: Io, values: Values, userHome: string | undefin
 
 const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost):([0-9]{1,5})\/?$/;
 
-/** The engine URL for the hook, or undefined for the default; only what the shim will contact. */
-function engineUrl(p: Plan): string | undefined {
+/**
+ * The engine URL for the hook: `--url`, else `$TASKVILLE_URL`, else config.json's port. Only the
+ * loopback forms the shim will contact are accepted.
+ */
+function engineUrl(p: Plan): string {
   const raw = (p.values.url as string | undefined) ?? nonEmpty(p.io.env.TASKVILLE_URL);
   if (raw === undefined) {
     const userHome = nonEmpty(p.io.env.HOME);
@@ -132,7 +135,7 @@ function engineUrl(p: Plan): string | undefined {
     } catch (error) {
       return fail(`cannot read the Taskville config: ${(error as Error).message}`);
     }
-    return port === DEFAULT_PORT ? undefined : `http://127.0.0.1:${port}`;
+    return `http://127.0.0.1:${port}`;
   }
   const match = LOOPBACK.exec(raw);
   const port = Number(match?.[2]);
@@ -141,7 +144,6 @@ function engineUrl(p: Plan): string | undefined {
       `--url ${raw} is not http://127.0.0.1:<port> or http://localhost:<port>; the shim contacts nothing else`,
     );
   }
-  if (match[1] === "127.0.0.1" && port === DEFAULT_PORT) return undefined;
   return `http://${match[1]}:${port}`;
 }
 
@@ -189,39 +191,50 @@ function unchangedSince(p: Plan, before: FileState): void {
     );
 }
 
-/** True when the file already has exactly one Taskville handler per event, running `command`. */
+/** A matcher that matches every occurrence: absent, "", or "*" (hooks reference). */
+const matchesAll = (group: Record<string, unknown>) =>
+  !Object.hasOwn(group, "matcher") || group.matcher === "" || group.matcher === "*";
+
+/**
+ * True when the file already has exactly one Taskville handler per event, running `command`, in a
+ * group that matches every occurrence. A group someone narrowed with a matcher does not count, so
+ * a reinstall restores full coverage (roborev 5200).
+ */
 function alreadyInstalled(settings: JsonObject, command: string): boolean {
   const hooks = settings.hooks;
   if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) return false;
-  const all = Object.entries(hooks).flatMap(([event, groups]) =>
-    (groups as { hooks?: unknown[] }[]).flatMap((g) =>
-      (Array.isArray(g?.hooks) ? g.hooks : []).filter(isTaskvilleHook).map((h) => ({ event, h })),
-    ),
-  );
-  if (all.length !== HOOK_EVENTS.length) return false;
-  const events = new Set(all.map((x) => x.event));
+  const found: { event: string; handler: Record<string, unknown>; all: boolean }[] = [];
+  for (const [event, groups] of Object.entries(hooks)) {
+    for (const group of groups as Record<string, unknown>[]) {
+      const handlers = Array.isArray(group.hooks) ? group.hooks : [];
+      for (const handler of handlers.filter(isTaskvilleHook)) {
+        found.push({ event, handler: handler as Record<string, unknown>, all: matchesAll(group) });
+      }
+    }
+  }
+  if (found.length !== HOOK_EVENTS.length) return false;
+  const events = new Set(found.map((x) => x.event));
   return (
     HOOK_EVENTS.every((e) => events.has(e)) &&
-    all.every(({ h }) => {
-      const handler = h as Record<string, unknown>;
-      return handler.command === command && handler.async === true;
-    })
+    found.every(
+      (x) =>
+        x.all &&
+        Object.keys(x.handler).length === 3 &&
+        x.handler.command === command &&
+        x.handler.async === true,
+    )
   );
 }
 
 export async function install(io: Io, args: string[]): Promise<number> {
   const p = plan(io, args, INSTALL_USAGE);
   const url = engineUrl(p);
-  const userHome = nonEmpty(io.env.HOME);
-  const defaultHome = userHome === undefined ? undefined : join(userHome, ".taskville");
   if (!isAbsolute(p.home)) fail(`the Taskville home ${p.home} is not absolute`);
   const shimSource = readFileSync(SHIM_SOURCE, "utf8");
   const shim = checkShim(p.home, SHIM_NAME, shimSource);
-  const command = hookCommand({
-    shimPath: shim.path,
-    home: p.home === defaultHome ? undefined : p.home,
-    url,
-  });
+  // Both variables are always set: the hook runs in Claude Code's environment, where an inherited
+  // TASKVILLE_URL or TASKVILLE_HOME would otherwise win over what was installed (roborev 5200).
+  const command = hookCommand({ shimPath: shim.path, home: p.home, url });
 
   const { state, settings } = readSettings(p.target);
   const settingsDone = alreadyInstalled(settings, command);

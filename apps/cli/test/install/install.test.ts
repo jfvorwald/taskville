@@ -158,9 +158,7 @@ describe("install --scope user", () => {
     expect(r.code, r.stderr).toBe(0);
     const commands = ours(sb.userSettings).map((h) => h.command);
     expect(commands).toHaveLength(EVENTS.length);
-    expect(new Set(commands)).toEqual(
-      new Set([`TASKVILLE_URL='http://127.0.0.1:5123' '${sb.shim}'`]),
-    );
+    expect(new Set(commands)).toEqual(new Set([commandFor(sb, "http://127.0.0.1:5123")]));
   });
 
   it("keeps the file's mode and writes atomically (no temp files left)", async () => {
@@ -204,7 +202,8 @@ describe("install --scope user", () => {
     const secret = "hunter2 correct horse";
     write(
       sb.userSettings,
-      `{\n  "env": {\n    "DB_PASSWORD":\n      "${secret}"\n  },\n  "passwords": [\n    "${secret}"\n  ]\n}\n`,
+      // The second copy is spelled with a JSON escape, so a plain text search would miss it.
+      `{\n  "env": {\n    "DB_PASSWORD":\n      "${secret}"\n  },\n  "passwords": [\n    "\\u0068unter2 correct horse"\n  ]\n}\n`,
     );
     for (const argv of [
       ["install", "claude-code", "--scope", "user", "--dry-run"],
@@ -214,6 +213,7 @@ describe("install --scope user", () => {
       const r = await tv(sb, argv);
       expect(r.code, r.stderr).toBe(0);
       expect(r.stdout + r.stderr, argv.join(" ")).not.toContain("hunter2");
+      expect(r.stdout + r.stderr, argv.join(" ")).not.toContain("unter2 correct");
     }
   });
 

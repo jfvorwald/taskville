@@ -1,8 +1,10 @@
-import { redactText } from "@taskville/adapters/redact";
+import { type JsonValue, redactJson, redactText } from "@taskville/adapters/redact";
 
 // The settings diff `install` shows before it asks (#29). A plain line diff with three lines of
-// context. Every printed line goes through the redaction module, so a token elsewhere in the
-// settings file (an `env` entry, a header) is never printed, even as context.
+// context. Nothing secret in the settings file is printed, even as context: first every string
+// value the JSON redactor masks (it also knows sensitive property names such as `DB_PASSWORD`,
+// whose value may sit on a later line) is replaced wherever it appears quoted, then every line
+// goes through the text redactor as well (roborev 5200).
 
 const CONTEXT = 3;
 
@@ -41,6 +43,48 @@ function diffLines(a: string[], b: string[]): Op[] {
   while (i < n) ops.push({ kind: "-", line: a[i++] as string });
   while (j < m) ops.push({ kind: "+", line: b[j++] as string });
   return ops;
+}
+
+/** String values in `text` (a JSON document) that redaction would mask, by JSON path or content. */
+function sensitiveValues(text: string | undefined): string[] {
+  if (text === undefined) return [];
+  let doc: JsonValue;
+  try {
+    doc = JSON.parse(text) as JsonValue;
+  } catch {
+    return [];
+  }
+  const values: string[] = [];
+  for (const mask of redactJson(doc).masks) {
+    let node: unknown = doc;
+    for (const step of mask.path) {
+      node =
+        node !== null && typeof node === "object" && Object.hasOwn(node, step)
+          ? (node as Record<string | number, unknown>)[step]
+          : undefined;
+    }
+    if (typeof node === "string" && node !== "") values.push(node);
+  }
+  return values;
+}
+
+const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/g;
+
+/**
+ * Replaces every JSON string literal on the line whose decoded value is sensitive, however it is
+ * spelled (escapes included), then runs the text redactor over the line.
+ */
+function maskLine(line: string, sensitive: ReadonlySet<string>): string {
+  const out = line.replace(STRING_LITERAL, (literal) => {
+    let value: unknown;
+    try {
+      value = JSON.parse(literal);
+    } catch {
+      return literal;
+    }
+    return typeof value === "string" && sensitive.has(value) ? `"[REDACTED]"` : literal;
+  });
+  return redactText(out).text;
 }
 
 const lines = (text: string | undefined): string[] => {
@@ -82,5 +126,6 @@ export function settingsDiff(
     text !== undefined && text !== "" && !text.endsWith("\n");
   if (missingNewline(before) || missingNewline(after))
     out.push("\\ (no newline at end of the original file)");
-  return `${out.map((line) => redactText(line).text).join("\n")}\n`;
+  const sensitive = new Set([...sensitiveValues(before), ...sensitiveValues(after)]);
+  return `${out.map((line) => maskLine(line, sensitive)).join("\n")}\n`;
 }
