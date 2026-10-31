@@ -141,6 +141,15 @@ const STANDALONE = /(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/_-]{20,256}={0,2}(?![A-Za-z
 // `--name=value` and `--name value` command-line flags.
 const FLAG = /(?<![A-Za-z0-9_-])--([A-Za-z][A-Za-z0-9-]{0,63})(=|[ \t]+)/g;
 
+// `Authorization: <scheme> name=value, name="value", ...`: Digest, AWS SigV4, OAuth
+// 1.0 and other parameterized schemes, whose credential sits in a later parameter.
+const AUTH_PARAMS =
+  /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+(?=[A-Za-z0-9_.-]{1,64}=)/gi;
+
+// A parameter list is read this far at most, so each Authorization header costs a
+// bounded scan however many of them the text holds.
+const MAX_AUTH_PARAMS = 4096;
+
 // curl's `-u user:password` (also attached, `-uuser:password`), `--user user:password`,
 // `--user=user:password`, and the proxy forms `-U` and `--proxy-user`.
 const USER_FLAG = /(?<![A-Za-z0-9_-])(?:-[uU][ \t]*|--(?:proxy-)?user(?:=|[ \t]+))/g;
@@ -157,6 +166,7 @@ export function redactText(input: string): RedactedText {
   const ends = valueEnds(input);
   findAssignments(input, ends, candidates);
   findFlags(input, ends, candidates);
+  findAuthParams(input, candidates);
   findUserFlags(input, ends, candidates);
   findStandaloneTokens(input, candidates);
   return applyMasks(input, merge(candidates));
@@ -276,9 +286,9 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
 
 /**
  * Masks the password in `-u user:password` style flags. Not masked: no colon, an
- * empty password or a reference (`$API_TOKEN`, `$(id -g)`), and a numeric
- * `uid:gid` pair (`docker run -u 1000:1000`). Other `-u` uses with a colon, such
- * as `rsync -u host:/srv`, are masked: hiding a path costs less than a password.
+ * empty password or a reference (`$API_TOKEN`, `$(id -g)`). Other `-u` uses with
+ * a colon, such as `rsync -u host:/srv` or `docker run -u 1000:1000`, are masked
+ * too: hiding a path or group ID costs less than leaking a password.
  */
 function findUserFlags(input: string, ends: Ends, out: Candidate[]): void {
   for (const match of input.matchAll(USER_FLAG)) {
@@ -296,27 +306,79 @@ function findUserFlags(input: string, ends: Ends, out: Candidate[]): void {
         break;
       }
     }
+    // A quoted user followed by the colon, as in `"$API_USER":password`.
+    let inQuotes = value.quoted;
+    if (
+      colon < 0 &&
+      value.quoted &&
+      input.charAt(value.end) === input.charAt(value.start - 1) &&
+      input.charAt(value.end + 1) === ":"
+    ) {
+      colon = value.end + 1;
+      inQuotes = false;
+    }
     if (colon < 0) continue;
-    // Quoted, the password runs to the closing quote (it may hold spaces); unquoted,
-    // it is read as a value of its own so a reference after the colon is whole.
-    const password = value.quoted
+    // Inside quotes, the password runs to the closing quote (it may hold spaces);
+    // otherwise it is read as a value of its own, quoted or not, so a reference
+    // after the colon is whole.
+    const password = inQuotes
       ? { start: colon + 1, end: value.end }
       : readValue(input, colon + 1, ends);
     const { start, end } = password;
     if (isPlaceholder(input, start, end)) continue;
-    if (isNumeric(input, value.start, colon) && isNumeric(input, start, end)) continue;
     out.push({ start, end, kind: "basic-auth" });
   }
 }
 
-/** True when `input.slice(start, end)` is 1 to 10 ASCII digits. */
-function isNumeric(input: string, start: number, end: number): boolean {
-  if (end <= start || end - start > 10) return false;
-  for (let i = start; i < end; i++) {
-    const c = input.charCodeAt(i);
-    if (c < 0x30 || c > 0x39) return false;
+/** Masks the whole parameter list after a parameterized Authorization scheme. */
+function findAuthParams(input: string, out: Candidate[]): void {
+  for (const match of input.matchAll(AUTH_PARAMS)) {
+    const start = match.index + match[0].length;
+    const end = authParamsEnd(input, start);
+    if (end > start) out.push({ start, end, kind: "bearer-token" });
   }
-  return true;
+}
+
+const PARAM_NAME = /[A-Za-z0-9_.-]/;
+const PARAM_TOKEN_STOP = /[\s,"'\\]/;
+
+/**
+ * Where a `name=value, name="value"` list starting at `at` ends. Values are bare
+ * tokens, `"quoted"`, or `\"shell-escaped\"`; an unterminated quote runs to the
+ * line end. Never reads past MAX_AUTH_PARAMS characters.
+ */
+function authParamsEnd(input: string, at: number): number {
+  const limit = Math.min(input.length, at + MAX_AUTH_PARAMS);
+  let end = at;
+  let i = at;
+  while (i < limit) {
+    let j = i;
+    while (j < limit && PARAM_NAME.test(input.charAt(j))) j++;
+    if (j === i || input.charAt(j) !== "=") break;
+    j = paramValueEnd(input, j + 1, limit);
+    end = j;
+    while (j < limit && (input.charAt(j) === " " || input.charAt(j) === "\t")) j++;
+    if (input.charAt(j) !== ",") break;
+    j++;
+    while (j < limit && (input.charAt(j) === " " || input.charAt(j) === "\t")) j++;
+    i = j;
+  }
+  return end;
+}
+
+function paramValueEnd(input: string, at: number, limit: number): number {
+  const close = input.startsWith('\\"', at) ? '\\"' : input.charAt(at) === '"' ? '"' : "";
+  if (close === "") {
+    let j = at;
+    while (j < limit && !PARAM_TOKEN_STOP.test(input.charAt(j))) j++;
+    return j;
+  }
+  for (let j = at + close.length; j < limit; j++) {
+    const ch = input.charAt(j);
+    if (ch === "\n" || ch === "\r") return j;
+    if (input.startsWith(close, j)) return j + close.length;
+  }
+  return limit;
 }
 
 /**
