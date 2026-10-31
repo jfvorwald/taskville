@@ -61,6 +61,8 @@ export async function startEngine(): Promise<RunningEngine> {
     [CLI_MAIN, "serve", "--headless", "--home", home, "--port", String(port)],
     { stdio: ["ignore", "pipe", "ignore"] },
   );
+  // Tracked from spawn, so stop() also returns if the engine already exited on its own.
+  const exited = new Promise<void>((done) => child.once("exit", () => done()));
   const base = await waitForListening(child);
   const pid = child.pid ?? 0;
   const token = readFileSync(join(home, "token"), "utf8").trim();
@@ -91,8 +93,7 @@ export async function startEngine(): Promise<RunningEngine> {
     get: (path, init = {}) =>
       fetch(`${base}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } }),
     async stop() {
-      const exited = new Promise<void>((done) => child.once("exit", () => done()));
-      child.kill("SIGINT");
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGINT");
       await exited;
       rmSync(home, { recursive: true, force: true });
     },

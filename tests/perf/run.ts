@@ -41,7 +41,7 @@ if (which === "all" || which === "latency") {
   const r = await latencyCheck();
   allPass &&= r.pass;
   console.log(
-    `## SC-005: ingest to connected viewer, target under ${LATENCY_TARGET_MS} ms (p95): ${verdict(r.pass)}`,
+    `## SC-005: ingest to connected viewer, target under ${LATENCY_TARGET_MS} ms for every probe: ${verdict(r.pass)}`,
   );
   console.log(
     `${r.probes} single-event probes per phase, ${r.gapMs} ms apart, POST start to SSE frame parsed by a fetch-streamed viewer.`,

@@ -62,6 +62,11 @@ async function probe(
   return { viewer: summarize(toViewer), ack: summarize(toAck) };
 }
 
+/** SC-005 says every new event arrives in under 250 ms, so the gate is the slowest probe. */
+export function latencyPass(phases: readonly LatencyPhase[]): boolean {
+  return phases.every((p) => p.viewer.max < LATENCY_TARGET_MS && p.anomalies === 0);
+}
+
 export async function latencyCheck(options: { probes?: number; gapMs?: number } = {}) {
   const probes = options.probes ?? 1000;
   const gapMs = options.gapMs ?? 10;
@@ -102,7 +107,7 @@ export async function latencyCheck(options: { probes?: number; gapMs?: number } 
       anomalies: viewer.anomalies,
     });
     viewer.close();
-    const pass = phases.every((p) => p.viewer.p95 < LATENCY_TARGET_MS && p.anomalies === 0);
+    const pass = latencyPass(phases);
     return { probes, gapMs, phases, pass } satisfies LatencyResult;
   } finally {
     await engine.stop();
