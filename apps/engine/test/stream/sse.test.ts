@@ -173,6 +173,27 @@ describe("resume guarantees", () => {
     await reader.cancel();
   });
 
+  it("sends a backlog longer than one storage page in full without any live event", async () => {
+    const { app } = setup();
+    for (let i = 0; i < 6; i++) await ingest(app, events(i * 100, 100)); // 2..601
+    const reader = new SseReader(await streamRequest(app, "demo", bearer(CLI_TOKEN), "?after=1"));
+    const frames = await reader.events(600);
+    expect(ids(frames)).toEqual(Array.from({ length: 600 }, (_, i) => i + 2));
+    await reader.cancel();
+  });
+
+  it("drops a repeated or late broadcast of events the stream already sent", async () => {
+    const { app } = setup();
+    await ingest(app, events(1, 2)); // 2..3
+    const reader = new SseReader(await streamRequest(app, "demo", bearer(CLI_TOKEN), "?after=1"));
+    expect(ids(await reader.events(2))).toEqual([2, 3]);
+    const old = [...(engine?.storage.events("demo", 1) ?? [])];
+    engine?.hub.publish({ events: old, heads: { demo: 3 } });
+    await ingest(app, events(10, 1));
+    expect(ids(await reader.events(1))).toEqual([4]);
+    await reader.cancel();
+  });
+
   it("has zero gaps and zero duplicates across 100 disconnect cycles under live ingest", async () => {
     const { app } = setup();
     const received: number[] = [];
