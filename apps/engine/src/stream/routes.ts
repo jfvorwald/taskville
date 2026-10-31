@@ -110,27 +110,36 @@ export function registerStreamRoutes(app: Hono<AppEnv>, options: StreamRouteOpti
     if (storage.head(projectId) === undefined) return unknownProject(c);
 
     return streamSSE(c, async (stream) => {
-      const head = storage.head(projectId) ?? 0;
-      if (after > head) {
-        await stream.writeSSE({
-          event: "resnapshot",
-          data: JSON.stringify({ reason: "cursor_ahead_of_head" }),
-        });
-        return;
-      }
-      const subscriber = new StreamSubscriber(stream, {
-        storage,
-        projectId,
-        after,
-        queueLimit,
-        heartbeatMs,
-      });
-      subscriber.onClose(hub.subscribe(projectId, subscriber));
-      stream.onAbort(() => subscriber.abort());
+      // Tracked until the transport finishes, so shutdown can abort any stream,
+      // including one cut off whose client never read its last frame.
+      const untrack = hub.track(() => stream.abort());
+      stream.onAbort(untrack);
       try {
-        await subscriber.run();
+        const head = storage.head(projectId) ?? 0;
+        if (after > head) {
+          await stream.writeSSE({
+            event: "resnapshot",
+            data: JSON.stringify({ reason: "cursor_ahead_of_head" }),
+          });
+          return;
+        }
+        const subscriber = new StreamSubscriber(stream, {
+          storage,
+          projectId,
+          after,
+          queueLimit,
+          heartbeatMs,
+        });
+        subscriber.onClose(hub.subscribe(projectId, subscriber));
+        stream.onAbort(() => subscriber.abort());
+        try {
+          await subscriber.run();
+          await subscriber.drained();
+        } finally {
+          subscriber.abort();
+        }
       } finally {
-        subscriber.abort();
+        untrack();
       }
     });
   });

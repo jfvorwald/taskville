@@ -16,6 +16,8 @@ export interface HubSubscriber {
  */
 export class StreamHub {
   readonly #subscribers = new Map<string, Set<HubSubscriber>>();
+  /** Every open stream until its transport finishes, including ones already cut off and draining. */
+  readonly #open = new Set<() => void>();
 
   /** Bound, so it can be passed as `onCommit` directly. */
   readonly publish = (batch: CommittedBatch): void => {
@@ -47,11 +49,28 @@ export class StreamHub {
     return total;
   }
 
-  /** Ends every open stream (engine shutdown). */
+  /**
+   * Tracks an open stream so shutdown can abort it, even after it left the
+   * fan-out (a cut-off stream still draining its last frame). Returns untrack.
+   */
+  track(abort: () => void): () => void {
+    this.#open.add(abort);
+    return () => {
+      this.#open.delete(abort);
+    };
+  }
+
+  openStreams(): number {
+    return this.#open.size;
+  }
+
+  /** Ends every open stream (engine shutdown), so the HTTP server can close. */
   close(): void {
     for (const set of [...this.#subscribers.values()]) {
       for (const subscriber of [...set]) subscriber.end();
     }
     this.#subscribers.clear();
+    for (const abort of [...this.#open]) abort();
+    this.#open.clear();
   }
 }

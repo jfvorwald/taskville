@@ -42,6 +42,7 @@ export class StreamSubscriber implements HubSubscriber {
   #closed = false;
   #wake: (() => void) | undefined;
   #detach: (() => void) | undefined;
+  #finalWrite: Promise<unknown> | undefined;
 
   constructor(stream: SSEStreamingApi, options: SubscriberOptions) {
     this.#stream = stream;
@@ -80,6 +81,11 @@ export class StreamSubscriber implements HubSubscriber {
   /** Client disconnected. */
   abort(): void {
     if (!this.#closed) this.#close();
+  }
+
+  /** Resolves once a final `resnapshot` frame was taken by the client, or the stream was aborted. */
+  drained(): Promise<unknown> {
+    return this.#finalWrite ?? Promise.resolve();
   }
 
   /** Writes frames until the stream closes. */
@@ -153,7 +159,9 @@ export class StreamSubscriber implements HubSubscriber {
     // `write` hands the frame to the stream writer synchronously (unlike `writeSSE`,
     // which awaits first), so it is queued behind any frame in flight and before the
     // close. The client sees it once it reads that far.
-    void this.#stream.write(`event: resnapshot\ndata: ${JSON.stringify({ reason })}\n\n`);
+    this.#finalWrite = this.#stream.write(
+      `event: resnapshot\ndata: ${JSON.stringify({ reason })}\n\n`,
+    );
     void this.#stream.close();
   }
 }

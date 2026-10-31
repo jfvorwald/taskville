@@ -8,6 +8,7 @@ import {
   rebuildStaleProjections,
   type Storage,
 } from "../storage/index.ts";
+import { type ExpiredRequest, expireOpenRequests } from "./expire.ts";
 import { StreamHub } from "./hub.ts";
 import { registerStreamRoutes } from "./routes.ts";
 
@@ -28,6 +29,8 @@ export interface Engine {
   pipeline: IngestPipeline;
   /** Projects whose projection was rebuilt at boot (missing or another reducer version). */
   rebuilt: string[];
+  /** Requests that were still open and got `request.expired` at this boot. */
+  expired: ExpiredRequest[];
   queueLimit: number;
   /** For `createApp({ health })`: database readable and in WAL mode. */
   health(): { db: "ok" | "error"; walMode: boolean };
@@ -39,7 +42,8 @@ export interface Engine {
  * Engine composition for `taskville serve` (#16), run before the server
  * listens: open storage (owner-only files, WAL, migrations), make sure the
  * built-in Unsorted project exists, rebuild every stale projection from the
- * event log, then register ingest and the read and stream routes on `app`,
+ * event log, expire every request still open (its hook connection died with
+ * the old process), then register ingest and the read and stream routes on `app`,
  * with ingest broadcasting to the stream hub only after COMMIT.
  */
 export function bootEngine(options: BootOptions): Engine {
@@ -50,6 +54,9 @@ export function bootEngine(options: BootOptions): Engine {
     ensureUnsortedProject(storage, { now });
     const rebuilt = rebuildStaleProjections(storage, domainReducer);
     if (rebuilt.length > 0) options.logger?.info({ rebuilt }, "projections rebuilt");
+    const expired = expireOpenRequests(storage, domainReducer, { now });
+    if (expired.length > 0)
+      options.logger?.info({ count: expired.length }, "open requests expired");
     const hub = new StreamHub();
     const pipeline = new IngestPipeline({
       storage,
@@ -71,6 +78,7 @@ export function bootEngine(options: BootOptions): Engine {
       hub,
       pipeline,
       rebuilt,
+      expired,
       queueLimit,
       health: () => {
         if (closed) return { db: "error", walMode: false };
