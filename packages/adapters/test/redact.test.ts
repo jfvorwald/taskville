@@ -66,6 +66,8 @@ const fake = {
   shortToken: [chars(11, B62, 30), "7"].join(""),
   password: ["s3", "cr3t", "pa", "ss"].join(""),
   lettersToken: chars(16, "abcdefghijklmnopqrstuvwxyz", 31),
+  hexResponse: chars(32, "0123456789abcdef", 32),
+  hexSignature: chars(64, "0123456789abcdef", 33),
 };
 
 const pem = (label: string) =>
@@ -417,6 +419,24 @@ const positives: Positive[] = [
     secret: "abcdefghij",
     kind: "bearer-token",
   },
+  {
+    name: "Digest parameters in a raw header",
+    input: `Authorization: Digest username="admin", response="${fake.hexResponse}"\nHost: x`,
+    secret: `username="admin", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with shell-escaped quotes",
+    input: `curl -H "Authorization: Digest username=\\"admin\\", response=\\"${fake.hexResponse}\\"" https://x`,
+    secret: `username=\\"admin\\", response=\\"${fake.hexResponse}\\"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "AWS SigV4 parameters",
+    input: `Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
+    secret: `Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
+    kind: "bearer-token",
+  },
   // M1.18 F3 (b): curl user credentials. Only the password is masked.
   {
     name: "curl -u user:password",
@@ -464,6 +484,24 @@ const positives: Positive[] = [
     name: "curl password starting with a tilde",
     input: `curl -u admin:~${fake.password} https://x`,
     secret: `~${fake.password}`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password after a quoted user",
+    input: `curl -u "$API_USER":${fake.password} https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl quoted user and quoted password",
+    input: `curl -u 'admin':'${fake.password}' https://x`,
+    secret: fake.password,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl numeric user and numeric password",
+    input: "curl -u 1000:123456 https://x",
+    secret: "123456",
     kind: "basic-auth",
   },
   {
@@ -648,7 +686,6 @@ const negatives: Array<{ name: string; input: string }> = [
     name: "--user with no colon",
     input: "pip install --user requests; docker run --user root alpine",
   },
-  { name: "docker uid:gid", input: "docker run -u 1000:1000 alpine id" },
   { name: "docker uid:gid from id", input: 'docker run -u "$(id -u):$(id -g)" alpine id' },
   {
     name: "docker uid:gid from id unquoted",
@@ -822,6 +859,11 @@ describe("adversarial input", () => {
     ["--user=a: chains", "--user=a:".repeat(n / 9)],
     ["-u long user", `-u ${"a".repeat(n)}:b`],
     ["-u long password", `-u a:${"b".repeat(n)}`],
+    ["quoted -u users", '-u "a":'.repeat(n / 7)],
+    ["Authorization parameters", "Authorization: Digest a=1, ".repeat(n / 27)],
+    ["unterminated Authorization parameter", `Authorization: Digest a="${"x".repeat(n)}`],
+    ["escaped Authorization parameters", 'Authorization: Digest a=\\"'.repeat(n / 26)],
+    ["Authorization parameter lists", `Authorization: Digest ${"a=b,".repeat(n / 4)}`],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
