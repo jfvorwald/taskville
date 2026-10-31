@@ -14,7 +14,7 @@ The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typechec
 | --- | --- | --- | --- |
 | [#103](https://github.com/jfvorwald/taskville/issues/103) M1.21 Performance and soak checks | Engine | storage | in progress |
 | [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 fix: demo parsers reject non-finite values | Domain | domain | in progress |
-| [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 fix F3 (redaction gaps), then F4 and F6 (pairing TTL, opener args) | Adapter | hardening | in progress |
+| [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 fixes F4 and F6 (pairing TTL, opener args) | Engine | hardening | in progress |
 
 Ready, waiting for a free teammate: none (storage teammate takes #103 after its security fixes). Blocked: #95 (retro) on #17 and #103.
 
@@ -24,6 +24,7 @@ Ready, waiting for a free teammate: none (storage teammate takes #103 after its 
 | --- | --- | --- | --- |
 | [#18](https://github.com/jfvorwald/taskville/issues/18) M1.16 CLI demo commands | [#156](https://github.com/jfvorwald/taskville/pull/156) | 4957: 1 medium fixed; re-review 4962: 1 high, 1 medium fixed; post-commit 4964 pass | CLI 60 tests incl. `demo start` against a real `serve`; `pnpm check` 1203 tests on main ([report](tasks/M1.16.md)) |
 | [#16](https://github.com/jfvorwald/taskville/issues/16) M1.14 CLI: serve, status, events, requests | [#153](https://github.com/jfvorwald/taskville/pull/153) | 4918: 2 high, 1 medium fixed; re-review 4924: 1 medium fixed; post-commit 4931: 1 medium fixed | CLI 39 tests incl. quickstart goldens, engine 266, `pnpm check` 1182 tests on main; first CI run failed on the merge ref, fixed ([report](tasks/M1.14.md)) |
+| [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 security fix F3 (redaction gaps) | [#158](https://github.com/jfvorwald/taskville/pull/158) | 4935: 2 high; re-review 4945: 3 high; post-commit 4950, 4958, 4965: 7 high; all fixed test-first; 4970 pass | adapters 213 tests, 41 adversarial inputs within 30 ms; `pnpm check` 1273 tests on main ([report](tasks/M1.18-F3.md)) |
 | [#17](https://github.com/jfvorwald/taskville/issues/17) M1.18 security fixes F1, F2, F5 | [#152](https://github.com/jfvorwald/taskville/pull/152) | 4930 pass, no findings | engine 253 tests, `pnpm check` 1123 tests on main; a mutation per fix ([report](tasks/M1.18-F1.md)) |
 | [#15](https://github.com/jfvorwald/taskville/issues/15) M1.13 Snapshots and resumable SSE streams | [#149](https://github.com/jfvorwald/taskville/pull/149) | 4903 pass; re-review 4909 pass; post-commit 4899 (1 high, 1 medium) and 4906 (1 medium) fixed | engine 245 tests (31 stream) incl. crash-resume, 100 disconnect cycles, slow consumer; `pnpm check` 1115 tests on main ([report](tasks/M1.13.md)) |
 | [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 Seeded six-agent demo producer | [#146](https://github.com/jfvorwald/taskville/pull/146) | 4876: 4 medium fixed; re-review 4882: 2 medium fixed; post-commit 4886 pass | demo 92 tests incl. US3-2 over 20 seeds; `pnpm check` 1084 tests on main ([report](tasks/M1.15.md)) |
@@ -51,6 +52,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 - [#133](https://github.com/jfvorwald/taskville/issues/133) `node:sqlite` on pinned Node 26.8.2 has no `Database`/`Statement` names (default: alias `DatabaseSync`/`StatementSync` in `storage/sqlite.ts`; docs unchanged until approved). Blocks nothing.
 - [#135](https://github.com/jfvorwald/taskville/issues/135) request merge and closure details (defaults: merge on exact tool name, the M2 adapter fills it on Notifications; close on the next same-session event from any agent; bridge record wins a merge). Blocks nothing in M1.
 - [#138](https://github.com/jfvorwald/taskville/issues/138) tool-call count exactness and task graph shortcuts (defaults: bounded projection as specified; task graph literal, so `queued -> completed` is flagged). Blocks nothing.
+- [#160](https://github.com/jfvorwald/taskville/issues/160) redactor strategy after six review rounds (default: keep patterns with robust boundaries; alternative: mask the rest of the line after any Authorization header or `-u` flag). Blocks nothing.
 - [#110](https://github.com/jfvorwald/taskville/issues/110) where projects are registered (default: engine `projects` table, `project add` via `POST /v1/projects`, config projects registered at start). Blocks nothing.
 - [#114](https://github.com/jfvorwald/taskville/issues/114) ARCHITECTURE.md 7.4 vs 6 on `pending_requests`/`commands` tables (default: projection-only, M4; text unchanged). Blocks nothing.
 - [#116](https://github.com/jfvorwald/taskville/issues/116) S-1: hold window (default 90 s, focus-independent, hook timeout hold + 5 s) and terminal-answer rules that would change ARCHITECTURE.md 8.1 and the `.roborev.toml` bridge invariant. Blocks nothing in M1; feeds M4.02 and M4.03.
@@ -77,6 +79,8 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 Targets in the spec are not measurements until a ticket records them here with the command that produced them.
 
 ## Known follow-ups
+
+- M1.18 F3 accepted false positives: `docker run -u 1000:1000` masks the group, `rsync -u host:/srv` masks the path, a curl line with a Digest header is masked to its end (#160 D2).
 
 - M1.14: `POST /v1/projects` lives in `apps/engine/src/projects/` (CLI token, `projects` scope; decision #110 default). Pairings stay in memory (#113 open). Usage errors exit 1 (cli.md names no code); oversized lines are rejected as `event_too_large` by line number. NOT RUN: Windows; a pairing round trip from a real browser.
 - CI failures: F-CI-1, PR #153's first run (merge ref after #152 changed `bootEngine`), fixed in the PR.
