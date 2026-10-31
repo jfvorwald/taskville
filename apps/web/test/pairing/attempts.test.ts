@@ -31,8 +31,14 @@ describe("Attempts", () => {
     const seen: string[] = [];
     const onResult = (state: PairingState) => seen.push(state.status);
 
-    attempts.deliver(attempts.start(() => slow.promise), onResult);
-    attempts.deliver(attempts.start(() => fast.promise), onResult);
+    attempts.deliver(
+      attempts.start(() => slow.promise),
+      onResult,
+    );
+    attempts.deliver(
+      attempts.start(() => fast.promise),
+      onResult,
+    );
     fast.resolve({ status: "paired", secret: "s" });
     await fast.promise;
     slow.resolve({ status: "unpaired" });

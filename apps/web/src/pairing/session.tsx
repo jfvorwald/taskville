@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { Attempts } from "./attempts.ts";
 import { browserEnv, watchPairingFragment } from "./browser-env.ts";
 import { establishSession, type PairingState } from "./pair.ts";
 
@@ -13,31 +14,29 @@ export function useSession(): string {
   return secret;
 }
 
-// One attempt per page load. React StrictMode runs effects twice in development, and a second
-// run would find the fragment already cleared while the first exchange is still in flight.
-let attempt: Promise<PairingState> | undefined;
+const attempts = new Attempts();
 
 export type PairingStatus = PairingState | { status: "checking" };
 
-/** Establishes the session once on load; `retry` tries again (a stored session, or a fresh link). */
+/** Establishes the session once on load; `retry` starts a new attempt (stored session or fresh link). */
 export function usePairing(): { state: PairingStatus; retry: () => void } {
   const [state, setState] = useState<PairingStatus>({ status: "checking" });
 
+  // One attempt per page load: StrictMode runs effects twice in development, and a second run
+  // would find the fragment already cleared while the first exchange is still in flight.
   useEffect(() => {
-    let live = true;
-    attempt ??= establishSession(browserEnv());
-    void attempt.then((next) => {
-      if (live) setState(next);
-    });
-    return () => {
-      live = false;
-    };
+    attempts.deliver(
+      attempts.current(() => establishSession(browserEnv())),
+      setState,
+    );
   }, []);
 
   const retry = useCallback(() => {
     setState({ status: "checking" });
-    attempt = establishSession(browserEnv());
-    void attempt.then(setState);
+    attempts.deliver(
+      attempts.start(() => establishSession(browserEnv())),
+      setState,
+    );
   }, []);
 
   // A new link pasted into this tab only changes the fragment; pair with it without a reload.

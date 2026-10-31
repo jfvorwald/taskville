@@ -78,8 +78,9 @@ async function resumeStored(env: PairingEnv): Promise<PairingState> {
   }
   if (response.status === 401) {
     // The engine does not know this session (revoked by `taskville unpair`, or a new home).
+    // Only if it is still the stored value: a fresh pairing may have replaced it meanwhile.
     try {
-      env.storage.removeItem(SESSION_KEY);
+      if (env.storage.getItem(SESSION_KEY) === secret) env.storage.removeItem(SESSION_KEY);
     } catch {
       // Nothing more to do; the page is unpaired either way.
     }
