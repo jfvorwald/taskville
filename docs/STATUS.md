@@ -6,22 +6,22 @@ Lead-owned cross-session summary. Teammates never edit this file; they write the
 
 ## Where things stand
 
-The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Event fixtures are in (PR #130): five JSONL fixtures with expected per-line ingest results and a shared loader. Engine storage is in (PR #134): an insert-only, gap-free event log enforced by SQLite triggers, projections with a rebuild helper, and owner-only database files. Batch 3 finishes with the domain reducer and attention and requests; the retro tooling runs alongside.
+The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typecheck, lint and tests in under a second, and CI runs it on every PR and push to main. Spec 001 is aligned with architecture revision 3 (PR #112), so its contracts are now the source for the code tickets. Spike S-1 is in (PR #111): the terminal prompt stays visible while the hook holds, so the recommended hold window is 90 s regardless of viewer focus (decision #116). Spike S-2 is in (PR #118): teammate attribution depends on display mode, and split-pane teammates' prompts never reach the bridge (decision #120). Batch 1 is complete. The engine HTTP core is in (PR #119): Host, Origin and credential checks on every route, single-use browser pairing, and commands refused for every token. Protocol v1 is in (PR #123): Zod schemas for all 34 v1 event types, ingest rejection codes, HTTP and SSE shapes, and a JSON Schema export. Canonical JSON and `stateHash` are in (PR #124): RFC 8785 output with strict input rules and a pure synchronous SHA-256 that matches Web Crypto. Secret redaction is in (PR #127): token formats, private keys, sensitive names and high-entropy values are masked with spans for click-to-reveal. The config file and Taskville home are in (PR #128): validated `config.json`, 0700 home, 0600 tokens, a safe session-opener template, and a 90 s default hold window pending decision #116. Batch 2 is complete. Event fixtures are in (PR #130): five JSONL fixtures with expected per-line ingest results and a shared loader. Engine storage is in (PR #134): an insert-only, gap-free event log enforced by SQLite triggers, projections with a rebuild helper, and owner-only database files. Attention, requests and commands are in (PR #137): one prompt, one red state; only bridge-held requests answerable; heuristic trouble from an injected clock. Batch 3 finishes with the domain reducer (#9), which also wires the two reducers together; the retro tooling runs alongside.
 
 ## In progress
 
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
-| [#10](https://github.com/jfvorwald/taskville/issues/10) M1.08 Domain attention, requests, and commands | Domain | domain-attn | in progress |
 | [#94](https://github.com/jfvorwald/taskville/issues/94) M1.19 Retro tooling (Infra lane, taken by the domain teammate) | Infra | domain | in progress |
 | [#9](https://github.com/jfvorwald/taskville/issues/9) M1.07 Domain reducer: agents, sessions, tasks, activity, teams | Domain | domain-hash | in progress |
 
-Ready, waiting for a free teammate: none (storage teammate is held for #13). Blocked: #13 waits on #9, #10, #11; #14 waits on #9.
+Ready, waiting for a free teammate: none (storage teammate is held for #13). Blocked: #13 and #14 wait on #9.
 
 ## Done this wave
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#10](https://github.com/jfvorwald/taskville/issues/10) M1.08 Domain attention, requests, and commands | [#137](https://github.com/jfvorwald/taskville/pull/137) | job 4827: 1 medium fixed; re-review 4836 pass | domain 128 tests, `pnpm check` 768 tests on main; mutation check per security rule ([report](tasks/M1.08.md)) |
 | [#11](https://github.com/jfvorwald/taskville/issues/11) M1.09 Engine storage: SQLite event log and projections | [#134](https://github.com/jfvorwald/taskville/pull/134) | job 4815 pass, no findings | engine 173 tests (43 storage), `pnpm check` 703 tests on main; mutation check per safeguard ([report](tasks/M1.09.md)) |
 | [#12](https://github.com/jfvorwald/taskville/issues/12) M1.17 Event fixtures and golden tests | [#130](https://github.com/jfvorwald/taskville/pull/130) | job 4797 pass, no findings | protocol 322 tests incl. golden fixtures and a mutation check; `pnpm check` 660 tests on main ([report](tasks/M1.17.md)) |
 | [#8](https://github.com/jfvorwald/taskville/issues/8) M1.11 Config file and Taskville home | [#128](https://github.com/jfvorwald/taskville/pull/128) | 4776: symlinked-home chmod fixed; final 4781 pass | engine 130 tests, `pnpm check` 635 tests on main, CI pass; mutation checks on opener and file modes ([report](tasks/M1.11.md)) |
@@ -40,6 +40,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 
 - [#113](https://github.com/jfvorwald/taskville/issues/113) persisted browser pairings are a same-user write path (default: persist digests per spec; alternative: memory only, re-pair after restart). Blocks nothing; the security review #17 weighs it, and it must be settled before `serve` wires pairings to storage.
 - [#133](https://github.com/jfvorwald/taskville/issues/133) `node:sqlite` on pinned Node 26.8.2 has no `Database`/`Statement` names (default: alias `DatabaseSync`/`StatementSync` in `storage/sqlite.ts`; docs unchanged until approved). Blocks nothing.
+- [#135](https://github.com/jfvorwald/taskville/issues/135) request merge and closure details (defaults: merge on exact tool name, the M2 adapter fills it on Notifications; close on the next same-session event from any agent; bridge record wins a merge). Blocks nothing in M1.
 - [#110](https://github.com/jfvorwald/taskville/issues/110) where projects are registered (default: engine `projects` table, `project add` via `POST /v1/projects`, config projects registered at start). Blocks nothing.
 - [#114](https://github.com/jfvorwald/taskville/issues/114) ARCHITECTURE.md 7.4 vs 6 on `pending_requests`/`commands` tables (default: projection-only, M4; text unchanged). Blocks nothing.
 - [#116](https://github.com/jfvorwald/taskville/issues/116) S-1: hold window (default 90 s, focus-independent, hook timeout hold + 5 s) and terminal-answer rules that would change ARCHITECTURE.md 8.1 and the `.roborev.toml` bridge invariant. Blocks nothing in M1; feeds M4.02 and M4.03.
@@ -53,6 +54,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 | --- | --- | --- | --- |
 | `.claude/check.sh` wall time, clean clone | 0.72 s | `time ./.claude/check.sh` (macOS, Node 26.8.2, pnpm 12.4.2) | #2 |
 | Redaction, adversarial 100,000-char inputs | at most 27 ms each alone (23 inputs); up to 285 ms under parallel `pnpm check` | adapters test suite | #24 |
+| `pnpm check` wall time (36 files, 768 tests) | 8.1 s | `time pnpm check` (macOS, Node 26.8.2) | #10 |
 | Hash a 759,588-byte state | about 9.6 ms (mean of 20 runs) | one-off script, not committed (Node 26.8.2) | #6 |
 | Notification `permission_prompt` delay after PermissionRequest | 6.011 to 6.016 s (3 runs) | spike server log, Claude Code 2.1.312 | #3 |
 | Terminal No to hook connection close | 15 ms (1 run) | spike server log | #3 |
@@ -60,6 +62,8 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 Targets in the spec are not measurements until a ticket records them here with the command that produced them.
 
 ## Known follow-ups
+
+- M1.08: requests and commands are never pruned from state; the soak check (#103) should watch it. Closure edge case: a parallel tool call's `PostToolUse` in the same session closes a pending prompt as `answered_elsewhere` (#135 D2). Test envelope builders duplicated across attention and reducer tests (cleanup after #9).
 
 - M1.09: the `pairings` table and `SqlitePairingRecords` exist but are not wired (decision #113). `serve` (#16) boot order: `openStorage`, `ensureUnsortedProject`, `rebuildStaleProjections(storage, reducer)`, listen. Ingest (#13) passes masked, untruncated fields to `clientContentHash`.
 
