@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { browserEnv } from "./browser-env.ts";
+import { browserEnv, watchPairingFragment } from "./browser-env.ts";
 import { establishSession, type PairingState } from "./pair.ts";
 
 const SessionContext = createContext<string | null>(null);
@@ -39,6 +39,9 @@ export function usePairing(): { state: PairingStatus; retry: () => void } {
     attempt = establishSession(browserEnv());
     void attempt.then(setState);
   }, []);
+
+  // A new link pasted into this tab only changes the fragment; pair with it without a reload.
+  useEffect(() => watchPairingFragment(window, retry), [retry]);
 
   return { state, retry };
 }

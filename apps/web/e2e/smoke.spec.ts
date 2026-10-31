@@ -4,7 +4,7 @@ import { CODES_FILE } from "./codes.ts";
 
 // M3.01 smoke: a paired page loads the city; an unpaired page is refused data.
 
-const codes = (): { paired: string } => JSON.parse(readFileSync(CODES_FILE, "utf8"));
+const codes = (): { paired: string; fresh: string } => JSON.parse(readFileSync(CODES_FILE, "utf8"));
 
 test("a paired page loads the scene, clears the fragment, and keeps the session across reloads", async ({
   page,
@@ -71,9 +71,19 @@ test("an unpaired page is refused data and shows how to pair", async ({ page }) 
   });
 });
 
-test("a wrong pairing link is refused, cleared, and stores nothing", async ({ page }) => {
+test("a wrong link is refused and cleared, then a fresh link pasted in the same tab pairs", async ({
+  page,
+}) => {
   await page.goto("/#pair=not-a-real-code");
   await expect(page.getByRole("heading", { name: "Pairing link not accepted" })).toBeVisible();
   expect(new URL(page.url()).hash).toBe("");
   expect(await page.evaluate(() => localStorage.getItem("taskville.session"))).toBeNull();
+
+  // Only the fragment changes, so the page does not reload; it must pair anyway.
+  const { fresh } = codes();
+  await page.evaluate((code) => {
+    location.hash = `#pair=${code}`;
+  }, fresh);
+  await expect(page.getByTestId("scene-root")).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
 });

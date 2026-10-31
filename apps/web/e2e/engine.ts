@@ -23,7 +23,10 @@ const parts = composeServe(
   port,
 );
 mkdirSync(dirname(CODES_FILE), { recursive: true });
-writeFileSync(CODES_FILE, JSON.stringify({ paired: parts.pairing.issueCode() }));
+writeFileSync(
+  CODES_FILE,
+  JSON.stringify({ paired: parts.pairing.issueCode(), fresh: parts.pairing.issueCode() }),
+);
 const server = await startServer({ app: parts.app, port });
 process.stdout.write(`e2e engine listening on http://127.0.0.1:${server.port}\n`);
 
