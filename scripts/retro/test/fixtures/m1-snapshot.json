@@ -1,0 +1,884 @@
+{
+  "milestone": {
+    "number": 1,
+    "title": "M1 Headless foundation",
+    "createdAt": "2026-10-31T00:09:36Z",
+    "dueOn": null
+  },
+  "issues": [
+    {
+      "number": 103,
+      "title": "[M1.21] Performance and soak checks: latency and 8-hour memory",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:54:20Z",
+      "closedAt": null,
+      "labels": ["test", "lane:engine"]
+    },
+    {
+      "number": 95,
+      "title": "[M1.RT] Retrospective and lessons for M1 Headless foundation",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:33:31Z",
+      "closedAt": null,
+      "labels": ["documentation", "lane:review"]
+    },
+    {
+      "number": 94,
+      "title": "[M1.19] Retro tooling: milestone report generator",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:33:27Z",
+      "closedAt": null,
+      "labels": ["chore", "lane:infra"]
+    },
+    {
+      "number": 24,
+      "title": "[M1.20] Secret redaction module (moved from M2.05)",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:11:22Z",
+      "closedAt": "2026-10-31T02:01:36Z",
+      "labels": ["security", "lane:adapter"]
+    },
+    {
+      "number": 19,
+      "title": "[G1] Review gate G1: M1 Headless foundation",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:11:04Z",
+      "closedAt": null,
+      "labels": ["gate", "lane:review"]
+    },
+    {
+      "number": 18,
+      "title": "[M1.16] CLI demo commands",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:11:00Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:cli"]
+    },
+    {
+      "number": 17,
+      "title": "[M1.18] Security review: engine HTTP, auth, pairing, ingest",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:57Z",
+      "closedAt": null,
+      "labels": ["security", "lane:review"]
+    },
+    {
+      "number": 16,
+      "title": "[M1.14] CLI: serve, status, events, requests",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:54Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:cli"]
+    },
+    {
+      "number": 15,
+      "title": "[M1.13] Snapshots and resumable SSE streams",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:50Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:engine"]
+    },
+    {
+      "number": 14,
+      "title": "[M1.15] Seeded six-agent demo producer",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:47Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:domain"]
+    },
+    {
+      "number": 13,
+      "title": "[M1.12] Ingest pipeline: validate, dedupe, sequence, commit",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:44Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:engine"]
+    },
+    {
+      "number": 12,
+      "title": "[M1.17] Event fixtures and golden tests",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:40Z",
+      "closedAt": "2026-10-31T02:06:17Z",
+      "labels": ["test", "lane:domain"]
+    },
+    {
+      "number": 11,
+      "title": "[M1.09] Engine storage: SQLite event log and projections",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:37Z",
+      "closedAt": "2026-10-31T02:16:16Z",
+      "labels": ["enhancement", "lane:engine"]
+    },
+    {
+      "number": 10,
+      "title": "[M1.08] Domain attention, requests, and commands",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:34Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:domain"]
+    },
+    {
+      "number": 9,
+      "title": "[M1.07] Domain reducer: agents, sessions, tasks, activity, teams",
+      "state": "open",
+      "stateReason": null,
+      "createdAt": "2026-10-31T00:10:30Z",
+      "closedAt": null,
+      "labels": ["enhancement", "lane:domain"]
+    },
+    {
+      "number": 8,
+      "title": "[M1.11] Config file and Taskville home",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:27Z",
+      "closedAt": "2026-10-31T02:03:21Z",
+      "labels": ["enhancement", "lane:engine"]
+    },
+    {
+      "number": 7,
+      "title": "[M1.10] Engine HTTP core, auth, and browser pairing",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:23Z",
+      "closedAt": "2026-10-31T01:49:05Z",
+      "labels": ["enhancement", "lane:engine"]
+    },
+    {
+      "number": 6,
+      "title": "[M1.06] Canonical JSON and stable state hashing",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:19Z",
+      "closedAt": "2026-10-31T01:57:30Z",
+      "labels": ["enhancement", "lane:domain"]
+    },
+    {
+      "number": 5,
+      "title": "[M1.05] Protocol v1: event envelope, event types, API and SSE schemas",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:15Z",
+      "closedAt": "2026-10-31T01:56:10Z",
+      "labels": ["enhancement", "lane:domain"]
+    },
+    {
+      "number": 4,
+      "title": "[M1.04] Spike S-2: subagent and agent-team hook attribution",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:12Z",
+      "closedAt": "2026-10-31T01:45:35Z",
+      "labels": ["spike", "lane:research"]
+    },
+    {
+      "number": 3,
+      "title": "[M1.03] Spike S-1: Claude Code PermissionRequest hook behavior",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:08Z",
+      "closedAt": "2026-10-31T01:33:48Z",
+      "labels": ["spike", "lane:research"]
+    },
+    {
+      "number": 2,
+      "title": "[M1.02] Scaffold pnpm workspace, quality gate, and CI",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:04Z",
+      "closedAt": "2026-10-31T01:21:08Z",
+      "labels": ["chore", "lane:infra"]
+    },
+    {
+      "number": 1,
+      "title": "[M1.01] Align spec 001 with architecture revision 2",
+      "state": "closed",
+      "stateReason": "completed",
+      "createdAt": "2026-10-31T00:10:00Z",
+      "closedAt": "2026-10-31T01:31:27Z",
+      "labels": ["documentation", "lane:docs"]
+    }
+  ],
+  "pulls": [
+    {
+      "number": 134,
+      "title": "[M1.09] Engine storage: SQLite event log and projections",
+      "headRef": "M1.09",
+      "state": "closed",
+      "createdAt": "2026-10-31T02:11:56Z",
+      "mergedAt": "2026-10-31T02:16:15Z",
+      "firstCommitAt": "2026-10-31T02:06:58Z"
+    },
+    {
+      "number": 130,
+      "title": "[M1.17] Event fixtures and golden tests",
+      "headRef": "M1.17",
+      "state": "closed",
+      "createdAt": "2026-10-31T02:02:40Z",
+      "mergedAt": "2026-10-31T02:06:16Z",
+      "firstCommitAt": "2026-10-31T01:58:53Z"
+    },
+    {
+      "number": 128,
+      "title": "[M1.11] Config file and Taskville home",
+      "headRef": "M1.11",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:59:21Z",
+      "mergedAt": "2026-10-31T02:03:20Z",
+      "firstCommitAt": "2026-10-31T01:52:49Z"
+    },
+    {
+      "number": 127,
+      "title": "[M1.20] Secret redaction module (moved from M2.05)",
+      "headRef": "M1.20",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:58:46Z",
+      "mergedAt": "2026-10-31T02:01:34Z",
+      "firstCommitAt": "2026-10-31T01:41:51Z"
+    },
+    {
+      "number": 124,
+      "title": "[M1.06] Canonical JSON and stable state hashing",
+      "headRef": "M1.06",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:54:53Z",
+      "mergedAt": "2026-10-31T01:57:28Z",
+      "firstCommitAt": "2026-10-31T01:49:39Z"
+    },
+    {
+      "number": 123,
+      "title": "[M1.05] Protocol v1: event envelope, event types, API and SSE schemas",
+      "headRef": "M1.05",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:49:50Z",
+      "mergedAt": "2026-10-31T01:56:08Z",
+      "firstCommitAt": "2026-10-31T01:38:57Z"
+    },
+    {
+      "number": 119,
+      "title": "[M1.10] Engine HTTP core, auth, and browser pairing",
+      "headRef": "M1.10",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:45:13Z",
+      "mergedAt": "2026-10-31T01:49:04Z",
+      "firstCommitAt": "2026-10-31T01:26:33Z"
+    },
+    {
+      "number": 118,
+      "title": "[M1.04] Spike S-2: subagent and agent-team hook attribution",
+      "headRef": "M1.04",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:38:54Z",
+      "mergedAt": "2026-10-31T01:45:34Z",
+      "firstCommitAt": "2026-10-31T01:38:34Z"
+    },
+    {
+      "number": 112,
+      "title": "[M1.01] Align spec 001 with architecture revision 2",
+      "headRef": "M1.01",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:29:34Z",
+      "mergedAt": "2026-10-31T01:31:26Z",
+      "firstCommitAt": "2026-10-31T01:25:01Z"
+    },
+    {
+      "number": 111,
+      "title": "[M1.03] Spike S-1: Claude Code PermissionRequest hook behavior",
+      "headRef": "M1.03",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:27:07Z",
+      "mergedAt": "2026-10-31T01:33:46Z",
+      "firstCommitAt": "2026-10-31T01:26:46Z"
+    },
+    {
+      "number": 108,
+      "title": "[M1.02] Scaffold pnpm workspace, quality gate, and CI",
+      "headRef": "M1.02",
+      "state": "closed",
+      "createdAt": "2026-10-31T01:18:48Z",
+      "mergedAt": "2026-10-31T01:21:06Z",
+      "firstCommitAt": "2026-10-31T01:15:57Z"
+    }
+  ],
+  "board": {
+    "1": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "S",
+      "lane": "Docs"
+    },
+    "2": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Infra"
+    },
+    "3": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Research"
+    },
+    "4": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Research"
+    },
+    "5": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Domain"
+    },
+    "6": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "S",
+      "lane": "Domain"
+    },
+    "7": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Engine"
+    },
+    "8": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "S",
+      "lane": "Engine"
+    },
+    "9": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "L",
+      "lane": "Domain"
+    },
+    "10": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Domain"
+    },
+    "11": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "M",
+      "lane": "Engine"
+    },
+    "12": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "S",
+      "lane": "Domain"
+    },
+    "13": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "L",
+      "lane": "Engine"
+    },
+    "14": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "M",
+      "lane": "Domain"
+    },
+    "15": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "L",
+      "lane": "Engine"
+    },
+    "16": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "M",
+      "lane": "CLI"
+    },
+    "17": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "S",
+      "lane": "Review"
+    },
+    "18": {
+      "phase": "M1 Headless foundation",
+      "priority": "P2",
+      "size": "S",
+      "lane": "CLI"
+    },
+    "19": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "S",
+      "lane": "Review"
+    },
+    "24": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "S",
+      "lane": "Adapter"
+    },
+    "94": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "M",
+      "lane": "Infra"
+    },
+    "95": {
+      "phase": "M1 Headless foundation",
+      "priority": "P0",
+      "size": "S",
+      "lane": "Review"
+    },
+    "103": {
+      "phase": "M1 Headless foundation",
+      "priority": "P1",
+      "size": "M",
+      "lane": "Engine"
+    }
+  },
+  "runs": [
+    {
+      "id": 41159118912,
+      "event": "pull_request",
+      "headBranch": "M1.09",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:14:58Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41159094078,
+      "event": "pull_request",
+      "headBranch": "M1.09",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:14:38Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158955000,
+      "event": "pull_request",
+      "headBranch": "M1.09",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:12:48Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158345146,
+      "event": "pull_request",
+      "headBranch": "M1.17",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:05:04Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158282278,
+      "event": "pull_request",
+      "headBranch": "M1.17",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:04:15Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158216262,
+      "event": "pull_request",
+      "headBranch": "M1.17",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:03:26Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158158014,
+      "event": "pull_request",
+      "headBranch": "M1.17",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:02:44Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158020374,
+      "event": "pull_request",
+      "headBranch": "M1.11",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:00:59Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41158004984,
+      "event": "pull_request",
+      "headBranch": "M1.11",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:00:49Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157981291,
+      "event": "pull_request",
+      "headBranch": "M1.20",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T02:00:32Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157905246,
+      "event": "pull_request",
+      "headBranch": "M1.11",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:59:35Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157900618,
+      "event": "pull_request",
+      "headBranch": "M1.20",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:59:31Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157893708,
+      "event": "pull_request",
+      "headBranch": "M1.11",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:59:25Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157879901,
+      "event": "pull_request",
+      "headBranch": "M1.20",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:59:12Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157852255,
+      "event": "pull_request",
+      "headBranch": "M1.20",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:58:49Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157584675,
+      "event": "pull_request",
+      "headBranch": "M1.06",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:55:06Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157572510,
+      "event": "pull_request",
+      "headBranch": "M1.06",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:54:57Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157549527,
+      "event": "pull_request",
+      "headBranch": "M1.05",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:54:38Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157532234,
+      "event": "pull_request",
+      "headBranch": "M1.05",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:54:24Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157344634,
+      "event": "pull_request",
+      "headBranch": "M1.05",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:51:54Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157330033,
+      "event": "pull_request",
+      "headBranch": "M1.05",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:51:42Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157211653,
+      "event": "pull_request",
+      "headBranch": "M1.05",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:50:07Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157194063,
+      "event": "pull_request",
+      "headBranch": "M1.05",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:49:53Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41157019015,
+      "event": "pull_request",
+      "headBranch": "M1.10",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:47:30Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156949146,
+      "event": "pull_request",
+      "headBranch": "M1.10",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:46:36Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156865216,
+      "event": "pull_request",
+      "headBranch": "M1.10",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:45:29Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156848030,
+      "event": "pull_request",
+      "headBranch": "M1.10",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:45:16Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156725234,
+      "event": "pull_request",
+      "headBranch": "M1.04",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:43:39Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156708590,
+      "event": "pull_request",
+      "headBranch": "M1.04",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:43:25Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156533432,
+      "event": "pull_request",
+      "headBranch": "M1.04",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:41:10Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41156350836,
+      "event": "pull_request",
+      "headBranch": "M1.04",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:38:57Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155836318,
+      "event": "pull_request",
+      "headBranch": "M1.03",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:32:28Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155770221,
+      "event": "pull_request",
+      "headBranch": "M1.03",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:31:39Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155709442,
+      "event": "pull_request",
+      "headBranch": "M1.03",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:30:56Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155656812,
+      "event": "pull_request",
+      "headBranch": "M1.01",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:30:18Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155622922,
+      "event": "pull_request",
+      "headBranch": "M1.01",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:29:56Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155600681,
+      "event": "pull_request",
+      "headBranch": "M1.01",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:29:37Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155545774,
+      "event": "pull_request",
+      "headBranch": "M1.03",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:28:55Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41155414566,
+      "event": "pull_request",
+      "headBranch": "M1.03",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:27:10Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41154815083,
+      "event": "pull_request",
+      "headBranch": "M1.02",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:19:49Z",
+      "earlierAttempts": []
+    },
+    {
+      "id": 41154733963,
+      "event": "pull_request",
+      "headBranch": "M1.02",
+      "status": "completed",
+      "conclusion": "success",
+      "runAttempt": 1,
+      "createdAt": "2026-10-31T01:18:51Z",
+      "earlierAttempts": []
+    }
+  ],
+  "taskReports": {
+    "M1.01": "# M1.01: Align spec 001 with architecture revision 2 (#1)\n\n- **Result:** done\n- **PR:** #112 · **roborev:** panel job 4675 (2 high) fixed in 3b65b1d; re-review job 4684 (1 medium) fixed in 9c9927d and 83439be; post-commit jobs 4681, 4695, 4696 pass. No third panel round (re-review once rule)\n- **Checks run:**\n  - Done-when grep, before edits: `grep -rnE 'awaiting_input|blocked' specs/001-headless-foundation/data-model.md` matched 5 lines, 2 of them using the words as attention kinds (line 24 `Attention kind: \"awaiting_input\" | \"blocked\"`, line 57 attention rule). FAIL, as expected.\n  - Done-when grep, after edits: 3 matches, all task statuses (`Task.status` enum at line 47, task transition graph at lines 70 and 71). PASS.\n  - Stale-term scan, before edits: `input.requested`, `input.resolved`, `node:http` as the chosen router, \"No web framework\", TypeScript 5, `DatabaseSync`, constitution v1.0.0, \"open to local processes\", `project.created` auto-create, \"feature 002/005/006\", \"ARCHITECTURE.md section 4\" all present. After edits: none left except `node:http` named as a rejected alternative (plan.md Complexity Tracking, research.md R-3).\n  - Term-by-term side-by-side against ARCHITECTURE.md revision 3 (table below). PASS.\n  - `pnpm check` after rebasing onto main with M1.02: typecheck, Biome, Vitest (6 files, 6 tests) all pass. No code changed, so this only confirms the docs did not break the workspace.\n  - No em dashes in changed files (`grep -rn '—' specs/001-headless-foundation` is empty).\n- **NOT RUN:** a third roborev panel round (re-review once rule). Nothing else.\n- **Measurements:** none\n- **Decisions needed:** [#110](https://github.com/redacted/taskville/issues/110) project registry (FR-011 `project add` vs the M1.11 config file); default applied in research.md R-12. Blocks nothing.\n- **Lessons:** see below.\n\n## Reconcile findings (comment on #1)\n\n| ID | Resolution |\n| --- | --- |\n| I1 | contracts/http-api.md \"Security\": Host check and a credential on every route including reads and `/health`; CLI token, bridge token, and browser session (`X-Taskville-Session`) with a per-route access table; pairing exchange and revoke routes; no cookies; Origin rule; tokens refused on the `POST /v1/commands` stub. research.md R-9 rewritten. spec.md FR-014 and the edge case updated |\n| I2 | data-model.md and contracts/events.md use `needs_you` / `trouble` / `waiting` with kinds, `heuristic`, `requestId`; `request.*` and `command.*` events; agent kinds, `parentAgentId`, `teamId`; Team and ToolCall entities and events; `dispatching`; `late`; session `workingDirectory`. spec.md US1-5 rewritten; FR-019 added |\n| I3 | plan.md and research.md R-1, R-2, R-3, R-11: TypeScript 7, Hono 4 on `@hono/node-server`, `Database`/`Statement`, Vitest 5, Biome 2, pino. Complexity Tracking gains Hono, pino, fast-check, and six units (adapters for redaction) |\n| I4 | events.md: `evidenceIds` stored and passed through; evidence store is M2.06 in `evidence.db` |\n| U1 | data-model.md validation table: `unknown_project`, nothing auto-created, built-in `unsorted`; `project.created` is engine-only, emitted by `POST /v1/projects` |\n| U2 | contracts/cli.md: `project add` / `project list`, `status` indented tree with `--all`, header counts, `--pace` presets and custom syntax |\n| U3 | Kept `requests` as a read-only list. Added as new **FR-018** in spec.md instead of rewording the clarified FR-012 (FR-012 text is unchanged). Constitution principle I already allows it (\"The CLI may list pending requests but never answer them\"), so no decision ticket was needed |\n| F1 | tasks.md Phase 3 and plan.md Phase 2 preview record that US1 is not shippable alone (T015 waits on T016), accepted |\n| B2 | spec.md US3-2: \"within 10 simulated minutes\" at the default `calm` pace |\n| I5 | plan.md open questions removed: Claude Code is the first adapter (M2); reasons answered by FR-017 |\n\nThe reconcile comment's note that ARCHITECTURE.md 9.2 needs a constitution amendment is already settled: constitution v1.2.0 records the exception in principle I. plan.md now cites v1.2.0.\n\n## Side-by-side check against ARCHITECTURE.md (revision 3)\n\n| Term | ARCHITECTURE.md | specs/001 location | Status |\n| --- | --- | --- | --- |\n| Attention levels `needs_you`, `trouble`, `waiting` | 2.2, 6 | data-model.md Enumerations, Attention rules; spec.md FR-019 | was `awaiting_input`/`blocked` kinds; fixed |\n| Attention fields (level, kind, reason, since, `requestId?`, `heuristic`) | 6 | data-model.md entity table | fixed |\n| Heuristic trouble computed by selector with injected clock, not stored | 2.2 | data-model.md Attention rules; http-api.md snapshot `attention` outside `stateHash` | added |\n| One prompt, one red state (merge by session and tool) | 2.2 | data-model.md Requests and commands | added |\n| Only bridge-held requests answerable | 2.2, 8.1 | data-model.md (`answerable` only for `taskville:bridge`); events.md `request.opened` sender; batch rejects `taskville:` sources | added |\n| PendingRequest fields, kinds, states | 6 | data-model.md | added |\n| Command fields and states; ack is not completion | 6, 9.2 | data-model.md; events.md `command.*` | added |\n| `request.*` / `command.*` events as the only source of requests and commands | 6, 9.1 | events.md; data-model.md | was `input.requested`/`input.resolved`; fixed |\n| `answered_elsewhere` on next same-session event | 6 | data-model.md | added |\n| `request.expired` at engine start | 6 | events.md, data-model.md | added |\n| `late` spooled events never open needs-you | 8.1 | events.md envelope `late`; data-model.md; spec.md edge case | added |\n| Agent kind `session`/`subagent`/`lead`/`teammate`, parent, team | 6, 2.9 | data-model.md; events.md `agent.registered` | added |\n| Team entity | 6 | data-model.md; events.md `team.*` | added |\n| ToolCall entity and phases | 6 | data-model.md; events.md `tool_call.*` | added |\n| Session working directory | 6 | data-model.md; events.md `session.started` | added |\n| Activity `dispatching` | 6 | data-model.md Enumerations | added |\n| Task states | 6 | data-model.md (unchanged list) | matches |\n| Envelope fields | 7.1 | events.md | matches; adds optional `late` |\n| Event families (project, agent, session, task, activity, requests, test results, Git, command) | 7.1 | events.md | matches; adds `team.*`, `tool_call.*`, `agent.finished`, `session.*` turn events |\n| Ingest dedupe and conflict, one transaction, ack after commit | 7.2 | data-model.md, research.md R-5, R-6 | matches |\n| Live order = ingest sequence | 7.3 | http-api.md SSE guarantees | matches |\n| Storage tables | 7.4 | data-model.md Storage schema | M1 subset; `pending_requests`/`commands` deferred as projection-only tables (see risks) |\n| Evidence in `evidence.db`, M2.06 | 5.1, 7.4 | events.md, data-model.md, plan.md | was \"feature 005\"; fixed |\n| Unknown directories go to Unsorted | 8.1 | spec.md clarification, data-model.md, http-api.md | matches |\n| Commands only from a paired browser; tokens never authorize | 9.2, 13 | http-api.md route table, stub; spec.md FR-014, FR-018 | added |\n| CLI lists requests, never answers (`taskville requests`) | 9.2 | cli.md; spec.md FR-018 | added |\n| Command types `permission.decide`, `session.open` | 9.2 | events.md | added |\n| Snapshot plus cursor; SSE resume; resnapshot; 1,000-frame queue | 10 | http-api.md | matches; notes Hono `streamSSE` has no cap |\n| Host check on every route, reads authenticated | 13 | http-api.md Security; research.md R-9 | was reads open, no Host check; fixed |\n| Pairing code in URL fragment, `X-Taskville-Session`, `localStorage`, no cookies, `unpair` | 13 | http-api.md; cli.md `serve`, `unpair`; data-model.md `pairings` | added |\n| Origin check on state-changing routes | 13 | http-api.md check 3 | matches |\n| Separate bridge token | 13 | http-api.md Credentials | added |\n| Hono 4, TypeScript 7, `Database`/`Statement`, pino, Vitest 5, Biome 2 | 5, 5.1 | plan.md, research.md | were `node:http`, TS 5, `DatabaseSync`; fixed |\n| Claude Code is the first adapter | 8.1, 16 | plan.md Open questions | was an open question; fixed |\n| Milestone references (M2, M3, M4, M6, M8) | 14 | spec.md Out of Scope; plan.md; http-api.md Later routes | were \"feature 002/005/006\"; fixed |\n\n## Additions beyond ARCHITECTURE.md (not contradictions, flagged for the reviewer)\n\n- Routes `POST /v1/projects` (FR-011) and `POST /v1/pairing`, `POST /v1/pairing/revoke` (section 13 implies them) are not in the section 10 table. #110 D2 asks whether to add them there.\n- `POST /v1/events/batch` now returns `heads` per project instead of a single `head`, since a batch can span projects.\n- `/health` requires a credential, following section 13's \"reads require authentication too\" literally.\n- Defaults chosen where the architecture gives none: silent-trouble threshold 10 min; `inputPreview` max 2,000 characters; input `reason` max 4,000 characters before truncation; `--pace` custom syntax.\n\n## Risks and follow-ups for the lead\n\n- #7 (M1.10) scope still opens with \"`node:http` router\" in its first bullet while its revision-3 bullet says Hono. The contract here follows Hono.\n- #12 (M1.17): quickstart expects `invalid.jsonl` to include an `unknown_project` line.\n- ARCHITECTURE.md 7.4 lists `pending_requests` and `commands` tables while section 6 says requests and commands are projections with no mutable tables. data-model.md reconciles them as projection-only tables added in M4; the architecture text itself is unchanged.\n\n## Lessons\n\n- A docs alignment ticket that feeds several code tickets ends up making contract decisions (engine-only event types, reserved source prefix, project registry). Those are design choices, not just wording, so the reviewer should read them as such; the open one went to a decision ticket.\n",
+    "M1.02": "# M1.02: Scaffold pnpm workspace, quality gate, and CI (#2)\n\n- **Result:** done\n- **PR:** #108 · **roborev:** pass (job 4668, pre_merge panel, no findings; post-commit jobs 4664, 4665, 4669 pass)\n- **Checks run:** `pnpm check` exit 0 locally and on a fresh clone after `pnpm install` (6 files, 6 tests); `.claude/check.sh` executable, exit 0; `pnpm --filter @taskville/domain test` and `pnpm --filter @taskville/cli test` run only their own project; gate exits 1 on a failing test, a lint error, a type error, and a non-erasable `enum` (TS1294), each made and reverted, not committed; red phase: placeholder tests committed alone (de77f6e), `pnpm check` exited 1 before the config landed; CI on the PR: green (run 41154733963, 21 s).\n- **NOT RUN:** e2e and full suite (none exist yet; task tier only).\n- **Measurements:** `.claude/check.sh` wall time 0.72 s on a clean clone (`time ./.claude/check.sh`, macOS, Node 26.8.2, pnpm 12.4.2).\n- **Decisions needed:** none\n- **Lessons:**\n  - `biome migrate --write` on Biome 2.6.4 rewrote `\"recommended\": true` to `\"preset\": \"none\"`, silently disabling every recommended lint rule. Use `\"preset\": \"recommended\"` and check migrated config by hand.\n  - Biome 2.6 formats Markdown, so an unscoped `biome check .` failed on spec-kit skill files; `files.includes` now limits Biome to TS/JS/JSON and excludes `.claude/` and `.specify/`.\n  - pnpm 12 claims `--reporter` for itself, and `pnpm test -- <flags>` forwards a literal `--` that Vitest ignores flags after; call `node_modules/.bin/vitest` directly for reporter flags.\n  - The plan names `vitest.workspace.ts`; Vitest 5 uses `test.projects` in the root `vitest.config.ts` instead.\n",
+    "M1.03": "# M1.03: Spike S-1: Claude Code PermissionRequest hook behavior (#3)\n\n- **Result:** done\n- **PR:** #111 · **roborev:** pre_merge panel job 4680 failed (1 high, 2 medium), fixed in 0ddc37b; re-review job 4694 failed with new findings (2 high, 1 medium), fixed or answered with evidence in 36d0d39; post-commit job 4706 (1 medium) fixed in 782f9ee; post-commit job 4707 on the final doc commit: pass. Jobs 4677, 4680, 4691, 4694, 4706 closed with comments. No third pre_merge panel run (one re-review rule).\n- **Checks run:** `pnpm check` (typecheck, lint, test) once after rebase on origin/main: pass (typecheck clean, Biome 0 errors and 1 info in the spike server fixture, vitest 6 of 6 files passed). Fixture redaction grep for the owner's username, email domain, the scratch path, and `/Users/` paths other than `/Users/dev`: clean.\n- **NOT RUN:** no tests written; this is a research spike with no production code (constitution VI applies to code). Full suite not run (task tier only).\n- **Measurements:** from [the findings doc](../spikes/S-1-permission-bridge.md), Claude Code 2.1.312. Notification `permission_prompt` fires 6.011 to 6.016 s after the PermissionRequest POST (3 runs). Hook timeout closes the connection at 20.001 to 20.005 s for `timeout: 20` (3 runs). Terminal No closes the held hook connection 15 ms after the keypress (1 run). Connection refused fails in 13 ms (1 run). Hook allow to PostToolUse: 55 ms (1 run).\n- **Decisions needed:** none opened. The hold window is the owner's call at G1; the doc recommends 90 s, independent of viewer focus, hook timeout hold + 5 s. The doc also proposes three engine rules that would change ARCHITECTURE.md section 8.1 and the `.roborev.toml` bridge invariant; those are for the lead to raise.\n- **Lessons:**\n  - The terminal permission dialog is not suppressed while a PermissionRequest hook holds, so the focus-dependent short hold in ARCHITECTURE section 8.1 is not needed.\n  - A terminal Yes leaves the held hook request open until its timeout, and a later hook answer is written successfully but ignored. \"Reached a still-open hook response\" does not prove a decision took effect.\n  - A terminal No closes the hook connection at once and fires no other hook; the socket close is the only signal.\n  - In this Claude Code version the default permission mode is labeled \"manual mode\" in the UI and an unflagged session started in auto mode; spikes must pass `--permission-mode default`.\n  - Driving the TUI with tmux: long text followed by Enter in one `send-keys` sometimes left the prompt unsubmitted; send the text, then `C-m` separately.\n",
+    "M1.04": "# M1.04: Spike S-2: subagent and agent-team hook attribution (#4)\n\n- **Result:** done (with a NOT RUN for TaskCreated and TaskCompleted, below)\n- **PR:** #118 · **roborev:** pass (job 4728, pre_merge panel) after one high finding in job 4720 was fixed in 8b0483d (an unlabelled heuristic subagent parent link). Two low findings from 4728 (prompt_id changing mid-run, SendMessage `routing.sender` as an earlier name signal) were also fixed in the docs.\n- **Checks run:** `pnpm check` exit 0 (typecheck, lint, 6 tests; this PR adds no code). Every fixture line parses as JSON (`json.loads` per line, 6 files). Redaction grep for `redacted`, `@gmail`, `/private/tmp`, `claude-502` and peer session names over `fixtures/` and `docs/spikes/`: 0 hits; the only home path left is `/Users/dev`.\n- **NOT RUN:**\n  - `TaskCreated` and `TaskCompleted` payloads: the `TaskCreate` and `TaskUpdate` tools were not available to the spike sessions in Claude Code 2.1.312, even with `CLAUDE_CODE_ENABLE_TASKS=1`.\n  - `Elicitation`, `StopFailure` and `PermissionDenied`: these need an MCP server, an API error, or a denial, which were out of scope.\n  - A payload from a user-settings hook fired by a teammate: a `CLAUDE_CONFIG_DIR` sandbox cannot authenticate, because the Keychain entry is keyed to the config directory, and credentials were not copied. Teammates loading user hooks was shown read-only with `/hooks` in a teammate pane instead. The findings doc gives the steps for the owner to check it directly.\n  - Tests written first: not applicable. This is a docs and fixtures spike with no code.\n- **Measurements:** recorded streams: `subagent/parallel` 30 hook calls, `subagent/nested` 18, `team/in-process` 79, `team/split-pane` 112, `team/split-pane-speculative` 85, and 45 Pre/Post pairs. Across 61 PreToolUse events, `tool_use_id` matched its Post or failure every time, with 1 Pre that never got a Post (from an internal helper agent). Counted by a script over the raw recordings.\n- **Decisions needed:** none opened. The owner decides teammate attribution at G1; the recommendation and its tradeoff are at the end of `docs/spikes/S-2-crews.md`.\n- **Lessons:**\n  - Agent teams behave differently in each display mode. In-process teammates share the lead's `session_id` and carry `agent_id`. Split-pane teammates are separate sessions with no `agent_id`, and their permission prompts fire **no `PermissionRequest`** (only a lead `Notification` with `worker_permission_prompt`), so the planned permission bridge cannot answer them.\n  - The Agent tool now launches subagents in the background by default: `PostToolUse(Agent)` arrives at launch (`async_launched`), and the parent's `Stop` fires while its subagents still run.\n  - In-process teammates fire `SubagentStart` and `SubagentStop` on every turn, so `SubagentStop` does not mean the teammate is gone.\n  - Interactive sessions emit `SubagentStop` with `agent_type: \"\"` for internal helper agents that never had a `SubagentStart`, and one fired a `PreToolUse` with no Post.\n  - The Edit `tool_response` includes `originalFile`, the whole pre-edit file, which matters for evidence size and privacy.\n  - Agent teams do not spawn under `claude -p`, so team spikes need an interactive session (tmux `send-keys`). Interactive runs in a new folder show the trust dialog, and accepting it records the folder in `~/.claude.json`, which the spike did for its throwaway folder.\n  - Teammates reported `permission_mode: \"auto\"` while the lead was in manual mode, which goes against the docs.\n",
+    "M1.05": "# M1.05: Protocol v1: event envelope, event types, API and SSE schemas (#5)\n\n- **Result:** done\n- **PR:** #123 · **roborev:** pre_merge panel job 4744 pass (no findings). Re-review panel job 4762 after rebasing onto M1.10: 1 medium (health schema rejected the engine's process-only `/health`) and 1 low (pairing code not capped at 256), both fixed in 8b869a4; that fix is confirmed by its post-commit review, not a third panel round. Post-commit jobs: 4717 pass; 4737 one low finding (SSE frame JSON Schema missed required envelope IDs) fixed in fdbc5ba (job 4748 pass); 4753, 4758, 4759 pass; 4769 on 8b869a4 pass\n- **Checks run:**\n  - Red phase: tests committed alone in f7f27d6 (a5412d4 before rebases); `pnpm --filter @taskville/protocol test` failed in all 6 files because `src/` did not exist yet.\n  - `pnpm --filter @taskville/protocol test`: 7 files, 297 tests pass. Includes, per event type (34 types), an input round trip through JSON, a stored-envelope round trip, an input rejection with the expected code and path, and a stored rejection.\n  - `tsc --noEmit -p tsconfig.json` exit 0, including type-level tests in `test/types.test.ts` (checked that a wrong assertion fails tsc, then reverted).\n  - `biome check packages/protocol`: clean.\n  - `pnpm check` after rebasing onto main with M1.03, M1.04, and M1.10: typecheck, lint, 20 files, 388 tests, pass. Biome reports 1 info in `fixtures/claude-code/permission/spike-server.mjs` (M1.03's file, not touched here).\n  - JSON Schema script: `node packages/protocol/scripts/export-json-schema.ts <dir>` writes 7 documents; tested as a subprocess, in process, and without an argument (usage, exit 2).\n  - CI on the PR: CI\n- **NOT RUN:** full suite and e2e (task tier only; none exist yet).\n- **Measurements:** `pnpm check` 3.9 s wall (`time pnpm check`, macOS, Node 26.8.2). Exported `input-event.schema.json` is 95 KB.\n- **Decisions needed:** none\n- **Lessons:** see below.\n\n## What the package exports\n\nFrom `@taskville/protocol` (`exports` points at `src/index.ts`; no build step):\n\n| Area | Names |\n| --- | --- |\n| Event types | `EVENT_TYPES`, `EventType`, `ENGINE_ONLY_EVENT_TYPES`, `isEventType`, `isEngineOnlyEventType`, `RESERVED_SOURCE_PREFIX`, `requiredEnvelopeIds` |\n| Envelopes | `inputEventSchema`, `inputEventSchemas[type]`, `storedEnvelopeSchema`, `storedEnvelopeSchemas[type]`; types `InputEvent`, `InputEventWire` (what producers write), `InputEventOf<T>`, `StoredEnvelope`, `StoredEnvelopeOf<T>` |\n| Payloads | `inputPayloadSchemas`, `storedPayloadSchemas`; types `InputPayload<T>`, `StoredPayload<T>` |\n| Ingest | `parseInputEvent(raw)` returns `{ ok, event }` or `{ ok: false, error: { code, path?, message } }`; `producerPolicyViolation(event)`; `rejectedResult(raw, error)`; `REJECTION_CODES`; `ingestResultSchema`, `IngestResult` |\n| Enums | `AGENT_KINDS`, `TASK_STATUSES`, `ACTIVITIES`, `CONNECTIONS`, `TOOL_CALL_PHASES`, `REQUEST_KINDS`, `REQUEST_STATES`, `REQUEST_RESOLUTIONS`, `COMMAND_TYPES`, `COMMAND_STATUSES`, `ATTENTION_LEVELS`, `ATTENTION_KINDS`, `ATTENTION_KINDS_BY_LEVEL`, `LAST_TURNS`, `normalizeSourceEnum` |\n| Primitives | `idSchema`, `timestampSchema`, `storedReasonSchema`, `inputReasonSchema`, `REASON_MAX_CHARS` (280), `INPUT_REASON_MAX_CHARS` (4,000), `INPUT_PREVIEW_MAX_CHARS` (2,000), `codePointLength`, `PROVENANCES` |\n| HTTP | `apiErrorSchema`, `API_ERROR_CODES`, `eventBatchRequestSchema`, `eventBatchResponseSchema` (`heads` map), `MAX_BATCH_EVENTS`, `MAX_BATCH_BYTES`, `createProjectRequestSchema`, `createProjectResponseSchema`, `projectsResponseSchema`, `snapshotResponseSchema`, `attentionSchema`, `pairingRequestSchema`, `pairingResponseSchema`, `pairingRevokeResponseSchema`, `healthResponseSchema` |\n| SSE | `sseFrameSchema` (`event`, `heartbeat`, `resnapshot`), `RESNAPSHOT_REASONS`, `SSE_HEARTBEAT_INTERVAL_MS`, `SSE_SUBSCRIBER_QUEUE_LIMIT` |\n| JSON Schema | `buildJsonSchemas()`; script `pnpm --filter @taskville/protocol run export-json-schema <dir>` |\n\n## Contract choices (for the reviewer and the domain, storage, and fixtures teammates)\n\n1. **Agent kind gains `unknown`.** data-model.md lists `session`, `subagent`, `lead`, `teammate` but also says any source value not in an enum is stored as `unknown` with `sourceValue`, and ARCHITECTURE.md section 6 says \"Anything unrecognized is kept as `unknown`\". The architecture wins, so `AGENT_KINDS` ends in `unknown`. An `unknown` kind skips the `parentAgentId` and `teamId` rules, since Taskville cannot know them. data-model.md's enum list should get `unknown` too (outside this ticket's Owns).\n2. **Open vs closed enums.** Open (unknown with `sourceValue`): agent kind, task status, activity. Closed (unrecognized value rejected as `invalid_payload`): `tool_call.finished` phase, request kind, resolution, command type, provenance, because they drive requests, commands, and attention, whose enums data-model.md gives no `unknown` member. `sourceValue` sits beside the enum field in the payload, is kept only when the value is `unknown`, and is dropped when a known value arrives with one, so parsing twice gives the same result. Matching is case-sensitive.\n3. **Required envelope IDs per type.** \"As relevant to the type\" is made concrete: `agent.*`, `activity.*`, `tool_call.*`, and `request.opened` need `agentId`; `session.*` need `agentId` and `sessionId`; `task.*` need `taskId`. Missing ones are `invalid_envelope` with the field as `path`, so the reducer never guesses the subject. The exported JSON Schema lists them in each member's `required`.\n4. **Strict objects.** Unknown fields are rejected (`invalid_envelope` at the top level, `invalid_payload` inside `payload`) rather than silently stripped. Engine-assigned fields (`eventId`, ...) on input are therefore rejected.\n5. **Characters are Unicode code points** for the 280, 4,000, and 2,000 limits, so a limit never splits a surrogate pair. The redaction module (M1.20, #24) must truncate by code points to produce a `text` this schema accepts. An input `inputPreview` over 2,000 is rejected, like an input `reason` over 4,000.\n6. **Input vs stored payloads.** `reason` is a string on input and `{ text, masked, truncated }` when stored; the masking and truncation step between them is M1.20's, not the protocol's.\n7. **Error codes beyond http-api.md:** `bad_request` (400), `payload_too_large` (413), `not_found` (404), `internal` (500), because the contract names those statuses without codes. They match the codes the merged engine (M1.10, `apps/engine/src/http/errors.ts`) already sends, so it can switch to `ApiErrorCode`.\n8. **Health fields `db`, `walMode`, `version` are optional** (http-api.md lists them all), because the merged engine (M1.10) omits them until storage is wired and when no version is configured. `pairingRequestSchema` caps the code at 256 characters, as the engine does.\n9. **Snapshot `state` is an opaque record**, so `protocol` does not depend on `domain`; the domain can narrow it with `snapshotResponseSchema.extend({ state: ... })`.\n10. **Rejected results** omit `sourceEventId` when the event had no valid one (`rejectedResult` handles this).\n11. **Git:** `sha` is 7 to 64 lowercase hex characters; `git.commit` parents may be empty (root commit); `git.merge` needs at least 2 parents.\n12. **SSE frames** are described after the `data` line is JSON-parsed and `id` read as a number; an `event` frame's `id` must equal `data.ingestSequence`.\n13. **`late` is accepted from producers**, as events.md lists it as an optional input field.\n\n## Risks and follow-ups for the lead\n\n- Engine (#7/#119 merged, #11): `apps/engine/src/http/errors.ts` and the `/health` and pairing bodies duplicate shapes now in `@taskville/protocol` (`ApiErrorCode`, `healthResponseSchema`, `pairingRequestSchema`); switching the engine to import them is a follow-up outside this ticket's Owns.\n\n- Engine ingest (#7, #11): decide whether the batch route forces `late: false`; as written, a producer may set `late: true` on its own events (it can only suppress its own needs-you, never create one).\n- Domain (#9, #10): handle agent `kind: \"unknown\"` and read `sourceValue`; the closed enums never need an unknown branch.\n- Fixtures (#12): `invalid.jsonl` lines can use `parseInputEvent` to assert codes; every rejection carries a dotted `path`.\n- Spike S-2 (M1.04): a subagent's parent can become known only after it registers, which fits `agent.registered` as an update. But S-2 also asks for a provisional parent link and split-pane permission attribution labelled as heuristic, and v1 payloads have no heuristic flag on `agent.registered` or `request.opened`. If the owner's G1 decision keeps those heuristics, M2 needs a protocol addition (for example `parentHeuristic: boolean`); nothing was added speculatively here.\n- Zod 4.6.7 silently drops a `__proto__` key in `z.record` values (for example `command.requested` `payload`) rather than adopting it as a prototype; a test pins that.\n\n## Lessons\n\n- An object-level transform is the only way to keep a raw enum value as a sibling `sourceValue`; a field-level transform loses it. Splitting payloads into input and stored maps kept the stored schemas transform-free, which is also what lets `z.toJSONSchema` export them with `io: \"output\"`.\n- Zod refinements do not reach JSON Schema, so per-type requirements enforced by `superRefine` have to be added to the exported documents by hand, or adapter authors see them as optional.\n",
+    "M1.06": "# M1.06: Canonical JSON and stable state hashing (#6)\n\n- **Result:** done\n- **PR:** #124 · **roborev:** pass (job 4767, pre_merge panel, no findings; post-commit jobs 4755, 4764 pass)\n- **Checks run:** `pnpm --filter @taskville/domain test` 63/63 pass (5 files); `pnpm run typecheck` exit 0; `pnpm run lint` exit 0 (1 pre-existing info in `fixtures/claude-code/permission/spike-server.mjs`, not this ticket); `pnpm check` exit 0 (10 files, 68 tests). Red phase: tests committed alone in 1a3204b and seen failing (no `src/hash` yet). Mutation checks, made and reverted, not committed: a `node:crypto` import in `src/hash` fails the built-in scan; `TextEncoder` in `sha256Hex` fails the host-independence tests.\n- **NOT RUN:** e2e and full suite (task tier only). No real browser run: browser parity is shown by a bare V8 context with only ECMAScript built-ins plus agreement with Web Crypto (`crypto.subtle.digest`), not by launching a browser.\n- **Measurements:** `hashCanonical` of a 759,588-byte state (2,000 agents): canonicalJson 4.0 ms, sha256Hex 8.9 ms, hashCanonical 9.6 ms, mean of 20 runs each, no separate warm-up (one-off script with `performance.now()`, Node 26.8.2, macOS; not committed).\n- **Decisions needed:** none\n- **Lessons:**\n  - Writing `\\uXXXX` escapes for non-ASCII characters through the agent's file-write tool stored the literal characters (including invisible U+FFFF and U+2028), while `\\u{...}` and ASCII-range escapes survived. Tests still passed because literals equal their escapes, so it would have gone unnoticed, and Biome then unquoted the literal key; grep for non-ASCII bytes after writing Unicode tests, and generate escapes with a script.\n  - TypeScript 7 with `lib: esnext` types `crypto.subtle.digest` input as `Uint8Array<ArrayBuffer>`, so a function returning plain `Uint8Array` (`ArrayBufferLike`) does not type-check as a `BufferSource`; return `Uint8Array<ArrayBuffer>` from byte-producing helpers.\n",
+    "M1.09": "# M1.09: Engine storage: SQLite event log and projections (#11)\n\n- **Result:** done\n- **PR:** #134 · **roborev:** pass (job 4815, pre_merge panel, no findings); post-commit jobs 4805, 4808, 4809, 4811 pass\n- **Checks run:** red phase: tests committed alone in 766af3f, `pnpm --filter @taskville/engine test` failed in all 4 storage files (`Cannot find module '../../src/storage/index.ts'`); the head-guard test was committed in 156ff38 before its trigger and seen failing. Green: `pnpm --filter @taskville/engine test` exit 0 (16 files, 173 tests after rebase, 43 of them in `test/storage/`); `pnpm run typecheck` exit 0; `biome check apps/engine` clean; `pnpm check` exit 0 (33 files, 703 tests, after rebase onto main); CI pass. Mutation checks, one per storage rule, each made and reverted, not committed: dropping the UPDATE trigger, the DELETE trigger, the replace guard, the sequence check, or the head guard each fails 1 test; committing instead of rolling back on throw fails 3; dropping the projection head check fails 1; dropping the chmod fails 1; dropping `O_NOFOLLOW` fails 1.\n- **NOT RUN:** e2e and full suite (task tier only). Windows (file modes and `O_NOFOLLOW`/`O_NONBLOCK` are POSIX; macOS only here, Linux via CI). Concurrent-writer ingest (that is #13's test); only the write lock itself is tested.\n- **Measurements:** none.\n- **Decisions needed:** #133 (opened here: Node 26.8.2 `node:sqlite` has no `Database`/`Statement` names; built on the default, a local alias). Followed existing defaults: #113 (pairings table and `SqlitePairingRecords` built, not wired in), #114 (no `pending_requests` or `commands` tables), #110 (the `projects` table is the registry).\n- **Lessons:** see below.\n\n## What storage exports (`apps/engine/src/storage/index.ts`)\n\n| Name | Use |\n| --- | --- |\n| `openStorage(path, { now?, busyTimeoutMs? })` | Owner-only files, WAL, `synchronous=NORMAL`, foreign keys, defensive mode, migrations. Refuses a symlink, a non-regular file, or a schema newer than the code |\n| `Storage` reads | `project`, `projects`, `head`, `projection`, `findEventBySourceKey` (returns `contentHash` and the stored envelope for duplicate acks), `events(projectId, after?)` in sequence order, `journalMode` (for `/health` `walMode`), `schemaVersion` |\n| `storage.transaction(tx => ...)` | `BEGIN IMMEDIATE` / `COMMIT`, `ROLLBACK` on any throw. Synchronous callbacks only, no nesting, the `tx` handle is dead after the call. `tx.insertProject`, `tx.appendEvent(envelope, contentHash)`, `tx.writeProjection({ projectId, reducerVersion, head, state })` (returns the `stateHash` it stored) |\n| `rebuildProjection`, `rebuildStaleProjections(storage, reducer)` | Boot step; reducer is a parameter (`{ version, initial(projectId), apply(state, event) }`), so the domain reducer (#9) plugs in without storage changes. Stale means missing, other reducer version, or head behind the project |\n| `ensureUnsortedProject(storage)` | Creates `unsorted` (builtin) with its `project.created` event at sequence 1, once |\n| `clientContentHash(fields)` | R-6 hash of an event's client-supplied fields (engine-assigned ones dropped) |\n| `storage.pairingRecords()` / `SqlitePairingRecords` | `PairingRecords` over the `pairings` table (digests only) |\n\n## Integrity enforced in the schema, for every connection\n\n- `events_no_update`, `events_no_delete`: abort any UPDATE or DELETE on `events`.\n- `events_insert_checks` (one trigger, ordered checks): aborts an insert that collides with an existing event ID, sequence, or source key, which also stops `INSERT OR REPLACE` (REPLACE deletes without firing DELETE triggers unless `recursive_triggers` is on); then requires `ingest_sequence = projects.head + 1`.\n- `events_advance_head`: the insert advances `projects.head`; `projects_head_matches_log` refuses any other head value. So the head is always the last sequence and the log is gap-free per project.\n- `projects_builtin_no_delete`: Unsorted cannot be removed.\n- `writeProjection` refuses a head that is not the project head, so a projection never claims events it does not cover.\n\n## For the ingest (#13) and serve (#16) teammates\n\n- Ingest flow per batch: `storage.transaction(tx => { findEventBySourceKey -> duplicate/conflict; else appendEvent(envelope with ingestSequence = tx.head(p) + 1, contentHash); apply reducer; writeProjection(...) })`, then broadcast after it returns. A thrown error rolls the whole batch back, including the head.\n- `clientContentHash` hashes whatever object it is given; ingest must pass the masked, untruncated fields (R-6 and R-13), not the stored envelope.\n- Boot order for `serve`: `openStorage` -> `ensureUnsortedProject` -> `rebuildStaleProjections(storage, domainReducer)` -> listen. Unsorted's projection comes from that rebuild.\n- Pairings: `storage.pairingRecords()` exists but is not passed to `PairingStore` anywhere; whether to pass it is #113.\n- `evidence.db` (M2.06) is a separate file; `secureDatabaseFiles` in `file-mode.ts` is reusable for it.\n\n## Lessons\n\n- Node 26.8.2 `node:sqlite` does not export `Database` or `Statement`, although ARCHITECTURE.md, research.md, plan.md, and data-model.md all say to use them; only `DatabaseSync` and `StatementSync` exist. Check a \"use the new names\" claim against `Object.keys(require(\"node:sqlite\"))` on the pinned Node. Decision #133.\n- SQLite does not document the firing order of separate triggers on the same event, and here a later-created BEFORE INSERT trigger fired first, so the expected error message did not appear. Put ordered checks in one trigger body as `SELECT RAISE(...) WHERE ...` statements.\n- `INSERT OR REPLACE` deletes the conflicting row without firing DELETE triggers (unless `PRAGMA recursive_triggers` is on), so a DELETE trigger alone does not make a table insert-only.\n- SQLite creates the `-wal` and `-shm` files with the database file's permission bits, so creating the database file 0600 first keeps all three owner-only; existing loose files still need a chmod.\n",
+    "M1.10": "# M1.10: Engine HTTP core, auth, and browser pairing (#7)\n\n- **Result:** done\n- **PR:** #119 · **roborev:** pass (job 4733, pre_merge panel); findings fixed in d292fe9 (jobs 4701, 4704: token write, FIFO) and b21d8c0 (job 4724: pairing Origin with a bearer token); post-commit job 4730 pass\n- **Checks run:** red phase: tests committed alone in 284212b and ba95de6, each run failing for missing behavior; green: `pnpm --filter @taskville/engine test` exit 0 (9 files, 87 tests); `pnpm run typecheck` exit 0; `biome check apps/engine` clean; `pnpm check` exit 0 (14 files, 92 tests). Mutation checks, one per security rule, each made and reverted, not committed: removing the Host middleware fails 21 tests; granting `command` to the CLI token fails 3; dropping the Origin requirement fails 2; letting a pairing code be reused fails 2; removing the `/v1/*` default deny fails 2; skipping the 0600 mode check fails 2.\n- **NOT RUN:** e2e and full suite (task tier only; none exist yet). Windows (token file relies on `O_NOFOLLOW`, `O_NONBLOCK`, and mode bits; macOS and Linux only for now). Mutation checks were run before the contract alignment and not repeated after it.\n- **Measurements:** none.\n- **Decisions needed:** #113 (persisted pairings are a same-user write path that could let an agent forge a browser session). Built on the default: `PairingStore` over pluggable `PairingRecords`, in-memory unless storage is wired; the spec says persist. Blocks nothing.\n- **Lessons:**\n  - The ticket scope still says \"`node:http` router\"; revision 3 replaced it with Hono. Follow the revision-3 bullet at the end of the scope, not the first bullet.\n  - The spec contract changed under a ticket in flight: M1.01 merged new route names (`POST /v1/pairing`, `/v1/pairing/revoke`), `credential_not_allowed`, a `501` commands stub, and persistent pairings while M1.10 was being built to the old contract. Re-read the contracts after every rebase, before review, not only at start.\n  - A route that mints pairing codes over HTTP, even behind the CLI token, would reopen the self-approval hole, because the agent can read that token. Minting stays in-process (`PairingStore.issueCode()`), and a test asserts no such route exists.\n  - Hono middleware registered with `app.use()` in `createApp` also guards routes other modules add to the returned app later, so later tickets inherit the Host, Origin, and credential checks. A test adds a route after `createApp` to prove it.\n  - `@hono/node-server` falls back to its own `hostname` option when a request has no Host header, so the Host check must read the header, not the request URL.\n  - A synchronous `openSync` on a FIFO blocks the whole Vitest worker, so a per-test timeout cannot fire; the red run for that case had to be killed by hand. Open untrusted paths with `O_NONBLOCK` before `fstat`.\n",
+    "M1.11": "# M1.11: Config file and Taskville home (#8)\n\n- **Result:** done\n- **PR:** #128 · **roborev:** pass (job 4781, pre_merge panel); finding from job 4776 (symlinked home or spool would have its target chmodded) fixed in bc91f18; post-commit jobs pass\n- **Checks run:** red phase: tests committed alone (0446f6c), failing on missing modules; green: `pnpm --filter @taskville/engine test` exit 0 (12 files, 130 tests); `pnpm run typecheck` exit 0; `biome check apps/engine` clean; `pnpm check` exit 0 (27 files, 493 tests, after rebasing onto M1.05 and M1.06). Mutation checks on the security rules, each made and reverted: allowing a shell as the opener program, letting a placeholder choose the program, skipping the 0700 tighten, and skipping the config-file write check each fail a test.\n- **NOT RUN:** e2e and full suite (task tier; none exist yet). Windows (POSIX modes, `O_NONBLOCK`, `getuid`).\n- **Measurements:** none.\n- **Decisions needed:** none new. Builds on the defaults of #110 (config projects are registered at engine start when absent; `project add` never edits the config file) and #116 D1 (hold window 90 s, hook timeout hold + 5 s; the owner decides at G1, and both are constants plus a validated `bridge.holdWindowSeconds`, 1 to 600).\n- **Lessons:**\n  - `mkdirSync({ mode: 0o700 })` is filtered by the umask and leaves an existing directory alone, so tightening an existing home needs an explicit `chmod`, and that `chmod` must not follow a symlink (use `lstat`), or it changes whatever folder the link points at.\n  - The protocol package (M1.05) merged mid-ticket with the activity enum; import it rather than mirroring it, so the work-area override keys cannot drift.\n  - Validating the session opener as an argv array is not enough on its own: a program like `sh`, `env`, `osascript`, or `python3` turns an argument back into code. The validator refuses shells, launchers, and interpreters as the program, and never lets a placeholder pick the program.\n",
+    "M1.17": "# M1.17: Event fixtures and golden tests (#12)\n\n- **Result:** done (expected reducer snapshots deferred to #9, see below)\n- **PR:** #130 · **roborev:** pass (job 4797, pre_merge panel, no findings); post-commit jobs 4788, 4794, 4799, 4800, 4801 pass\n- **Checks run:**\n  - Red phase: the golden test was committed alone in be16d03; it failed because `fixtures/events/loader.ts` and the fixtures did not exist.\n  - `pnpm --filter @taskville/protocol test`: 8 files, 322 tests pass (25 of them in `event-fixtures.test.ts`).\n  - Mutation check: changing one expected `conflict` to `duplicate` in `conflicts.expected.json` failed 2 tests; restored.\n  - `tsc --noEmit -p tsconfig.json` exit 0 (it checks `loader.ts` through the test's import); Biome clean.\n  - `pnpm check` after rebasing onto main with M1.06 and M1.20: 26 files, 617 tests, pass.\n  - CI on the PR: green (run 41158216262 on cda667d).\n- **NOT RUN:** full suite and e2e (task tier only). Ingest through the real engine and CLI: neither has an ingest route yet (#11, CLI tickets).\n- **Measurements:** `pnpm check` 3.8 s wall (`time pnpm check`). Fixtures: 12 + 9 + 4 + 11 + 31 event lines.\n- **Decisions needed:** none\n- **Lessons:** see below.\n\n## What is in `fixtures/events/`\n\n| Fixture | Lines | Expected | Purpose |\n| --- | --- | --- | --- |\n| `basic-two-agents.jsonl` | 12 | accepted 12 | Quickstart US1: Builder runs `task-1` (activity `implementing`), Reviewer is connected and idle. A second ingest gives duplicate 12 |\n| `duplicates.jsonl` | 9 | accepted 6, duplicate 3 | Same key and content is a duplicate, including a resend with reordered keys and extra spaces; the same `sourceEventId` from another source, or in another project (`unsorted`, its own sequence), is a new event |\n| `conflicts.jsonl` | 4 | conflict 3, duplicate 1 | Ingest **after** `basic-two-agents.jsonl`: changed title, changed status, changed `occurredAt` only; plus one unchanged resend |\n| `invalid.jsonl` | 11 | rejected 11 | One problem per line covering all eight codes: `unsupported_schema_version`, `unknown_type`, `invalid_envelope` (no offset, missing required `agentId`, malformed JSON), `invalid_payload` (x2), `engine_only_type`, `reserved_source`, `provenance_mismatch`, `unknown_project` (project `ghost`) |\n| `crew.jsonl` | 31 | accepted 31 | After S-2: subagent registered first with no parent, then the parent's Agent tool result, then a second `agent.registered` adding `parentAgentId`; a nested subagent; the main session's turn ends while subagents run; the main session re-registers as `lead` when it starts `team-1`; an in-process teammate shares the lead's session, opens a (never answerable) permission request that its tool result closes, reports a test result, goes idle (`activity.ended`), then finishes; the team ends and the session exits. No heuristic fields |\n\nEach `<name>.expected.json` holds the hand-written per-line result of a batch ingest: `{ line, sourceEventId?, status, ingestSequence?, of?, code?, path? }`, plus `knownProjects` (`demo`, `unsorted`), `startHead` (1, the `project.created` event), `after` (fixtures ingested first), and a summary. `ingestSequence` assumes freshly added projects.\n\n`loader.ts` (Node built-ins only): `EVENT_FIXTURES`, `parseJsonl(text)` (contracts/events.md JSONL rules: blank and `//` lines skipped, 1-based file line numbers, malformed lines reported, CRLF accepted), `loadFixture`, `loadEvents` (throws with `name:line` on a malformed line), `loadExpected`, `fixturePath`, `FIXTURES_DIR`. Engine and CLI tests import it by relative path, e.g. `../../../fixtures/events/loader.ts` from `apps/engine/test`.\n\n## Forced extra path\n\n`packages/protocol/test/event-fixtures.test.ts`: Vitest only discovers `packages/*/test` and `apps/*/test` (root `vitest.config.ts`), so the golden test lives in the protocol package, which is also what the fixtures validate against. It contains a small reference ingest model (validation, producer policy, project registry, dedupe and conflict on the idempotency key) that must reproduce each expected file line for line.\n\n## Expected snapshots: deferred to #9\n\nThe reducer (#9) does not exist, and no contract defines a snapshot in a form writable without it, so only per-line ingest results are committed. For #9 to turn into snapshot tests, the quickstart fixes `basic-two-agents.jsonl` at: two agents, one `running` on a task, header `Demo · 1 active · 0 needs you · 0 trouble · 0 waiting`. The intended crew end state: `sub-1` (parent `main`) and `sub-2` (parent `sub-1`) finished, `mate-1` in `team-1` finished, `team-1` ended, `main` kind `lead`, `req-1` closed as `answered_elsewhere`, no attention records.\n\n## Notes for the engine and CLI tickets\n\n- A line that is not valid JSON is expected as `invalid_envelope` with no `sourceEventId` (line 8 of `invalid.jsonl`). events.md does not name a code for it; this is the fixture's choice.\n- `duplicates.jsonl` line 8 resends `dup-02` with reordered keys and spaces and expects `duplicate`: content hashing must ignore key order and whitespace. Checked after rebasing onto #6: `canonicalJson` from `packages/domain/src/hash` gives identical output for lines 5 and 8 (one-off probe, not committed, since a domain import does not belong in the protocol test).\n- The reference model checks producer policy before `unknown_project`; each invalid line has exactly one problem, so the fixtures do not fix that order.\n\n## Lessons\n\n- The quickstart already pinned the basic fixture's counts (12 accepted, two agents, one running), so the fixture had to be designed backwards from documented CLI output.\n- An expected-results file is only a golden if something independent reproduces it: the expected statuses were written out by hand, and a small reference ingest model in the test must agree with them line for line, which a deliberate mutation confirmed.\n",
+    "M1.20": "# M1.20: Secret redaction module (moved from M2.05) (#24)\n\n- **Result:** done\n- **PR:** #127 · **roborev:** panel job 4740 (2 high, 1 medium) fixed in de2961f; re-review panel job 4752 (3 high, all new) fixed in 5a069b2; post-commit jobs 4736 (2 high, 1 medium; fixed in de2961f and 5a069b2), 4749 (2 high; fixed in 5a069b2) and 4763 (2 high, regressions from 5a069b2; fixed in 4af25dc); post-commit jobs 4729, 4747, 4757, 4770, 4783 pass, 4784 pass. All failing jobs closed with comments. No third panel round (re-review once rule). SHAs are after the rebase onto 1511b3b (roborev job refs show pre-rebase SHAs)\n- **Checks run:**\n  - Red phase: tests committed alone in 3a073fa; `vitest run --project @taskville/adapters` failed with \"Cannot find module '../src/redact/index.ts'\" and \"has source files to scan: expected 0 to be greater than 0\". Each roborev fix round also landed its failing tests first (9e3a410: 5 failing; b118d26: 10 failing; 9a864f3: 2 failing).\n  - `vitest run --project @taskville/adapters` (what `pnpm --filter @taskville/adapters test` runs): 2 files, 143 tests pass.\n  - `pnpm run typecheck`, `biome check packages/adapters`: pass.\n  - `pnpm check` before the final rebase onto 1511b3b; CI on the PR passed after it: first run failed 2 adversarial timing tests (260 ms and 285 ms against a 250 ms bound, with 21 test files in parallel); rerun alone, they took 19 ms and 18 ms. Treated as a flake in my own test: the bound is now 2,000 ms (ed0bf1c), still far below the 55 s the one quadratic regression took. `pnpm check` then passed: typecheck, Biome, Vitest 21 files and 530 tests, 5.0 s wall.\n  - Grep for personal data and em dashes in `packages/adapters`: none.\n- **NOT RUN:** full suite and e2e (task tier only; none exist yet). A third roborev panel round (re-review once rule).\n- **Measurements:** each of 23 adversarial 100,000-character inputs finishes in at most 27 ms when the package runs alone (`vitest run --project @taskville/adapters --reporter verbose`, macOS, Node 26.8.2). Under the full parallel `pnpm check` two reached 285 ms. The test bound is 2,000 ms.\n- **Decisions needed:** none\n- **Lessons:** see below.\n\n## What the module does\n\n`@taskville/adapters/redact` exports:\n\n- `redactText(input)` returns `{ text, spans }`. Each span is `{ kind, start, end, maskedStart, maskedEnd }` in **UTF-16 code units** (JavaScript string indices), half-open. `start`/`end` locate the secret in the original input (for click-to-reveal from the unredacted in-memory copy); `maskedStart`/`maskedEnd` locate its marker in the masked text. Spans are sorted and never overlap: overlapping detections are unioned and keep the most specific kind.\n- `redactJson(value, { skip })` returns `{ value, masks }`, where each mask is `{ path, spans }` for one string that changed. Every string at any depth is masked; `skip(path)` lets the ingest pipeline exempt ID, enum and timestamp fields (contracts/events.md \"Masking\"). Property names, numbers, booleans and null pass through, and the input is not mutated.\n- `maskMarker(kind)` gives the replacement text, `[REDACTED:<kind>]`.\n\nMasking is pure and deterministic (no clock, randomness or I/O) and idempotent (masked output has nothing left to mask), so a retried event masks to the same text and still dedupes. Truncation to 280 characters is the caller's job and happens after masking, per FR-017 and research.md R-13.\n\nDetected: Anthropic, OpenAI, GitHub (classic, OAuth, fine-grained), AWS access key IDs, Slack, Stripe secret and restricted keys, JWTs, `Bearer` and `Authorization: Basic` credentials (case-insensitive), PEM private key blocks (an unterminated block is masked to the end), passwords in URLs, values of sensitive names (`*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `PASSPHRASE`, `*_CREDENTIALS`, `*_PAT`, `Authorization`, upper-case `*_KEY`, and `apiKey`/`private_key`-style names with a qualifier) in `NAME=value`, `name: value`, `\"name\": \"value\"`, `--name value` and query-string forms, and high-entropy tokens both when assigned and when standalone in prose.\n\nKept readable (false-positive tests): Git SHAs, UUIDs, base64 images (data URIs and raw PNG/JPEG/GIF/WebP/SVG prefixes, and anything over 256 characters), lockfile integrity digests, POSIX and Windows paths, `KEY_FILE=`/`TOKEN_PATH=` paths, code such as `const token = await getToken()`, `$NAME`/`${...}`/`$(...)` references, `***` placeholders, camelCase identifiers, Claude Code `toolu_`/`msg_` IDs, and prose that talks about tokens and passwords.\n\n## Choices worth a look\n\n- **Fake secrets in tests** are built at runtime from short string parts and a seeded LCG, so no token-shaped literal is in the source for GitHub push protection or other scanners to match.\n- **Looser forms need evidence.** `NAME=value` and quoted values under a sensitive name are always masked. `name: value`, `name = value` and `--name value` unquoted are masked only if the value looks like a credential (letter and digit, 6+ characters, no code or path punctuation) or is high-entropy, so `Password: required` and `token = getToken()` stay readable. Cost: `password: correcthorsebattery` (letters only, unquoted YAML) is not masked.\n- **Upper-case `*_KEY` is always sensitive** (the brief's rule), so `const CACHE_KEY = \"users\"` is masked. Mixed-case `*Key` names need a qualifier (`api`, `private`, `secret`, `access`, `client`, ...), so `cacheKey`, `sortKey`, and `idempotencyKey` stay readable.\n- **Generic high-entropy rule** needs 20 to 256 characters, upper and lower case and a digit, entropy at least `min(0.85 * log2(length), 4.5)` bits per character, and less than 70% of the run in word-like runs. Measured on 5,000 random base62 strings, the word-run cutoff rejects about 1% at length 20 and fewer at longer lengths; identifiers such as `handleSubmitButtonClick1` are rejected.\n- **Linear-time scanning.** Every token pattern starts with a lookbehind so it can only begin at the start of a run, quoted values stop at their closing quote or line end, and unquoted value ends (word end and next comma or bracket) come from one precomputed backward pass. 23 adversarial inputs of 100,000 characters each run in milliseconds. The adversarial test earned its keep: one fix scanned each value for a comma and took 55 s on `a=a=a=...`.\n\n## Outside Owns (forced extras)\n\n- `packages/adapters/package.json`: adds `\"exports\": { \"./redact\": \"./src/redact/index.ts\" }` so the engine can import `@taskville/adapters/redact`.\n- `packages/adapters/test/`: `redact.test.ts`, and `purity.test.ts`, which replaces the M1.02 placeholder. The purity test scans `packages/adapters/src/**` and fails on any `node:` import, a bare built-in module name (from `node:module` `builtinModules`, including subpaths like `fs/promises`), or `Date.now`, `new Date`, `Math.random`, `performance.now`, `crypto.randomUUID`/`getRandomValues`, and `process.`. Its scanner is itself tested against 12 violating and 4 clean snippets.\n\n## Notes for the ingest pipeline (#13)\n\n- Control-character stripping (events.md \"Masking\") is not in this module; do it before calling `redactText`/`redactJson`, so offsets refer to the normalized text.\n- Cutting at 280 characters may split a marker (`[REDACTED:github-to`). Nothing leaks, but the UI should not assume markers are whole in truncated text.\n- Two different secrets in the same place mask to the same text, so two such events with the same source key are a duplicate, not a conflict (accepted in research.md R-13).\n\n## Lessons\n\n- A redactor's skip rules are bypass surface. Every \"this is a placeholder\" exemption (`$` prefix, marker prefix, path-like runs) drew a high finding until it was made exact: a placeholder must be a complete reference or marker spanning the whole value, and the value has to run through any reference it starts with.\n- Masking JSON loses the property-name context in arrays unless the walker carries it down, and plain assignment of a parsed `__proto__` key changes the prototype. Use `Object.defineProperty` when rebuilding objects from untrusted JSON.\n- A timing assertion tight enough to look meaningful alone (250 ms) flaked once the workspace had 21 test files running in parallel. Set wall-time bounds to separate linear from quadratic (seconds vs tens of seconds), not to measure speed.\n- Entropy alone cannot tell a random token from a long camelCase identifier (both reach about 4 bits per character at 24 characters); a word-run coverage check separated them.\n"
+  },
+  "recordedAt": "2026-10-31T02:19:42.550Z"
+}
