@@ -1,8 +1,9 @@
 // Unit tests for the perf harness (roborev 5005). Run with `pnpm perf:unit`.
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { describe, it } from "node:test";
 import { type RunningEngine, startEngine } from "./engine.ts";
-import { latencyPass } from "./latency.ts";
+import { latencyPass, probe } from "./latency.ts";
 import { summarize } from "./stats.ts";
 import { connectViewer } from "./viewer.ts";
 
@@ -80,5 +81,39 @@ describe("startEngine", () => {
       new Promise((r) => setTimeout(() => r("hung"), 5000)),
     ]);
     assert.equal(result, "stopped");
+  });
+});
+
+describe("probe", () => {
+  it("rejects (rather than crashing the runner) when the viewer times out during a slow ingest", async () => {
+    const viewer = await connectViewer(
+      {
+        get: async () => new Response(new ReadableStream({ start() {} }), { status: 200 }),
+      } as unknown as RunningEngine,
+      "p",
+      1,
+      { waitTimeoutMs: 20 },
+    );
+    const slow = {
+      ingest: () =>
+        new Promise((done) =>
+          setTimeout(() => done({ results: [{ status: "accepted" }], heads: {} }), 200),
+        ),
+    } as unknown as RunningEngine;
+    await assert.rejects(probe(slow, viewer, "slow", 1, 0), /timed out/);
+    viewer.close();
+  });
+});
+
+describe("startEngine cleanup", () => {
+  it("kills the child and removes its home when startup times out", async () => {
+    let spawned: { pid: number; home: string } | undefined;
+    await assert.rejects(
+      startEngine({ startupTimeoutMs: 1, onSpawn: (pid, home) => (spawned = { pid, home }) }),
+      /did not start/,
+    );
+    assert.ok(spawned);
+    assert.equal(existsSync(spawned.home), false);
+    assert.throws(() => process.kill(spawned?.pid ?? 0, 0));
   });
 });
