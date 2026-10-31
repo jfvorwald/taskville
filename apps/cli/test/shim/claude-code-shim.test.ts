@@ -369,7 +369,7 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(existsSync(home.spoolFile)).toBe(false);
     const lines = spoolLines(home);
     expect(lines).toHaveLength(1);
-    expect((lines[0]?.payload as { tool_use_id: string }).tool_use_id).toBe("toolu_18");
+    expect(lines[0]?.payload).toMatchObject({ tool_use_id: "toolu_18" });
   });
 
   it("exits 0 even when the home cannot be written", async () => {
