@@ -22,17 +22,22 @@ export function cleanText(value: unknown, max: number): string | undefined {
 
 /**
  * Prepares a `reason`. The engine masks a reason at ingest and stores `masked: true` when it did
- * (FR-017), so a reason within the input limit is passed on unmasked; masking it here would make
- * the engine record `masked: false` for masked text. A longer one is masked before it is cut, so
- * the cut can never split a secret and leave part of it unmasked.
+ * (FR-017), so the reason is passed on unmasked: masking it here would make the engine record
+ * `masked: false` for masked text. A reason over the 4,000-character input limit is cut there,
+ * or earlier where the cut would fall inside something the redactor masks, so no secret is ever
+ * left half visible for the engine to miss.
  */
 export function cleanReason(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.toWellFormed();
   if (text === "") return undefined;
-  return codePointLength(text) <= INPUT_REASON_MAX_CHARS
-    ? text
-    : cleanText(text, INPUT_REASON_MAX_CHARS);
+  if (codePointLength(text) <= INPUT_REASON_MAX_CHARS) return text;
+  let cut = cutCodePoints(text, INPUT_REASON_MAX_CHARS).length;
+  for (const span of redactText(text).spans) {
+    if (span.start < cut && cut < span.end) cut = span.start;
+  }
+  const out = text.slice(0, cut);
+  return out === "" ? undefined : out;
 }
 
 /** The first line of already cleaned text. */

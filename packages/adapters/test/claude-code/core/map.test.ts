@@ -545,15 +545,19 @@ describe("untrusted payloads (L-18, L-29, L-31, L-32)", () => {
     expect(reason).toContain(key);
   });
 
-  it("masks an over-long reason before cutting it, so no secret is split", () => {
+  it("cuts an over-long reason unmasked but never inside a secret, so the engine still flags it", () => {
     const key = `sk-ant-${"A1b2C3d4".repeat(5)}`;
-    const error = `${"x".repeat(3990)} ${key} tail`;
-    const reason = only(
-      map({ ...base, hook_event_name: "StopFailure", error }),
-      "session.turn_failed",
-    ).payload.reason as string;
-    expect([...reason].length).toBeLessThanOrEqual(4000);
-    expect(reason).not.toContain("sk-ant-A1b2");
+    const reasonOf = (error: string) =>
+      only(map({ ...base, hook_event_name: "StopFailure", error }), "session.turn_failed").payload
+        .reason as string;
+    // A secret near the start stays whole and unmasked, for the engine to mask and flag.
+    const early = reasonOf(`${key} ${"x".repeat(5000)}`);
+    expect([...early].length).toBe(4000);
+    expect(early.startsWith(`${key} `)).toBe(true);
+    expect(early).not.toContain("[REDACTED:");
+    // A secret across the cut is dropped whole, never left half visible.
+    const across = reasonOf(`${"x".repeat(3990)} ${key} tail`);
+    expect(across).toBe(`${"x".repeat(3990)} `);
   });
 
   it("masks secrets in tool names, paths, display names, outcomes and working directories", () => {
