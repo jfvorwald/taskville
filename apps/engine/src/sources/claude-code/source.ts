@@ -73,6 +73,12 @@ export interface HookInput {
   payload: Record<string, unknown>;
   /** Only the spool replay (M2.07) passes true; the HTTP route never does. */
   late?: boolean;
+  /**
+   * Only the spool replay (M2.07) passes it: the shim's `spooledAt`, so a late
+   * event is dated when the hook ran, not when the engine restarted. The HTTP
+   * route never does (its body allows no such key); the engine clock is used.
+   */
+  receivedAt?: string;
 }
 
 export interface HookIngestResponse {
@@ -111,7 +117,7 @@ export class ClaudeCodeSource {
     const ctx: MapContext = {
       projectId,
       sourceEventId: input.sourceEventId,
-      receivedAt: this.#now().toISOString(),
+      receivedAt: input.receivedAt ?? this.#now().toISOString(),
       late,
     };
     const mapped = this.#options.mapper(input.payload, ctx);

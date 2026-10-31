@@ -24,12 +24,16 @@ import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { IngestPipeline } from "../../../src/ingest/index.ts";
 import {
+  CLAUDE_CODE_HOOKS_PATH,
   ClaudeCodeSource,
+  drainSpool,
   type HookInput,
+  registerClaudeCodeRoutes,
   replaySpool,
   SPOOL_FILE,
   type SpoolReplayReport,
 } from "../../../src/sources/claude-code/index.ts";
+import { bearer, CLI_TOKEN, makeApp, postJson } from "../../http/helpers.ts";
 import { fixedNow, makeSource, T0, useProjects } from "./helpers.ts";
 
 const db = useProjects([{ id: "repo", roots: ["/work/repo"] }]);
@@ -362,6 +366,26 @@ describe("replaySpool", () => {
     expect(spoolNames()).toEqual([]);
   });
 
+  it("drains a bounded spool in several runs, each hook once", async () => {
+    const ids = Array.from({ length: 7 }, () => uuid());
+    writeFileSync(main(), ids.map((sourceEventId) => line({ sourceEventId })).join(""), {
+      mode: 0o600,
+    });
+    const { source, mapper } = makeSource(db());
+    const total = await drainSpool({ spoolDir, source, maxHooks: 3, pauseMs: 1 });
+    expect(total).toMatchObject({ hooks: 7, deferredFiles: 0, failed: false });
+    expect(mapper.calls.map((c) => c.sourceEventId)).toEqual(ids);
+    expect(spoolNames()).toEqual([]);
+  });
+
+  it("stops draining on a failed run", async () => {
+    writeFileSync(main(), line() + line() + line(), { mode: 0o600 });
+    const failing = { ingestHook: () => Promise.reject(new Error("boom")) };
+    const total = await drainSpool({ spoolDir, source: failing, maxHooks: 1, pauseMs: 1 });
+    expect(total).toMatchObject({ hooks: 0, failed: true });
+    expect(spoolNames().filter((n) => n.endsWith(".jsonl"))).toHaveLength(1);
+  });
+
   it("bounds one run by bytes too", async () => {
     const big = hook({ prompt: "p".repeat(4000) });
     writeFileSync(
@@ -485,5 +509,20 @@ describe("ClaudeCodeSource receivedAt override", () => {
     await source.ingestHook({ sourceEventId: "u-2", payload: hook() });
     expect(mapper.calls.map((c) => c.receivedAt)).toEqual([SPOOLED_AT, fixedNow().toISOString()]);
     expect(fixedNow().toISOString()).toBe(T0);
+  });
+
+  it("cannot be set over HTTP: the route refuses a receivedAt key", async () => {
+    const { app } = makeApp();
+    const { source, mapper } = makeSource(db());
+    registerClaudeCodeRoutes(app, source);
+    const res = await app.request(
+      `http://127.0.0.1:4807${CLAUDE_CODE_HOOKS_PATH}`,
+      postJson(
+        { sourceEventId: "u-3", payload: hook(), receivedAt: SPOOLED_AT },
+        bearer(CLI_TOKEN),
+      ),
+    );
+    expect(res.status).toBe(400);
+    expect(mapper.calls).toHaveLength(0);
   });
 });

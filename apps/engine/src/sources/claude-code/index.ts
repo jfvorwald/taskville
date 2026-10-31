@@ -26,3 +26,17 @@ export {
   type MapResult,
   noopEvidenceSink,
 } from "./source.ts";
+export {
+  DEFAULT_DRAIN_PAUSE_MS,
+  DEFAULT_LOCK_WAIT_MS,
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_HOOKS,
+  type DrainOptions,
+  drainSpool,
+  MAX_SPOOL_LINE_BYTES,
+  replaySpool,
+  SPOOL_FILE,
+  type SpoolReplayOptions,
+  type SpoolReplayReport,
+  STALE_MS,
+} from "./spool.ts";
