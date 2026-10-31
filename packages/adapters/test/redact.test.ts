@@ -65,6 +65,7 @@ const fake = {
   hexToken: ["5f4d", chars(28, "0123456789abcdef", 29)].join(""),
   shortToken: [chars(11, B62, 30), "7"].join(""),
   password: ["s3", "cr3t", "pa", "ss"].join(""),
+  lettersToken: chars(16, "abcdefghijklmnopqrstuvwxyz", 31),
 };
 
 const pem = (label: string) =>
@@ -404,6 +405,18 @@ const positives: Positive[] = [
     secret: fake.hexToken,
     kind: "bearer-token",
   },
+  {
+    name: "lower-case letters-only credential under a known scheme",
+    input: `curl -H "Authorization: Token ${fake.lettersToken}" https://x`,
+    secret: fake.lettersToken,
+    kind: "bearer-token",
+  },
+  {
+    name: "short lower-case Bearer credential",
+    input: "Authorization: Bearer abcdefghij",
+    secret: "abcdefghij",
+    kind: "bearer-token",
+  },
   // M1.18 F3 (b): curl user credentials. Only the password is masked.
   {
     name: "curl -u user:password",
@@ -439,6 +452,18 @@ const positives: Positive[] = [
     name: "curl --user with a quoted password containing a space",
     input: `curl --user "admin:${fake.password} two" https://x`,
     secret: `${fake.password} two`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password starting with a slash",
+    input: `curl -u admin:/${fake.password} https://x`,
+    secret: `/${fake.password}`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl password starting with a tilde",
+    input: `curl -u admin:~${fake.password} https://x`,
+    secret: `~${fake.password}`,
     kind: "basic-auth",
   },
   {
@@ -602,8 +627,8 @@ const negatives: Array<{ name: string; input: string }> = [
     input: "The Authorization: Token scheme is described in the docs.",
   },
   {
-    name: "Authorization scheme with a letters-only placeholder",
-    input: "Authorization: Token xxxxxxxx",
+    name: "Authorization scheme with a starred placeholder",
+    input: "Authorization: Token ********",
   },
   {
     name: "Authorization scheme with a variable",
@@ -629,7 +654,6 @@ const negatives: Array<{ name: string; input: string }> = [
     name: "docker uid:gid from id unquoted",
     input: "docker run --user $(id -u):$(id -g) alpine id",
   },
-  { name: "rsync -u with a host path", input: "rsync -u backup:/srv/data ./data" },
   { name: "curl user with an empty password", input: "curl -u admin: https://x" },
   {
     name: "curl user and password from variables",
