@@ -261,6 +261,48 @@ describe("without a terminal", () => {
   }
 });
 
+describe("failures after the server listens (roborev 5255)", () => {
+  it("falls back to the restart message when raw mode cannot be set, and keeps serving", async () => {
+    const home = tempDir();
+    try {
+      const tty = new FakeTerminal();
+      tty.setRawMode = () => {
+        throw new Error("EIO: terminal closed");
+      };
+      const serve = await startServe(home.path, { stdin: tty });
+      expect(serve.out()).toMatch(/restart taskville serve/i);
+      expect(tty.listenerCount("data")).toBe(0);
+      expect(tty.flowing).toBe(false);
+      expect((await fetch(`${serve.url}/health`)).status).toBe(401);
+    } finally {
+      home.remove();
+    }
+  });
+
+  it("closes the HTTP server when something fails after it started listening", async () => {
+    const home = tempDir();
+    try {
+      const port = await freePort();
+      let err = "";
+      const code = await run(["serve", "--headless", "--home", home.path, "--port", String(port)], {
+        stdout: (s) => {
+          if (s.includes("#pair=")) throw new Error("stdout closed");
+        },
+        stderr: (s) => {
+          err += s;
+        },
+        env: {},
+        cwd: home.path,
+      });
+      expect(code).toBe(1);
+      expect(err).toContain("Cannot start the engine");
+      await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
+    } finally {
+      home.remove();
+    }
+  });
+});
+
 describe("no route mints a pairing code (#113, #174)", () => {
   it("serve's route table has only the pairing exchange and revoke, and nothing new", async () => {
     const home = tempDir();
