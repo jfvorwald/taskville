@@ -636,6 +636,9 @@ describe("adversarial input", () => {
     ["URL schemes", "a://".repeat(n / 4)],
     ["URL user parts", `http://${"a:".repeat(n / 2)}`],
     ["flags", "--token ".repeat(n / 8)],
+    ["unclosed command substitutions", "PASSWORD=$(".repeat(n / 11)],
+    ["unclosed braced references", ["PASSWORD=$", "{{ ".repeat(n / 3)].join("")],
+    ["mask markers", "PASSWORD=[REDACTED:x]".repeat(n / 21)],
     ["random base62", body(n, 19)],
   ];
 

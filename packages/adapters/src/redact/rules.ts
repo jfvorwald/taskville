@@ -34,16 +34,26 @@ export const PRIORITY: Readonly<Record<MaskKind, number>> = {
   "high-entropy": 6,
 };
 
-const MARKER_PREFIX = "[REDACTED:";
-
 /** The fixed text that replaces a masked value of the given kind. */
 export function maskMarker(kind: MaskKind): string {
-  return `${MARKER_PREFIX}${kind}]`;
+  return `[REDACTED:${kind}]`;
 }
 
-/** True when text at `at` is already a mask marker, so masking stays idempotent. */
-export function startsWithMarker(text: string, at = 0): boolean {
-  return text.startsWith(MARKER_PREFIX, at);
+/** True when `text.slice(start, end)` is exactly one mask marker. */
+export function isWholeMarker(text: string, start: number, end: number): boolean {
+  return end - start <= 64 && /^\[REDACTED:[a-z-]+\]$/.test(text.slice(start, end));
+}
+
+// A mask marker, or a complete reference to a secret held elsewhere: `$NAME`
+// (environment style, upper case), `${...}`, `${{ ... }}`, or `$(...)`. Sticky, so it
+// only matches at the given index; bounded, so it never scans far.
+const REFERENCE =
+  /\[REDACTED:[a-z-]+\]|\$(?:[A-Z_][A-Z0-9_]*(?![A-Za-z0-9_])|\{\{[^{}\r\n]{0,200}\}\}|\{[^{}\r\n]{0,200}\}|\([^()\r\n]{0,200}\))/y;
+
+/** Length of a mask marker or complete reference starting at `at`, or 0. */
+export function referenceLength(text: string, at: number): number {
+  REFERENCE.lastIndex = at;
+  return REFERENCE.exec(text)?.[0].length ?? 0;
 }
 
 const SECRET_WORDS = new Set([
@@ -56,6 +66,7 @@ const SECRET_WORDS = new Set([
   "credentials",
   "apikey",
   "pat",
+  "authorization",
 ]);
 
 // A trailing "key" is sensitive only with one of these qualifiers in front, so
@@ -93,18 +104,15 @@ export function isSensitiveName(name: string): boolean {
   return KEY_QUALIFIERS.has(words.at(-2) ?? "");
 }
 
-// A complete reference to a secret held elsewhere: `$NAME` (environment style,
-// upper case), `${...}`, or `$(...)`. Anything else that starts with `$`, such as
-// `$ecret123`, is treated as a literal value.
-const REFERENCE = /^\$(?:[A-Z_][A-Z0-9_]*$|\{|\()/;
-
-/** Values that name a secret elsewhere rather than being one: empty, `$VAR`, `***`, a marker. */
+/**
+ * Values that name a secret elsewhere rather than being one: empty, all `*`, or
+ * exactly one mask marker or reference (`$NAME`, `${...}`, `$(...)`) with nothing
+ * after it. `$ecret123`, `${hunter2`, and `[REDACTED:x]hunter2` are literal values.
+ */
 export function isPlaceholder(text: string, start: number, end: number): boolean {
   if (end <= start) return true;
-  if (startsWithMarker(text, start)) return true;
-  if (text.charCodeAt(start) === 0x24 /* $ */ && end - start <= 256) {
-    return REFERENCE.test(text.slice(start, end));
-  }
+  const ref = referenceLength(text, start);
+  if (ref > 0) return start + ref === end;
   for (let i = start; i < end; i++) {
     if (text.charCodeAt(i) !== 0x2a /* * */) return false;
   }
@@ -148,9 +156,10 @@ export function isHighEntropyToken(value: string): boolean {
   return shannonEntropy(value) >= Math.min(0.85 * Math.log2(value.length), 4.5);
 }
 
-/** A run with slashes where some segment is a plain lowercase word, like `assets/index-x1`. */
+/** A run with slashes that starts with a plain lowercase directory name, like `assets/index-x1`. */
 function isPathLike(value: string): boolean {
-  return value.includes("/") && value.split("/").some((segment) => /^[a-z]{3,}$/.test(segment));
+  const first = value.split("/").find((segment) => segment.length > 0) ?? "";
+  return value.includes("/") && /^[a-z][a-z_-]{2,}$/.test(first);
 }
 
 function wordCoverage(value: string): number {

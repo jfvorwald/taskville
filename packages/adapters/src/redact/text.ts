@@ -2,11 +2,12 @@ import {
   isHighEntropyToken,
   isPlaceholder,
   isSensitiveName,
+  isWholeMarker,
   looksLikeCredential,
   type MaskKind,
   maskMarker,
   PRIORITY,
-  startsWithMarker,
+  referenceLength,
 } from "./rules.ts";
 
 /**
@@ -62,12 +63,12 @@ const TOKEN_PATTERNS: ReadonlyArray<{ kind: MaskKind; pattern: RegExp; group?: n
   },
   {
     kind: "bearer-token",
-    pattern: /(?<![A-Za-z0-9])(?:[Bb]earer|BEARER)[ \t]+([A-Za-z0-9._~+/-]{16,}=*)/dg,
+    pattern: /(?<![A-Za-z0-9])bearer[ \t]+([A-Za-z0-9._~+/-]{16,}=*)/dgi,
     group: 1,
   },
   {
     kind: "basic-auth",
-    pattern: /(?<![A-Za-z0-9])[Aa]uthorization:[ \t]*[Bb]asic[ \t]+([A-Za-z0-9+/]{8,}={0,2})/dg,
+    pattern: /(?<![A-Za-z0-9])authorization:[ \t]*basic[ \t]+([A-Za-z0-9+/]{8,}={0,2})/dgi,
     group: 1,
   },
 ];
@@ -118,7 +119,7 @@ function findTokens(input: string, out: Candidate[]): void {
   for (const { kind, pattern, group } of TOKEN_PATTERNS) {
     for (const match of input.matchAll(pattern)) {
       const [start, end] = match.indices?.[group ?? 0] ?? [match.index, match.index];
-      if (end <= start || startsWithMarker(input, start)) continue;
+      if (end <= start || isWholeMarker(input, start, end)) continue;
       out.push({ start, end, kind });
     }
   }
@@ -132,7 +133,10 @@ function findStandaloneTokens(input: string, out: Candidate[]): void {
   }
 }
 
-const UNQUOTED_STOP = new Set([..." \t\r\n\f\v\"'`;&|,)}]<>"]);
+// Where an unquoted value ends: whitespace, a quote, or a shell command separator.
+// Brackets and commas do not end it, so `PASSWORD=abc]def` masks the whole word;
+// the looser assignment forms trim trailing syntax instead (see classify).
+const UNQUOTED_STOP = new Set([..." \t\r\n\f\v\"'`;&|"]);
 
 /** For each index, where an unquoted value starting there ends. One pass, O(n). */
 function unquotedValueEnds(input: string): Int32Array {
@@ -163,7 +167,12 @@ function readValue(input: string, at: number, valueEnds: Int32Array): Value {
     }
     return { start: at + 1, end: Math.min(i, input.length), quoted: true };
   }
-  return { start: at, end: valueEnds[at] ?? at, quoted: false };
+  let end = valueEnds[at] ?? at;
+  // A reference such as `$(cat ~/.pw)` or `${{ secrets.X }}` may contain spaces;
+  // the value runs through it and on to the end of the word that follows.
+  const ref = referenceLength(input, at);
+  if (ref > 0 && at + ref > end) end = valueEnds[at + ref] ?? at + ref;
+  return { start: at, end, quoted: false };
 }
 
 function findAssignments(input: string, valueEnds: Int32Array, out: Candidate[]): void {
@@ -203,13 +212,17 @@ function classify(
   strict: boolean,
   out: Candidate[],
 ): void {
-  const { start, end } = value;
+  const { start } = value;
+  let { end } = value;
   if (isPlaceholder(input, start, end)) return;
   const sensitive = isSensitiveName(name);
   if (sensitive && strict) {
     out.push({ start, end, kind: "sensitive-value" });
     return;
   }
+  // Loose forms are often code (`{ password: hunter2 }`), so trailing brackets and
+  // commas are syntax, not part of the value.
+  while (end > start && ",)}]>".includes(input.charAt(end - 1))) end--;
   // Both looser checks reject anything longer, so skip the copy.
   if (end - start > 256) return;
   const text = input.slice(start, end);

@@ -53,7 +53,8 @@ export function redactJson(value: JsonValue, options: RedactJsonOptions = {}): R
       if (spans.length > 0) masks.push({ path: [...path], spans });
       return text;
     }
-    if (Array.isArray(node)) return node.map((item, i) => walk(item, [...path, i], null));
+    // Array items inherit the property name, so `{ password: ["x"] }` masks "x".
+    if (Array.isArray(node)) return node.map((item, i) => walk(item, [...path, i], key));
     if (node !== null && typeof node === "object") {
       const out: { [key: string]: JsonValue } = {};
       for (const [k, v] of Object.entries(node)) {
