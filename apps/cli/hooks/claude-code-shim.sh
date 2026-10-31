@@ -22,25 +22,25 @@
 #                   config.json: an installer for a non-default port must set
 #                   TASKVILLE_URL in the hook command.
 #
-# REQUEST (consumed by the hooks endpoint, M2.02 / #21)
+# REQUEST (the hooks endpoint, M2.02 / #21: apps/engine/src/sources/claude-code/route.ts)
 #   POST <TASKVILLE_URL>/v1/sources/claude-code/hooks
 #   Authorization: Bearer <contents of $TASKVILLE_HOME/token>
 #   Content-Type: application/json
 #   No Origin header (a bearer POST needs none, contracts/http-api.md check 3).
 #   Body, one JSON object, keys in this order:
 #     {"payload":<hook JSON>,"sourceEventId":"<uuid>"}
-#   For an oversized payload (see LIMITS):
-#     {"payload":null,"payloadBytesAtLeast":<n>,"sourceEventId":"<uuid>"}
+#   An oversized payload (see LIMITS) is never posted: the endpoint takes only
+#   an object payload, so it goes straight to the spool as a marker line.
 #   <hook JSON> is the stdin bytes verbatim except that CR and LF are removed
 #   (in valid JSON they can only be whitespace between tokens, so the value is
 #   unchanged). The shim does not parse or redact it; the engine validates and
 #   masks at ingest. The shim's own keys come after "payload" on purpose:
 #   JSON.parse keeps the last duplicate key, so text in a malformed payload can
-#   never override sourceEventId. The engine should reject a body whose payload
-#   is neither an object nor null. Any 2xx is success; anything else (connect
+#   never override sourceEventId. The endpoint refuses any other key and a
+#   payload that is not an object (400). Any 2xx is success; anything else (connect
 #   error, the 1 s timeout, a redirect, 4xx, 5xx) spools the event.
 #
-# SPOOL (consumed by spool ingest, M2.09 / #28). Sensitive: holds unredacted
+# SPOOL (consumed by spool ingest, M2.07 / #28). Sensitive: holds unredacted
 # hook payloads (prompts, tool inputs and outputs).
 #   Directory  $TASKVILLE_HOME/spool (mode 0700). Files are created 0600.
 #   Main file  claude-code.jsonl, appended under the lock below. An existing
@@ -78,13 +78,15 @@
 #              per-event files until it is removed by hand. Nothing is lost.
 #
 # LIMITS
-#   At most 1 MiB (1,048,576 bytes) of hook JSON is kept. A larger payload is
-#   replaced by the null marker above, posted and spooled alike, so one huge
-#   tool output can neither grow the spool by more than a short line nor push
-#   a spool replay batch past the engine's 5 MB batch limit
-#   (MAX_BATCH_BYTES, contracts/http-api.md). The engine stores evidence bodies
-#   cut to 64 KB anyway (ARCHITECTURE.md 7.4). payloadBytesAtLeast is a lower
-#   bound (the shim reads only cap + 1 bytes; the rest is drained unread).
+#   At most 5 MiB minus 1 KiB (5,241,856 bytes) of hook JSON is kept: the
+#   endpoint's body limit is 5 MiB (MAX_HOOK_BODY_BYTES = MAX_BATCH_BYTES,
+#   contracts/http-api.md) and the wrapper adds well under 1 KiB, so every
+#   posted body and every spool line fits it. A larger payload is not posted
+#   (the endpoint would answer 413) and is spooled as the null marker above,
+#   so one huge tool output grows the spool by a short line only. The engine
+#   cuts evidence bodies to 64 KB anyway (ARCHITECTURE.md 7.4).
+#   payloadBytesAtLeast is a lower bound: the shim reads only cap + 1 bytes
+#   and drains the rest unread.
 #   Waits: curl --max-time 1; the lock about 1 s (20 tries of 50 ms).
 #
 # PORTABILITY
@@ -105,7 +107,7 @@
 umask 077
 exec 1>/dev/null 2>&1 3<&0 || exit 0
 
-CAP=1048576
+CAP=5241856
 LOCK_TRIES=20
 LOCK_NAP=0.05
 
@@ -226,6 +228,8 @@ valid_uuid "$uuid" || exit 0
 # --- POST to the engine -------------------------------------------------------
 
 post() {
+  # The oversized marker has no object payload; the endpoint would refuse it.
+  [ -z "$extra" ] || return 1
   command -v curl >/dev/null || return 1
 
   url=$(strip_slashes "${TASKVILLE_URL:-http://127.0.0.1:4807}")

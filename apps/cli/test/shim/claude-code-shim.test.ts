@@ -34,7 +34,8 @@ import {
   UUID,
 } from "./harness.ts";
 
-const CAP = 1024 * 1024;
+/** The shim's payload cap: the endpoint's 5 MiB body limit less 1 KiB for the wrapper. */
+const CAP = 5 * 1024 * 1024 - 1024;
 const exec = promisify(execFile);
 
 describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
@@ -283,20 +284,22 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(spoolFiles(home).size).toBe(0);
   });
 
-  it("replaces an oversized payload with a marker, posted and spooled alike", async () => {
+  it("spools an oversized payload as a marker without posting it", async () => {
     const big = JSON.stringify({ ...hookPayload(12), tool_response: { stdout: "y".repeat(CAP) } });
-    await runShim({ shell, input: big, env: shimEnv(home, server.url) });
-    const body = JSON.parse(server.received[0]?.body ?? "") as Record<string, unknown>;
-    expect(Object.keys(body)).toEqual(["payload", "payloadBytesAtLeast", "sourceEventId"]);
-    expect(body.payload).toBeNull();
-    expect(body.payloadBytesAtLeast).toBeGreaterThan(CAP);
-    expect(body.payloadBytesAtLeast).toBeLessThanOrEqual(big.length);
-
-    const run = await runShim({ shell, input: big, env: shimEnv(home, await deadUrl()) });
-    expect(run.code).toBe(0);
+    const run = await runShim({ shell, input: big, env: shimEnv(home, server.url) });
+    expect(run).toMatchObject({ code: 0, stdout: "" });
+    // The endpoint takes only an object payload, so the marker is never posted.
+    expect(server.received).toHaveLength(0);
     const [line] = spoolLines(home);
+    expect(Object.keys(line ?? {})).toEqual([
+      "payload",
+      "payloadBytesAtLeast",
+      "sourceEventId",
+      "spooledAt",
+    ]);
     expect(line?.payload).toBeNull();
-    expect(line?.payloadBytesAtLeast).toBeGreaterThan(CAP);
+    expect(line?.payloadBytesAtLeast).toBe(CAP + 1);
+    expect(line?.sourceEventId).toMatch(UUID);
     expect(statSync(home.spoolFile).size).toBeLessThan(1024);
   });
 
@@ -319,15 +322,20 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
       clearInterval(feeder);
       child.stdin.end();
     }
-    const body = JSON.parse(server.received[0]?.body ?? "") as Record<string, unknown>;
-    expect(body.payload).toBeNull();
-    expect(body.payloadBytesAtLeast).toBe(CAP + 1);
+    const [line] = spoolLines(home);
+    expect(line?.payload).toBeNull();
+    expect(line?.payloadBytesAtLeast).toBe(CAP + 1);
   });
 
-  it("keeps a payload of exactly the cap", async () => {
+  it("keeps a payload of exactly the cap, and its body fits the endpoint's 5 MiB limit", async () => {
     const base = JSON.stringify({ ...hookPayload(13), tool_response: { stdout: "" } });
     const exact = base.replace('"stdout":""', `"stdout":"${"z".repeat(CAP - base.length)}"`);
     expect(Buffer.byteLength(exact)).toBe(CAP);
+    await runShim({ shell, input: exact, env: shimEnv(home, server.url) });
+    const posted = server.received[0]?.body ?? "";
+    expect(Buffer.byteLength(posted)).toBeLessThanOrEqual(5 * 1024 * 1024);
+    expect(JSON.stringify((JSON.parse(posted) as { payload: unknown }).payload)).toBe(exact);
+
     await runShim({ shell, input: exact, env: shimEnv(home, await deadUrl()) });
     const [line] = spoolLines(home);
     expect(JSON.stringify(line?.payload)).toBe(exact);
