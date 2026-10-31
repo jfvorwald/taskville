@@ -1,0 +1,77 @@
+#0 SessionStart
+  agent.registered claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"sourceAgentId":"1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5","displayName":"proj","role":"main","kind":"session"}
+  session.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"workingDirectory":"/tmp/spike-s2/proj"}
+#1 UserPromptSubmit
+  session.prompt_submitted claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+#2 PreToolUse:Agent
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_014UPG2xkvhxUGhFx93KjKnV","toolName":"Agent","summary":"Edit notes.txt and count lines"}
+  activity.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"activity":"dispatching"}
+  evidence toolu_014UPG2xkvhxUGhFx93KjKnV input
+#3 SubagentStart  (ignored: SubagentStart belongs to the crew mapper (M2.04))
+#4 PostToolUse:Agent
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_014UPG2xkvhxUGhFx93KjKnV","phase":"succeeded","durationMs":15}
+  evidence toolu_014UPG2xkvhxUGhFx93KjKnV output
+#5 PreToolUse:Agent
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_018m7i1VTyTy9W4D5r1nHfYN","toolName":"Agent","summary":"Create hello.txt and cat it"}
+  activity.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"activity":"dispatching"}
+  evidence toolu_018m7i1VTyTy9W4D5r1nHfYN input
+#6 SubagentStart  (ignored: SubagentStart belongs to the crew mapper (M2.04))
+#7 PostToolUse:Agent
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_018m7i1VTyTy9W4D5r1nHfYN","phase":"succeeded","durationMs":5}
+  evidence toolu_018m7i1VTyTy9W4D5r1nHfYN output
+#8 PreToolUse:Read
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_013yYY4xd5K3RFMzMz8e5i7C","toolName":"Read","filePaths":["/tmp/spike-s2/proj/notes.txt"],"summary":"/tmp/spike-s2/proj/notes.txt"}
+  activity.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"activity":"researching"}
+  evidence toolu_013yYY4xd5K3RFMzMz8e5i7C input
+#9 PostToolUse:Read
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_013yYY4xd5K3RFMzMz8e5i7C","phase":"succeeded","durationMs":5}
+  evidence toolu_013yYY4xd5K3RFMzMz8e5i7C output
+#10 PreToolUse:Write
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_012456Qp8BNCL1oE2LoMK9x5","toolName":"Write","filePaths":["/tmp/spike-s2/proj/hello.txt"],"summary":"/tmp/spike-s2/proj/hello.txt"}
+  activity.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"activity":"implementing"}
+  evidence toolu_012456Qp8BNCL1oE2LoMK9x5 input
+#11 PostToolUse:Write
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_012456Qp8BNCL1oE2LoMK9x5","phase":"succeeded","durationMs":15}
+  evidence toolu_012456Qp8BNCL1oE2LoMK9x5 output
+#12 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#13 Stop
+  session.turn_ended claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+  activity.ended claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+#14 PreToolUse:Bash
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01GeBmtUupJG5rrfSPKQUyXo","toolName":"Bash","summary":"Print contents of hello.txt"}
+  evidence toolu_01GeBmtUupJG5rrfSPKQUyXo input
+#15 PostToolUse:Bash
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01GeBmtUupJG5rrfSPKQUyXo","phase":"succeeded","durationMs":268}
+  evidence toolu_01GeBmtUupJG5rrfSPKQUyXo output
+#16 PreToolUse:Edit
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01BFbfwiNzH1amZ3p2p6TGUm","toolName":"Edit","filePaths":["/tmp/spike-s2/proj/notes.txt"],"summary":"/tmp/spike-s2/proj/notes.txt"}
+  activity.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"activity":"implementing"}
+  evidence toolu_01BFbfwiNzH1amZ3p2p6TGUm input
+#17 PostToolUse:Edit
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01BFbfwiNzH1amZ3p2p6TGUm","phase":"succeeded","durationMs":5}
+  evidence toolu_01BFbfwiNzH1amZ3p2p6TGUm output
+#18 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#19 UserPromptSubmit
+  session.prompt_submitted claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+#20 PreToolUse:Bash
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01VQt15Q1ofuUjxj8YqTpPsK","toolName":"Bash","summary":"Count lines in notes.txt"}
+  evidence toolu_01VQt15Q1ofuUjxj8YqTpPsK input
+#21 PostToolUse:Bash
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01VQt15Q1ofuUjxj8YqTpPsK","phase":"succeeded","durationMs":33}
+  evidence toolu_01VQt15Q1ofuUjxj8YqTpPsK output
+#22 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#23 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#24 Stop
+  session.turn_ended claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+  activity.ended claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+#25 UserPromptSubmit
+  session.prompt_submitted claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {}
+#26 PreToolUse:Bash
+  tool_call.started claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01PE3uiFG5Rfwytm3PJY1Edg","toolName":"Bash","summary":"Attempt to read missing.txt (expected to fail)"}
+  evidence toolu_01PE3uiFG5Rfwytm3PJY1Edg input
+#27 PostToolUseFailure:Bash
+  tool_call.finished claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"toolCallId":"toolu_01PE3uiFG5Rfwytm3PJY1Edg","phase":"failed","durationMs":26,"summary":"Exit code 1"}
+  evidence toolu_01PE3uiFG5Rfwytm3PJY1Edg output
+#28 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#29 SessionEnd
+  session.ended claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5 {"outcome":"other"}

@@ -1,0 +1,41 @@
+#0 SessionStart
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {"sourceAgentId":"6effc000-24c8-436e-ae5e-33152b820f83","displayName":"proj","role":"main","kind":"session"}
+  session.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {"workingDirectory":"/tmp/spike-s2/proj"}
+#1 UserPromptSubmit
+  session.prompt_submitted claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {}
+#2 PreToolUse:Agent
+  tool_call.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_015kbKs4zZ8x3ZRDHweh6vfi","toolName":"Agent","summary":"Run nested agent echo test"}
+  activity.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {"activity":"dispatching"}
+  evidence toolu_015kbKs4zZ8x3ZRDHweh6vfi input
+#3 SubagentStart  (ignored: SubagentStart belongs to the crew mapper (M2.04))
+#4 PostToolUse:Agent
+  tool_call.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_015kbKs4zZ8x3ZRDHweh6vfi","phase":"succeeded","durationMs":17}
+  evidence toolu_015kbKs4zZ8x3ZRDHweh6vfi output
+#5 PreToolUse:Agent
+  tool_call.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_01Mr6gWT5vEb7niHeYSi1zBP","toolName":"Agent","summary":"Run nested echo check"}
+  activity.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 6effc000-24c8-436e-ae5e-33152b820f83 {"activity":"dispatching"}
+  evidence toolu_01Mr6gWT5vEb7niHeYSi1zBP input
+#6 SubagentStart  (ignored: SubagentStart belongs to the crew mapper (M2.04))
+#7 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#8 Stop
+  session.turn_ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {}
+  activity.ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {}
+#9 PreToolUse:Bash
+  tool_call.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_015WFqWypLHXWoXKeUEQmnfh","toolName":"Bash","summary":"Echo nested-ok test string"}
+  evidence toolu_015WFqWypLHXWoXKeUEQmnfh input
+#10 PostToolUse:Bash
+  tool_call.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6 6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_015WFqWypLHXWoXKeUEQmnfh","phase":"succeeded","durationMs":202}
+  evidence toolu_015WFqWypLHXWoXKeUEQmnfh output
+#11 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#12 PostToolUse:Agent
+  tool_call.finished claude-code:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9 6effc000-24c8-436e-ae5e-33152b820f83 {"toolCallId":"toolu_01Mr6gWT5vEb7niHeYSi1zBP","phase":"succeeded","durationMs":2894}
+  evidence toolu_01Mr6gWT5vEb7niHeYSi1zBP output
+#13 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#14 UserPromptSubmit
+  session.prompt_submitted claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {}
+#15 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#16 Stop
+  session.turn_ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {}
+  activity.ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {}
+#17 SessionEnd
+  session.ended claude-code:6effc000-24c8-436e-ae5e-33152b820f83 6effc000-24c8-436e-ae5e-33152b820f83 {"outcome":"other"}
