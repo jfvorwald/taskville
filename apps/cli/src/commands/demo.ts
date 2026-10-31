@@ -42,12 +42,21 @@ function paceOf(values: Values, usage: string): Pace {
   }
 }
 
+/** A simulated duration above zero that a run can actually reach (a huge number parses to Infinity). */
 function durationOf(text: string, usage: string): number {
+  let ms: number;
   try {
-    return parseDuration(text);
+    ms = parseDuration(text);
   } catch (error) {
     throw new CliError(EXIT.failure, `--duration: ${(error as Error).message}\nUsage: ${usage}`);
   }
+  if (!Number.isSafeInteger(ms) || ms <= 0) {
+    throw new CliError(
+      EXIT.failure,
+      `--duration must be above zero and finite, for example 10m or 2h\nUsage: ${usage}`,
+    );
+  }
+  return ms;
 }
 
 /** Runs the scenario through the reducer in process, without an engine, and prints its stateHash. */

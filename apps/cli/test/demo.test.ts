@@ -51,6 +51,12 @@ describe("demo run --offline (US3-1, quickstart section 4)", () => {
     [["demo", "run", "--offline", "--seed", "x", "--duration", "1m"], /seed/],
     [["demo", "run", "--offline", "--seed", "1", "--duration", "10"], /duration/i],
     [["demo", "run", "--offline", "--seed", "1", "--duration", "1m", "--pace", "brisk"], /pace/i],
+    [["demo", "run", "--offline", "--seed", "1", "--duration", `${"9".repeat(400)}h`], /duration/i],
+    [["demo", "run", "--offline", "--seed", "1", "--duration", "0s"], /duration/i],
+    [
+      ["demo", "start", "--project", "demo", "--seed", "1", "--duration", `${"9".repeat(400)}s`],
+      /duration/i,
+    ],
     [["demo", "start", "--seed", "1"], /--project/],
     [["demo", "start", "--project", "demo", "--seed", "1", "--speed", "0"], /speed/],
     [["demo", "dance"], /demo/],
