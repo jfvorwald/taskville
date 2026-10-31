@@ -15,6 +15,18 @@ export interface Io {
   now?: (() => Date) | undefined;
   /** Asks a yes/no question on the terminal; absent when stdin is not a TTY (`install`). */
   confirm?: ((question: string) => Promise<boolean>) | undefined;
+  /** The terminal's input, for `serve`'s keypress (M2.12). Used only when it is a TTY. */
+  stdin?: KeyInput | undefined;
+}
+
+/** The part of `process.stdin` that `serve` uses. */
+export interface KeyInput {
+  isTTY?: boolean;
+  setRawMode?(raw: boolean): unknown;
+  on(event: "data", listener: (chunk: Buffer | string) => void): unknown;
+  off(event: "data", listener: (chunk: Buffer | string) => void): unknown;
+  resume(): unknown;
+  pause(): unknown;
 }
 
 type Options = NonNullable<ParseArgsConfig["options"]>;

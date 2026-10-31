@@ -76,6 +76,7 @@ if (import.meta.main) {
     cwd: process.cwd(),
     signal: controller.signal,
     confirm: process.stdin.isTTY ? askOnTerminal : undefined,
+    stdin: process.stdin,
   }).then((code) => {
     process.exitCode = code;
   });
