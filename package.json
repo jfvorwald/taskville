@@ -12,6 +12,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",
+    "perf": "node tests/perf/run.ts",
+    "perf:unit": "node --test tests/perf/",
     "retro": "node scripts/retro/src/main.ts",
     "taskville": "node apps/cli/src/main.ts"
   },
