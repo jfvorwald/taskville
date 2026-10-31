@@ -8,6 +8,7 @@ import {
 } from "@taskville/protocol";
 import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import type { PairingStore } from "../auth/pairing.ts";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
 import { domainReducer } from "../ingest/index.ts";
@@ -15,13 +16,22 @@ import type { Storage } from "../storage/index.ts";
 import type { StreamHub } from "./hub.ts";
 import { StreamSubscriber } from "./subscriber.ts";
 
+/** Most SSE streams served at once; more get 503 (security review F5). */
+export const MAX_SSE_STREAMS = 64;
+/** How long a cut-off stream may wait for its client to take the resnapshot frame. */
+export const CUTOFF_DRAIN_TIMEOUT_MS = 5000;
+
 export interface StreamRouteOptions {
   storage: Storage;
   hub: StreamHub;
+  /** Revoking pairings ends every stream authenticated by a browser session (security review F1). */
+  pairing: PairingStore;
   /** Engine clock for snapshot `computedAt` and attention. */
   now?: () => Date;
   heartbeatMs?: number;
   queueLimit?: number;
+  maxStreams?: number;
+  drainTimeoutMs?: number;
 }
 
 const CURSOR = /^(0|[1-9][0-9]{0,15})$/;
@@ -48,6 +58,8 @@ export function registerStreamRoutes(app: Hono<AppEnv>, options: StreamRouteOpti
   const now = options.now ?? (() => new Date());
   const heartbeatMs = options.heartbeatMs ?? SSE_HEARTBEAT_INTERVAL_MS;
   const queueLimit = options.queueLimit ?? SSE_SUBSCRIBER_QUEUE_LIMIT;
+  const maxStreams = options.maxStreams ?? MAX_SSE_STREAMS;
+  const drainTimeoutMs = options.drainTimeoutMs ?? CUTOFF_DRAIN_TIMEOUT_MS;
 
   app.get("/v1/projects", requireScope("read"), (c) => {
     const body: ProjectsResponse = {
@@ -108,12 +120,21 @@ export function registerStreamRoutes(app: Hono<AppEnv>, options: StreamRouteOpti
       return apiError(c, 400, "bad_request", "Cursor must be a non-negative integer");
     }
     if (storage.head(projectId) === undefined) return unknownProject(c);
+    // Checked and tracked in the same tick (streamSSE runs the callback up to its
+    // first await synchronously), so concurrent requests cannot overshoot the cap.
+    if (hub.openStreams() >= maxStreams) {
+      return apiError(c, 503, "too_many_streams", "Too many open event streams");
+    }
+    const bySession = c.get("credential") === "session";
 
     return streamSSE(c, async (stream) => {
       // Tracked until the transport finishes, so shutdown can abort any stream,
       // including one cut off whose client never read its last frame.
       const untrack = hub.track(() => stream.abort());
       stream.onAbort(untrack);
+      // A session's grant ends with `taskville unpair`, so its open stream does too.
+      const unwatch = bySession ? options.pairing.onRevoke(() => stream.abort()) : () => {};
+      stream.onAbort(unwatch);
       try {
         const head = storage.head(projectId) ?? 0;
         if (after > head) {
@@ -129,6 +150,7 @@ export function registerStreamRoutes(app: Hono<AppEnv>, options: StreamRouteOpti
           after,
           queueLimit,
           heartbeatMs,
+          drainTimeoutMs,
         });
         subscriber.onClose(hub.subscribe(projectId, subscriber));
         stream.onAbort(() => subscriber.abort());
@@ -139,6 +161,7 @@ export function registerStreamRoutes(app: Hono<AppEnv>, options: StreamRouteOpti
           subscriber.abort();
         }
       } finally {
+        unwatch();
         untrack();
       }
     });

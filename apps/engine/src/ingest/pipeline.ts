@@ -23,6 +23,7 @@ import {
   type StorageTransaction,
 } from "../storage/index.ts";
 import { normalizePayload } from "./normalize.ts";
+import { textProblem } from "./text-check.ts";
 
 /** The domain reducer in the shape storage's rebuild and this pipeline take. */
 export const domainReducer: ProjectionReducer<ProjectState> = {
@@ -142,20 +143,12 @@ export class IngestPipeline {
     const parsed = parseInputEvent(raw);
     if (!parsed.ok) return { result: rejectedResult(raw, parsed.error) };
     const event = parsed.event;
-    // Canonical JSON (and so the content hash) refuses lone surrogates; reject
-    // the one event here rather than abort the whole batch at hashing.
-    const badText = illFormedPath(event);
-    if (badText !== undefined) {
-      return {
-        result: rejectedResult(raw, {
-          code: badText.startsWith("payload.") ? "invalid_payload" : "invalid_envelope",
-          path: badText,
-          message: "Text must be well-formed Unicode (no lone surrogates)",
-        }),
-      };
-    }
+    // Producer policy first: it rejects engine-only types such as command.requested,
+    // whose free-form payload is the only place unbounded nesting can reach.
     const violation = producerPolicyViolation(event);
     if (violation) return { result: rejectedResult(raw, violation) };
+    const badText = textProblem(event);
+    if (badText) return { result: rejectedResult(raw, badText) };
     if (tx.head(event.projectId) === undefined) {
       return {
         result: rejectedResult(raw, {
@@ -253,27 +246,6 @@ function storedShapeError(
     ...(path ? { path } : {}),
     message: `${issue?.message ?? "Invalid event"} (after removing control characters and masking secrets)`,
   };
-}
-
-/** Dotted path of the first string (or key) that is not well-formed UTF-16, if any. */
-function illFormedPath(value: unknown, path = ""): string | undefined {
-  if (typeof value === "string") return value.isWellFormed() ? undefined : path;
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      const found = illFormedPath(value[i], path === "" ? `${i}` : `${path}.${i}`);
-      if (found !== undefined) return found;
-    }
-    return undefined;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, item] of Object.entries(value)) {
-      const here = path === "" ? key : `${path}.${key}`;
-      if (!key.isWellFormed()) return here;
-      const found = illFormedPath(item, here);
-      if (found !== undefined) return found;
-    }
-  }
-  return undefined;
 }
 
 /** Sets an own property, so a project ID such as "__proto__" is kept rather than changing the prototype. */

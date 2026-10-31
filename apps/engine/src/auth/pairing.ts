@@ -46,6 +46,7 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
  */
 export class PairingStore {
   readonly #records: PairingRecords;
+  readonly #revokeListeners = new Set<() => void>();
   #pendingCode: string | null = null;
 
   constructor(options: PairingOptions = {}) {
@@ -82,6 +83,25 @@ export class PairingStore {
   /** Revokes every paired session and any outstanding code. Returns the number of sessions revoked. */
   unpairAll(): number {
     this.#pendingCode = null;
-    return this.#records.clear();
+    const revoked = this.#records.clear();
+    for (const listener of [...this.#revokeListeners]) {
+      try {
+        listener();
+      } catch {
+        // One failing listener must not stop the others or the revoke.
+      }
+    }
+    return revoked;
+  }
+
+  /**
+   * Calls `listener` after every `unpairAll`, so connections authenticated by a
+   * session (open SSE streams) can end at once. Returns an unsubscribe function.
+   */
+  onRevoke(listener: () => void): () => void {
+    this.#revokeListeners.add(listener);
+    return () => {
+      this.#revokeListeners.delete(listener);
+    };
   }
 }
