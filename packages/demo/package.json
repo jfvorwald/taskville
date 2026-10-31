@@ -3,7 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "test": "vitest run --root ../.. --project @taskville/demo"
+  },
+  "dependencies": {
+    "@taskville/domain": "workspace:*",
+    "@taskville/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@taskville/adapters": "workspace:*"
   }
 }
