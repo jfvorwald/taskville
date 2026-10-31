@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-44: A read-only review agent cannot post its review or reproduce findings
+- **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** lead (M1.RT)
+- **What happened:** The security reviewer for #17 ran as a read-only agent type whose shell allowed only read-only git, so it could not run `gh issue comment`, the engine tests, or loopback probes. Its findings were code traces, its reply was truncated twice, and the lead posted the review. Each fix PR then reproduced its finding with a failing test first.
+- **Lesson:** Decide before a review ticket starts who posts the result and who reproduces findings; a read-only reviewer needs a teammate that can run probes.
+- **Action:** Proposed for M2 and M3 in docs/retros/M1.md (change 6).
+
 ### L-43: A memory criterion on RSS measures allocator noise at this scale
 - **Date:** 2026-10-31 · **Milestone:** M1 · **Ticket:** #103 · **Recorded by:** storage teammate (M1.21)
 - **What happened:** SC-006 (RSS growth under 10% from hour 1 to hour 8) missed twice: 14.1% then 26.6% on the same seeded input, while heap retained after GC stayed flat (16.6 to 16.7 MiB). The soak also showed projection state growing linearly (148 KiB calm, 474 KiB lively after 8 hours) because closed requests, terminal tasks and finished subagents are never pruned.
