@@ -9,15 +9,15 @@ import {
 // stored schema, so a test can never feed the reducer something the engine would not store.
 
 export interface EnvelopeFields {
-  agentId?: string;
-  sessionId?: string;
-  taskId?: string;
-  sourceId?: string;
-  occurredAt?: string;
-  late?: boolean;
-  evidenceIds?: string[];
-  provenance?: "live" | "imported" | "demo";
-  projectId?: string;
+  agentId?: string | undefined;
+  sessionId?: string | undefined;
+  taskId?: string | undefined;
+  sourceId?: string | undefined;
+  occurredAt?: string | undefined;
+  late?: boolean | undefined;
+  evidenceIds?: string[] | undefined;
+  provenance?: "live" | "imported" | "demo" | undefined;
+  projectId?: string | undefined;
 }
 
 export type Emit = <T extends EventType>(
