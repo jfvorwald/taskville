@@ -316,6 +316,18 @@ describe("replaySpool", () => {
       }),
       JSON.stringify({ payload: [], sourceEventId: uuid(), spooledAt: SPOOLED_AT }),
       JSON.stringify({ payload: hook(), sourceEventId: "x".repeat(171), spooledAt: SPOOLED_AT }),
+      // Only the shim's lowercase UUID v4 (roborev 5161): a secret-shaped ID is never replayed.
+      JSON.stringify({
+        payload: hook(),
+        sourceEventId: "ghp_SECRET0123456789abcdefghijklmnopqrstu",
+        spooledAt: SPOOLED_AT,
+      }),
+      JSON.stringify({
+        payload: hook(),
+        sourceEventId: uuid().toUpperCase(),
+        spooledAt: SPOOLED_AT,
+      }),
+      JSON.stringify({ payload: hook(), sourceEventId: "u-1", spooledAt: SPOOLED_AT }),
       JSON.stringify({ payload: hook(), sourceEventId: uuid(), spooledAt: "yesterday" }),
       JSON.stringify({ payload: hook(), sourceEventId: uuid() }),
       '{"payload":{},"sourceEventId":"u","spooledAt":"2026-10-31T09:15:00Z","__proto__":{"late":false}}',
@@ -330,7 +342,7 @@ describe("replaySpool", () => {
     expect(report.hooks).toBe(1);
     expect(mapper.calls.map((c) => c.sourceEventId)).toEqual([good]);
     expect(log.text()).not.toMatch(/SECRET|do the thing/);
-    expect(log.text()).toContain('"invalidLines":9');
+    expect(log.text()).toContain('"invalidLines":12');
     expect(spoolNames()).toEqual([]);
   });
 
@@ -566,7 +578,7 @@ describe("ClaudeCodeSource receivedAt override", () => {
     const res = await app.request(
       `http://127.0.0.1:4807${CLAUDE_CODE_HOOKS_PATH}`,
       postJson(
-        { sourceEventId: "u-3", payload: hook(), receivedAt: SPOOLED_AT },
+        { sourceEventId: uuid(), payload: hook(), receivedAt: SPOOLED_AT },
         bearer(CLI_TOKEN),
       ),
     );

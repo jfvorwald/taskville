@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,4 +93,14 @@ export function makeSource(
   const pipeline = new IngestPipeline({ storage, now: fixedNow });
   const source = new ClaudeCodeSource({ pipeline, storage, mapper, now: fixedNow, ...extra });
   return { source, mapper };
+}
+
+/**
+ * A stable lowercase UUID v4 for a test label, the only `sourceEventId` shape the
+ * hooks route and the spool replay accept (what the shim generates).
+ */
+export function hookId(label: string): string {
+  const h = createHash("sha256").update(label).digest("hex");
+  const variant = "89ab"[Number.parseInt(h.charAt(16), 16) % 4];
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
