@@ -165,6 +165,30 @@ describe("redaction before any write", () => {
     expect(fileBytes()).not.toContain(secret);
   });
 
+  it("masks everything nested under a sensitive key, whatever its type (roborev 5142)", () => {
+    const s = store();
+    s.store("p", [
+      {
+        toolCallId: "t1",
+        input: {
+          password: { value: "nested-pw-1" },
+          apiKey: ["a", { k: "nested-k-2" }],
+          token: 123456789,
+          credentials: { user: "u", pass: "nested-pw-3" },
+          ok: { plain: "visible" },
+        },
+      },
+    ]);
+    const body = s.get("p", "t1")?.input;
+    if (body?.status !== "stored") throw new Error("not stored");
+    for (const secret of ["nested-pw-1", "nested-k-2", "123456789", "nested-pw-3"]) {
+      expect(body.text).not.toContain(secret);
+      expect(fileBytes()).not.toContain(secret);
+    }
+    expect(body.text).toContain("visible");
+    expect(body.masked).toBe(true);
+  });
+
   it("keys bodies by the hash of the stored, redacted bytes, so raw bytes are not derivable", () => {
     const secret = fakeGithubToken(12);
     const s = store();

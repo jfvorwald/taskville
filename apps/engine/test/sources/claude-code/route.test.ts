@@ -207,6 +207,33 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     ]);
   });
 
+  it("stores no evidence for a retry whose events were all duplicates (roborev 5142)", async () => {
+    // A retry under a logged key can carry a tool_response the logged hook did not have; its
+    // events still match (they do not include the output), so only fresh events admit evidence.
+    const stored: readonly HookEvidence[][] = [];
+    const { app } = setup({
+      evidence: {
+        store: (_projectId, evidence) => (stored as HookEvidence[][]).push([...evidence]),
+      },
+    });
+    await app.request(
+      URL,
+      postJson(
+        { sourceEventId: "u-15", payload: hook({ tool_use_id: "tu-9" }) },
+        bearer(CLI_TOKEN),
+      ),
+    );
+    const retry = await app.request(
+      URL,
+      postJson(
+        { sourceEventId: "u-15", payload: hook({ tool_use_id: "tu-9", tool_response: "forged" }) },
+        bearer(CLI_TOKEN),
+      ),
+    );
+    expect((await read(retry)).results.map((r) => r.status)).toEqual(["duplicate"]);
+    expect(stored).toEqual([[{ toolCallId: "tu-9", input: undefined, output: undefined }]]);
+  });
+
   it("keeps the ingested events when the evidence sink throws, and logs no request content", async () => {
     const logLines: string[] = [];
     const { app } = setup({
