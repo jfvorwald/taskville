@@ -261,6 +261,22 @@ describe("slow consumers", () => {
     await fast.cancel();
   });
 
+  it("still ends a cut-off stream that never drains when the engine shuts down", async () => {
+    const { app } = setup({ queueLimit: 5 });
+    const slowRes = await streamRequest(app, "demo", bearer(CLI_TOKEN), "?after=1");
+    await ingest(app, events(0, 20));
+    expect(engine?.hub.subscriberCount()).toBe(0);
+    expect(engine?.hub.openStreams()).toBe(1);
+
+    engine?.close();
+    expect(engine?.hub.openStreams()).toBe(0);
+    engine = undefined;
+    const reader = slowRes.body?.getReader();
+    let done = false;
+    for (let i = 0; i < 50 && !done; i++) done = (await reader?.read())?.done ?? true;
+    expect(done).toBe(true);
+  });
+
   it("uses a 1,000-frame queue by default", () => {
     setup();
     expect(engine?.queueLimit).toBe(1000);
