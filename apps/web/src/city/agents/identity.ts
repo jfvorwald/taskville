@@ -28,7 +28,10 @@ export function agentColors(v: AgentView): AgentColors {
     const type = v.agentType ?? identityKey(v);
     return {
       body: colorFrom(`type:${type}`),
-      trim: v.parentIdentity === undefined ? shift(colorFrom(`type:${type}`)) : colorFrom(v.parentIdentity),
+      trim:
+        v.parentIdentity === undefined
+          ? shift(colorFrom(`type:${type}`))
+          : colorFrom(v.parentIdentity),
     };
   }
   const body = colorFrom(identityKey(v));
@@ -62,7 +65,10 @@ function shift(hex: string): string {
   const r = (n >> 16) & 255;
   const g = (n >> 8) & 255;
   const b = n & 255;
-  const to = (c: number) => Math.round(c * 0.55).toString(16).padStart(2, "0");
+  const to = (c: number) =>
+    Math.round(c * 0.55)
+      .toString(16)
+      .padStart(2, "0");
   return `#${to(b)}${to(r)}${to(g)}`;
 }
 

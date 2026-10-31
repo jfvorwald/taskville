@@ -42,8 +42,9 @@ describe("agentLabel", () => {
   });
 
   it("lets attention override the activity", () => {
-    expect(agentLabel(view({ activity: "implementing", attention: { level: "needs_you" } })).status)
-      .toBe("Needs you");
+    expect(
+      agentLabel(view({ activity: "implementing", attention: { level: "needs_you" } })).status,
+    ).toBe("Needs you");
     expect(agentLabel(view({ attention: { level: "waiting" } })).status).toBe("Waiting");
   });
 
