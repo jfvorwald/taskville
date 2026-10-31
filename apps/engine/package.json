@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run --root ../.. --project @taskville/engine"
+    "test": "vitest run --root ../.. --project @taskville/engine",
+    "bench:ingest": "node src/ingest/bench.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",
+    "@taskville/adapters": "workspace:*",
     "@taskville/domain": "workspace:*",
     "@taskville/protocol": "workspace:*",
     "hono": "4.13.14",
