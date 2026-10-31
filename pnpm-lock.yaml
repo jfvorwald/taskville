@@ -186,6 +186,9 @@ importers:
       '@hono/node-server':
         specifier: 2.1.5
         version: 2.1.5(hono@4.13.14)
+      '@taskville/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@taskville/domain':
         specifier: workspace:*
         version: link:../../packages/domain
