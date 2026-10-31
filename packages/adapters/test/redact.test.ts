@@ -469,6 +469,12 @@ const positives: Positive[] = [
     kind: "bearer-token",
   },
   {
+    name: "Digest parameters with a space-led first value holding an escaped quote",
+    input: `Authorization: Digest username=" a\\"b", response="${fake.hexResponse}"`,
+    secret: `username=" a\\"b", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
     name: "AWS SigV4 parameters",
     input: `Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
     secret: `Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
@@ -922,6 +928,7 @@ describe("adversarial input", () => {
     ["Authorization headers on one line", "Authorization: Digest a=1 ".repeat(n / 25)],
     ["quoted -u segments", '-u "a"'.repeat(n / 6)],
     ["-u references", "-u $(a)".repeat(n / 7)],
+    ["escaped space-led Authorization values", `Authorization: Digest a=" ${'\\"'.repeat(n / 2)}`],
   ];
 
   it.each(cases)("%s finishes quickly", (_name, input) => {
