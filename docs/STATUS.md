@@ -162,4 +162,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Stopped at G2 #40 for the owner. Do not start M3 or close the gate. Follow-ups for scheduling: #214, #215, #222 (targeted linear rules per #223), and the M4 residuals listed in the G2 summary.
+Stopped at G2 #40 for the owner; do not close it or start M4, M5 or the M2 follow-ups. M3 is blocked only by G1 (closed; ROADMAP wave 2) and starts from [handoffs/M3-START.md](handoffs/M3-START.md) in a fresh lead session. Follow-ups for scheduling: #214, #215, #222 (targeted linear rules per #223), and the M4 residuals listed in the G2 summary.
