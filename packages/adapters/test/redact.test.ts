@@ -453,12 +453,6 @@ const positives: Positive[] = [
     secret: fake.password,
     kind: "basic-auth",
   },
-  {
-    name: "curl -u with the same user and password",
-    input: "curl -u admin:admin http://localhost:8080",
-    secret: "admin",
-    kind: "basic-auth",
-  },
 ];
 
 describe("redactText true positives", () => {
@@ -468,6 +462,13 @@ describe("redactText true positives", () => {
     const span = result.spans.find((s) => input.slice(s.start, s.end) === secret);
     expect(span, `no span covering exactly the secret in ${JSON.stringify(result)}`).toBeDefined();
     expect(span?.kind).toBe(kind);
+    expectWellFormed(input, result);
+  });
+
+  it("masks a curl password equal to the user name, keeping the user", () => {
+    const input = "curl -u admin:admin http://localhost:8080";
+    const result = redactText(input);
+    expect(result.text).toBe(`curl -u admin:${maskMarker("basic-auth")} http://localhost:8080`);
     expectWellFormed(input, result);
   });
 

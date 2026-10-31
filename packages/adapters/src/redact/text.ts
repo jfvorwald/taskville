@@ -38,7 +38,13 @@ interface Candidate {
 // Token formats. Each pattern starts with a lookbehind so a match can only begin
 // at the start of a token, never inside one. That keeps every scan linear: a long
 // run of token characters is tried from its first character only.
-const TOKEN_PATTERNS: ReadonlyArray<{ kind: MaskKind; pattern: RegExp; group?: number }> = [
+const TOKEN_PATTERNS: ReadonlyArray<{
+  kind: MaskKind;
+  pattern: RegExp;
+  group?: number;
+  /** Extra evidence the matched group must show, for patterns that also match prose. */
+  accept?: (value: string) => boolean;
+}> = [
   { kind: "anthropic-key", pattern: /(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{20,}/dg },
   {
     kind: "openai-key",
@@ -71,7 +77,26 @@ const TOKEN_PATTERNS: ReadonlyArray<{ kind: MaskKind; pattern: RegExp; group?: n
     pattern: /(?<![A-Za-z0-9])authorization:[ \t]*basic[ \t]+([A-Za-z0-9+/]{8,}={0,2})/dgi,
     group: 1,
   },
+  {
+    // Any other scheme (`Token`, `ApiKey`, `Negotiate`, `SSWS`, ...) in a header or
+    // assignment, including `Proxy-Authorization`. Listed after the basic pattern so
+    // a Basic credential keeps its own kind when the two overlap.
+    kind: "bearer-token",
+    pattern:
+      /(?<![A-Za-z0-9_])authorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][A-Za-z0-9._-]{0,31}[ \t]+([A-Za-z0-9._~+/=:-]{8,})/dgi,
+    group: 1,
+    accept: hasCredentialShape,
+  },
 ];
+
+/**
+ * Evidence that a word after an Authorization scheme is a credential and not
+ * prose (`Authorization: handled internally`): a digit, or 16+ characters with
+ * both upper and lower case.
+ */
+function hasCredentialShape(value: string): boolean {
+  return /[0-9]/.test(value) || (value.length >= 16 && /[a-z]/.test(value) && /[A-Z]/.test(value));
+}
 
 const PEM_BEGIN = /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g;
 const PEM_END = /-----END [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g;
@@ -91,6 +116,14 @@ const STANDALONE = /(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/_-]{20,256}={0,2}(?![A-Za-z
 // `--name=value` and `--name value` command-line flags.
 const FLAG = /(?<![A-Za-z0-9_-])--([A-Za-z][A-Za-z0-9-]{0,63})(=|[ \t]+)/g;
 
+// curl's `-u user:password` (also attached, `-uuser:password`), `--user user:password`,
+// `--user=user:password`, and the proxy forms `-U` and `--proxy-user`.
+const USER_FLAG = /(?<![A-Za-z0-9_-])(?:-[uU][ \t]*|--(?:proxy-)?user(?:=|[ \t]+))/g;
+
+// The colon that ends the user name is looked for only this far, so a long run
+// after a flag costs a bounded scan per match.
+const MAX_USER = 128;
+
 /** Masks secret-looking values in a string. Deterministic and idempotent. */
 export function redactText(input: string): RedactedText {
   const candidates: Candidate[] = [];
@@ -99,6 +132,7 @@ export function redactText(input: string): RedactedText {
   const ends = valueEnds(input);
   findAssignments(input, ends, candidates);
   findFlags(input, ends, candidates);
+  findUserFlags(input, ends, candidates);
   findStandaloneTokens(input, candidates);
   return applyMasks(input, merge(candidates));
 }
@@ -116,10 +150,11 @@ function findPrivateKeys(input: string, out: Candidate[]): void {
 }
 
 function findTokens(input: string, out: Candidate[]): void {
-  for (const { kind, pattern, group } of TOKEN_PATTERNS) {
+  for (const { kind, pattern, group, accept } of TOKEN_PATTERNS) {
     for (const match of input.matchAll(pattern)) {
       const [start, end] = match.indices?.[group ?? 0] ?? [match.index, match.index];
       if (end <= start || isWholeMarker(input, start, end)) continue;
+      if (accept !== undefined && !accept(input.slice(start, end))) continue;
       out.push({ start, end, kind });
     }
   }
@@ -212,6 +247,53 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
     const value = readValue(input, at, ends);
     classify(input, name, value, value.quoted || match[2] === "=", out);
   }
+}
+
+/**
+ * Masks the password in `-u user:password` style flags. Not masked: no colon, an
+ * empty password or a reference (`$API_TOKEN`, `$(id -g)`), a password starting
+ * with `/` or `~` (a `host:/path` argument, as in `rsync -u host:/srv`), and a
+ * numeric `uid:gid` pair (`docker run -u 1000:1000`).
+ */
+function findUserFlags(input: string, ends: Ends, out: Candidate[]): void {
+  for (const match of input.matchAll(USER_FLAG)) {
+    const at = match.index + match[0].length;
+    if (input.charAt(at) === "-") continue;
+    const value = readValue(input, at, ends);
+    // Skip a leading reference such as `$(id -u)` or `$API_USER` before looking
+    // for the colon, so a colon inside it is not taken as the separator.
+    const from = value.start + referenceLength(input, value.start);
+    const stop = Math.min(value.end, from + MAX_USER);
+    let colon = -1;
+    for (let i = from; i < stop; i++) {
+      if (input.charCodeAt(i) === 0x3a /* : */) {
+        colon = i;
+        break;
+      }
+    }
+    if (colon < 0) continue;
+    // Quoted, the password runs to the closing quote (it may hold spaces); unquoted,
+    // it is read as a value of its own so a reference after the colon is whole.
+    const password = value.quoted
+      ? { start: colon + 1, end: value.end }
+      : readValue(input, colon + 1, ends);
+    const { start, end } = password;
+    if (isPlaceholder(input, start, end)) continue;
+    const first = input.charAt(start);
+    if (first === "/" || first === "~") continue;
+    if (isNumeric(input, value.start, colon) && isNumeric(input, start, end)) continue;
+    out.push({ start, end, kind: "basic-auth" });
+  }
+}
+
+/** True when `input.slice(start, end)` is 1 to 10 ASCII digits. */
+function isNumeric(input: string, start: number, end: number): boolean {
+  if (end <= start || end - start > 10) return false;
+  for (let i = start; i < end; i++) {
+    const c = input.charCodeAt(i);
+    if (c < 0x30 || c > 0x39) return false;
+  }
+  return true;
 }
 
 /**
