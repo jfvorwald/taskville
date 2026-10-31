@@ -1,0 +1,214 @@
+[
+  {
+    "seq": 0,
+    "hook": "SessionStart",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 1,
+    "hook": "UserPromptSubmit",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 2,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 3,
+    "hook": "SubagentStart",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-nested-3:crew:0",
+        "occurredAt": "2026-10-30T12:00:01.504Z",
+        "type": "agent.registered",
+        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+        "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
+        "payload": {
+          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+          "displayName": "outer",
+          "role": "outer",
+          "kind": "subagent"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 4,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-nested-4:crew:0",
+        "occurredAt": "2026-10-30T12:00:01.507Z",
+        "type": "agent.registered",
+        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+        "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
+        "payload": {
+          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+          "displayName": "outer",
+          "role": "outer",
+          "kind": "subagent",
+          "parentAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 5,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 6,
+    "hook": "SubagentStart",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-nested-6:crew:0",
+        "occurredAt": "2026-10-30T12:00:02.593Z",
+        "type": "agent.registered",
+        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+        "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
+        "payload": {
+          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+          "displayName": "inner",
+          "role": "inner",
+          "kind": "subagent"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 7,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 8,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 9,
+    "hook": "PreToolUse",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 10,
+    "hook": "PostToolUse",
+    "events": [],
+    "ignored": "not a crew tool"
+  },
+  {
+    "seq": 11,
+    "hook": "SubagentStop",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-nested-11:crew:0",
+        "occurredAt": "2026-10-30T12:00:05.437Z",
+        "type": "agent.finished",
+        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+        "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
+        "payload": {
+          "summary": "The command `echo nested-ok` printed:\n\n```\nnested-ok\n```"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 12,
+    "hook": "PostToolUse",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-nested-12:crew:0",
+        "occurredAt": "2026-10-30T12:00:05.467Z",
+        "type": "agent.registered",
+        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+        "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
+        "payload": {
+          "sourceAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:a0c1bc9a2c30e80b6",
+          "displayName": "inner",
+          "role": "inner",
+          "kind": "subagent",
+          "parentAgentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9"
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 13,
+    "hook": "SubagentStop",
+    "events": [
+      {
+        "schemaVersion": 1,
+        "projectId": "proj-crew",
+        "sourceId": "claude-code",
+        "sourceEventId": "subagent-nested-13:crew:0",
+        "occurredAt": "2026-10-30T12:00:07.259Z",
+        "type": "agent.finished",
+        "agentId": "cc:6effc000-24c8-436e-ae5e-33152b820f83:ac5497782768787b9",
+        "sessionId": "6effc000-24c8-436e-ae5e-33152b820f83",
+        "payload": {
+          "summary": "The inner subagent ran `echo nested-ok` and printed:\n\n```\nnested-ok\n```\n\nIts report said: \"The command `echo nested-ok` printed: nested-ok.\""
+        },
+        "provenance": "live",
+        "late": false
+      }
+    ]
+  },
+  {
+    "seq": 14,
+    "hook": "UserPromptSubmit",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 15,
+    "hook": "MessageDisplay",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 16,
+    "hook": "Stop",
+    "events": [],
+    "ignored": "not a crew hook"
+  },
+  {
+    "seq": 17,
+    "hook": "SessionEnd",
+    "events": [],
+    "ignored": "not a crew hook"
+  }
+]
