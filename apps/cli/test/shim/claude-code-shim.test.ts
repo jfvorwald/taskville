@@ -1,7 +1,7 @@
 // M2.01: the Claude Code telemetry hook shim (apps/cli/hooks/claude-code-shim.sh).
 // Every test spawns the real script under a POSIX shell.
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -24,6 +24,7 @@ import {
   makeHome,
   runShim,
   SHELLS,
+  SHIM,
   shimEnv,
   spoolFiles,
   spoolLines,
@@ -273,6 +274,30 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(line?.payload).toBeNull();
     expect(line?.payloadBytesAtLeast).toBeGreaterThan(CAP);
     expect(statSync(home.spoolFile).size).toBeLessThan(1024);
+  });
+
+  it("returns promptly on an oversized payload whose stdin stays open", async () => {
+    const child = spawn(shell, [SHIM], {
+      env: shimEnv(home, server.url),
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    child.stdin.on("error", () => {});
+    const started = performance.now();
+    const exited = new Promise<number | null>((resolve) => child.on("exit", resolve));
+    child.stdin.write(Buffer.alloc(CAP + 4096, "a"));
+    // Keep writing and never close stdin until the shim has exited.
+    const feeder = setInterval(() => child.stdin.write(Buffer.alloc(65536, "a")), 20);
+    try {
+      const code = await exited;
+      expect(code).toBe(0);
+      expect(performance.now() - started).toBeLessThan(2500);
+    } finally {
+      clearInterval(feeder);
+      child.stdin.end();
+    }
+    const body = JSON.parse(server.received[0]?.body ?? "") as Record<string, unknown>;
+    expect(body.payload).toBeNull();
+    expect(body.payloadBytesAtLeast).toBe(CAP + 1);
   });
 
   it("keeps a payload of exactly the cap", async () => {

@@ -75,7 +75,7 @@
 #   a spool replay batch past the engine's 5 MB batch limit
 #   (MAX_BATCH_BYTES, contracts/http-api.md). The engine stores evidence bodies
 #   cut to 64 KB anyway (ARCHITECTURE.md 7.4). payloadBytesAtLeast is a lower
-#   bound: some head(1) implementations read ahead from a pipe.
+#   bound (the shim reads only cap + 1 bytes; the rest is drained unread).
 #   Waits: curl --max-time 1; the lock about 1 s (20 tries of 50 ms).
 #
 # PORTABILITY
@@ -94,7 +94,7 @@
 #   are refused if they are symlinks.
 
 umask 077
-exec 1>/dev/null 2>&1 || exit 0
+exec 1>/dev/null 2>&1 3<&0 || exit 0
 
 CAP=1048576
 LOCK_TRIES=20
@@ -103,10 +103,20 @@ LOCK_NAP=0.05
 work=
 lock_held=no
 
-# Reads and discards the rest of stdin, then exits 0. Used for every early exit
-# before stdin was read, so Claude Code never writes into a closed pipe.
+# Drains the rest of stdin in a background reader (stdout and stderr already
+# point at /dev/null, so it holds no pipe Claude Code waits on), so Claude Code
+# never writes into a closed pipe and the shim's own run time stays bounded
+# however much input is left.
+drain() {
+  # Explicit fd: an asynchronous command in a non-interactive shell otherwise
+  # gets /dev/null as its stdin (POSIX job control off).
+  cat <&3 >/dev/null 3<&- &
+  exec 3<&-
+}
+
+# Exits 0 before the hook JSON was read.
 bail() {
-  cat >/dev/null
+  drain
   exit 0
 }
 
@@ -165,9 +175,8 @@ size=$(wc -c <"$work/raw" | tr -d ' ')
 case $size in '' | *[!0-9]*) bail ;; esac
 extra=
 if [ "$size" -gt "$CAP" ]; then
-  rest=$(wc -c | tr -d ' ')
-  case $rest in '' | *[!0-9]*) rest=0 ;; esac
-  extra=",\"payloadBytesAtLeast\":$((size + rest))"
+  drain
+  extra=",\"payloadBytesAtLeast\":$size"
   printf 'null' >"$work/payload"
 else
   # Nothing but whitespace: nothing to report.
