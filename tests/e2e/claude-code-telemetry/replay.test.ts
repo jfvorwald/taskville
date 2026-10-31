@@ -276,12 +276,10 @@ describe("Claude Code telemetry, end to end (replayed real sessions)", () => {
     }
   });
 
-  // Found by this run (reported, not fixed here): the lead's TaskCreated has no team_name, so the
-  // crew mapper scopes the task by session (`task:<session_id>:1`); pip's TaskCompleted carries
-  // team_name, so it lands on `task:session-<8 hex>:1`, a different task that was never created.
-  it("team: the lead's TaskCreated and the teammate's TaskCompleted are one task", {
-    todo: "crew mapper task scope mismatch (M2.10 report)",
-  }, () => {
+  // Found by this run: the lead's TaskCreated has no team_name, so the crew mapper scoped the task
+  // by session while pip's TaskCompleted (team_name `session-<8 hex>`) landed on another task.
+  // Fixed by #209 (M2.20): a hook without team_name is scoped `session-<first 8 of session_id>`.
+  it("team: the lead's TaskCreated and the teammate's TaskCompleted are one task", () => {
     const task = teamTasks.find((t) => t.title === "pip says hi");
     assert.equal(task?.status, "completed", JSON.stringify(teamTasks));
     assert.equal(teamTasks.length, 1, JSON.stringify(teamTasks));
