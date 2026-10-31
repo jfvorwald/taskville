@@ -92,6 +92,7 @@ function watcher(options: Partial<GitWatcherOptions> = {}): GitWatcher {
   const w = new GitWatcher({
     storage,
     ingest: (events) => pipeline.ingest(events),
+    now: fixedNow,
     watchFiles: false,
     ...options,
   });
@@ -243,6 +244,89 @@ describe("restarts", () => {
     await watcher().scanAll();
     expect(storage.head("p")).toBe(head);
   });
+
+  it("resumes from the recorded tips: no repeated move, and a move while down has its from", async () => {
+    const repo = newRepo("repo");
+    const c1 = commit(repo, "a.txt", "first");
+    addProject("p", [repo]);
+    const first = watcher();
+    await first.scanAll();
+    const c2 = commit(repo, "b.txt", "second");
+    await first.scanAll();
+    await first.stop();
+    const head = storage.head("p");
+
+    await watcher().scanAll();
+    expect(storage.head("p")).toBe(head);
+
+    const c3 = commit(repo, "c.txt", "while the engine was down");
+    await watcher().scanAll();
+    const added = gitEvents("p").filter((e) => e.ingestSequence > (head ?? 0));
+    expect(added.map((e) => e.payload)).toEqual([
+      { repo, sha: c3, parents: [c2], subject: "while the engine was down" },
+      { repo, ref: "refs/heads/main", from: c2, to: c3 },
+    ]);
+    expect(c1).not.toBe(c2);
+  });
+
+  it("survives a recorded tip whose commit no longer exists", async () => {
+    const repo = newRepo("repo");
+    const c1 = commit(repo, "a.txt", "first");
+    addProject("p", [repo]);
+    const first = watcher();
+    await first.scanAll();
+    const c2 = commit(repo, "b.txt", "rewritten away");
+    await first.scanAll();
+    await first.stop();
+    git(repo, "reset", "-q", "--hard", c1);
+    git(repo, "reflog", "expire", "--expire=now", "--all");
+    git(repo, "gc", "-q", "--prune=now");
+
+    await watcher().scanAll();
+    const moves = ofType(gitEvents("p"), "git.ref_moved").map((e) => e.payload);
+    expect(moves.at(-1)).toEqual({ repo, ref: "refs/heads/main", from: c2, to: c1 });
+  });
+});
+
+describe("honest ref events", () => {
+  it("dates a first observation at the scan, not at the tip's commit", async () => {
+    const repo = newRepo("repo");
+    commit(repo, "a.txt", "first");
+    addProject("p", [repo]);
+    await watcher().scanAll();
+    const [move] = ofType(gitEvents("p"), "git.ref_moved");
+    expect(move?.occurredAt).toBe(T0);
+    expect(move?.payload).not.toHaveProperty("from");
+  });
+
+  it("records a branch moving A to B, back to A, and to B again", async () => {
+    const repo = newRepo("repo");
+    const a = commit(repo, "a.txt", "a");
+    const b = commit(repo, "b.txt", "b");
+    addProject("p", [repo]);
+    let tick = Date.parse(T0);
+    const w = watcher({ now: () => new Date((tick += 1000)) });
+    await w.scanAll();
+    git(repo, "reset", "-q", "--hard", a);
+    await w.scanAll();
+    git(repo, "reset", "-q", "--hard", b);
+    await w.scanAll();
+    git(repo, "reset", "-q", "--hard", a);
+    await w.scanAll();
+    git(repo, "reset", "-q", "--hard", b);
+    await w.scanAll();
+    const moves = ofType(gitEvents("p"), "git.ref_moved").map((e) => [
+      e.payload.from,
+      e.payload.to,
+    ]);
+    expect(moves).toEqual([
+      [undefined, b],
+      [b, a],
+      [a, b],
+      [b, a],
+      [a, b],
+    ]);
+  });
 });
 
 describe("read-only", () => {
@@ -302,9 +386,11 @@ describe("arguments passed to git", () => {
     for (const args of logs) {
       const at = args.indexOf("--end-of-options");
       expect(at).toBeGreaterThan(0);
-      expect(args.slice(1, at).every((a) => /^(?:-z|--format=.*|--max-count=\d+)$/.test(a))).toBe(
-        true,
-      );
+      expect(
+        args
+          .slice(1, at)
+          .every((a) => /^(?:-z|--format=.*|--max-count=\d+|--ignore-missing)$/.test(a)),
+      ).toBe(true);
       expect(
         args.slice(at + 1, -1).every((a) => /^\^?(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(a)),
       ).toBe(true);
