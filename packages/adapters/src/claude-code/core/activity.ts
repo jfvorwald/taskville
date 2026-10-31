@@ -101,10 +101,7 @@ function isTestCommand(tokens: string[]): boolean {
   if (head === undefined) return false;
   const args = words.slice(1);
   if (TEST_RUNNERS.has(head)) return true;
-  if (PACKAGE_MANAGERS.has(head)) {
-    const end = args.indexOf("--");
-    return (end === -1 ? args : args.slice(0, end)).some((a) => /^test(?::\S*)?$/.test(a));
-  }
+  if (PACKAGE_MANAGERS.has(head)) return runsTestScript(args);
   if (TEST_SUBCOMMAND.has(head)) {
     return args[0] === "test" || (head === "make" && args[0] === "check");
   }
@@ -112,6 +109,42 @@ function isTestCommand(tokens: string[]): boolean {
     return args[0] === "-m" && (args[1] === "pytest" || args[1] === "unittest");
   }
   if (head === "node") return args.includes("--test");
+  return false;
+}
+
+/** Package manager options whose value is the next word (`-C dir`, `--filter pkg`). */
+const VALUE_OPTIONS = new Set([
+  "-C",
+  "--dir",
+  "--prefix",
+  "--cwd",
+  "-F",
+  "--filter",
+  "--workspace",
+]);
+const isTestScript = (word: string | undefined) =>
+  word !== undefined && /^test(?::\S*)?$/.test(word);
+
+/**
+ * True when the package manager's command is a `test` script: `pnpm test`, `npm run test:e2e`,
+ * `pnpm -C app test`, `yarn workspace web test`. Options and their values are skipped, so a
+ * directory or package named `test` is not a test run.
+ */
+function runsTestScript(args: string[]): boolean {
+  const positional: string[] = [];
+  for (let i = 0; i < args.length && positional.length < 3; i += 1) {
+    const word = args[i] as string;
+    if (word === "--") break;
+    if (word.startsWith("-")) {
+      if (VALUE_OPTIONS.has(word)) i += 1;
+      continue;
+    }
+    positional.push(word);
+  }
+  const [command, second, third] = positional;
+  if (isTestScript(command)) return true;
+  if (command === "run" || command === "run-script") return isTestScript(second);
+  if (command === "workspace") return isTestScript(third);
   return false;
 }
 

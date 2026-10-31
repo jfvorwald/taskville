@@ -302,6 +302,11 @@ describe("activity from tool names (8.1, 8.3)", () => {
     "dotnet test",
     "rspec spec/",
     "npx playwright test",
+    "pnpm -C app test",
+    "pnpm --filter=web test:unit",
+    "yarn workspace web test",
+    "pnpm -w test",
+    "npm run test:e2e",
   ])("Bash `%s` maps to testing, flagged heuristic", (command) => {
     expect(activityOf("Bash", { command })).toEqual({ activity: "testing", heuristic: true });
   });
@@ -313,6 +318,13 @@ describe("activity from tool names (8.1, 8.3)", () => {
     "echo pytest",
     "mkdir test",
     "grep -r latest src",
+    "pnpm -C test build",
+    "pnpm --dir test install",
+    "npm --prefix test run build",
+    "yarn --cwd test build",
+    "pnpm --filter test build",
+    "pnpm add test",
+    "npm run build -- test",
   ])("Bash `%s` sets no activity", (command) => {
     expect(activityOf("Bash", { command })).toBeUndefined();
   });
