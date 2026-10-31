@@ -11,19 +11,11 @@ export const GIT_TIMEOUT_MS = 10_000;
 /** Largest stdout accepted from one git command. */
 export const GIT_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
-/** Transports that can start a program named by the repository's own configuration. */
-const TRANSPORTS = ["ext", "file", "ssh", "http", "https", "git"];
-
 /**
  * Settings forced on every command. `core.fsmonitor` and `log.showSignature` would make git
  * run another program (a monitor hook, gpg) from the repository's own configuration.
- *
- * `protocol.allow=never` plus `protocol.<name>.allow=never` refuse every transport, so no program
- * named by `remote.<r>.uploadpack`, `core.sshCommand`, `credential.helper` or an `ext::` URL can
- * start, even on a git too old to know `GIT_NO_LAZY_FETCH`. The per-transport lines are needed
- * because the repository can set `protocol.<name>.allow=always`, which beats the blanket
- * `protocol.allow`; `-c` on the command line beats the repository. This is the second guard
- * against a partial-clone lazy fetch (see `gitEnv`): either one alone stops it.
+ * `protocol.allow=never` refuses every transport by default; the environment's empty
+ * `GIT_ALLOW_PROTOCOL` (see `gitEnv`) is what makes that final.
  */
 const SAFE_CONFIG = [
   "-c",
@@ -32,15 +24,20 @@ const SAFE_CONFIG = [
   "log.showSignature=false",
   "-c",
   "protocol.allow=never",
-  ...TRANSPORTS.flatMap((name) => ["-c", `protocol.${name}.allow=never`]),
 ];
 
 /**
  * The engine's environment without any `GIT_*` variable (a stray `GIT_DIR` would point every
  * command at another repository), plus `GIT_OPTIONAL_LOCKS=0` so no command refreshes the
- * index, and no terminal prompts. `GIT_NO_LAZY_FETCH=1` (git 2.44 and later) stops a partial
- * clone from fetching a missing object, which would run the program the repository's own
- * `.git/config` names for its promisor remote.
+ * index, and no terminal prompts.
+ *
+ * Two independent guards against a repository's own `.git/config` making a read-only scan run a
+ * program through a partial-clone lazy fetch (`remote.<r>.uploadpack`, `ext::`, `core.sshCommand`,
+ * `credential.helper`, a `git-remote-<name>` helper on PATH):
+ * - `GIT_NO_LAZY_FETCH=1` (git 2.44 and later): a missing object is an error, never a fetch.
+ * - An empty `GIT_ALLOW_PROTOCOL` allows no transport at all. Unlike `-c protocol.allow=never`,
+ *   it also beats the repository's own `protocol.<name>.allow=always`, which would otherwise
+ *   re-enable `ext::`, `file`, `ssh`, `http` or a custom helper.
  */
 function gitEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -50,6 +47,7 @@ function gitEnv(): NodeJS.ProcessEnv {
   env.GIT_OPTIONAL_LOCKS = "0";
   env.GIT_TERMINAL_PROMPT = "0";
   env.GIT_NO_LAZY_FETCH = "1";
+  env.GIT_ALLOW_PROTOCOL = "";
   return env;
 }
 
