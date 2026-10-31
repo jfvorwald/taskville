@@ -265,6 +265,20 @@ describe("commit and broadcast", () => {
     expect(batch?.heads).toEqual({ demo: 3 });
   });
 
+  it("gives onCommit heads only for projects that accepted an event", () => {
+    const onCommit = vi.fn();
+    pipeline({ onCommit }).ingest([
+      input("e1"),
+      input("t1", {
+        projectId: "other",
+        type: "task.created",
+        taskId: "task-1",
+        payload: { title: "\u0001" },
+      }),
+    ]);
+    expect(onCommit.mock.calls[0]?.[0].heads).toEqual({ demo: 2 });
+  });
+
   it("does not call onCommit when nothing was accepted", () => {
     const onCommit = vi.fn();
     pipeline({ onCommit }).ingest([input("bad", { type: "x" })]);
