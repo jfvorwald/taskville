@@ -22,7 +22,7 @@ export type { Command, PendingRequest, RequestsState } from "./attention/index.t
 export { compareTimestamps, MAX_OPEN_TOOL_CALLS_PER_AGENT } from "./entities/index.ts";
 export type * from "./entities/types.ts";
 
-export const REDUCER_VERSION = 3;
+export const REDUCER_VERSION = 4;
 
 export interface ProjectMeta {
   readonly projectId: string;
