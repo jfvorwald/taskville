@@ -67,7 +67,7 @@ async function run(context: Context, portFlag: number | undefined): Promise<numb
       version: packageJson.version,
       health: () => engine?.health() ?? { db: "error", walMode: false },
     });
-    engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now });
+    engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now, pairing });
     registerProjectRoutes(app, { storage: engine.storage, now });
     for (const project of config.projects) {
       try {
