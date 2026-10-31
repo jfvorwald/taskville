@@ -47,6 +47,15 @@ export function compareTimestamps(a: string, b: string): -1 | 0 | 1 {
   return fx < fy ? -1 : 1;
 }
 
+/**
+ * Milliseconds since the epoch, fractional digits beyond the millisecond dropped. For elapsed
+ * time against an injected clock (the silent-trouble selector); use `compareTimestamps` to order.
+ */
+export function epochMillis(ts: string): number {
+  const { seconds, fraction } = instant(ts);
+  return seconds * 1000 + Number(fraction.slice(0, 3).padEnd(3, "0"));
+}
+
 /** The later of two timestamps; `current` on a tie, so the stored text does not churn. */
 export const laterTimestamp = (current: string, candidate: string): string =>
   compareTimestamps(candidate, current) > 0 ? candidate : current;

@@ -39,12 +39,11 @@ function builtinImports(source: string): string[] {
 }
 
 // Each entry names a global the domain must not touch. Any use counts, not only a call, so
-// `const now = Date.now` is caught too. `Date` is banned except `Date.parse` and `Date.UTC`,
-// which read no clock (M1.08's selectors parse event timestamps). The entities reducer
-// compares timestamps by hand instead (reducer/entities/time.ts), because Date.parse is only
-// specified to millisecond precision and protocol timestamps may carry more digits.
+// `const now = Date.now` is caught too. `Date` is banned entirely, `Date.parse` included
+// (#143): it is only specified to millisecond precision and protocol timestamps may carry more
+// digits, so timestamps are compared and converted by hand (reducer/entities/time.ts).
 const FORBIDDEN_GLOBALS: [RegExp, string][] = [
-  [/\bDate\b(?!\s*\.\s*(?:parse|UTC)\b)/, "Date (clock)"],
+  [/\bDate\b/, "Date (clock or imprecise parse)"],
   [/\bperformance\b/, "performance (clock)"],
   [/\bMath\s*\.\s*random\b/, "Math.random (randomness)"],
   [/\bcrypto\b/, "crypto (randomness or host API)"],
@@ -160,8 +159,8 @@ describe("packages/domain reads no clock, randomness, or host globals", () => {
       "const d2 = Date.parse(x) + Date.now();",
     ].join("\n");
     expect(forbiddenUses(sample)).toEqual([
-      "line 1: Date (clock)",
-      "line 2: Date (clock)",
+      "line 1: Date (clock or imprecise parse)",
+      "line 2: Date (clock or imprecise parse)",
       "line 3: performance (clock)",
       "line 4: Math.random (randomness)",
       "line 5: crypto (randomness or host API)",
@@ -170,8 +169,9 @@ describe("packages/domain reads no clock, randomness, or host globals", () => {
       "line 8: host global",
       "line 8: network",
       "line 9: timer",
-      "line 10: Date (clock)",
-      "line 16: Date (clock)",
+      "line 10: Date (clock or imprecise parse)",
+      "line 15: Date (clock or imprecise parse)",
+      "line 16: Date (clock or imprecise parse)",
     ]);
   });
 
