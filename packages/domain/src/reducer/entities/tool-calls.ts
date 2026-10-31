@@ -10,6 +10,9 @@ import type { EntitiesState, ToolCall } from "./types.ts";
 // A call is counted when its start is seen, never at its finish, so a finish for a call that
 // was dropped from the projection cannot count it twice. A finish that arrives before its start
 // is recorded as is, and the start fills in its name, paths, and start time when it comes.
+// Known limit of the bounded projection: once a call is dropped, a second start for the same
+// toolCallId (under a new source event ID) cannot be told from a new call and is counted again.
+// Decision ticket #138 (D1) holds the alternative, a bounded per-agent ring of counted IDs.
 
 /**
  * Open calls kept per agent. A PreToolUse with no PostToolUse is real (S-2: internal helper

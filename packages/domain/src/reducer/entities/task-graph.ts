@@ -12,6 +12,8 @@ import type { TaskStatus } from "@taskville/protocol";
 // Reporting the current status again is not a transition. Nothing leads out of `unknown`
 // except failed or cancelled, so a task whose status was unknown is flagged when it next gets a
 // known status; that is the graph as written, and the flag only says the path was not seen.
+// The same holds for queued or running -> completed. Decision ticket #138 (D2) asks whether
+// those shortcuts should be allowed.
 
 const TERMINAL: ReadonlySet<TaskStatus> = new Set(["completed", "failed", "cancelled"]);
 
