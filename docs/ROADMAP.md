@@ -153,4 +153,7 @@ Gate: [#93](https://github.com/jfvorwald/taskville/issues/93) Review gate G8: M8
 - Status flow: Triage, Backlog, Ready, In progress, Review, Blocked, Done. Ready means every blocker is closed.
 - Each ticket's **Done when** list is the definition of done; `pnpm check` (also `.claude/check.sh`) is the shared fast gate.
 - Testing follows the task tier for tickets and the push tier once per wave (see M7.06 for the release run).
+- Work runs without stopping until a review gate. Owner decisions needed mid-wave become decision tickets (`type:decision`, `waiting:user`) with a default the team proceeds on; see [CLAUDE.md](../CLAUDE.md).
+- Every ticket branch passes `roborev review --branch --panel pre_merge` before merge.
+- Status: teammates write `docs/tasks/<KEY>.md`; the lead keeps [STATUS.md](STATUS.md) current.
 - Lessons are recorded as they happen: in each PR's Lessons section, then in [LESSONS.md](LESSONS.md). Every milestone gets a generated visual retro in [retros/](retros/) before its gate.
