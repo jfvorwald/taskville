@@ -1,5 +1,6 @@
 // `taskville`: the command-line client and the engine launcher (contracts/cli.md).
 
+import { demo } from "./commands/demo.ts";
 import { events } from "./commands/events.ts";
 import { project } from "./commands/projects.ts";
 import { requests } from "./commands/requests.ts";
@@ -22,6 +23,8 @@ Commands:
   events follow --project <id> [--after N]    Stream events
   requests [--project <id>] [--all]           List pending requests (read-only)
   unpair                                      Revoke every paired browser
+  demo run --offline --seed <n> --duration <t> [--pace <pace>]
+  demo start --project <id> --seed <n> [--pace <pace>] [--speed <x>] [--duration <t>]
 
 Global options: --home <dir>, --url <base>, --json
 `;
@@ -33,6 +36,7 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   events,
   requests,
   unpair,
+  demo,
 };
 
 export async function run(argv: string[], io: Io): Promise<number> {
