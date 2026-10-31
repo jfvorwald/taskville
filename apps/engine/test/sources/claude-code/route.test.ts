@@ -6,6 +6,7 @@ import {
   type HookEvidence,
   type HookIngestResponse,
   MAX_HOOK_BODY_BYTES,
+  MAX_HOOK_SOURCE_EVENT_ID,
   registerClaudeCodeRoutes,
 } from "../../../src/sources/claude-code/index.ts";
 import {
@@ -61,7 +62,7 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     const body = await read(res);
     expect(body).toEqual({
       projectId: "repo",
-      results: [expect.objectContaining({ sourceEventId: "u-1:0", status: "accepted" })],
+      results: [expect.objectContaining({ sourceEventId: "u-1:agent.connected", status: "accepted" })],
       heads: { repo: 2 },
     });
     expect(mapper.calls).toEqual([
@@ -69,9 +70,11 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     ]);
     const [event] = storedEvents("repo");
     expect(event).toMatchObject({
+      agentId: "claude-code:sess-1",
+      sessionId: "sess-1",
       projectId: "repo",
       sourceId: CLAUDE_CODE_SOURCE_ID,
-      sourceEventId: "u-1:0",
+      sourceEventId: "u-1:agent.connected",
       late: false,
     });
   });
@@ -264,6 +267,8 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       { sourceEventId: "", payload: hook() },
       { sourceEventId: 7, payload: hook() },
       { sourceEventId: "x".repeat(10_000), payload: hook() },
+      // Over M2.03's MAX_SOURCE_EVENT_ID the mapper would ignore the hook: a contract error instead.
+      { sourceEventId: "x".repeat(MAX_HOOK_SOURCE_EVENT_ID + 1), payload: hook() },
       { sourceEventId: "u", payload: [] },
       { sourceEventId: "u", payload: null },
       { sourceEventId: "u", payload: "hook" },
@@ -283,6 +288,17 @@ describe("POST /v1/sources/claude-code/hooks", () => {
     });
     expect(notJson.status).toBe(400);
     expect(mapper.calls).toHaveLength(0);
+  });
+
+  it("accepts a sourceEventId of exactly 170 characters, M2.03's limit", async () => {
+    const { app } = setup();
+    expect(MAX_HOOK_SOURCE_EVENT_ID).toBe(170);
+    const res = await app.request(
+      URL,
+      postJson({ sourceEventId: "y".repeat(170), payload: hook() }, bearer(CLI_TOKEN)),
+    );
+    expect(res.status).toBe(200);
+    expect((await read(res)).results.map((r) => r.status)).toEqual(["accepted"]);
   });
 
   it("treats a __proto__ key as data, not as a prototype", async () => {
@@ -368,7 +384,7 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
     const first = live.results[0];
     expect(replay.results).toEqual([
       {
-        sourceEventId: "r-1:0",
+        sourceEventId: "r-1:agent.connected",
         status: "duplicate",
         ingestSequence: first?.status === "accepted" ? first.ingestSequence : -1,
         eventId: first?.status === "accepted" ? first.eventId : "",
@@ -402,7 +418,7 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
     const original = first.results[0];
     expect(changed.results).toEqual([
       {
-        sourceEventId: "r-4:0",
+        sourceEventId: "r-4:agent.connected",
         status: "conflict",
         existingEventId: original?.status === "accepted" ? original.eventId : "",
       },
@@ -417,7 +433,7 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
         events: [
           {
             schemaVersion: 1,
-            sourceEventId: `${ctx.sourceEventId}:0`,
+            sourceEventId: `${ctx.sourceEventId}:task.created`,
             occurredAt: ctx.receivedAt,
             type: "task.created",
             taskId: "task-1",
@@ -440,7 +456,7 @@ describe("idempotency: the shim's sourceEventId is the key (roborev 5059, 5062)"
         events: [
           {
             schemaVersion: 1,
-            sourceEventId: `${ctx.sourceEventId}:0`,
+            sourceEventId: `${ctx.sourceEventId}:task.created`,
             occurredAt: ctx.receivedAt,
             type: "task.created",
             taskId: "task-1",
