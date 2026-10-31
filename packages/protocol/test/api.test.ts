@@ -46,6 +46,10 @@ describe("error shape", () => {
     ]) {
       expect(API_ERROR_CODES).toContain(code);
     }
+    // Codes for statuses http-api.md names without one, matching apps/engine (M1.10).
+    for (const code of ["bad_request", "payload_too_large", "not_found", "internal"]) {
+      expect(API_ERROR_CODES).toContain(code);
+    }
     expect(apiErrorSchema.safeParse({ error: { code: "teapot", message: "x" } }).success).toBe(
       false,
     );

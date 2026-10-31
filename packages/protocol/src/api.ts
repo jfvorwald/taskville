@@ -19,8 +19,8 @@ export const MAX_BATCH_BYTES = 5 * 1024 * 1024;
 
 /**
  * Error codes in `{ "error": { "code", "message" } }`. The first eight are named in
- * http-api.md; `invalid_request` (400), `payload_too_large` (413), `not_found` (404), and
- * `internal_error` (500) cover the statuses it names without a code.
+ * http-api.md; `bad_request` (400), `payload_too_large` (413), `not_found` (404), and
+ * `internal` (500) cover the statuses it names without a code, as apps/engine uses them.
  */
 export const API_ERROR_CODES = [
   "forbidden_host",
@@ -31,10 +31,10 @@ export const API_ERROR_CODES = [
   "project_exists",
   "unknown_project",
   "not_implemented",
-  "invalid_request",
+  "bad_request",
   "payload_too_large",
   "not_found",
-  "internal_error",
+  "internal",
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
