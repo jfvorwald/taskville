@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-38: Engine-authored events built from user input skip ingest masking
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #16 · **Recorded by:** domain teammate (M1.14)
+- **What happened:** `project.created` is written by the engine itself, so project names and roots from `project add` bypassed the ingest pipeline's masking and could carry secrets into the event log (roborev high, job 4918); a new project also had no projection (high, same job).
+- **Lesson:** Any event the engine builds from user input needs its own validation and masking check; end-to-end goldens against the quickstart catch contract drift (here "active" vs `unknown` activity) that renderer unit tests miss.
+- **Action:** Fixed in PR #153; cli.md's active rule clarified by the lead.
+
+### L-37: CI tests the PR merged into current main
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #16 · **Recorded by:** domain teammate (M1.14)
+- **What happened:** The first CI run on PR #153 failed typecheck on the merge ref because #152 merged meanwhile and made `bootEngine` require the pairing store; the branch's own `pnpm check` was green.
+- **Lesson:** After main moves, merge it into the branch and re-check before trusting a green local run.
+- **Action:** Fixed in PR #153; CI failure F-CI-1 recorded for the retro.
+
 ### L-36: A timeout for a stalled client must start at the cut-off, and check order is a safety property
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #17 · **Recorded by:** storage teammate (M1.18 fixes)
 - **What happened:** A timeout started after the stream loop finishes never fires for a stalled client, because the loop itself is blocked writing to that client. In ingest, running the producer-policy check before the Unicode walk removed the only reachable path to unbounded nesting (F2).

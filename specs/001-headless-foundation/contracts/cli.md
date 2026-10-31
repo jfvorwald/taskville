@@ -23,7 +23,7 @@ Exit code 5 covers `401` and `403` responses (missing or invalid token, bad Host
 ## `status` output
 
 Header: `<project name> · N active · M needs you · T trouble · W waiting`, where
-active counts unfinished agents whose activity is neither `idle` nor `waiting`, and
+active counts unfinished agents whose activity is neither `idle`, `waiting` nor `unknown` (a fresh session's activity is `unknown` until it reports one), and
 the other counts come from the `attention` selector in the snapshot.
 
 Body: an indented tree, two spaces per level (FR-012 clarification):
