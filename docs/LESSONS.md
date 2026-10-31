@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-21: A golden file needs something independent that reproduces it
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #12 · **Recorded by:** domain teammate (M1.17)
+- **What happened:** Expected ingest results were hand-written per fixture line. On their own they would only restate the author's assumptions.
+- **Lesson:** Check a golden file with an independent model (here a small reference ingest model over the protocol's parsers) and prove the comparison bites with a deliberate mutation. Design fixtures backwards from documented output when the docs already fix it.
+- **Action:** Done in PR #130.
+
 ### L-20: An argv array is not enough to make a configurable launcher safe
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #8 · **Recorded by:** engine teammate (M1.11)
 - **What happened:** A session opener validated only as an `execFile` argument array could still name `sh`, `env`, `osascript` or `python3` as the program, which turns an argument back into code. Separately, `mkdirSync({ mode: 0o700 })` is filtered by the umask and leaves an existing directory alone, and roborev (job 4776) found that tightening a symlinked home would chmod the link target.
