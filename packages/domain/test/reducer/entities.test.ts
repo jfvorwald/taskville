@@ -43,7 +43,39 @@ describe("root reducer", () => {
       toolCalls: {},
       tasks: {},
       activity: {},
+      requests: {},
+      commands: {},
     });
+  });
+
+  it("composes the requests slice (M1.08) after entities", () => {
+    const emit = eventStream();
+    const opened = emit(
+      "request.opened",
+      { requestId: "r1", kind: "permission", toolName: "Bash" },
+      { agentId: "a1", sessionId: "s1" },
+    );
+    const state = run([opened]);
+    // Entities recorded the agent; the requests slice opened the request.
+    expect(state.agents.a1).toMatchObject({ registered: false });
+    expect(state.requests.r1).toMatchObject({ agentId: "a1", state: "open", answerable: false });
+    // A later event from the same session closes it through the requests slice.
+    const closed = reduce(
+      state,
+      emit("session.turn_ended", {}, { agentId: "a1", sessionId: "s1" }),
+    );
+    expect(closed.requests.r1?.state).toBe("answered_elsewhere");
+    expect(closed.agents.a1?.lastTurn).toBe("ended");
+  });
+
+  it("keeps the requests slice unchanged for events it ignores", () => {
+    const emit = eventStream();
+    const state = run([
+      emit("request.opened", { requestId: "r1", kind: "input" }, { agentId: "a1" }),
+    ]);
+    const next = reduce(state, emit("agent.connected", {}, { agentId: "a1" }));
+    expect(next.requests).toBe(state.requests);
+    expect(next.commands).toBe(state.commands);
   });
 
   it("sets head to the last applied ingest sequence", () => {

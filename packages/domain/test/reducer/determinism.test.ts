@@ -172,6 +172,19 @@ const eventSpec: fc.Arbitrary<Spec> = fc.oneof(
     withAgent,
   ),
   spec("git.commit", fc.constant({ repo: "r", sha: "abcdef1", parents: [] }), bare),
+  spec(
+    "request.resolved",
+    fc.record({
+      requestId: fc.constantFrom("r1", "r2"),
+      resolution: fc.constantFrom("answered_here" as const, "answered_elsewhere" as const),
+    }),
+    fc.record({ ...common, sourceId: fc.constantFrom("taskville:engine", "test") }),
+  ),
+  spec(
+    "request.expired",
+    fc.record({ requestId: fc.constantFrom("r1", "r2") }),
+    fc.record({ ...common, sourceId: fc.constant("taskville:engine") }),
+  ),
 );
 
 const toEvents = (specs: Spec[]): StoredEnvelope[] => {
@@ -265,6 +278,10 @@ function checkInvariants(state: ProjectState, event: StoredEnvelope): void {
       .map((a) => a.id)
       .sort();
     expect([...team.memberAgentIds].sort()).toEqual(members);
+  }
+
+  for (const request of Object.values(state.requests)) {
+    expect(Object.hasOwn(state.agents, request.agentId)).toBe(true);
   }
 
   for (const [id, task] of Object.entries(state.tasks)) {

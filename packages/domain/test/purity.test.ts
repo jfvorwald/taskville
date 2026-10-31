@@ -39,10 +39,12 @@ function builtinImports(source: string): string[] {
 }
 
 // Each entry names a global the domain must not touch. Any use counts, not only a call, so
-// `const now = Date.now` is caught too. `Date` is banned outright: even `Date.parse` is
-// implementation-defined outside one ISO format, so timestamps are compared by hand.
+// `const now = Date.now` is caught too. `Date` is banned except `Date.parse` and `Date.UTC`,
+// which read no clock (M1.08's selectors parse event timestamps). The entities reducer
+// compares timestamps by hand instead (reducer/entities/time.ts), because Date.parse is only
+// specified to millisecond precision and protocol timestamps may carry more digits.
 const FORBIDDEN_GLOBALS: [RegExp, string][] = [
-  [/\bDate\b/, "Date (clock)"],
+  [/\bDate\b(?!\s*\.\s*(?:parse|UTC)\b)/, "Date (clock)"],
   [/\bperformance\b/, "performance (clock)"],
   [/\bMath\s*\.\s*random\b/, "Math.random (randomness)"],
   [/\bcrypto\b/, "crypto (randomness or host API)"],
@@ -154,6 +156,8 @@ describe("packages/domain reads no clock, randomness, or host globals", () => {
       "/* Math.random() */ const x = 1;",
       'const s = "process and Date in a string";',
       "const ok = { updatedAt: event.occurredAt };",
+      "const ms = Date.parse(event.occurredAt) + Date.UTC(2026, 0, 1);",
+      "const d2 = Date.parse(x) + Date.now();",
     ].join("\n");
     expect(forbiddenUses(sample)).toEqual([
       "line 1: Date (clock)",
@@ -167,6 +171,7 @@ describe("packages/domain reads no clock, randomness, or host globals", () => {
       "line 8: network",
       "line 9: timer",
       "line 10: Date (clock)",
+      "line 16: Date (clock)",
     ]);
   });
 
