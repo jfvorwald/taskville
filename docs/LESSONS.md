@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-35: Mutations that survive point at unreachable-in-normal-runs paths
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #15 · **Recorded by:** storage teammate (M1.13)
+- **What happened:** Dropping duplicate frames, paging the backlog and the shutdown abort survived the done-when tests because those paths do not run in a normal stream. Separately, a post-commit roborev high (job 4899) found open requests were not expired at engine start.
+- **Lesson:** After writing done-when tests, mutate each guard; a surviving mutation means a missing test that forces the rare path (republish an old batch, a 600-event backlog with nothing live).
+- **Action:** Tests added and boot-time expiry implemented in PR #149.
+
+### L-34: Hono stream close and writeSSE ordering can silently drop frames
+- **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #15 · **Recorded by:** storage teammate (M1.13)
+- **What happened:** Hono's `writeSSE` awaits before handing a frame to the writer, so `writeSSE` then an unawaited `close()` drops the frame (the error is swallowed); `close()` also sets a flag that makes a later client cancel skip `abort()`, so a cut-off stream stayed tracked until shutdown (roborev medium, job 4906).
+- **Lesson:** Never close a stream while a write may still be blocked; use `stream.write(text)` when order matters, and let `streamSSE` close after the last write. Hono applies backpressure, which is what makes the bounded per-subscriber queue meaningful.
+- **Action:** Fixed in PR #149.
+
 ### L-33: Same-session closure means a producer must hold the whole session
 - **Date:** 2026-10-30 · **Milestone:** M1 · **Ticket:** #14 · **Recorded by:** domain teammate (M1.15)
 - **What happened:** Requests close as `answered_elsewhere` on the next event from the same session, and subagents and in-process teammates share their parent's session (S-2), so they closed the demo's needs-you moment early. The review also found three identity gaps across repeated runs of one seed (core bots, transient agents and tasks, a run tag only to the second).
