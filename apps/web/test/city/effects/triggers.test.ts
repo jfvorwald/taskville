@@ -148,7 +148,7 @@ describe("celebration triggers", () => {
       expect(celebrations.handle(testGreen("a1"))).toEqual([]);
     });
 
-    it("keeps red state even when the rate limit drops the event that would use it", () => {
+    it("drops a green that lands inside the rate-limit window instead of queueing it", () => {
       const { celebrations, clock } = setup();
       celebrations.handle(taskCompleted("a2")); // burst at t0
       clock.now += 500;
