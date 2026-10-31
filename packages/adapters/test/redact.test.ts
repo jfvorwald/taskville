@@ -457,6 +457,18 @@ const positives: Positive[] = [
     kind: "basic-auth",
   },
   {
+    name: "Digest parameters with an empty first value",
+    input: `Authorization: Digest username="", response="${fake.hexResponse}"`,
+    secret: `username="", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
+    name: "Digest parameters with a space-led first value",
+    input: `Authorization: Digest username=" admin", response="${fake.hexResponse}"`,
+    secret: `username=" admin", response="${fake.hexResponse}"`,
+    kind: "bearer-token",
+  },
+  {
     name: "AWS SigV4 parameters",
     input: `Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
     secret: `Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=host;x-amz-date, Signature=${fake.hexSignature}`,
@@ -527,6 +539,12 @@ const positives: Positive[] = [
     name: "curl password with a quoted segment inside it",
     input: `curl -u admin:pre"${fake.password}" https://x`,
     secret: `pre"${fake.password}"`,
+    kind: "basic-auth",
+  },
+  {
+    name: "curl credentials inside a command substitution used as a user",
+    input: `curl -u $(curl -u admin:${fake.password} https://users.example) https://x`,
+    secret: fake.password,
     kind: "basic-auth",
   },
   {
