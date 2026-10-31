@@ -1,7 +1,7 @@
 # Quickstart: validate the Headless Foundation
 
-A run guide proving feature 001 works end to end. Commands describe the
-intended interface ([contracts/cli.md](contracts/cli.md)); none exist yet.
+A run guide proving feature 001 works end to end. Commands follow
+[contracts/cli.md](contracts/cli.md) and were run by hand on 2026-10-31 (M1 gate G1).
 
 ## Prerequisites
 
@@ -32,7 +32,11 @@ Expected: `project add` exits 0 and `project list` shows `demo` and `unsorted`;
 ingest prints `accepted 12 / duplicate 0 / conflict 0 / rejected 0`; status shows
 an indented tree with two agents, one `running` on a task, and the header
 `Demo · 1 active · 0 needs you · 0 trouble · 0 waiting`. The exact counts are fixed
-by the fixture (M1.17).
+by the fixture (M1.17), with one caveat when run by hand: the fixture's timestamps are
+fixed in the past, so with the real clock both agents also show
+`trouble (heuristic): quiet for N min` and the header says `2 trouble`. That is the
+heuristic silent-agent rule working (10 minutes); the CLI golden test pins the
+header with an injected clock.
 
 ```sh
 pnpm taskville events ingest --file fixtures/events/basic-two-agents.jsonl
@@ -70,8 +74,10 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" -H 'H
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -X POST http://127.0.0.1:4807/v1/commands -d '{}'
 ```
 
-Expected: `401`, `401`, `403` (`forbidden_host`), `403` (`credential_not_allowed`:
-the CLI token can never authorize a command).
+Expected: `401`, `403` (`forbidden_origin`: a state-changing request with no
+credential and no `Origin` is refused by the Origin check before the credential
+check), `403` (`forbidden_host`), `403` (`credential_not_allowed`: the CLI token can
+never authorize a command).
 
 ## 4. Determinism (US3)
 

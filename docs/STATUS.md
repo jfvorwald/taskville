@@ -12,7 +12,7 @@ The pnpm workspace and quality gate are in (PR #108): `pnpm check` runs typechec
 
 | Ticket | Lane | Teammate | State |
 | --- | --- | --- | --- |
-| [#103](https://github.com/jfvorwald/taskville/issues/103) M1.21 Performance and soak checks | Engine | storage | in progress |
+| [#95](https://github.com/jfvorwald/taskville/issues/95) M1.RT Retrospective and lessons | Review | lead | in progress |
 
 Ready, waiting for a free teammate: none (storage teammate takes #103 after its security fixes). Blocked: #95 (retro) on #17 and #103.
 
@@ -20,6 +20,7 @@ Ready, waiting for a free teammate: none (storage teammate takes #103 after its 
 
 | Ticket | PR | roborev | Checks |
 | --- | --- | --- | --- |
+| [#103](https://github.com/jfvorwald/taskville/issues/103) M1.21 Performance and soak checks | [#169](https://github.com/jfvorwald/taskville/pull/169) | 5005: 3 medium fixed; re-review 5011: 1 medium fixed; post-commit 5007: 1 medium fixed | SC-004 and SC-005 pass; SC-006 MISS filed as #166 ([report](tasks/M1.21.md)) |
 | [#14](https://github.com/jfvorwald/taskville/issues/14) M1.15 fix: demo parsers reject non-finite values | [#159](https://github.com/jfvorwald/taskville/pull/159) | 4979 pass, no findings | demo 97, CLI 60, `pnpm check` 1278 tests on main ([report](tasks/M1.15-fix.md)) |
 | [#18](https://github.com/jfvorwald/taskville/issues/18) M1.16 CLI demo commands | [#156](https://github.com/jfvorwald/taskville/pull/156) | 4957: 1 medium fixed; re-review 4962: 1 high, 1 medium fixed; post-commit 4964 pass | CLI 60 tests incl. `demo start` against a real `serve`; `pnpm check` 1203 tests on main ([report](tasks/M1.16.md)) |
 | [#16](https://github.com/jfvorwald/taskville/issues/16) M1.14 CLI: serve, status, events, requests | [#153](https://github.com/jfvorwald/taskville/pull/153) | 4918: 2 high, 1 medium fixed; re-review 4924: 1 medium fixed; post-commit 4931: 1 medium fixed | CLI 39 tests incl. quickstart goldens, engine 266, `pnpm check` 1182 tests on main; first CI run failed on the merge ref, fixed ([report](tasks/M1.14.md)) |
@@ -54,6 +55,7 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 - [#138](https://github.com/jfvorwald/taskville/issues/138) tool-call count exactness and task graph shortcuts (defaults: bounded projection as specified; task graph literal, so `queued -> completed` is flagged). Blocks nothing.
 - [#160](https://github.com/jfvorwald/taskville/issues/160) redactor strategy after six review rounds (default: keep patterns with robust boundaries; alternative: mask the rest of the line after any Authorization header or `-u` flag). Blocks nothing.
 - [#163](https://github.com/jfvorwald/taskville/issues/163) getting a new pairing link after expiry (default: restart `serve`; window 10 minutes). Blocks nothing.
+- [#168](https://github.com/jfvorwald/taskville/issues/168) what SC-006 measures (RSS as written, or memory after GC) and how long the soak runs. Decides whether #166 is a real miss.
 - [#110](https://github.com/jfvorwald/taskville/issues/110) where projects are registered (default: engine `projects` table, `project add` via `POST /v1/projects`, config projects registered at start). Blocks nothing.
 - [#114](https://github.com/jfvorwald/taskville/issues/114) ARCHITECTURE.md 7.4 vs 6 on `pending_requests`/`commands` tables (default: projection-only, M4; text unchanged). Blocks nothing.
 - [#116](https://github.com/jfvorwald/taskville/issues/116) S-1: hold window (default 90 s, focus-independent, hook timeout hold + 5 s) and terminal-answer rules that would change ARCHITECTURE.md 8.1 and the `.roborev.toml` bridge invariant. Blocks nothing in M1; feeds M4.02 and M4.03.
@@ -71,6 +73,9 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 | Live `pnpm retro M1` | 7.2 s | `time pnpm retro M1` | #94 |
 | `demo run --seed 42 --duration 2h --offline` (quickstart section 4) | same hash twice, 0.24 s | by hand, Node 26.8.2 | #18 |
 | Offline 8-hour calm demo run | 127 ms | demo test suite (Node 26.8.2) | #14 |
+| SC-004 batch over HTTP to real `serve` | median 155.8 ms, max 205.4 ms (5 runs); target under 1 s: PASS | `pnpm perf batch` (Apple M1, 16 GiB, Node 26.8.2) | #103 |
+| SC-005 ingest to SSE viewer | idle median 1.7 / p95 4.0 / max 15.1 ms; with demo median 2.2 / p95 6.1 / max 44.9 ms (1,000 probes each); target under 250 ms: PASS | `pnpm perf latency` | #103 |
+| SC-006 RSS growth hour 1 to 8, calm demo at 480x | 14.1%, rerun alone 26.6%; target under 10%: MISS (#166); heap after GC flat 16.6 to 16.7 MiB (diagnostic, not committed) | `pnpm perf soak` | #103 |
 | Ingest a 1,000-event batch (SC-004) | median 63.0 ms over 5 runs (56.9 to 88.0 ms), about 15,900 events/s | `pnpm --filter @taskville/engine run bench:ingest` (macOS, Node 26.8.2); reported, not gated | #13 |
 | Replay 10,012 events / hash result | 51 ms / 5.9 ms (one run) | throwaway script, Node 26.8.2 | #9 |
 | Hash a 759,588-byte state | about 9.6 ms (mean of 20 runs) | one-off script, not committed (Node 26.8.2) | #6 |
@@ -80,6 +85,9 @@ Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskv
 Targets in the spec are not measurements until a ticket records them here with the command that produced them.
 
 ## Known follow-ups
+
+- [#166](https://github.com/jfvorwald/taskville/issues/166) SC-006 RSS miss; [#167](https://github.com/jfvorwald/taskville/issues/167) projection state grows without bound. Not on the G1 list; raised for the owner to schedule.
+- Quickstart run by hand on main on 2026-10-31: all steps behave as specified; two stale expectations corrected (L-42).
 
 - Security review #17: all six findings fixed and merged (#152, #158, #164); #17 closed. M4's command service must catch `OpenerValueError` from `renderOpener`. No exchange attempt limit (the code is 256-bit, valid 10 minutes).
 
