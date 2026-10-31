@@ -308,8 +308,10 @@ describe("persisted pairings (#113 default)", () => {
   it("a paired browser survives a restart; only digests are stored; unpair revokes it for good", async () => {
     const home = tempDir();
     try {
-      const first = await startServe(home.path);
-      const [code] = first.codes();
+      const tty = new FakeTerminal();
+      const first = await startServe(home.path, { stdin: tty });
+      tty.type("p");
+      const [code, unused] = first.codes();
       const session = await pair(first, code ?? "");
       expect((await asSession(first, session)).status).toBe(200);
       expect(await first.stop()).toBe(0);
@@ -323,8 +325,10 @@ describe("persisted pairings (#113 default)", () => {
 
       const second = await startServe(home.path);
       expect((await asSession(second, session)).status).toBe(200);
-      // Codes are never persisted: the first run's code is gone.
+      // Codes are never persisted: the first run's codes, used or not, are gone.
       expect((await exchange(second, code ?? "")).status).toBe(401);
+      expect(unused).toBeDefined();
+      expect((await exchange(second, unused ?? "")).status).toBe(401);
 
       const unpaired = await cli(["unpair", "--home", home.path, "--url", second.url]);
       expect(unpaired.code).toBe(0);
