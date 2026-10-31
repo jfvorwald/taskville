@@ -20,6 +20,48 @@ Entry format:
 
 ## Entries
 
+### L-117: A usage-limit cutoff mid-wave leaves state that only live GitHub can reconcile
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** none · **Recorded by:** lead (M2.RT)
+- **What happened:** The first M2 lead session hit its usage limit with M2.10 committed but unreported, M2.19 assigned but never started, M2.18's correction unpushed, and STATUS behind seventeen merges. Recovery and this resume reconciled from GitHub, refs and worktrees before assigning anything.
+- **Lesson:** Read the live usage display before assigning, set a stop time in every brief, and have each worker push a checkpoint and hand off before the cutoff, so an interruption leaves pushed branches, not local state.
+- **Action:** Stop times and handoff block in the resume worker brief; usage policy approved by the owner (RECOVERY-2026-10-31).
+
+### L-116: Generic workers inherit the lead's model unless every assignment names one
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** none · **Recorded by:** lead (M2.RT)
+- **What happened:** The first M2 wave spawned general-purpose teammates with no model setting, so they ran on the lead's Opus, and the temporary brief hard-coded Opus attribution.
+- **Lesson:** State provider, model, effort and the reason on every assignment, and attribute commits to the model that wrote them.
+- **Action:** Applied in this resume (Sonnet medium or high for tickets, Haiku low for the lessons copy).
+
+### L-115: Redactor reviews do not converge on hand-parsed command lines
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #211 · **Recorded by:** lead (M2.RT)
+- **What happened:** M2.22's command-line password rules drew high findings in four rounds (5357, 5377, 5388/5399, 5415/5412), each a new crafted shape, as M1.20 and M1.18 F3 did (L-40). The lead verified the last four also leak on main, merged the strict improvement, and routed the class to a decision.
+- **Lesson:** When a finding class survives two fix attempts, stop, check whether the remaining findings are regressions or pre-existing gaps, and escalate the strategy instead of patching shapes.
+- **Action:** Decision #223; gaps tracked in #222.
+
+### L-114: A worker ran seven review panels on one ticket
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #212 · **Recorded by:** lead (M2.RT)
+- **What happened:** M2.23 ran pre-merge panels 5360 to 5409, each finding a new symlink or ancestor edge case, before a pass. The brief said re-review once; the hook kept prompting fix sessions.
+- **Lesson:** The review-round cap must be in the worker brief as a hard stop with a report to the lead, and the roborev Stop hook prompts do not override it.
+- **Action:** Proposed in docs/retros/M2.md (change 3).
+
+### L-113: Measurements taken while other workers run are not measurements
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #166 · **Recorded by:** lead (M2.RT)
+- **What happened:** M2.18's 28.7% rerun overlapped M2.16's soak and was invalid; the clean replacement read 39.7% with tests and reviews still running. The wave's perf batch and latency runs were taken after every worker had stopped.
+- **Lesson:** Run perf only with the machine reserved, log what else ran, and treat a number taken under contention as invalid rather than as a lower bound.
+- **Action:** Correction posted on #206 and #166; wave perf run with no workers active.
+
+### L-112: Tightening a timing assertion makes a shared-machine e2e load-sensitive (flake F-2)
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #34 · **Recorded by:** lead (M2.RT)
+- **What happened:** After the one-second visibility check began counting shim time, two replay runs failed 1 and then 3 checks at load average 8 to 12; alone it passed 7/7, and the wave run on main passed 7/7. Failure text was not captured.
+- **Lesson:** Capture failure text on the first failing run, and keep timing e2e runs off a machine that is running other suites.
+- **Action:** Logged as flake F-2; watch the one-second budget.
+
+### L-111: A stateless mapper can only join lead and teammate by what both hooks carry
+- **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #209 · **Recorded by:** lead (M2.RT)
+- **What happened:** Team names are `session-<first 8 hex of the lead session>`, so M2.20 scopes team-less tasks the same way. roborev rated the 32-bit collision high; the worker answered with evidence and the lead accepted it, since team IDs already share the limit.
+- **Lesson:** Record accepted trade-offs on review findings in the gate summary so the owner sees them.
+- **Action:** Listed in the G2 summary.
+
 ### L-110: A loop whose awaits never do I/O does not yield, so bound its work per tick
 - **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #35 · **Recorded by:** M2.11 teammate
 - **What happened:** The M2 security review found a loop after `listen` whose awaits never did I/O, so it never gave the event loop a turn.
@@ -336,7 +378,7 @@ Entry format:
 - **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #27 · **Recorded by:** M2.06 teammate
 - **What happened:** Nested objects and numbers under `password` or `token` passed through `redactJson` unmasked. That is fixed for evidence. The same gap exists for event payloads at ingest; it was noted for the lead as its own ticket, because fixing it changes dedupe hashes.
 - **Lesson:** Check nested values and non-string values under sensitive keys, not only direct string values.
-- **Action:** none, awareness only (the ingest gap is with the lead; no ticket linked yet)
+- **Action:** Ingest gap fixed in #200 (M2.17, #194).
 
 ### L-57: Masking must run on the whole body before any cut
 - **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** #27 · **Recorded by:** M2.06 teammate
