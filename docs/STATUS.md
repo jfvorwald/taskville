@@ -2,30 +2,31 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-10-31, recovery audit at about 13:45 EDT. **Implementation baseline:** main 20e28d8. **State:** paused by owner before further implementation. G2 #40 remains open; agents must not close it. M3 has not started.
+**Updated:** 2026-10-31, 15:45 EDT, M2 resumed by the owner through G2. **Implementation baseline:** main 20e28d8. **State:** M2 in progress. G2 #40 remains open; agents must not close it. M3 has not started.
 
-## Recovery checkpoint
+## M2 resume
 
-The previous summary lagged behind GitHub. Seventeen M2 implementation/follow-up PRs are merged: #179, #180, #181, #182, #186, #188, #189, #191, #192, #195, #196, #197, #199, #200, #201, #203, #204. Preserve them; do not repeat their tickets.
+Seventeen M2 implementation/follow-up PRs are merged: #179, #180, #181, #182, #186, #188, #189, #191, #192, #195, #196, #197, #199, #200, #201, #203, #204. Preserve them; do not repeat their tickets. The recovery audit is in [RECOVERY-2026-10-31](tasks/RECOVERY-2026-10-31.md); its model and effort policy is approved.
 
-| Work | State | Next action after the pause |
+| Work | State | Next |
 | --- | --- | --- |
-| M2.10 #34 | Draft [PR #208](https://github.com/jfvorwald/taskville/pull/208), recovered from d456db7; report committed in 0d9fe6e | Separate crew mapper task-ID fix, enable the TODO assertion, confirmation panel and CI disposition before merge |
-| M2.11 #35 | Review report complete in [PR #205](https://github.com/jfvorwald/taskville/pull/205); three medium and two low findings remain | Assign bounded fixes for F1 lazy fetch command execution, F2 redaction gaps, F3 unsafe home permissions; retain F4/F5 explicitly |
-| M2.19 #207 | Assigned just before limit, never started; no branch or worktree | Keep queued; no replacement worker during recovery |
-| M2.18 #166 | Code merged in #203; local report-only commit 3b3f972 not upstream | Preserve corrected measurement; carry it into reporting, not another implementation push to the merged branch |
-| M2.RT #96 | Not started | Wait for acceptance and security disposition, then full wave verification and retro |
-| G2 #40 | Open, not ready | Owner review only after the retro and evidence are ready |
+| M2.20 #209 crew mapper: one task across lead and teammate | In progress (Claude Sonnet 5.5, medium) | Unblocks M2.10 |
+| M2.21 #210 Git watcher lazy fetch (M2.11 F1) | In progress (Claude Sonnet 5.5, high) | Root registration decision #213 |
+| M2.22 #211 redaction gaps (M2.11 F2) | Queued | |
+| M2.23 #212 installer/shim home ownership (M2.11 F3) | Queued | |
+| M2.19 #207 CLI retired counts | Queued, dependencies merged (#204) | |
+| M2.10 #34 | Draft [PR #208](https://github.com/jfvorwald/taskville/pull/208); one TODO assertion for split task IDs | After #209: enable assertion, confirmation panel, CI |
+| M2.11 #35 | Review in [PR #205](https://github.com/jfvorwald/taskville/pull/205); dispositions [on #35](https://github.com/jfvorwald/taskville/issues/35) | Closes when #210 to #212 merge; F4 #214 and F5 #215 retained as low follow-ups |
+| M2.18 #166 | Code merged in #203; corrected measurement posted on #206 and #166 | SC-006 remains MISSED |
+| M2.RT #96, G2 #40 | Not started | After the fixes and wave verification |
 
-Recovery verification on M2.10 (which includes main 20e28d8): `pnpm check` passes typecheck, lint, 91 files and 2,033 tests. Recorded e2e replay exits 0 with six passing checks and one failing TODO for split task identities. This does not establish a complete acceptance pass. No live Claude run, benchmark, or full push-tier suite was repeated.
-
-All five original worktrees had clean tracked files at discovery. M2.18 was ahead of its remote by one report-only commit. Root `.agents/` and `AGENTS.md` were pre-existing untracked user files and remain untouched. See [recovery assessment](tasks/RECOVERY-2026-10-31.md) for process state, delegation proposals, and handoff instructions.
+Session window: the live usage display could not be read from this session; the owner said not to wait. Working to the provisional 19:50 EDT cutoff from the recovery audit (earliest plausible): normal assignments stop 18:50, drain from 19:20, shutdown done by 19:35.
 
 ## Remaining decisions
 
-Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206. Existing defaults remain in force; no architecture, constitution, production, or user-config changes made in recovery.
+Open owner decision issues: #174, #176, #178, #184, #187, #190, #198, #202, #206, #213. Existing defaults remain in force.
 
-SC-006 remains MISSED. M2.18's 28.7% rerun and M2.16's overlapping soak must not be treated as clean measurements. The preserved M2.18 correction reports a replacement 39.7% MISS, with other tests and reviews still running. #206 and #166 have not yet received that correction. This is not a fully quiet-machine benchmark. The 1x eight-hour run remains M7 work.
+SC-006 remains MISSED. M2.18's 28.7% rerun and M2.16's overlapping soak are invalid. The replacement clean-from-other-soaks run reports 39.7% MISS, on a machine that was not quiet. The 1x eight-hour run remains M7 work.
 
 ## Done in wave 1 (M1)
 
@@ -141,4 +142,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Remain paused. First agree the model policy and independent Codex ownership workflow. On explicit restart, resolve M2.10's crew identity bug and M2.11's medium security findings, then M2.19, wave verification, M2 retro, and the G2 owner review. Do not start M3 automatically.
+Land #209 to #212 and #207, finish M2.10 acceptance, run the wave verification, M2.RT #96, and prepare G2 #40. Stop at G2; do not start M3.
