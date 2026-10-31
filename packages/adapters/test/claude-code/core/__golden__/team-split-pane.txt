@@ -1,0 +1,224 @@
+#0 SessionStart
+  agent.registered claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"sourceAgentId":"a7286c33-05b8-4a44-af6b-76733867aab0","displayName":"proj","role":"main","kind":"session"}
+  session.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"workingDirectory":"/tmp/spike-s2/proj"}
+#1 UserPromptSubmit
+  session.prompt_submitted claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#2 PreToolUse:Agent
+  tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01DJRwAsdUbchfj3k7E85pRP","toolName":"Agent","summary":"Spawn teammate pip"}
+  activity.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"activity":"dispatching"}
+  evidence toolu_01DJRwAsdUbchfj3k7E85pRP input
+#3 PostToolUse:Agent
+  tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01DJRwAsdUbchfj3k7E85pRP","phase":"succeeded","durationMs":165}
+  evidence toolu_01DJRwAsdUbchfj3k7E85pRP output
+#4 SessionStart
+  agent.registered claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"sourceAgentId":"cf7d0732-a271-4cf7-9a11-d0918b72fbd0","displayName":"proj","role":"main","kind":"session"}
+  session.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"workingDirectory":"/tmp/spike-s2/proj"}
+#5 PreToolUse:Agent
+  tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01EV5vxARZTa3DrrQo5xex7K","toolName":"Agent","summary":"Spawn teammate bo"}
+  activity.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"activity":"dispatching"}
+  evidence toolu_01EV5vxARZTa3DrrQo5xex7K input
+#6 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#7 PostToolUse:Agent
+  tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01EV5vxARZTa3DrrQo5xex7K","phase":"succeeded","durationMs":196}
+  evidence toolu_01EV5vxARZTa3DrrQo5xex7K output
+#8 SessionStart
+  agent.registered claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"sourceAgentId":"f1b7a717-fe78-44d8-b68b-a12643262b81","displayName":"proj","role":"main","kind":"session"}
+  session.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"workingDirectory":"/tmp/spike-s2/proj"}
+#9 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#10 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#11 PreToolUse:Write
+  tool_call.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01ErN8STSR8eHWZ6PMKn6fmi","toolName":"Write","filePaths":["/tmp/spike-s2/proj/team-pip.txt"],"summary":"/tmp/spike-s2/proj/team-pip.txt"}
+  activity.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"activity":"implementing"}
+  evidence toolu_01ErN8STSR8eHWZ6PMKn6fmi input
+#12 PostToolUse:Write
+  tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01ErN8STSR8eHWZ6PMKn6fmi","phase":"succeeded","durationMs":40}
+  evidence toolu_01ErN8STSR8eHWZ6PMKn6fmi output
+#13 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#14 PreToolUse:Bash
+  tool_call.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01QULpboxZ1kWaJoviNM9oAp","toolName":"Bash","summary":"Create empty file perm-pip.txt in working directory"}
+  evidence toolu_01QULpboxZ1kWaJoviNM9oAp input
+#15 PreToolUse:Read
+  tool_call.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_01SuvKTGvjYnNtjw3GzRpeMy","toolName":"Read","filePaths":["/tmp/spike-s2/proj/notes.txt"],"summary":"/tmp/spike-s2/proj/notes.txt"}
+  activity.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"activity":"researching"}
+  evidence toolu_01SuvKTGvjYnNtjw3GzRpeMy input
+#16 PostToolUse:Read
+  tool_call.finished claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_01SuvKTGvjYnNtjw3GzRpeMy","phase":"succeeded","durationMs":12}
+  evidence toolu_01SuvKTGvjYnNtjw3GzRpeMy output
+#17 Notification:worker_permission_prompt  (ignored: worker_permission_prompt belongs to the crew mapper (M2.04))
+#18 PreToolUse:Edit
+  tool_call.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_017mmRDPZJxpSdaSb3q5VLgZ","toolName":"Edit","filePaths":["/tmp/spike-s2/proj/notes.txt"],"summary":"/tmp/spike-s2/proj/notes.txt"}
+  activity.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"activity":"implementing"}
+  evidence toolu_017mmRDPZJxpSdaSb3q5VLgZ input
+#19 PostToolUse:Edit
+  tool_call.finished claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_017mmRDPZJxpSdaSb3q5VLgZ","phase":"succeeded","durationMs":16}
+  evidence toolu_017mmRDPZJxpSdaSb3q5VLgZ output
+#20 PreToolUse:Bash
+  tool_call.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_019p2mGmC5eW9iMbafArNqdc","toolName":"Bash","summary":"Count lines in notes.txt"}
+  evidence toolu_019p2mGmC5eW9iMbafArNqdc input
+#21 PostToolUse:Bash
+  tool_call.finished claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_019p2mGmC5eW9iMbafArNqdc","phase":"succeeded","durationMs":186}
+  evidence toolu_019p2mGmC5eW9iMbafArNqdc output
+#22 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#23 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#24 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#25 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#26 Stop
+  session.turn_ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+  activity.ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+#27 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
+#28 Notification:permission_prompt
+  request.opened claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 corr=a5bd897e-ffa4-4fe1-9383-1e804adb6522 {"requestId":"claude-code:request:team-split-pane-28","kind":"permission","reason":"Claude needs your permission"}
+#29 PostToolUse:Bash
+  tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01QULpboxZ1kWaJoviNM9oAp","phase":"succeeded","durationMs":286}
+  evidence toolu_01QULpboxZ1kWaJoviNM9oAp output
+#30 PreToolUse:ToolSearch
+  tool_call.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01N8b4gTPmQZmw1FWJMFupvv","toolName":"ToolSearch"}
+  evidence toolu_01N8b4gTPmQZmw1FWJMFupvv input
+#31 PostToolUse:ToolSearch
+  tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01N8b4gTPmQZmw1FWJMFupvv","phase":"succeeded","durationMs":19}
+  evidence toolu_01N8b4gTPmQZmw1FWJMFupvv output
+#32 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#33 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#34 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#35 PreToolUse:SendMessage
+  tool_call.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01YBDH2ZYHUyR9Wk4PVuwcnk","toolName":"SendMessage"}
+  evidence toolu_01YBDH2ZYHUyR9Wk4PVuwcnk input
+#36 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#37 PostToolUse:SendMessage
+  tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01YBDH2ZYHUyR9Wk4PVuwcnk","phase":"succeeded","durationMs":26}
+  evidence toolu_01YBDH2ZYHUyR9Wk4PVuwcnk output
+#38 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#39 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#40 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#41 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#42 Stop
+  session.turn_ended claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {}
+  activity.ended claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {}
+#43 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#44 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
+#45 PreToolUse:SendMessage
+  tool_call.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_0149dS2i1KauETU366G1kLeM","toolName":"SendMessage"}
+  evidence toolu_0149dS2i1KauETU366G1kLeM input
+#46 PostToolUse:SendMessage
+  tool_call.finished claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_0149dS2i1KauETU366G1kLeM","phase":"succeeded","durationMs":18}
+  evidence toolu_0149dS2i1KauETU366G1kLeM output
+#47 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#48 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#49 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#50 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#51 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#52 Stop
+  session.turn_ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+  activity.ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+#53 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
+#54 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#55 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#56 PreToolUse:SendMessage
+  tool_call.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01QGFKkSzk52EL61JQU2uKv2","toolName":"SendMessage"}
+  evidence toolu_01QGFKkSzk52EL61JQU2uKv2 input
+#57 PostToolUse:SendMessage
+  tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_01QGFKkSzk52EL61JQU2uKv2","phase":"succeeded","durationMs":19}
+  evidence toolu_01QGFKkSzk52EL61JQU2uKv2 output
+#58 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#59 PreToolUse:ToolSearch
+  tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01T6ercvQn6H524gj6xKBBNo","toolName":"ToolSearch"}
+  evidence toolu_01T6ercvQn6H524gj6xKBBNo input
+#60 PostToolUse:ToolSearch
+  tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01T6ercvQn6H524gj6xKBBNo","phase":"succeeded","durationMs":4}
+  evidence toolu_01T6ercvQn6H524gj6xKBBNo output
+#61 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#62 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#63 Stop
+  session.turn_ended claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {}
+  activity.ended claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {}
+#64 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
+#65 PreToolUse:SendMessage
+  tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_013aC2uK1qccp1eiG1gc7Wvi","toolName":"SendMessage"}
+  evidence toolu_013aC2uK1qccp1eiG1gc7Wvi input
+#66 PostToolUse:SendMessage
+  tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_013aC2uK1qccp1eiG1gc7Wvi","phase":"succeeded","durationMs":10}
+  evidence toolu_013aC2uK1qccp1eiG1gc7Wvi output
+#67 PreToolUse:SendMessage
+  tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_013jms4ker9BpUBKHNoMgXi8","toolName":"SendMessage"}
+  evidence toolu_013jms4ker9BpUBKHNoMgXi8 input
+#68 PostToolUse:SendMessage
+  tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_013jms4ker9BpUBKHNoMgXi8","phase":"succeeded","durationMs":8}
+  evidence toolu_013jms4ker9BpUBKHNoMgXi8 output
+#69 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#70 Stop
+  session.turn_ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+  activity.ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+#71 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
+#72 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#73 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#74 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#75 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#76 PreToolUse:SendMessage
+  tool_call.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_011NMjpe9Hyg77X8VCFu2PBF","toolName":"SendMessage"}
+  evidence toolu_011NMjpe9Hyg77X8VCFu2PBF input
+#77 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#78 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#79 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#80 PostToolUse:SendMessage
+  tool_call.finished claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"toolCallId":"toolu_011NMjpe9Hyg77X8VCFu2PBF","phase":"succeeded","durationMs":158}
+  evidence toolu_011NMjpe9Hyg77X8VCFu2PBF output
+#81 SessionEnd
+  session.ended claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"outcome":"other"}
+#82 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#83 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#84 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#85 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#86 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#87 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#88 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#89 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#90 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#91 PreToolUse:SendMessage
+  tool_call.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_017yfk2fHU2gSxqiq6m8bPYa","toolName":"SendMessage"}
+  evidence toolu_017yfk2fHU2gSxqiq6m8bPYa input
+#92 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#93 PostToolUse:SendMessage
+  tool_call.finished claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"toolCallId":"toolu_017yfk2fHU2gSxqiq6m8bPYa","phase":"succeeded","durationMs":24}
+  evidence toolu_017yfk2fHU2gSxqiq6m8bPYa output
+#94 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#95 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#96 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#97 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#98 Stop
+  session.turn_ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+  activity.ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {}
+#99 TeammateIdle  (ignored: TeammateIdle belongs to the crew mapper (M2.04))
+#100 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#101 PreToolUse:ListAgents
+  tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01DsgPy5be1uav9Wm78qHUfh","toolName":"ListAgents"}
+  evidence toolu_01DsgPy5be1uav9Wm78qHUfh input
+#102 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#103 PostToolUse:ListAgents
+  tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01DsgPy5be1uav9Wm78qHUfh","phase":"succeeded","durationMs":140}
+  evidence toolu_01DsgPy5be1uav9Wm78qHUfh output
+#104 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#105 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#106 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#107 Stop
+  session.turn_ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+  activity.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
+#108 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
+#109 SubagentStop  (ignored: SubagentStop belongs to the crew mapper (M2.04))
+#110 SessionEnd
+  session.ended claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"outcome":"other"}
+#111 SessionEnd
+  session.ended claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"outcome":"other"}

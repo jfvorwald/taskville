@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./claude-code": "./src/claude-code/index.ts",
     "./redact": "./src/redact/index.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. --project @taskville/adapters"
+  },
+  "dependencies": {
+    "@taskville/protocol": "workspace:*"
   }
 }
