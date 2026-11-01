@@ -21,7 +21,11 @@ const specs =
 
 const failed: string[] = [];
 for (const spec of specs) {
-  const run = spawnSync("playwright", ["test", spec, ...flags], { stdio: "inherit" });
+  const name = spec.replace(/^.*\//, "").replace(/\.spec\.ts$/, "");
+  const run = spawnSync("playwright", ["test", spec, ...flags], {
+    stdio: "inherit",
+    env: { ...process.env, E2E_SPEC: name },
+  });
   if (run.status !== 0) failed.push(spec);
 }
 if (failed.length > 0) {
