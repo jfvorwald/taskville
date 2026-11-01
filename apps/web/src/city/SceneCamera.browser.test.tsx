@@ -2,6 +2,7 @@ import { _roots } from "@react-three/fiber";
 import { Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-react";
+import { SessionProvider } from "../pairing/session.tsx";
 import { SceneRoot } from "../SceneRoot.tsx";
 import { CITY_CAMERA, cameraPosition } from "./layout/index.ts";
 
@@ -22,7 +23,9 @@ describe("the drawn camera pose (SceneRoot with the city mounted)", () => {
   it("is the city's orthographic camera and looks at CITY_CAMERA.target after the first frames", async () => {
     await render(
       <div style={{ width: 800, height: 600 }}>
-        <SceneRoot />
+        <SessionProvider value="test-session">
+          <SceneRoot />
+        </SessionProvider>
       </div>,
     );
     await frames(5);
