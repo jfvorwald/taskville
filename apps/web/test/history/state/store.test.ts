@@ -64,7 +64,8 @@ function bodyAt(time: number) {
 interface Request {
   url: URL;
   headers: Headers;
-  resolve(): void;
+  signal: AbortSignal | null | undefined;
+  resolve(response?: Response): void;
 }
 
 function timelineEngine() {
@@ -84,7 +85,9 @@ function timelineEngine() {
       const request = {
         url,
         headers,
-        resolve: () => resolve(Response.json(bodyAt(Date.parse(required(at))))),
+        signal: init?.signal,
+        resolve: (response?: Response) =>
+          resolve(response ?? Response.json(bodyAt(Date.parse(required(at))))),
       };
       requests.push(request);
       // Ignore abort intentionally: late responses must still be fenced by the controller.
@@ -216,6 +219,114 @@ describe("history state", () => {
     expect(history.getState().time).toBe(START + 31_000);
     expect(history.getState().state).toEqual(stateAt(START + 31_000));
   });
+
+  it("preserves an explicit deferred seek when a playback tick arrives", async () => {
+    const { history, engine, advance } = await setup();
+    await history.getState().seek(START);
+    history.getState().play();
+    engine.defer();
+    const seek = history.getState().seek(START + 30_000);
+    const request = required(engine.requests[1]);
+    advance(1_000);
+    const tick = history.getState().tick();
+    // Settle every read even against the pre-fix controller, which starts another fetch.
+    for (const pending of engine.requests.slice(1)) pending.resolve();
+    await Promise.all([seek, tick]);
+    expect(history.getState()).toMatchObject({ time: START + 30_000, playing: true });
+    expect(history.getState().state).toEqual(stateAt(START + 30_000));
+    expect(request.signal?.aborted).toBe(false);
+    expect(engine.requests).toHaveLength(2);
+    // Explicit seek completion anchors playback at the requested position.
+    advance(1_000);
+    const next = history.getState().tick();
+    required(engine.requests.at(-1)).resolve();
+    await next;
+    expect(history.getState().time).toBe(START + 31_000);
+  });
+
+  it("publishes a pending playback read despite repeated overlapping ticks", async () => {
+    const { history, engine, advance } = await setup();
+    await history.getState().seek(START);
+    history.getState().play();
+    engine.defer();
+    advance(1_000);
+    const first = history.getState().tick();
+    const request = required(engine.requests[1]);
+    const overlaps: Promise<void>[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      advance(100);
+      overlaps.push(history.getState().tick());
+    }
+    request.resolve();
+    await first;
+    const published = history.getState();
+    const aborted = request.signal?.aborted;
+    const requestCount = engine.requests.length;
+    for (const pending of engine.requests.slice(2)) pending.resolve();
+    await Promise.all(overlaps);
+    expect(published.time).toBe(START + 1_000);
+    expect(published.state).toEqual(stateAt(START + 1_000));
+    expect(aborted).toBe(false);
+    expect(requestCount).toBe(2);
+  });
+
+  it("recovers elapsed time from skipped ticks on the next tick after publication", async () => {
+    const { history, engine, advance } = await setup();
+    await history.getState().seek(START);
+    history.getState().setRate(10);
+    history.getState().play();
+    engine.defer();
+    advance(100);
+    const first = history.getState().tick();
+    advance(2_000);
+    const skipped = history.getState().tick();
+    required(engine.requests[1]).resolve();
+    await first;
+    const completedTime = history.getState().time;
+    // No clock advance here: all 2,000 ms elapsed while the first read was pending.
+    const next = history.getState().tick();
+    const nextRequest = required(engine.requests.at(-1));
+    for (const pending of engine.requests.slice(2)) pending.resolve();
+    await Promise.all([skipped, next]);
+    expect([completedTime, history.getState().time]).toEqual([START + 1_000, START + 21_000]);
+    expect(nextRequest.url.searchParams.get("at")).toBe(new Date(START + 21_000).toISOString());
+    expect(history.getState().state).toEqual(stateAt(START + 21_000));
+    // The recovered interval must not be counted a second time.
+    advance(900);
+    const later = history.getState().tick();
+    required(engine.requests.at(-1)).resolve();
+    await later;
+    expect(history.getState().time).toBe(START + 30_000);
+    expect(history.getState().state).toEqual(stateAt(START + 30_000));
+  });
+
+  it.each(["HTTP", "JSON"] as const)(
+    "retains the published view after a rejected %s response and permits a later seek",
+    async (failure) => {
+      const { history, engine } = await setup();
+      await history.getState().seek(START + 1_000);
+      const before = history.getState();
+      engine.defer();
+      const failed = history.getState().seek(START + 30_000);
+      const rejection = expect(failed).rejects.toThrow(
+        failure === "HTTP" ? "HTTP 503" : SyntaxError,
+      );
+      required(engine.requests[1]).resolve(
+        failure === "HTTP" ? new Response(null, { status: 503 }) : new Response("{"),
+      );
+      await rejection;
+      expect(history.getState()).toBe(before);
+      const recovery = history.getState().seek(START + 1_200_000);
+      required(engine.requests[2]).resolve();
+      await recovery;
+      expect(history.getState()).toMatchObject({
+        mode: "history",
+        time: START + 1_200_000,
+        playing: false,
+      });
+      expect(history.getState().state).toEqual(stateAt(START + 1_200_000));
+    },
+  );
 
   it("keeps live events underneath replay and returns synchronously to the latest snapshot", async () => {
     const { history, liveStore, engine } = await setup();
