@@ -120,10 +120,9 @@ try {
       return { times: w.__tvFrames.slice(), raf: w.__tvRaf.slice() };
     });
     const gapsOf = (ts: number[]) => ts.slice(1).map((t, i) => t - (ts[i] ?? t));
-    const rate = (ts: number[]) => {
-      const span = (ts.at(-1) ?? 0) - (ts[0] ?? 0);
-      return span > 0 ? (ts.length - 1) / (span / 1000) : 0;
-    };
+    // Frames over the whole sample window, so a burst followed by a stall cannot read as a
+    // high rate (roborev 5726).
+    const rate = (ts: number[]) => ts.length / seconds;
     const sorted = gapsOf(times).sort((a, b) => a - b);
     const rafGaps = gapsOf(raf).sort((a, b) => a - b);
     const fastGap = rafGaps[Math.floor(rafGaps.length * 0.1)] ?? 0;
