@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSoundscape } from "../audio/index.ts";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { selectionStore } from "../city/interaction/selection.ts";
@@ -30,7 +30,7 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
-import { SETTINGS_OVERLAY_ID } from "./settings/index.ts";
+import { SETTINGS_OVERLAY_ID, SettingsOpenContext, SettingsToggle } from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
@@ -104,25 +104,38 @@ export function OverlayRoot({
   const liveTarget = useCardTarget(dataStore, selection.selectedId);
   const liveCard = liveTarget !== null;
   const recordedTarget = useRecordedTarget(store, mode, selection.selectedId);
-  // Needs-you takes the single sidebar ahead of the selected agent and settings.
+  // Settings opened on purpose takes the single sidebar. Otherwise needs-you takes it ahead of the
+  // selected agent, and settings shows when neither applies. A request that arrives behind open
+  // settings is still counted by the header.
   const cardOpen = mode === "history" ? (recordedTarget ?? null) !== null : liveCard;
-  const sidebar = cardOpen ? ACTION_CARD_ID : selectedAgent ? AGENT_PANEL_ID : SETTINGS_OVERLAY_ID;
+  // Held here because the panel unmounts whenever the sidebar shows something else.
+  const settingsOpen = useState(false);
+  const sidebar = settingsOpen[0]
+    ? SETTINGS_OVERLAY_ID
+    : cardOpen
+      ? ACTION_CARD_ID
+      : selectedAgent
+        ? AGENT_PANEL_ID
+        : SETTINGS_OVERLAY_ID;
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
-      <PresentedSidebar store={store} recordedTarget={recordedTarget} liveTarget={liveTarget}>
-        <OverlayHost
-          registry={registry}
-          enabled={ENABLED}
-          sidebar={sidebar}
-          mode={mode}
-          selectors={selectors}
-          selection={selection}
-          anchors={worldAnchors}
-          runIntent={noIntent}
-          storage={storage}
-        />
-      </PresentedSidebar>
+      <SettingsOpenContext.Provider value={settingsOpen}>
+        <PresentedSidebar store={store} recordedTarget={recordedTarget} liveTarget={liveTarget}>
+          <OverlayHost
+            registry={registry}
+            enabled={ENABLED}
+            sidebar={sidebar}
+            mode={mode}
+            selectors={selectors}
+            selection={selection}
+            anchors={worldAnchors}
+            runIntent={noIntent}
+            storage={storage}
+          />
+        </PresentedSidebar>
+        {sidebar === SETTINGS_OVERLAY_ID ? null : <SettingsToggle />}
+      </SettingsOpenContext.Provider>
       <p className={styles.badge}>
         {connection === "stale" ? "Taskville · stale" : "Taskville · paired"}
       </p>

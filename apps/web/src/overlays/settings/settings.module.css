@@ -147,3 +147,11 @@
   background: var(--tv-accent);
   cursor: pointer;
 }
+
+/* Over the sidebar column, where the panel own toggle sits when it is the one shown. */
+.floatingToggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 6;
+}

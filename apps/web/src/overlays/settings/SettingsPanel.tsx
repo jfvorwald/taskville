@@ -1,7 +1,8 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { Button, Label, Radio, RadioGroup, Switch } from "react-aria-components";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { useSettingsOpen } from "./open.tsx";
 import { SoundSection } from "./SoundSection.tsx";
 import styles from "./settings.module.css";
 import {
@@ -42,7 +43,7 @@ export function SettingsPanel({
   onThemeChange = (id) => store.set("theme", id),
 }: SettingsPanelProps) {
   const values = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useSettingsOpen();
   // The theme system falls back to the default for an unknown id, so the panel shows that.
   const inUse = themeId ?? values.theme;
   const theme = themes.some((t) => t.id === inUse) ? inUse : DEFAULT_SETTINGS.theme;
@@ -53,7 +54,7 @@ export function SettingsPanel({
         className={styles.toggle}
         aria-expanded={open}
         aria-controls="settings-panel-body"
-        onPress={() => setOpen((o) => !o)}
+        onPress={() => setOpen(!open)}
       >
         Settings
       </Button>
