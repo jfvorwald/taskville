@@ -177,13 +177,16 @@ test("a tab hidden for over two seconds comes back with its walkers rebuilt at t
   // A fresh demo run keeps new agents walking to their areas.
   const { home } = codes();
   const out: string[] = [];
+  // Aborting ends the producer, so no new walk can start after the hide.
+  const stopDemo = new AbortController();
   const io = {
     stdout: (t: string) => out.push(t),
     stderr: (t: string) => out.push(t),
     env: {},
     cwd: home,
+    signal: stopDemo.signal,
   };
-  // `demo start` runs until the simulated duration has played out, so it is not awaited here.
+  // `demo start` runs until the simulated duration has played out, so it is not awaited yet.
   const demo = run(
     [
       "demo",
@@ -215,6 +218,43 @@ test("a tab hidden for over two seconds comes back with its walkers rebuilt at t
     undefined,
     { timeout: 60_000, polling: 50 },
   );
+  // The producer keeps emitting events every 42 to 125 ms, so a new walk could start between the
+  // resume rebuild and the assertion. Stop it, wait for the call to finish, then wait until the
+  // browser has applied the last event: the agents' states stop changing for 300 ms.
+  stopDemo.abort();
+  expect(await demo, out.join("")).toBe(0);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const snapshot = () =>
+          JSON.stringify(
+            (
+              window as unknown as {
+                __taskvilleMovement: () => {
+                  id: string;
+                  state: string;
+                  onTheWay: boolean;
+                  gone: boolean;
+                }[];
+              }
+            )
+              .__taskvilleMovement()
+              .map((a) => [a.id, a.state, a.onTheWay, a.gone]),
+          );
+        let last = snapshot();
+        let since = performance.now();
+        const timer = setInterval(() => {
+          const now = snapshot();
+          if (now !== last) {
+            last = now;
+            since = performance.now();
+          } else if (performance.now() - since >= 300) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 50);
+      }),
+  );
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -236,5 +276,4 @@ test("a tab hidden for over two seconds comes back with its walkers rebuilt at t
       .filter((w) => !w.gone && w.onTheWay).length;
   });
   expect(walkingAfterReturn, "agents still walking right after the tab returned").toBe(0);
-  expect(await demo, out.join("")).toBe(0);
 });
