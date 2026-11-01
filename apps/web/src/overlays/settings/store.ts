@@ -21,12 +21,15 @@ export interface SettingsValues {
   dayNight: DayNight;
   /** `system` follows `prefers-reduced-motion`; resolve with `resolveReducedMotion`. */
   reducedMotion: ReducedMotionSetting;
+  /** Raise a desktop notification when an agent in any project starts needing you. */
+  desktopNotifications: boolean;
 }
 
 export const DEFAULT_SETTINGS: SettingsValues = {
   theme: "cyberpunk",
   dayNight: "auto",
   reducedMotion: "system",
+  desktopNotifications: false,
 };
 
 export interface SettingsStore extends Selector<SettingsValues> {
@@ -47,6 +50,7 @@ const VALID: Validators = {
   theme: (value): value is string => typeof value === "string" && THEME_ID.test(value),
   dayNight: oneOf(DAY_NIGHT_CHOICES),
   reducedMotion: oneOf(REDUCED_MOTION_CHOICES),
+  desktopNotifications: (value): value is boolean => typeof value === "boolean",
 };
 
 const KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof SettingsValues)[];

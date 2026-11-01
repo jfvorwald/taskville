@@ -1,12 +1,19 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
+import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
+import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
-import { countsHeaderOverlay } from "./header/index.ts";
+import {
+  countsHeaderOverlay,
+  useAttentionSync,
+  useAttentionTabTitle,
+  useDesktopNotifications,
+} from "./header/index.ts";
 import {
   createOverlayRegistry,
   OverlayHost,
@@ -38,9 +45,6 @@ const ENABLED = [
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
 
-/** The project the city shows until project selection exists: the engine's built-in one. */
-const PROJECT_ID = "unsorted";
-
 const noIntent = () => {};
 
 function localStorageOrNull(): Storage | null {
@@ -56,7 +60,18 @@ function localStorageOrNull(): Storage | null {
  * on the layer lets the canvas keep the pointer; an overlay that needs it uses InteractiveRegion.
  */
 export function OverlayRoot() {
-  useDataSync(PROJECT_ID);
+  useDataSync(useCurrentProjectId());
+  // The selected agent belongs to the project that was shown; it is not in the next one.
+  useEffect(
+    () =>
+      projectSelection.subscribe((state, before) => {
+        if (state.projectId !== before.projectId) selectionStore.select(null);
+      }),
+    [],
+  );
+  useAttentionSync();
+  useAttentionTabTitle();
+  useDesktopNotifications();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
   const storage = useMemo(localStorageOrNull, []);
