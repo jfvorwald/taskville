@@ -55,6 +55,8 @@ export interface PermissionBridgeOptions {
   /** Runs `run` after `delayMs` and returns a cancel function. Defaults to `setTimeout`. */
   schedule?: (run: () => void, delayMs: number) => () => void;
   now?: () => Date;
+  /** Milliseconds on a monotonic clock, to time the hold. Defaults to `performance.now()`. */
+  monotonicNowMs?: () => number;
   newRequestId?: () => string;
   newEventId?: () => string;
   logger?: Logger;
@@ -334,8 +336,9 @@ export class PermissionBridge {
     return held;
   }
 
+  /** Monotonic, so a wall-clock jump cannot turn a terminal answer into a timeout. */
   #nowMs(): number {
-    return (this.#options.now ?? (() => new Date()))().getTime();
+    return (this.#options.monotonicNowMs ?? (() => performance.now()))();
   }
 
   #close(requestId: string): void {
