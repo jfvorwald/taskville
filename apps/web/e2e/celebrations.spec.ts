@@ -85,6 +85,11 @@ async function runDemo(seed: number): Promise<void> {
 // colours, so on screen they stay close to these values.
 const EFFECT_COLORS = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#f78c6b", "#fff3b0"];
 
+/** Width and height from a PNG's IHDR chunk. */
+function pngSize(png: Buffer): { width: number; height: number } {
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+
 /**
  * Pixels that are effect-coloured in `during` but not in `settled`, counted in the browser. `settled`
  * is the same canvas after the celebration ended, so the agents are already drawn in both frames and
@@ -107,7 +112,7 @@ async function newEffectPixels(during: Buffer, settled: Buffer): Promise<number>
         return ctx.getImageData(0, 0, c.width, c.height);
       };
       const [p, q] = [await load(x as string), await load(y as string)];
-      if (p.width !== q.width || p.height !== q.height) return Number.NEGATIVE_INFINITY;
+      if (p.width !== q.width || p.height !== q.height) return Number.NaN;
       const colors = (palette as string[]).map((h) => [
         Number.parseInt(h.slice(1, 3), 16),
         Number.parseInt(h.slice(3, 5), 16),
@@ -161,23 +166,38 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
     { polling: 30, timeout: 90_000 },
   );
   const { kind, at } = (await seen.jsonValue()) as Played;
-  const during = await canvas.screenshot();
+  // Three frames back to back: one late screenshot must not decide the test (a high-five lives
+  // 700 ms). The best frame is the one compared and saved.
+  const frames: Buffer[] = [];
+  for (let i = 0; i < 3; i++) frames.push(await canvas.screenshot());
 
   // The same scene once the effect is over (confetti lives 1.2 s; the next burst is >= 2 s away).
   await page.waitForFunction((t) => performance.now() - t >= 1600, at, { polling: 50 });
   const settled = await canvas.screenshot();
 
-  const dir = process.env.E2E_SCREENSHOT_DIR;
-  if (dir) {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(`${dir}/${kind}.png`, during);
-  }
+  // The canvas must not have resized between the frames, or the comparison means nothing.
+  for (const f of frames)
+    expect(pngSize(f), "canvas size is stable across frames").toEqual(pngSize(settled));
 
   // Only particle-coloured pixels that the settled frame lacks: agents, buildings and their
   // movement are in both frames, so a pass means the effect itself drew.
-  const fresh = await newEffectPixels(during, settled);
-  console.log(`celebrations e2e: ${kind} drew ${fresh} new effect-coloured pixels`);
-  expect(fresh, `${kind} particles are visible on the canvas while it plays`).toBeGreaterThan(20);
+  const counts: number[] = [];
+  for (const f of frames) counts.push(await newEffectPixels(f, settled));
+  const fresh = Math.max(...counts);
+  console.log(
+    `celebrations e2e: ${kind} new effect-coloured pixels per frame ${counts.join(", ")} (best ${fresh})`,
+  );
+
+  const dir = process.env.E2E_SCREENSHOT_DIR;
+  if (dir) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/${kind}.png`, frames[counts.indexOf(fresh)] ?? (frames[0] as Buffer));
+  }
+
+  expect(
+    fresh,
+    `${kind} particles are visible on the canvas while it plays (new pixels per frame: ${counts.join(", ")})`,
+  ).toBeGreaterThan(20);
 
   await demo;
   const all = await played();
