@@ -114,7 +114,10 @@ export async function openSession(
   const template = deps.config.sessionOpener;
   if (template === null) return { status: "copy-only", sessionId, cwd };
 
-  if (deps.isDirectory && !(await deps.isDirectory(cwd))) {
+  // The cwd only reaches the opener through a `{cwd}` placeholder, so a template without one
+  // needs no directory (a session can start without a working directory).
+  const usesCwd = template.some((arg) => arg.includes("{cwd}"));
+  if (usesCwd && deps.isDirectory && !(await deps.isDirectory(cwd))) {
     return {
       status: "failed",
       reason: "invalid-value",
