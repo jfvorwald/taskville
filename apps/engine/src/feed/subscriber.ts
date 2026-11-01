@@ -88,7 +88,7 @@ export class FeedSubscriber implements HubSubscriber {
   constructor(stream: SSEStreamingApi, options: FeedSubscriberOptions) {
     this.#stream = stream;
     this.#options = options;
-    this.#tracker = new ToolCallTracker(options.agentId);
+    this.#tracker = new ToolCallTracker(options.projectId, options.agentId);
   }
 
   /** Called once when the subscriber closes for any reason (removes it from the hub). */

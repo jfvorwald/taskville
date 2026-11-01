@@ -1,4 +1,4 @@
-import type { ToolCallPhase } from "@taskville/protocol";
+import type { ToolCallState } from "@taskville/domain/reducer";
 import type { Context, Hono } from "hono";
 import { type BodyPart, EVICTED_MESSAGE, type EvidenceStore } from "../evidence/index.ts";
 import { type AppEnv, requireScope } from "../http/app.ts";
@@ -59,14 +59,15 @@ export function parseEvidenceId(
 
 /**
  * The evidence references of a ToolCall as of its frame: the input always, the output only once
- * the call has finished (a running call has no output yet, whatever the store holds now). The
+ * the call has finished (a running call has no output yet, and an unfinished one never got a
+ * result, whatever the store holds now). The
  * status of each is the store's, current when the frame is written.
  */
 export function frameEvidence(
   store: EvidenceStore,
   projectId: string,
   toolCallId: string,
-  phase: ToolCallPhase,
+  phase: ToolCallState,
 ): FrameEvidence {
   const bodies = store.get(projectId, toolCallId);
   const ref = (part: BodyPart): EvidenceRef | null => {
@@ -74,7 +75,10 @@ export function frameEvidence(
     if (body === null || body === undefined) return null;
     return { id: evidenceId(projectId, toolCallId, part), status: body.status };
   };
-  return { input: ref("input"), output: phase === "running" ? null : ref("output") };
+  return {
+    input: ref("input"),
+    output: phase === "running" || phase === "unfinished" ? null : ref("output"),
+  };
 }
 
 const MARKER = /\[REDACTED:([a-z-]+)\]/g;

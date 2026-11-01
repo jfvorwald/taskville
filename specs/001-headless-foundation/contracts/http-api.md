@@ -189,17 +189,23 @@ One `toolcall` frame per change of a ToolCall: a `PreToolUse` makes a `running` 
 event behind it, so frame ids rise in order but are not consecutive, and a client resumes with
 `?after=<last id>`. A repeated start or finish changes nothing and sends no frame. Backlog and live
 frames are gap-free and duplicate-free within a connection. The frame is the ToolCall as of that
-event; a call whose finish never arrives stays `running`, with no `finishedAt` or `durationMs`.
+event; a call whose finish never arrives stays `running`, with no `finishedAt` or `durationMs`,
+until the domain reducer closes it at a session or turn boundary (a turn end or failure, a prompt
+submission, a session end, or the agent finishing). The feed then sends one more frame for the call
+with `phase: "unfinished"`, `finishedAt` set to the boundary's time, no `durationMs` and no
+`evidence.output`: it reports that no result was recorded, not an outcome. The frame `id` is the
+boundary event's sequence. A `PostToolUse` that arrives later replaces `unfinished`, as in the
+reducer.
 
 ```text
-{ "toolCallId", "agentId", "toolName", "phase": "running" | "succeeded" | "failed",
+{ "toolCallId", "agentId", "toolName", "phase": "running" | "succeeded" | "failed" | "unfinished",
   "startedAt"?, "finishedAt"?, "durationMs"?, "summary"?, "filePaths": string[],
   "evidence": { "input": EvidenceRef | null, "output": EvidenceRef | null } }
 EvidenceRef = { "id", "status": "stored" | "evicted" }
 ```
 
 `toolName` is absent only for a finish whose start was never recorded. `evidence.input` is set when
-a body was stored for the call, `evidence.output` only once the call finished; `status` is the
+a body was stored for the call, `evidence.output` only once the call finished (never for `running` or `unfinished`); `status` is the
 evidence store's state when the frame is written, so an evicted body still shows that the call
 happened (`GET /v1/evidence/:id` then answers `410`). The heartbeat after the backlog
 (carrying the head) marks the client as caught up; the engine sends it after the backlog frames and
