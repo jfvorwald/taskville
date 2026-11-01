@@ -25,9 +25,13 @@ export function AgentsLayer({ agents, reducedMotion = false, onLabels }: AgentsL
   // An inline callback is a new function each render, so it is held in a ref, not a dependency.
   const notify = useRef(onLabels);
   notify.current = onLabels;
+  // A callback that arrives after mount still gets the current entries once, so the effect also
+  // depends on whether one is present, not on which function it is.
+  const hasLabels = onLabels !== undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hasLabels re-runs the effect when a callback first appears
   useEffect(() => {
     notify.current?.(entries);
-  }, [entries]);
+  }, [entries, hasLabels]);
   useEffect(
     () => () => {
       notify.current?.([]);

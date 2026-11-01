@@ -7,6 +7,7 @@ import { agentLabel } from "./label.ts";
 import { LABEL_HEIGHT } from "./labelEntries.ts";
 import { colorMaterial, sharedGeometries } from "./resources.ts";
 import { agentScale } from "./scale.ts";
+import { advanceStride } from "./stride.ts";
 import type { AgentView } from "./types.ts";
 import { areaFor, createPose, LOOP_SECONDS, workPose } from "./workLoop.ts";
 
@@ -47,7 +48,7 @@ export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: 
   const latest = useRef(agent);
   latest.current = agent;
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const g = root.current;
     if (g === null) return;
     const v = latest.current;
@@ -62,7 +63,7 @@ export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: 
     const moved = Math.abs(p.x - l.x) + Math.abs(p.z - l.z) > STEP_EPSILON;
     l.x = p.x;
     l.z = p.z;
-    if (moved && !reducedMotion) l.stride += 0.25;
+    if (moved && !reducedMotion) l.stride = advanceStride(l.stride, delta);
     const swing = moved ? Math.sin(l.stride) * 0.6 : 0;
 
     if (rightLeg.current !== null) rightLeg.current.rotation.x = swing;

@@ -22,7 +22,7 @@ const ACTIVITY_TEXT: Record<ActivityView, string> = {
   dispatching: "Dispatching",
   handing_off: "Handing off",
   waiting: "Waiting",
-  unknown: "Working",
+  unknown: "Unknown",
 };
 
 export function agentLabel(v: AgentView): AgentLabel {
@@ -51,7 +51,8 @@ function labelStatus(v: AgentView): string {
     if (a.level === "needs_you") return "Needs you";
     if (a.level === "waiting") return "Waiting";
     const detail = a.detail === undefined ? "" : clean(a.detail);
-    return detail === "" ? "Trouble" : `Trouble: ${detail}`;
+    const word = a.heuristic === true ? "Possible trouble" : "Trouble";
+    return detail === "" ? word : `${word}: ${detail}`;
   }
   return ACTIVITY_TEXT[v.activity];
 }
