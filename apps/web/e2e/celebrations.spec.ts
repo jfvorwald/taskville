@@ -15,11 +15,9 @@ interface Played {
 }
 
 const port = Number(process.env.E2E_PORT ?? 4817);
-const codes = (): { celebrations?: string; paired: string; home: string } =>
+const codes = (): { celebrations: string; home: string } =>
   JSON.parse(readFileSync(CODES_FILE, "utf8"));
-// engine.ts should issue a dedicated `celebrations` code; until it does, fall back to `paired` so a
-// single-spec run still reaches the probe (in a full run `paired` is shared with other specs).
-const pairingCode = (): string => codes().celebrations ?? codes().paired;
+const pairingCode = (): string => codes().celebrations;
 
 // One paired session for both tests (the pairing code is single use); the second test reloads it
 // under reduced motion.
@@ -42,6 +40,16 @@ const played = (): Promise<Played[]> =>
       throw new Error("window.__taskvilleCelebrations is not defined");
     return probe().map((p) => ({ kind: p.kind, at: p.at }));
   });
+
+/** The probe installs a moment after the canvas shows (R3F children mount after the GL context). */
+const probeReady = (): Promise<unknown> =>
+  page.waitForFunction(
+    () =>
+      typeof (window as unknown as { __taskvilleCelebrations?: unknown })
+        .__taskvilleCelebrations === "function",
+    undefined,
+    { timeout: 15_000 },
+  );
 
 /** Runs the seeded demo producer in process against the e2e engine; resolves when it finishes. */
 async function runDemo(seed: number): Promise<void> {
@@ -73,10 +81,19 @@ async function runDemo(seed: number): Promise<void> {
   expect(code, out.join("")).toBe(0);
 }
 
-/** Pixels that differ noticeably between two PNGs of the same size, counted in the browser. */
-async function changedPixels(a: Buffer, b: Buffer): Promise<number> {
+// The particle colours Celebrations.tsx draws (PARTY and GOLD). They are unlit MeshBasicMaterial
+// colours, so on screen they stay close to these values.
+const EFFECT_COLORS = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#f78c6b", "#fff3b0"];
+
+/**
+ * Pixels that are effect-coloured in `during` but not in `settled`, counted in the browser. `settled`
+ * is the same canvas after the celebration ended, so the agents are already drawn in both frames and
+ * only the particles are new. Matching on the particle palette (not on any change) keeps agent
+ * movement between the two frames from counting.
+ */
+async function newEffectPixels(during: Buffer, settled: Buffer): Promise<number> {
   return page.evaluate(
-    async ([x, y]) => {
+    async ([x, y, palette]) => {
       const load = async (b64: string) => {
         const img = new Image();
         img.src = `data:image/png;base64,${b64}`;
@@ -90,18 +107,27 @@ async function changedPixels(a: Buffer, b: Buffer): Promise<number> {
         return ctx.getImageData(0, 0, c.width, c.height);
       };
       const [p, q] = [await load(x as string), await load(y as string)];
-      if (p.width !== q.width || p.height !== q.height) return Number.POSITIVE_INFINITY;
+      if (p.width !== q.width || p.height !== q.height) return Number.NEGATIVE_INFINITY;
+      const colors = (palette as string[]).map((h) => [
+        Number.parseInt(h.slice(1, 3), 16),
+        Number.parseInt(h.slice(3, 5), 16),
+        Number.parseInt(h.slice(5, 7), 16),
+      ]);
+      const isEffect = (d: Uint8ClampedArray, i: number) =>
+        colors.some(
+          (c) =>
+            Math.abs((d[i] ?? 0) - (c[0] ?? 0)) +
+              Math.abs((d[i + 1] ?? 0) - (c[1] ?? 0)) +
+              Math.abs((d[i + 2] ?? 0) - (c[2] ?? 0)) <=
+            45,
+        );
       let n = 0;
       for (let i = 0; i < p.data.length; i += 4) {
-        const d =
-          Math.abs((p.data[i] ?? 0) - (q.data[i] ?? 0)) +
-          Math.abs((p.data[i + 1] ?? 0) - (q.data[i + 1] ?? 0)) +
-          Math.abs((p.data[i + 2] ?? 0) - (q.data[i + 2] ?? 0));
-        if (d > 60) n += 1;
+        if (isEffect(p.data, i) && !isEffect(q.data, i)) n += 1;
       }
       return n;
     },
-    [a.toString("base64"), b.toString("base64")],
+    [during.toString("base64"), settled.toString("base64"), EFFECT_COLORS],
   );
 }
 
@@ -116,9 +142,9 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
   await expect(canvas).toBeVisible();
 
   // The probe exists and nothing has played yet.
+  await probeReady();
   await expect.poll(() => played(), { timeout: 15_000 }).toEqual([]);
   await page.waitForTimeout(1500); // let the first WebGL frames draw
-  const before = await canvas.screenshot();
 
   // The demo runs for ~30 s of real time; do not wait for it, watch the probe while it runs.
   const demo = runDemo(7);
@@ -129,13 +155,17 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
       const probe = (window as unknown as { __taskvilleCelebrations?: () => Played[] })
         .__taskvilleCelebrations;
       const hit = probe?.().find((p) => p.kind === "confetti" || p.kind === "high-five");
-      return hit ? hit.kind : false;
+      return hit ? { kind: hit.kind, at: hit.at } : false;
     },
     undefined,
     { polling: 30, timeout: 90_000 },
   );
-  const kind = (await seen.jsonValue()) as string;
+  const { kind, at } = (await seen.jsonValue()) as Played;
   const during = await canvas.screenshot();
+
+  // The same scene once the effect is over (confetti lives 1.2 s; the next burst is >= 2 s away).
+  await page.waitForFunction((t) => performance.now() - t >= 1600, at, { polling: 50 });
+  const settled = await canvas.screenshot();
 
   const dir = process.env.E2E_SCREENSHOT_DIR;
   if (dir) {
@@ -143,10 +173,11 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
     writeFileSync(`${dir}/${kind}.png`, during);
   }
 
-  expect(
-    await changedPixels(before, during),
-    "canvas differs while a celebration plays",
-  ).toBeGreaterThan(50);
+  // Only particle-coloured pixels that the settled frame lacks: agents, buildings and their
+  // movement are in both frames, so a pass means the effect itself drew.
+  const fresh = await newEffectPixels(during, settled);
+  console.log(`celebrations e2e: ${kind} drew ${fresh} new effect-coloured pixels`);
+  expect(fresh, `${kind} particles are visible on the canvas while it plays`).toBeGreaterThan(20);
 
   await demo;
   const all = await played();
@@ -163,6 +194,7 @@ test("with reduced motion every celebration is a sparkle", async () => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/?debug=celebrations"); // same paired session, fresh page load
   await expect(page.getByTestId("scene-root")).toBeVisible();
+  await probeReady();
   await expect.poll(() => played(), { timeout: 15_000 }).toEqual([]);
 
   // A different seed: the first demo's events are already recorded and must not be deduplicated.
