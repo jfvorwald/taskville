@@ -89,7 +89,7 @@ export function createSettingsStore(storage: StorageLike | null): SettingsStore 
   };
 
   // Another tab changed storage: follow it. A null key means storage was cleared.
-  if (storage && typeof window !== "undefined") {
+  if (storage && typeof window !== "undefined" && typeof window.addEventListener === "function") {
     window.addEventListener("storage", (event) => {
       const { key, storageArea } = event as StorageEvent;
       if (storageArea && storageArea !== storage) return;
