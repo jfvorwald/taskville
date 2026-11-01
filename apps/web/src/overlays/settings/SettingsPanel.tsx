@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Button, Label, Radio, RadioGroup, Switch } from "react-aria-components";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { SoundSection } from "./SoundSection.tsx";
 import styles from "./settings.module.css";
 import {
   type DayNight,
@@ -100,6 +101,8 @@ export function SettingsPanel({
               Allow
             </Radio>
           </RadioGroup>
+
+          <SoundSection />
 
           <Switch
             className={styles.switch}
