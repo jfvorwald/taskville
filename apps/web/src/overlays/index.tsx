@@ -5,6 +5,7 @@ import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
+import { bubblesOverlay } from "./bubbles/index.ts";
 import { countsHeaderOverlay } from "./header/index.ts";
 import {
   createOverlayRegistry,
@@ -24,6 +25,7 @@ const registry = createOverlayRegistry([
   cameraControlsOverlay,
   themedSettingsOverlay,
   agentListOverlay,
+  bubblesOverlay,
 ]);
 const ENABLED = [
   "counts-header",
@@ -31,6 +33,7 @@ const ENABLED = [
   "camera-controls",
   "settings-panel",
   "agent-list",
+  "bubbles",
 ];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };

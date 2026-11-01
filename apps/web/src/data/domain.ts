@@ -17,6 +17,7 @@ export {
   type AttentionCounts,
   attention,
   attentionCounts,
+  SILENT_THRESHOLD_MS,
 } from "../../../../packages/domain/src/selectors/index.ts";
 export {
   type Attention,
