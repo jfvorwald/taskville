@@ -201,24 +201,30 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     w.view.slotId = null;
     const slot = layout.slots.find((s) => s.id === id);
     if (!slot) return;
-    const line = queues.get(slot.areaId);
-    const next = line?.shift();
-    if (next === undefined) return;
-    const q = walkers.get(next);
-    if (!q) return;
+    const line = queues.get(slot.areaId) ?? [];
+    // The head of the line, skipping anyone no longer waiting for this area.
+    let q: Walker | undefined;
+    while (q === undefined && line.length > 0) {
+      const next = walkers.get(line.shift() as string);
+      if (next?.view.queued && next.area === slot.areaId) q = next;
+    }
+    if (q === undefined) return;
     q.view.queued = false;
     reserve(q, slot);
     retarget(q);
     refreshQueue(slot.areaId);
   }
 
+  /** Leaves the line it stands in, which is not `w.area` once `sync` has changed the area. */
   function leaveQueue(w: Walker) {
-    if (!w.view.queued || w.area === null) return;
-    const line = queues.get(w.area) ?? [];
-    const i = line.indexOf(w.view.id);
-    if (i >= 0) line.splice(i, 1);
+    if (!w.view.queued) return;
     w.view.queued = false;
-    refreshQueue(w.area);
+    for (const [area, line] of queues) {
+      const i = line.indexOf(w.view.id);
+      if (i < 0) continue;
+      line.splice(i, 1);
+      refreshQueue(area);
+    }
   }
 
   /** Queue spots move up when the line shortens. */
@@ -348,9 +354,16 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       return;
     }
     if (w.hold) {
+      // Already has a safe point: it keeps it (a slot handed over meanwhile is only recorded).
+      if (w.safeNode !== null) {
+        if (w.goal.kind !== "safe") {
+          w.goal = { kind: "safe", node: w.safeNode };
+          plan(w);
+        }
+        return;
+      }
       // Already standing at its workstation or in line: it stops right there.
       if (atRest(w) && (w.goal.kind === "slot" || w.goal.kind === "queue")) return;
-      if (w.safeNode !== null && w.goal.kind === "safe") return;
       const node = nearestFreeSafe(w);
       if (node === null) {
         w.goal = { kind: "stay" };
@@ -624,9 +637,13 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
           const spawn = spawnPoint(w, intent.parentId);
           w.exitNode = spawn.node;
           moveTo(w, spawn);
+          // Route from the spawn point onto the streets, not along the path planned from the plaza.
+          w.path = [];
+          plan(w);
+          // Placed: a held agent was already at its workstation or in line, and stops there.
+          if (hold && syncOptions.place === true) snap(w);
           w.hold = hold;
           if (hold) retarget(w);
-          else plan(w);
           fresh.push(w);
         } else {
           retarget(w);
