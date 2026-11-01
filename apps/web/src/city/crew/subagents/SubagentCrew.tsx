@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Group, Mesh, Sprite } from "three";
 import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
@@ -72,10 +72,16 @@ export function SubagentCrew({
   const tracker = useRef<CrewTracker | null>(null);
   tracker.current ??= createCrewTracker();
   const crew = tracker.current;
+  const [lifecycleVersion, setLifecycleVersion] = useState(0);
+  const onSettled = useCallback(() => setLifecycleVersion((value) => value + 1), []);
   // Where each bot stands in the world, for the families that walk out of a bot.
   const places = useRef(new Map<string, Place>());
   // Observing is idempotent: a repeated render never restarts a subagent's walk.
-  const families = useMemo(() => crew.sync(agents, store.now()), [crew, agents, store]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lifecycleVersion reaps elapsed visits without another store event.
+  const families = useMemo(
+    () => crew.sync(agents, store.now()),
+    [crew, agents, store, lifecycleVersion],
+  );
   return (
     <>
       {families.map((family) => (
@@ -87,6 +93,7 @@ export function SubagentCrew({
           store={store}
           anchors={anchors}
           reducedMotion={reducedMotion}
+          onSettled={onSettled}
           byId={byId}
           subtreeTints={subtreeTints}
         />
@@ -128,6 +135,7 @@ interface CrewFamilyViewProps {
   store: DataStore;
   anchors: AnchorSource;
   reducedMotion: boolean;
+  onSettled: () => void;
   byId: ReadonlyMap<string, Agent>;
   subtreeTints: ReadonlyMap<string, CrewBotTint>;
 }
@@ -139,6 +147,7 @@ function CrewFamilyView({
   store,
   anchors,
   reducedMotion,
+  onSettled,
   byId,
   subtreeTints,
 }: CrewFamilyViewProps) {
@@ -174,6 +183,7 @@ function CrewFamilyView({
   // Where this family's door last was while its parent was in sight.
   const lastDoor = useRef<Place | undefined>(undefined);
   const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
+  const settled = useRef(false);
 
   const register = useCallback(
     (id: string, handle: BotHandle | null) => {
@@ -188,6 +198,7 @@ function CrewFamilyView({
   // member keeps its place (and its hidden flag): its crew must not reappear behind the marker.
   const placed = useRef<string[]>([]);
   useEffect(() => {
+    settled.current = false;
     const ids = family.members.map((m) => m.id);
     const kept = new Set(ids);
     for (const id of placed.current) {
@@ -215,6 +226,19 @@ function CrewFamilyView({
   useFrame(() => {
     const g = root.current;
     if (g === null) return;
+    const nowMs = store.now();
+    live.current.length = 0;
+    phases.current.length = 0;
+    for (const member of family.members) {
+      const frame = tracker.frame(member.id, nowMs);
+      if (frame === undefined) continue;
+      if (frame.phase === "gone" && !settled.current) {
+        settled.current = true;
+        onSettled();
+      }
+      phases.current.push(frame.phase);
+      if (frame.phase !== "absent" && frame.phase !== "gone") live.current.push(member.id);
+    }
     // A family of a top-level parent follows the parent's anchor; one of a subagent follows that
     // bot. When the parent is out of sight (finished and faded, left the city, behind the
     // marker) the family stays where it last stood: a running subagent never disappears.
@@ -267,15 +291,6 @@ function CrewFamilyView({
     const doorZ = (lastDoor.current as Place).z;
     g.position.set(doorX, 0, doorZ);
 
-    const nowMs = store.now();
-    live.current.length = 0;
-    phases.current.length = 0;
-    for (const m of family.members) {
-      const f = tracker.frame(m.id, nowMs);
-      if (f === undefined) continue;
-      phases.current.push(f.phase);
-      if (f.phase !== "absent" && f.phase !== "gone") live.current.push(m.id);
-    }
     const view = collapseCrew(live.current, {
       nowMs,
       ...(fannedAtMs.current === undefined ? {} : { fannedAtMs: fannedAtMs.current }),

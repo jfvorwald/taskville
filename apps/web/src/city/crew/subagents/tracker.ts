@@ -82,6 +82,9 @@ export function createCrewTracker(): CrewTracker {
         const lineage = crewLineage(agent, byId);
         if (lineage === undefined) continue;
         const finished = agent.finishedAt !== undefined;
+        const generation = lineage.length;
+        // Counted-only descendants have no bot or return animation to retain after finishing.
+        if (finished && generation > MAX_BOT_GENERATION) continue;
         let state = states.get(agent.id);
         if (state === undefined) {
           // Never seen running: nothing to walk out or back.
@@ -95,7 +98,6 @@ export function createCrewTracker(): CrewTracker {
         states.set(agent.id, state);
         present.add(agent.id);
 
-        const generation = lineage.length;
         tracked.push({
           member: {
             id: agent.id,
