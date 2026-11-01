@@ -101,6 +101,41 @@ describe("layoutAnchored", () => {
     expect(r.get("b")?.top).toBe(254);
   });
 
+  // The anchor is on screen (or within the layer's margin), so its label must show, clamped
+  // into the bounds, rather than being hidden because the box would poke out of the edge.
+  it("shows a label whose anchor is within one label height of the top edge, clamped to 0", () => {
+    const [r] = layoutAnchored([box("a", 400, 10)], BOUNDS);
+    expect(r).toEqual({ id: "a", left: 350, top: 0, visible: true });
+  });
+
+  it("shows a label whose anchor is exactly on the top edge", () => {
+    const [r] = layoutAnchored([box("a", 400, 0)], BOUNDS);
+    expect(r).toMatchObject({ top: 0, visible: true });
+  });
+
+  it("shows a label whose anchor is slightly above the top edge, within the margin", () => {
+    const [r] = layoutAnchored([box("a", 400, -30)], BOUNDS);
+    expect(r).toMatchObject({ top: 0, visible: true });
+  });
+
+  it("shows a label whose anchor is just below the bottom edge, clamped to the bottom", () => {
+    const [r] = layoutAnchored([box("a", 400, 620)], BOUNDS);
+    expect(r).toEqual({ id: "a", left: 350, top: 580, visible: true });
+  });
+
+  it("shows labels for anchors 1 and 48 px below the bottom edge", () => {
+    const r = byId(layoutAnchored([box("near", 200, 601), box("far", 600, 648)], BOUNDS));
+    expect(r.get("near")).toMatchObject({ top: 580, visible: true });
+    expect(r.get("far")).toMatchObject({ top: 580, visible: true });
+  });
+
+  it("still hides a clamped label that collides and cannot be lifted clear", () => {
+    const boxes = [box("a", 400, 10, { priority: 2 }), box("b", 400, 10, { priority: 1 })];
+    const r = byId(layoutAnchored(boxes, BOUNDS));
+    expect(r.get("a")).toMatchObject({ top: 0, visible: true });
+    expect(r.get("b")?.visible).toBe(false);
+  });
+
   it("hides boxes larger than the bounds rather than looping", () => {
     const r = layoutAnchored([box("huge", 400, 300, { width: 2000, height: 2000 })], BOUNDS);
     expect(r[0]?.visible).toBe(false);
