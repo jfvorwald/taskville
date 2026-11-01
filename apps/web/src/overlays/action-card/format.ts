@@ -8,9 +8,12 @@ export function formatWaiting(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** Controls, format characters and the contract's explicit invisible extras. */
+/**
+ * Controls, format characters, the contract's explicit invisible extras, the remaining
+ * default-ignorable code points and the non-ASCII spaces.
+ */
 const HIDDEN =
-  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\u034f|\u3164|\uffa0|[\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}]/u;
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\u034f|\u3164|\uffa0|[\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}]|[\u115f\u1160]|[\u17b4\u17b5]|[\u180b-\u180d]|\u180f|[\u{e0100}-\u{e01ef}]|[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\u2800]/u;
 
 function isHidden(char: string): boolean {
   return char !== "\t" && char !== "\n" && HIDDEN.test(char);
@@ -33,4 +36,19 @@ export function stripControls(text: string): string {
   return Array.from(text)
     .filter((char) => !isHidden(char) && char !== "\t" && char !== "\n")
     .join("");
+}
+
+/** `value` inside POSIX single quotes, so a shell reads it as one inert word. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The clipboard text for a session that cannot be opened here. It is pasted into a terminal, so
+ * each value has its controls stripped and is single-quoted, one line per value.
+ */
+export function copyOnlyText(args: { sessionId: string; cwd?: string | undefined }): string {
+  const lines = [`session ${shellQuote(stripControls(args.sessionId))}`];
+  if (args.cwd !== undefined) lines.push(`cwd ${shellQuote(stripControls(args.cwd))}`);
+  return lines.join("\n");
 }
