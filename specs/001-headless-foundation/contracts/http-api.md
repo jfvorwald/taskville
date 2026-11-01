@@ -35,7 +35,7 @@ Route access:
 
 | Route | CLI token | Browser session | Bridge token |
 | --- | --- | --- | --- |
-| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/attention/events` | yes | yes | no |
+| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/attention/events`, `GET /v1/agents/:id/feed`, `GET /v1/agents/:id/crew`, `GET /v1/evidence/:id` | yes | yes | no |
 | `POST /v1/events/batch`, `POST /v1/projects`, `POST /v1/pairing/revoke` | yes | no | no |
 | `POST /v1/commands`, `GET /v1/commands/:id` | **never** | yes | **never** |
 | `POST /v1/pairing` | no credential; pairing code in body | | |
@@ -148,6 +148,92 @@ each commit and on a timer (30 s by default, `BootOptions.attentionTickMs`) so
 silence appears without an event. Frames carry no `id` and the feed is not resumable:
 a reconnect starts with a fresh snapshot, which replaces what the client held. A client
 that stops reading fills its 1,000 frame queue and is disconnected.
+
+### Agent feed, crew, and evidence (M5.01)
+
+Three read routes (ARCHITECTURE.md 2.9, 2.10 and 10). CLI token or paired browser session; the
+bridge token gets `403 credential_not_allowed`, no credential `401`. No CORS headers, `Cache-Control:
+no-store`. Agent IDs and evidence IDs are opaque strings, URL-encoded in the path.
+
+Which project: an agent is found by its events. Without `?projectId=`, exactly one project may hold
+the agent; when several do (one session whose working directory moved), the request is `409
+ambiguous_agent` and names no project. `?projectId=` names one: unknown project is `404
+unknown_project`, a project that has no events for the agent is `404 unknown_agent` (the same answer
+as an agent that exists nowhere). An agent ID that is not found, or was crafted, is `404
+unknown_agent`; it is never read as a path or query.
+
+#### `GET /v1/agents/:id/feed?after=N&projectId=P` (SSE)
+
+The ToolCalls of one agent. `Content-Type: text/event-stream`. Resumes like the project stream:
+`Last-Event-ID` overrides `after`, a malformed cursor is `400 bad_request`, a cursor past the
+project head is one `resnapshot` frame (`cursor_ahead_of_head`) and the stream closes. Counts toward
+the same 64-stream cap (`503 too_many_streams`), ends with the engine, and a feed opened with a
+browser session ends when pairings are revoked. A client that stops reading is cut off with
+`resnapshot` / `slow_consumer` (1,000 frames queued), and a write the client has not taken within
+5 s aborts the stream.
+
+```text
+id: 57
+event: toolcall
+data: <ToolCall frame>
+
+event: heartbeat          (once the backlog is sent, then every 15 s, no id)
+data: {"head":57}
+
+event: resnapshot         (then the server closes the stream)
+data: {"reason":"cursor_ahead_of_head" | "slow_consumer"}
+```
+
+One `toolcall` frame per change of a ToolCall: a `PreToolUse` makes a `running` frame and its
+`PostToolUse` a second frame for the same `toolCallId`. The frame `id` is the ingest sequence of the
+event behind it, so frame ids rise in order but are not consecutive, and a client resumes with
+`?after=<last id>`. A repeated start or finish changes nothing and sends no frame. Backlog and live
+frames are gap-free and duplicate-free within a connection. The frame is the ToolCall as of that
+event; a call whose finish never arrives stays `running`, with no `finishedAt` or `durationMs`.
+
+```text
+{ "toolCallId", "agentId", "toolName", "phase": "running" | "succeeded" | "failed",
+  "startedAt"?, "finishedAt"?, "durationMs"?, "summary"?, "filePaths": string[],
+  "evidence": { "input": EvidenceRef | null, "output": EvidenceRef | null } }
+EvidenceRef = { "id", "status": "stored" | "evicted" }
+```
+
+`toolName` is absent only for a finish whose start was never recorded. `evidence.input` is set when
+a body was stored for the call, `evidence.output` only once the call finished; `status` is the
+evidence store's state when the frame is written, so an evicted body still shows that the call
+happened (`GET /v1/evidence/:id` then answers `410`). The heartbeat after the backlog
+(carrying the head) marks the client as caught up; the engine sends it after the backlog frames and
+a turn of the event loop, and not at all if the stream already ended.
+
+#### `GET /v1/agents/:id/crew?projectId=P`
+
+`200 { "agentId", "projectId", "team"?, "subagents": CrewMember[], "teammates": CrewMember[] }`.
+`subagents` are the agent's direct children and each carries its own `children`, recursively.
+`teammates` are the members of the team the agent leads, in order of first registration (empty for
+anyone else); `team` is `{ "id", "name"?, "leadAgentId", "startedAt", "endedAt"? }` for a lead or a
+member. A member is
+`{ "agentId", "kind": "subagent" | "teammate", "displayName"?, "agentType"?, "parentAgentId"?,
+"status": "running" | "finished", "currentActivity"?: { "activity", "since", "heuristic" },
+"startedAt", "finishedAt"?, "elapsedMs", "resultSummary"?, "heuristic", "children" }`.
+
+Links come only from recorded registrations (constitution IV): a subagent is a child after a
+registration named its parent, a teammate a member after a registration named its team. A heuristic
+guess is never a link, so `heuristic` is `false` for every member listed; `currentActivity.heuristic`
+carries the activity's own flag, and `currentActivity` is present only while the member runs.
+`status` is `running` until the agent finished or, for a teammate, its team ended. `elapsedMs` is
+`finishedAt` (or the engine clock while running) minus `startedAt`, from recorded times only.
+`resultSummary` is the summary of the agent's `agent.finished` event, when it had one. Finished
+agents beyond the reducer's retention are not listed.
+
+#### `GET /v1/evidence/:id`
+
+`200 { "id", "projectId", "toolCallId", "part": "input" | "output", "text", "masks":
+[{ "start", "end", "kind" }], "truncated", "bytes" }`. `text` is the stored, already redacted body as
+plain text, never HTML and never HTML-escaped (the client escapes at render time, ARCHITECTURE.md
+12). `masks` locate each `[REDACTED:kind]` marker in `text` by UTF-16 offsets, `[start, end)`,
+sorted; a body the redactor did not change has none. An evidence ID carries its project, so it
+resolves in one project only. `404 unknown_evidence` for an ID that was never handed out or whose
+body was never stored; `410 evidence_evicted` ("details no longer stored") when the cap evicted it.
 
 ### `POST /v1/commands`, `GET /v1/commands/:id` (stub in this feature)
 
