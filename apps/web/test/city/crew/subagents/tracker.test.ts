@@ -74,6 +74,22 @@ describe("crew tracker and subagents with a missing parent", () => {
   });
 });
 
+describe("crew tracker and a parent whose own lifecycle has ended", () => {
+  it("keeps a running subagent in its family after the parent subagent has finished and faded", () => {
+    // A subagent that is still running must never disappear because its parent finished.
+    const tracker = createCrewTracker();
+    const lead = agent("lead", { kind: "lead" });
+    tracker.sync([lead, sub("s1", "lead"), sub("kid", "s1")], 0);
+    const next = [lead, sub("s1", "lead", { finishedAt: T }), sub("kid", "s1")];
+    tracker.sync(next, 1000);
+
+    const families = tracker.sync(next, 1000 + VISIT_MS + 1);
+    expect(memberIds(families)).toEqual(["kid"]);
+    expect(families.find((f) => f.parentId === "s1")?.members.map((m) => m.id)).toEqual(["kid"]);
+    expect(tracker.frame("kid", 1000 + VISIT_MS + 1)?.phase).toBe("working");
+  });
+});
+
 describe("crew tracker retention", () => {
   it("keeps a finished subagent through its walk home and fade", () => {
     const tracker = createCrewTracker();

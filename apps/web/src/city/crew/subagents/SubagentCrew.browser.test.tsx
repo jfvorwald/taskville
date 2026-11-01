@@ -242,7 +242,7 @@ describe("SubagentCrew in a scene", () => {
     }
   }, 30_000);
 
-  it("hides the crew of a bot once that bot has finished and faded", async () => {
+  it("keeps a running subagent drawn once its parent bot has finished and faded", async () => {
     const scene = await mount([LEAD, sub("s1", "lead"), sub("kid", "s1")]);
     try {
       await scene.frames(2);
@@ -253,15 +253,21 @@ describe("SubagentCrew in a scene", () => {
       // The tracker sees the finish on the next render, at the clock of that moment.
       await scene.frames(3);
       scene.clock.now = WORKING_MS + VISIT_MS + 100;
+      // The parent's bot has left the city...
       await vi.waitFor(() => expect(scene.shown("s1")).toBe(false), FRAME_WAIT);
-      // Its bot has left the city, so the bot that walked out of it has no door to stand at.
-      await vi.waitFor(() => expect(scene.shown("kid")).toBe(false), FRAME_WAIT);
+      // ...but a subagent that is still running must never disappear because of it (roborev
+      // 6395): it stays drawn, and its bot still carries the id that picking selects.
+      await scene.frames(3);
+      expect(scene.shown("kid")).toBe(true);
+      scene.clock.now = WORKING_MS + VISIT_MS + 60_000;
+      await scene.frames(3);
+      expect(scene.shown("kid")).toBe(true);
     } finally {
       await scene.unmount();
     }
   }, 30_000);
 
-  it("hides nested crews all the way down when the top parent goes out of sight", async () => {
+  it("keeps running subagents drawn, nested ones too, when the top parent leaves the city", async () => {
     const scene = await mount([LEAD, sub("s1", "lead"), sub("kid", "s1")]);
     try {
       await scene.frames(2);
@@ -269,10 +275,15 @@ describe("SubagentCrew in a scene", () => {
       await vi.waitFor(() => expect(scene.shown("kid")).toBe(true), FRAME_WAIT);
       expect(scene.shown("s1")).toBe(true);
 
-      // The lead has left the city: its anchor is gone.
+      // The lead has left the city: its anchor is gone. Its subagents are still running.
       scene.anchors.replaceAnchors("agent:", {});
-      await vi.waitFor(() => expect(scene.shown("s1")).toBe(false), FRAME_WAIT);
-      await vi.waitFor(() => expect(scene.shown("kid")).toBe(false), FRAME_WAIT);
+      await scene.frames(3);
+      expect(scene.shown("s1")).toBe(true);
+      expect(scene.shown("kid")).toBe(true);
+      scene.clock.now = WORKING_MS + 60_000;
+      await scene.frames(3);
+      expect(scene.shown("s1")).toBe(true);
+      expect(scene.shown("kid")).toBe(true);
     } finally {
       await scene.unmount();
     }
