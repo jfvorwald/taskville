@@ -62,11 +62,15 @@ const TRAVELLING = new Set(["arriving", "walking", "departing"]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const engine = await startEngine();
-const browser = await chromium.launch({
-  headless: !headed,
-  args: headed ? [] : ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-});
+let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 try {
+  // Launched inside the try, so a failed launch still stops the engine (roborev 5720, 5733).
+  browser = await chromium.launch({
+    headless: !headed,
+    args: headed
+      ? []
+      : ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+  });
   const { web: code, home } = webCodes();
   const context = await browser.newContext({
     baseURL: `http://127.0.0.1:${port}`,
@@ -78,7 +82,8 @@ try {
   await context.addInitScript(() => {
     const w = window as unknown as { __tvFrames: number[] };
     w.__tvFrames = [];
-    const raf = ((window as unknown as { __tvRaf: number[] }).__tvRaf = [] as number[]);
+    const raf: number[] = [];
+    (window as unknown as { __tvRaf: number[] }).__tvRaf = raf;
     let drew = false;
     for (const proto of [WebGLRenderingContext.prototype, WebGL2RenderingContext.prototype]) {
       for (const name of [
@@ -109,20 +114,23 @@ try {
   await page.getByTestId("scene-root").waitFor({ timeout: 20_000 });
 
   const sampleFps = async (seconds: number): Promise<Fps> => {
-    await page.evaluate(() => {
+    const startedAt = await page.evaluate(() => {
       const w = window as unknown as { __tvFrames: number[]; __tvRaf: number[] };
       w.__tvFrames.length = 0;
       w.__tvRaf.length = 0;
+      return performance.now();
     });
     await sleep(seconds * 1000);
-    const { times, raf } = await page.evaluate(() => {
+    const { times, raf, endedAt } = await page.evaluate(() => {
       const w = window as unknown as { __tvFrames: number[]; __tvRaf: number[] };
-      return { times: w.__tvFrames.slice(), raf: w.__tvRaf.slice() };
+      return { times: w.__tvFrames.slice(), raf: w.__tvRaf.slice(), endedAt: performance.now() };
     });
     const gapsOf = (ts: number[]) => ts.slice(1).map((t, i) => t - (ts[i] ?? t));
-    // Frames over the whole sample window, so a burst followed by a stall cannot read as a
-    // high rate (roborev 5726).
-    const rate = (ts: number[]) => ts.length / seconds;
+    // Frames over the whole window as the page measured it (reset to read), so a burst followed
+    // by a stall cannot read as a high rate, and a late read does not inflate it (roborev 5726,
+    // 5728, 5733).
+    const elapsedSeconds = (endedAt - startedAt) / 1000;
+    const rate = (ts: number[]) => (elapsedSeconds > 0 ? ts.length / elapsedSeconds : 0);
     const sorted = gapsOf(times).sort((a, b) => a - b);
     const rafGaps = gapsOf(raf).sort((a, b) => a - b);
     const fastGap = rafGaps[Math.floor(rafGaps.length * 0.1)] ?? 0;
@@ -264,6 +272,6 @@ try {
     `  browser CPU ${f(idleCpu)}% of one core, target under ${BUDGET.idleCpuPercent}%: ${against(idleCpu, BUDGET.idleCpuPercent, "idle target")}`,
   );
 } finally {
-  await browser.close().catch(() => {});
+  await browser?.close().catch(() => {});
   engine.kill("SIGTERM");
 }
