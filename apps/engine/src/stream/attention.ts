@@ -72,8 +72,8 @@ export class AttentionFeed {
   readonly #now: () => Date;
   readonly #logger: Logger | undefined;
   readonly #listeners = new Set<AttentionListener>();
-  /** Last announced name and sorted record keys per project that has any. */
-  readonly #announced = new Map<string, { name: string; keys: string[] }>();
+  /** Last announced name, sorted record keys and records per project that has any. */
+  readonly #announced = new Map<string, { name: string; keys: string[]; records: Attention[] }>();
   readonly #timer: NodeJS.Timeout;
 
   constructor(options: AttentionFeedOptions) {
@@ -102,11 +102,15 @@ export class AttentionFeed {
     this.#refreshAll(names, at);
     const projects: ProjectAttention[] = [];
     for (const projectId of [...this.#announced.keys()].sort()) {
-      const name = names?.get(projectId);
-      if (name === undefined) continue;
-      const records = this.#tryCompute(projectId, at);
-      if (records === undefined) continue;
-      projects.push({ projectId, name, attention: records });
+      const known = this.#announced.get(projectId);
+      if (known === undefined) continue;
+      // A failed read falls back to the last announced set: the unchanged set is never announced
+      // again, so a snapshot that left the project out would hide it from this client for good.
+      projects.push({
+        projectId,
+        name: names?.get(projectId) ?? known.name,
+        attention: this.#tryCompute(projectId, at) ?? known.records,
+      });
     }
     listener.offer({ event: "snapshot", data: { projects, computedAt: at.toISOString() } });
     this.#listeners.add(listener);
@@ -149,7 +153,7 @@ export class AttentionFeed {
     if (sameKeys(keys, known?.keys ?? [])) return;
     const shownName = name ?? known?.name ?? projectId;
     if (keys.length === 0) this.#announced.delete(projectId);
-    else this.#announced.set(projectId, { name: shownName, keys });
+    else this.#announced.set(projectId, { name: shownName, keys, records });
     const frame: AttentionFrame = {
       event: "attention",
       data: { projectId, name: shownName, attention: records, computedAt: at.toISOString() },
