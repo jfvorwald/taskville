@@ -97,4 +97,48 @@ describe("SettingsPanel", () => {
       .element(page.getByRole("switch", { name: "Hide code in the city" }))
       .toBeDisabled();
   });
+  // Finding 2: a stored theme id that the themes list does not contain must not leave the radio
+  // group with nothing checked; the theme system falls back to the default, so the panel shows it.
+  it("checks the default theme when the stored theme is not in the themes list", async () => {
+    const storage = memoryStorage();
+    storage.setItem("taskville.overlay.settings-panel.theme", '"nope"');
+    const themes = [
+      { id: "cyberpunk", label: "Cyberpunk" },
+      { id: "neon", label: "Neon" },
+    ];
+    await render(
+      <SettingsPanel {...overlayProps} store={createSettingsStore(storage)} themes={themes} />,
+    );
+    await openPanel();
+    await expect.element(page.getByRole("radio", { name: "Cyberpunk" })).toBeChecked();
+    await expect.element(page.getByRole("radio", { name: "Neon" })).not.toBeChecked();
+  });
+
+  // Finding 5: the visible "Coming later" note must survive into the accessible name or description.
+  it.each([
+    ["Sound", /sound/i],
+    ["Hide code in the city", /hide code/i],
+  ])("tells assistive tech that the %s switch is coming later", async (_label, name) => {
+    await render(<SettingsPanel {...overlayProps} store={createSettingsStore(memoryStorage())} />);
+    await openPanel();
+    const sw = page.getByRole("switch", { name });
+    await expect.element(sw).toBeDisabled();
+    const input = sw.element() as HTMLInputElement;
+    const textOf = (ids: string | null) =>
+      (ids ?? "")
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join(" ");
+    const accessible = [
+      input.getAttribute("aria-label"),
+      textOf(input.getAttribute("aria-labelledby")),
+      textOf(input.getAttribute("aria-describedby")),
+      ...Array.from(input.labels ?? []).map((l) => l.textContent),
+    ].join(" ");
+    // aria-label replaces label content in the accessible name, so only count labels when it is absent.
+    const named = input.getAttribute("aria-label")
+      ? [input.getAttribute("aria-label"), textOf(input.getAttribute("aria-describedby"))].join(" ")
+      : accessible;
+    expect(named).toMatch(/coming later/i);
+  });
 });
