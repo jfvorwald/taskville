@@ -38,7 +38,7 @@ export function CityRoot({
       <SubagentCrew
         key={mode === "history" ? `crew:history:${historySequence}` : "crew:live"}
         store={store}
-        reducedMotion={reducedMotion}
+        reducedMotion={reducedMotion || mode === "history"}
       />
       <Celebrations reducedMotion={reducedMotion} />
       <InteractionLayer reducedMotion={reducedMotion} />
