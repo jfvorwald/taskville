@@ -129,7 +129,7 @@ const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost):([0-9]{1,5})\/?$/;
  * value (a hold window outside 1 to 300, say) stops the install, and the bridge hook's timeout
  * (hold window plus 5 s) comes from it even when the URL is given.
  */
-function engineTarget(p: Plan): { url: string; hookTimeoutSeconds: number } {
+function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds: number } {
   const userHome = nonEmpty(p.io.env.HOME);
   let config: ReturnType<typeof loadConfig>["config"];
   try {
@@ -142,7 +142,9 @@ function engineTarget(p: Plan): { url: string; hookTimeoutSeconds: number } {
   }
   const { hookTimeoutSeconds } = config.bridge;
   const raw = (p.values.url as string | undefined) ?? nonEmpty(p.io.env.TASKVILLE_URL);
-  if (raw === undefined) return { url: `http://127.0.0.1:${config.port}`, hookTimeoutSeconds };
+  if (raw === undefined) {
+    return { url: `http://127.0.0.1:${config.port}`, port: config.port, hookTimeoutSeconds };
+  }
   const match = LOOPBACK.exec(raw);
   const port = Number(match?.[2]);
   if (match === null || !Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -150,7 +152,7 @@ function engineTarget(p: Plan): { url: string; hookTimeoutSeconds: number } {
       `--url ${raw} is not http://127.0.0.1:<port> or http://localhost:<port>; the shim contacts nothing else`,
     );
   }
-  return { url: `http://${match[1]}:${port}`, hookTimeoutSeconds };
+  return { url: `http://${match[1]}:${port}`, port, hookTimeoutSeconds };
 }
 
 function readSettings(target: SettingsTarget): { state: FileState; settings: JsonObject } {
@@ -253,7 +255,7 @@ function alreadyInstalled(settings: JsonObject, command: string, bridge: JsonObj
 
 export async function install(io: Io, args: string[]): Promise<number> {
   const p = plan(io, args, INSTALL_USAGE);
-  const { url, hookTimeoutSeconds } = engineTarget(p);
+  const { url, port, hookTimeoutSeconds } = engineTarget(p);
   if (!isAbsolute(p.home)) fail(`the Taskville home ${p.home} is not absolute`);
   const shimSource = readFileSync(SHIM_SOURCE, "utf8");
   const shim = checkShim(p.home, SHIM_NAME, shimSource);
@@ -261,7 +263,12 @@ export async function install(io: Io, args: string[]): Promise<number> {
   // TASKVILLE_URL or TASKVILLE_HOME would otherwise win over what was installed (roborev 5200).
   const command = hookCommand({ shimPath: shim.path, home: p.home, url });
 
-  const bridge = bridgeHookHandler({ url, timeoutSeconds: hookTimeoutSeconds });
+  // Always the loopback IP, whatever host --url or $TASKVILLE_URL named: the engine listens on
+  // 127.0.0.1 only, and "localhost" may resolve to ::1 (decision #284).
+  const bridge = bridgeHookHandler({
+    url: `http://127.0.0.1:${port}`,
+    timeoutSeconds: hookTimeoutSeconds,
+  });
 
   const { state, settings } = readSettings(p.target);
   const settingsDone = alreadyInstalled(settings, command, bridge);
@@ -292,9 +299,10 @@ export async function install(io: Io, args: string[]): Promise<number> {
   io.stdout(
     `Installed Taskville hooks for ${HOOK_EVENTS.length} events and the permission bridge (${BRIDGE_HOOK_EVENT}) in ${showPath(p.target)}.\n`,
   );
-  // Only the variable name and the token file's path: the token itself is never printed.
+  // Only the variable name and the token file's path: the token itself is never printed. The hint
+  // sets the variable for the Claude Code launch only, not for the whole shell (decision #284).
   io.stdout(
-    `Before starting Claude Code, export ${BRIDGE_TOKEN_ENV} from ${join(p.home, "bridge-token")}, for example: export ${BRIDGE_TOKEN_ENV}="$(cat ${shellQuote(join(p.home, "bridge-token"))})"\n`,
+    `To let Claude Code reach the bridge, start it with the token (file ${join(p.home, "bridge-token")}) for that launch only, for example: env ${BRIDGE_TOKEN_ENV}="$(cat ${shellQuote(join(p.home, "bridge-token"))})" claude\n`,
   );
   if (p.scope === "project") {
     io.stdout(
