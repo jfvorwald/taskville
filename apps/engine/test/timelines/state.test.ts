@@ -106,7 +106,9 @@ describe("state at a sequence equals a full replay to it (day-sized log)", () =>
       expect(Array.isArray(body.attention)).toBe(true);
       expect(body.computedAt).toBe("2026-01-02T10:00:00.000Z");
     }
-  });
+    // 15 full replays of up to 10,000 events: well inside 5 s on an idle machine, but it timed out
+    // under heavy load. The timeout is a load guard only; no position was dropped.
+  }, 30_000);
 
   it("at the head equals the stored projection the snapshot route serves", async () => {
     const { app, engine, events } = day();
@@ -130,7 +132,9 @@ describe("state at a sequence equals a full replay to it (day-sized log)", () =>
       hashes.set(at, body.stateHash);
       expect(body.stateHash).toBe(projectStateHash(replayTo(events, at)));
     }
-  });
+    // Six seeks, each checked against a full replay: a load guard (it timed out at 5 s on a busy
+    // machine), not a speed bound. The speed guard is the test below.
+  }, 30_000);
 
   it("answers a seek in the day-sized log well under a generous bound", async () => {
     // The 300 ms target is measured by tests/perf/seek.ts and posted in the PR; this only guards
@@ -220,6 +224,28 @@ describe("positions before the first event and past the head", () => {
     expect(status).toBe(200);
     expect(body.at).toBe(0);
     expect(body.stateHash).toBe(projectStateHash(replay("demo", [])));
+  });
+
+  it("reads years 0 to 99 as written, not as 1900 to 1999", async () => {
+    const { app } = day();
+    // 0050 is long before the first event, so it is the empty state (a 1950 misreading would be too).
+    // Year 0 is a leap year but 1900 is not, so 0000-02-29 is real: a 1900 misreading refuses it.
+    for (const at of ["0050-01-01T00:00:00Z", "0000-02-29T00:00:00Z", "0004-02-29T00:00:00Z"]) {
+      const { status, body } = await getJson<StateBody>(
+        app,
+        `/v1/timelines/live:demo/state?at=${encodeURIComponent(at)}`,
+      );
+      expect(status, at).toBe(200);
+      expect(body.at, at).toBe(0);
+      expect(body.stateHash, at).toBe(projectStateHash(replay("demo", [])));
+    }
+    for (const at of ["0001-02-29T00:00:00Z", "0100-02-29T00:00:00Z"]) {
+      const { status } = await getJson(
+        app,
+        `/v1/timelines/live:demo/state?at=${encodeURIComponent(at)}`,
+      );
+      expect(status, `${at} is not a leap day`).toBe(400);
+    }
   });
 
   it("a sequence or timestamp past the head resolves to the head", async () => {

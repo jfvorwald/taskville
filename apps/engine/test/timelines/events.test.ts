@@ -264,6 +264,81 @@ describe("paging while the log grows", () => {
     expect(third.body.nextCursor).toBeNull();
   });
 
+  it("an explicit `to` past the head is pinned in the cursor: later pages do not shift as events arrive", async () => {
+    const booted = bootInProcess(dbPath());
+    small = booted.engine;
+    addProject(small.storage, "demo");
+    await ingest(
+      booted.app,
+      Array.from({ length: 24 }, (_, i) => input(`a${i}`)),
+    );
+    expect(small.storage.head("demo")).toBe(25);
+
+    // `to` is far past the head (25), so it means "the head when first resolved", and that
+    // resolution rides in the cursor. The same query is sent on every page.
+    const query = "from=1&to=1000000&limit=10";
+    const first = await getJson<PageBody>(booted.app, `/v1/timelines/live:demo/events?${query}`);
+    expect(seqs(first.body.events)).toEqual(range(1, 10));
+
+    await ingest(
+      booted.app,
+      Array.from({ length: 7 }, (_, i) => input(`b${i}`)),
+    );
+
+    const second = await getJson<PageBody>(
+      booted.app,
+      `/v1/timelines/live:demo/events?${query}&cursor=${encodeURIComponent(first.body.nextCursor ?? "")}`,
+    );
+    expect(seqs(second.body.events)).toEqual(range(11, 20));
+    const third = await getJson<PageBody>(
+      booted.app,
+      `/v1/timelines/live:demo/events?${query}&cursor=${encodeURIComponent(second.body.nextCursor ?? "")}`,
+    );
+    expect(seqs(third.body.events)).toEqual(range(21, 25));
+    expect(third.body.nextCursor).toBeNull();
+  });
+
+  it("a timestamp `to` past the head is pinned in the cursor too", async () => {
+    const booted = bootInProcess(dbPath());
+    small = booted.engine;
+    addProject(small.storage, "demo");
+    await ingest(
+      booted.app,
+      Array.from({ length: 24 }, (_, i) => input(`a${i}`)),
+    );
+    const query = `from=1&to=${encodeURIComponent("2999-01-01T00:00:00Z")}&limit=10`;
+    const first = await getJson<PageBody>(booted.app, `/v1/timelines/live:demo/events?${query}`);
+    expect(seqs(first.body.events)).toEqual(range(1, 10));
+    await ingest(
+      booted.app,
+      Array.from({ length: 7 }, (_, i) => input(`b${i}`)),
+    );
+    const second = await getJson<PageBody>(
+      booted.app,
+      `/v1/timelines/live:demo/events?${query}&cursor=${encodeURIComponent(first.body.nextCursor ?? "")}`,
+    );
+    const third = await getJson<PageBody>(
+      booted.app,
+      `/v1/timelines/live:demo/events?${query}&cursor=${encodeURIComponent(second.body.nextCursor ?? "")}`,
+    );
+    expect(seqs(second.body.events)).toEqual(range(11, 20));
+    expect(seqs(third.body.events)).toEqual(range(21, 25));
+    expect(third.body.nextCursor).toBeNull();
+  });
+
+  it("years 0 to 99 in a zoned `to` are read as written: 0050 is before the first event", async () => {
+    const { app } = day();
+    for (const to of ["0050-01-01T00:00:00Z", "0000-02-29T00:00:00Z"]) {
+      const { status, body } = await getJson<PageBody>(
+        app,
+        `/v1/timelines/live:demo/events?to=${encodeURIComponent(to)}`,
+      );
+      expect(status, to).toBe(200);
+      expect(body.events, to).toEqual([]);
+      expect(body.nextCursor, to).toBeNull();
+    }
+  });
+
   it("without `to`, a request sees the head at the time it is served", async () => {
     const booted = bootInProcess(dbPath());
     small = booted.engine;
