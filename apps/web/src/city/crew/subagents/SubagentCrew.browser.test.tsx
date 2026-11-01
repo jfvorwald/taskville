@@ -1,5 +1,5 @@
 import { Canvas, type RootState } from "@react-three/fiber";
-import type { Object3D } from "three";
+import type { Object3D, Sprite } from "three";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import { PROJECT } from "../../../../test/data/fake-engine.ts";
@@ -7,8 +7,11 @@ import { type Agent, initialState, type ProjectState } from "../../../data/domai
 import { createDataStore } from "../../../data/store.ts";
 import { createAnchorSource } from "../../../overlays/host/index.ts";
 import { agentAnchorId } from "../../movement/AgentLabels.tsx";
+import { crewMarkerLabel } from "./crew.ts";
 import { FADE_MS, HAND_OVER_MS, RETURN_MS } from "./lifecycle.ts";
+import { pillMaterial } from "./resources.ts";
 import { SubagentCrew } from "./SubagentCrew.tsx";
+import { TINT_HEX } from "./tint.ts";
 
 // The crew layer in a real R3F scene (roborev fixes for M5.02):
 //  - a crew bot carries `userData.agentId`, so picking a bot selects that agent;
@@ -174,6 +177,66 @@ describe("SubagentCrew in a scene", () => {
       (clickOf(marker as Object3D) as () => void)();
       await vi.waitFor(() => expect(scene.shown("s4")).toBe(true), FRAME_WAIT);
       await vi.waitFor(() => expect(scene.shown("hiddenChild")).toBe(true), FRAME_WAIT);
+    } finally {
+      await scene.unmount();
+    }
+  }, 30_000);
+
+  it("paints the +N marker with the red of a hidden subagent that needs you", async () => {
+    // s4 is behind the "+1 crew" marker; it has an open request, so the marker must say so.
+    const scene = await mount([LEAD, sub("s1", "lead"), sub("s2", "lead"), sub("s3", "lead")]);
+    try {
+      const withHidden = stateOf([LEAD, ...CREW.slice(0, 4)]);
+      scene.store.getState().applySnapshotState({
+        ...withHidden,
+        requests: {
+          r1: {
+            id: "r1",
+            agentId: "s4",
+            kind: "permission",
+            answerable: false,
+            openedAt: T,
+            state: "open",
+            late: false,
+            mergedRequestIds: [],
+          },
+        },
+      } as unknown as ProjectState);
+      expect(scene.store.getState().attention[0]).toMatchObject({
+        agentId: "s4",
+        level: "needs_you",
+      });
+      await scene.frames(2);
+      scene.clock.now = WORKING_MS;
+
+      const marker = (): Sprite | undefined =>
+        scene
+          .bot("s1")
+          ?.parent?.children.find((o): o is Sprite => typeof clickOf(o) === "function");
+      await vi.waitFor(
+        () => expect(marker()?.material).toBe(pillMaterial(crewMarkerLabel(1), TINT_HEX.red)),
+        FRAME_WAIT,
+      );
+      // And not the plain pill a quiet marker gets.
+      expect(marker()?.material).not.toBe(pillMaterial(crewMarkerLabel(1)));
+    } finally {
+      await scene.unmount();
+    }
+  }, 30_000);
+
+  it("keeps the plain +N marker while no hidden subagent needs you", async () => {
+    const scene = await mount([LEAD, ...CREW.slice(0, 4)]);
+    try {
+      await scene.frames(2);
+      scene.clock.now = WORKING_MS;
+      const marker = (): Sprite | undefined =>
+        scene
+          .bot("s1")
+          ?.parent?.children.find((o): o is Sprite => typeof clickOf(o) === "function");
+      await vi.waitFor(
+        () => expect(marker()?.material).toBe(pillMaterial(crewMarkerLabel(1))),
+        FRAME_WAIT,
+      );
     } finally {
       await scene.unmount();
     }

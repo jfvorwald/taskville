@@ -131,6 +131,29 @@ describe("store to agents and navigation", () => {
     expect(intents.map((i) => i.id)).toEqual(["lead1", "mate", "solo", "kid"]);
   });
 
+  it("keeps the block view of a subagent with no known parent, so it never vanishes", () => {
+    // No parent recorded, and a parent id that is not in the store: neither has a door to walk
+    // out of, and the crew layer has nothing to anchor a bot to, so each stays a block agent.
+    const { views, intents } = buildModels(
+      {
+        agents: [
+          agent("orphan", { kind: "subagent", role: "Explore" }),
+          agent("lost", { kind: "subagent", parentAgentId: "nobody", role: "Explore" }),
+        ],
+        activity: { orphan: activity("orphan", "reviewing") },
+        attention: [],
+      },
+      DEFAULT_ACTIVITY_AREAS,
+      pool(),
+    );
+    expect(views.map((v) => [v.id, v.kind])).toEqual([
+      ["orphan", "subagent"],
+      ["lost", "subagent"],
+    ]);
+    expect(views[0]?.agentType).toBe("Explore");
+    expect(intents.map((i) => i.id)).toEqual(["orphan", "lost"]);
+  });
+
   it("keeps a subagent's needs-you hold in its intent, though it has no view", () => {
     const { views, intents } = buildModels(
       {
