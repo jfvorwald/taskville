@@ -1,0 +1,76 @@
+/*
+ * Pointer routing: the host, every slot and every anchored item is pointer-events: none, so the
+ * 3D city keeps the pointer. An overlay opts a region back in with <InteractiveRegion>.
+ * Stacking, back to front: world labels, bubbles, timeline, sidebar, header.
+ */
+.host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.worldLabels,
+.bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.worldLabels {
+  z-index: 1;
+}
+
+.bubbles {
+  z-index: 2;
+}
+
+.timeline {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.sidebar {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  bottom: 16px;
+  width: min(360px, calc(100% - 32px));
+  z-index: 4;
+  pointer-events: none;
+}
+
+.header {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.interactive {
+  pointer-events: auto;
+}
+
+.anchorLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.anchored {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  pointer-events: none;
+  will-change: transform;
+}
