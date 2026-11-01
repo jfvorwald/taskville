@@ -211,6 +211,31 @@ function storeId(store: DataStore): number {
   return id;
 }
 
+/** What a live card has done for one request: it outlives the card when a recording replaces it. */
+interface LiveDraft {
+  sent: boolean;
+  note: string;
+  retry: { signature: string; key: string } | null;
+}
+
+const drafts = new WeakMap<DataStore, Map<string, LiveDraft>>();
+
+function liveDraft(store: DataStore, projectId: string | null, requestId: string): LiveDraft {
+  let byRequest = drafts.get(store);
+  if (byRequest === undefined) {
+    byRequest = new Map();
+    drafts.set(store, byRequest);
+  }
+  // A reset of the store (another project, a fresh sync) starts every request over.
+  const key = `${store.getState().resetGeneration}:${projectId ?? ""}:${requestId}`;
+  let draft = byRequest.get(key);
+  if (draft === undefined) {
+    draft = { sent: false, note: "", retry: null };
+    byRequest.set(key, draft);
+  }
+  return draft;
+}
+
 function CardBody({
   target,
   mode,
@@ -237,12 +262,17 @@ function CardBody({
   const wantsInput = !readOnly && target.answerable && projectId !== null;
 
   const [load, setLoad] = useState<Load>({ kind: wantsInput ? "loading" : "idle" });
-  const [sent, setSent] = useState(false);
+  // A recorded card never reads or writes this: only the live card has sent anything.
+  const draft = useMemo(
+    () => (readOnly ? null : liveDraft(store, projectId, requestId)),
+    [readOnly, store, projectId, requestId],
+  );
+  const [sent, setSent] = useState(draft?.sent ?? false);
   const [forced, setForced] = useState<"closed" | null>(null);
   const [notHeld, setNotHeld] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(draft?.note ?? "");
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
   const [settled, setSettled] = useState(false);
   const [scroll, setScroll] = useState({ overflow: false, atEnd: true });
@@ -250,7 +280,7 @@ function CardBody({
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const commandTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const retry = useRef<{ signature: string; key: string } | null>(null);
+  const retry = useRef<{ signature: string; key: string } | null>(draft?.retry ?? null);
   const boxRef = useRef<HTMLPreElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const focusAfterReveal = useRef<number | null>(null);
@@ -404,6 +434,7 @@ function CardBody({
     setBusy(false);
     if (result.ok) {
       retry.current = null;
+      if (draft) draft.retry = null;
       await done(result.command);
       return;
     }
@@ -413,6 +444,7 @@ function CardBody({
     const unresolved =
       code === "network" || code === "timeout" || code === "command_in_flight" || unreadableSuccess;
     retry.current = unresolved ? { signature, key } : null;
+    if (draft) draft.retry = retry.current;
     fail(code);
   };
 
@@ -421,8 +453,10 @@ function CardBody({
     void submit(
       (idempotencyKey) => buildDecideBody({ projectId, requestId, idempotencyKey, behavior, note }),
       ({ status }) => {
-        if (status === "delivered") setSent(true);
-        else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
+        if (status === "delivered") {
+          if (draft) draft.sent = true;
+          setSent(true);
+        } else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
       },
     );
   };
@@ -512,9 +546,12 @@ function CardBody({
       </p>
 
       {readOnly ? (
-        <InputBox boxRef={boxRef}>
-          {visibleControls(target.inputPreview ?? "No input recorded.")}
-        </InputBox>
+        <>
+          <p className={styles.hint}>Recorded preview</p>
+          <InputBox boxRef={boxRef}>
+            {visibleControls(target.inputPreview ?? "No input recorded.")}
+          </InputBox>
+        </>
       ) : variant === "open-only" ? (
         <p className={styles.reason}>
           {state === "open" && (notHeld || load.kind === "expired")
@@ -555,7 +592,10 @@ function CardBody({
             maxLength={NOTE_MAX_CHARS}
             value={note}
             disabled={locked}
-            onChange={(event) => setNote(event.target.value)}
+            onChange={(event) => {
+              if (draft) draft.note = event.target.value;
+              setNote(event.target.value);
+            }}
           />
         </>
       )}
