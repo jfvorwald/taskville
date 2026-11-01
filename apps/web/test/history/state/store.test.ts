@@ -158,6 +158,52 @@ describe("timeline fixture contract", () => {
   });
 });
 
+describe("sequence playback keeps progress between recorded moments", () => {
+  it.each(["pause/resume", "rate change", "pause between ticks"])(
+    "preserves elapsed progress through %s",
+    async (control) => {
+      const { createHistoryStore } = await import("../../../src/history/state/store.ts");
+      let elapsed = 0;
+      const liveStore = createDataStore();
+      liveStore.getState().reset(PROJECT);
+      const history = createHistoryStore({
+        liveStore,
+        timelineId: TIMELINE,
+        secret: SECRET,
+        now: () => elapsed,
+        moments: LOG.map((event) => ({
+          sequence: event.ingestSequence,
+          time: Date.parse(event.receivedAt),
+        })),
+        fetch: async (input, init) => {
+          const url = new URL(String(input), "http://127.0.0.1");
+          expect(new Headers(init?.headers).get(SESSION_HEADER)).toBe(SECRET);
+          const at = required(url.searchParams.get("at"));
+          expect(at).toMatch(/^\d+$/);
+          const event = required(LOG.find((event) => event.ingestSequence === Number(at)));
+          return Response.json(bodyAt(Date.parse(event.receivedAt)));
+        },
+      });
+      cleanups.push(() => history.dispose());
+      await history.getState().seekSequence(1, START);
+      history.getState().play();
+      elapsed = control === "pause between ticks" ? 500 : 900;
+      await history.getState().tick();
+      expect(history.getState().state?.head).toBe(1);
+      elapsed = 900;
+      if (control === "rate change") history.getState().setRate(10);
+      else {
+        history.getState().pause();
+        elapsed += 5_000;
+        history.getState().play();
+      }
+      elapsed += control === "rate change" ? 10 : 100;
+      await history.getState().tick();
+      expect(history.getState().state).toEqual(stateAt(START + 1_000));
+    },
+  );
+});
+
 describe("history state", () => {
   it("starts live and follows the current DataStore snapshot without fetching history", async () => {
     const { history, liveStore, engine } = await setup();
