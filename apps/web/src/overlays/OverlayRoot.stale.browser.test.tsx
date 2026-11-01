@@ -37,7 +37,7 @@ describe("OverlayRoot connection badge", () => {
     const indicator = page.getByText(/stale/i);
     await expect.element(indicator).toBeVisible();
     // The badge states it in words (not colour alone), so it reads the same to a screen reader.
-    await expect.element(indicator).toHaveTextContent(/stale/i);
+    await expect.element(indicator).toMatchTextContent(/stale/i);
 
     dataStore.getState().setConnection("live");
     await expect.element(page.getByText(/stale/i)).not.toBeInTheDocument();
