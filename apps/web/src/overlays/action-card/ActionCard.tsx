@@ -91,8 +91,7 @@ const STATUS_TEXT: Record<Exclude<CardState, "open">, string> = {
   closed: "This request is no longer open.",
 };
 
-const NOT_HELD_TEXT =
-  "Taskville no longer holds this request, so it cannot be answered here. Answer it in the terminal, or open the session.";
+const NOT_HELD_TEXT = "The hold ended. Answer in the terminal, or open the session.";
 
 /** The input with each masked span replaced by a reveal button until it is revealed. */
 function inputNodes(
