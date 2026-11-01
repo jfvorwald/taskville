@@ -74,6 +74,8 @@ const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+const stringList = (value: unknown) =>
+  Array.isArray(value) ? value.filter((p): p is string => typeof p === "string") : [];
 const string = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 const parsed = new WeakMap<EvidenceResponse, unknown>();
@@ -236,9 +238,7 @@ const ToolCard = memo(function ToolCard({
     ...new Set([
       ...call.filePaths,
       ...[string(input.file_path), string(input.path)].filter((p): p is string => p !== undefined),
-      ...(Array.isArray(output.filenames)
-        ? output.filenames.filter((p): p is string => typeof p === "string")
-        : []),
+      ...stringList(output.filenames),
     ]),
   ];
   const target = targetAgent(call, input, output, agents);
@@ -450,6 +450,18 @@ function GroupCard({
               kind === "read"
                 ? (string(input.file_path) ?? call.filePaths[0])
                 : (string(input.pattern) ?? string(input.query));
+            // A search lists the files it recorded, from the frame and from the result.
+            const hits =
+              kind === "search"
+                ? [
+                    ...new Set([
+                      ...call.filePaths,
+                      ...stringList(
+                        object(bodyValue(bodyOfCall(call, "output", evidence))).filenames,
+                      ),
+                    ]),
+                  ]
+                : [];
             return (
               <li key={call.toolCallId}>
                 {subject === undefined ? (
@@ -463,6 +475,12 @@ function GroupCard({
                 ) : (
                   bounded(subject).text
                 )}
+                {hits.map((path) => (
+                  <span key={path}>
+                    {" "}
+                    <Path path={path} />
+                  </span>
+                ))}
               </li>
             );
           })}
