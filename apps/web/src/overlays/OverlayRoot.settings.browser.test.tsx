@@ -232,85 +232,88 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     expect(selectionStore.getSnapshot()).toBe("a2");
   });
 
-  it("keeps the floating Settings toggle reachable without overlapping counts or camera controls at 320px", async () => {
-    // Match main.tsx's global CSS and ThemedCity's token publication without mounting WebGL.
-    const root = document.documentElement;
-    const rootAttributes = ["style", "data-theme", "data-mode", "data-history"].map(
-      (name) => [name, root.getAttribute(name)] as const,
-    );
-    const detach = themeController.attach(document.documentElement);
-    const restore = { width: window.innerWidth, height: window.innerHeight };
-    try {
-      await page.viewport(320, 640);
-      await mountSeeded(["a1"]);
-      selectionStore.select("a2");
-      await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
-      await expect.element(counts()).toMatchTextContent("1 needs you");
-      await expect.element(toggle()).toBeVisible();
-
-      const button = toggle().element();
-      const buttonBox = button.getBoundingClientRect();
-      const countsBox = counts().element().getBoundingClientRect();
-      expect(window.innerWidth).toBe(320);
-      expect(buttonBox.width).toBeGreaterThan(0);
-      expect(buttonBox.height).toBeGreaterThan(0);
-      expect(buttonBox.left).toBeGreaterThanOrEqual(0);
-      expect(buttonBox.right).toBeLessThanOrEqual(window.innerWidth);
-      expect(buttonBox.top).toBeGreaterThanOrEqual(0);
-      expect(buttonBox.bottom).toBeLessThanOrEqual(window.innerHeight);
-      expect(countsBox.width).toBeGreaterThan(0);
-      expect(countsBox.height).toBeGreaterThan(0);
-      const overlaps =
-        buttonBox.left < countsBox.right &&
-        buttonBox.right > countsBox.left &&
-        buttonBox.top < countsBox.bottom &&
-        buttonBox.bottom > countsBox.top;
-      expect(overlaps).toBe(false);
-      // Counts and camera controls share the centered header. At 320px the camera buttons,
-      // rather than the counts, occupy the floating toggle's old position.
-      const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true }).element();
-      const zoomBox = zoomIn.getBoundingClientRect();
-      const zoomHit = document.elementFromPoint(
-        zoomBox.left + zoomBox.width / 2,
-        zoomBox.top + zoomBox.height / 2,
+  it.each([320, 500, 768, 1024])(
+    "keeps the floating Settings toggle reachable without overlapping counts or camera controls at %dpx",
+    async (width) => {
+      // Match main.tsx's global CSS and ThemedCity's token publication without mounting WebGL.
+      const root = document.documentElement;
+      const rootAttributes = ["style", "data-theme", "data-mode", "data-history"].map(
+        (name) => [name, root.getAttribute(name)] as const,
       );
-      expect(zoomIn.contains(zoomHit), zoomHit?.outerHTML).toBe(true);
-      for (const control of page
-        .getByRole("group", { name: "Camera", exact: true })
-        .element()
-        .querySelectorAll("button")) {
-        const box = control.getBoundingClientRect();
+      const detach = themeController.attach(document.documentElement);
+      const restore = { width: window.innerWidth, height: window.innerHeight };
+      try {
+        await page.viewport(width, 640);
+        await mountSeeded(["a1"]);
+        selectionStore.select("a2");
+        await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+        await expect.element(counts()).toMatchTextContent("1 needs you");
+        await expect.element(toggle()).toBeVisible();
+
+        const button = toggle().element();
+        const buttonBox = button.getBoundingClientRect();
+        const countsBox = counts().element().getBoundingClientRect();
+        expect(window.innerWidth).toBe(width);
+        expect(buttonBox.width).toBeGreaterThan(0);
+        expect(buttonBox.height).toBeGreaterThan(0);
+        expect(buttonBox.left).toBeGreaterThanOrEqual(0);
+        expect(buttonBox.right).toBeLessThanOrEqual(window.innerWidth);
+        expect(buttonBox.top).toBeGreaterThanOrEqual(0);
+        expect(buttonBox.bottom).toBeLessThanOrEqual(window.innerHeight);
+        expect(countsBox.width).toBeGreaterThan(0);
+        expect(countsBox.height).toBeGreaterThan(0);
+        const overlaps =
+          buttonBox.left < countsBox.right &&
+          buttonBox.right > countsBox.left &&
+          buttonBox.top < countsBox.bottom &&
+          buttonBox.bottom > countsBox.top;
+        expect(overlaps).toBe(false);
+        // Counts and camera controls share the centered header. At 320px the camera buttons,
+        // rather than the counts, occupy the floating toggle's old position.
+        const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true }).element();
+        const zoomBox = zoomIn.getBoundingClientRect();
+        const zoomHit = document.elementFromPoint(
+          zoomBox.left + zoomBox.width / 2,
+          zoomBox.top + zoomBox.height / 2,
+        );
+        expect(zoomIn.contains(zoomHit), zoomHit?.outerHTML).toBe(true);
+        for (const control of page
+          .getByRole("group", { name: "Camera", exact: true })
+          .element()
+          .querySelectorAll("button")) {
+          const box = control.getBoundingClientRect();
+          expect(
+            buttonBox.left < box.right &&
+              buttonBox.right > box.left &&
+              buttonBox.top < box.bottom &&
+              buttonBox.bottom > box.top,
+            JSON.stringify({
+              control: control.getAttribute("aria-label") ?? control.textContent,
+              button: buttonBox.toJSON(),
+              camera: box.toJSON(),
+            }),
+          ).toBe(false);
+        }
         expect(
-          buttonBox.left < box.right &&
-            buttonBox.right > box.left &&
-            buttonBox.top < box.bottom &&
-            buttonBox.bottom > box.top,
-          JSON.stringify({
-            control: control.getAttribute("aria-label") ?? control.textContent,
-            button: buttonBox.toJSON(),
-            camera: box.toJSON(),
-          }),
-        ).toBe(false);
-      }
-      expect(
-        button.contains(
-          document.elementFromPoint(
-            buttonBox.left + buttonBox.width / 2,
-            buttonBox.top + buttonBox.height / 2,
+          button.contains(
+            document.elementFromPoint(
+              buttonBox.left + buttonBox.width / 2,
+              buttonBox.top + buttonBox.height / 2,
+            ),
           ),
-        ),
-      ).toBe(true);
-      await toggle().click();
-      await vi.waitFor(() => expect(settingsShown()).toBe(true));
-    } finally {
-      detach();
-      for (const [name, value] of rootAttributes) {
-        if (value === null) root.removeAttribute(name);
-        else root.setAttribute(name, value);
+        ).toBe(true);
+        await toggle().click();
+        await vi.waitFor(() => expect(settingsShown()).toBe(true));
+      } finally {
+        detach();
+        for (const [name, value] of rootAttributes) {
+          if (value === null) root.removeAttribute(name);
+          else root.setAttribute(name, value);
+        }
+        await page.viewport(restore.width, restore.height);
       }
-      await page.viewport(restore.width, restore.height);
-    }
-  });
+    },
+  );
 
   it("is unchanged with nothing selected: the toggle is there, closed, and opens Settings in the sidebar", async () => {
     await mountSeeded();
