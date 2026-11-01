@@ -23,19 +23,27 @@ const parts = composeServe(
   port,
 );
 mkdirSync(dirname(CODES_FILE), { recursive: true });
+// One single-use code per name. `taskville serve` keeps at most five outstanding codes and drops
+// the oldest, so the codes of the spec this run is for (E2E_SPEC, set by e2e/run.ts) are issued
+// last and always survive; the smoke spec uses `paired` and `fresh`, every other spec its own name.
+const CODE_NAMES = [
+  "paired",
+  "fresh",
+  "interaction",
+  "celebrations",
+  "accessibility",
+  "movement",
+  "lighting",
+];
+const spec = process.env.E2E_SPEC ?? "";
+const mine = spec === "smoke" ? ["paired", "fresh"] : CODE_NAMES.includes(spec) ? [spec] : [];
+const order = [...CODE_NAMES.filter((name) => !mine.includes(name)), ...mine];
+const codes: Record<string, string> = {};
+for (const name of order) codes[name] = parts.pairing.issueCode();
 writeFileSync(
   CODES_FILE,
   // `home` lets a test run CLI producers (`taskville demo start --home`) against this engine.
-  JSON.stringify({
-    paired: parts.pairing.issueCode(),
-    fresh: parts.pairing.issueCode(),
-    interaction: parts.pairing.issueCode(),
-    celebrations: parts.pairing.issueCode(),
-    accessibility: parts.pairing.issueCode(),
-    movement: parts.pairing.issueCode(),
-    lighting: parts.pairing.issueCode(),
-    home,
-  }),
+  JSON.stringify({ ...codes, home }),
 );
 const server = await startServer({ app: parts.app, port });
 process.stdout.write(`e2e engine listening on http://127.0.0.1:${server.port}\n`);

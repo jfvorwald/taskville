@@ -24,7 +24,7 @@ export default defineConfig({
   webServer: {
     command: "node e2e/engine.ts",
     url: `http://127.0.0.1:${port}/`,
-    env: { E2E_PORT: String(port) },
+    env: { E2E_PORT: String(port), E2E_SPEC: process.env.E2E_SPEC ?? "" },
     reuseExistingServer: false,
     timeout: 30_000,
     stdout: "ignore",
