@@ -25,7 +25,9 @@ describe("readSseFrames", () => {
 
   it("reassembles a frame split across chunks, even inside a multi-byte character", async () => {
     const bytes = new TextEncoder().encode('event: event\ndata: "café"\n\n');
-    const at = bytes.length - 6; // inside the two-byte e-acute
+    const at = bytes.length - 4; // between the two UTF-8 bytes of e-acute (0xc3 0xa9)
+    expect(bytes[at - 1]).toBe(0xc3);
+    expect(bytes[at]).toBe(0xa9);
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(bytes.slice(0, at));
@@ -52,5 +54,42 @@ describe("readSseFrames", () => {
 
   it("drops a trailing frame that never got its blank line", async () => {
     expect(await collect(streamOf("event: event\ndata: {}\n"))).toEqual([]);
+  });
+
+  describe("a CRLF pair split across chunks", () => {
+    const wire = 'id: 1\r\nevent: event\r\ndata: {"a":1}\r\n\r\n';
+    const expected: RawFrame[] = [{ id: "1", event: "event", data: '{"a":1}' }];
+
+    function splitAt(text: string, at: number): ReadableStream<Uint8Array> {
+      const bytes = new TextEncoder().encode(text);
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.slice(0, at));
+          controller.enqueue(bytes.slice(at));
+          controller.close();
+        },
+      });
+    }
+
+    it.each([
+      ["after the CR ending the id line", wire.indexOf("\r") + 1],
+      ["after the CR ending the event line", wire.indexOf("\r", wire.indexOf("\r") + 1) + 1],
+      ["after the CR ending the data line", wire.indexOf("\r\n\r\n") + 1],
+      ["after the CR of the final blank line", wire.length - 1],
+    ])("parses one whole frame when split %s", async (_name, at) => {
+      expect(wire[at - 1]).toBe("\r");
+      expect(wire[at]).toBe("\n");
+      expect(await collect(splitAt(wire, at))).toEqual(expected);
+    });
+
+    it("parses one whole frame whichever byte the chunk boundary falls on", async () => {
+      for (let at = 1; at < wire.length; at += 1) {
+        expect(await collect(splitAt(wire, at)), `split at ${at}`).toEqual(expected);
+      }
+    });
+
+    it("parses one whole frame when every byte arrives in its own chunk", async () => {
+      expect(await collect(streamOf(...wire.split("")))).toEqual(expected);
+    });
   });
 });
