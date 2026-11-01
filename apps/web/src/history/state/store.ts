@@ -123,7 +123,10 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       set({ rate });
     },
     tick: async () => {
-      if (disposed || !get().playing || get().mode !== "history" || target === null) return;
+      // Leave an explicit seek or playback read in flight. The next scheduled tick includes
+      // all elapsed time since the last read, so skipped ticks neither starve reads nor lose time.
+      if (disposed || request || !get().playing || get().mode !== "history" || target === null)
+        return;
       const elapsed = now();
       target += Math.max(0, elapsed - elapsedAt) * get().rate;
       elapsedAt = elapsed;
