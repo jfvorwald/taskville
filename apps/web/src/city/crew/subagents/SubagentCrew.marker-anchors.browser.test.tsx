@@ -4,7 +4,7 @@ import { userEvent } from "vitest/browser";
 import { agentAnchorId } from "../../movement/AgentLabels.tsx";
 import { crewMarkerLabel, FAN_OUT_MS } from "./crew.ts";
 import { pillMaterial } from "./resources.ts";
-import { FRAME_WAIT, isShown, LEAD, mount, type Scene, sub, WORKING_MS } from "./testScene.tsx";
+import { FRAME_WAIT, isShown, LEAD, mount, type Scene, sub, T, WORKING_MS } from "./testScene.tsx";
 
 const FOUR = [LEAD, sub("s1", "lead"), sub("s2", "lead"), sub("s3", "lead"), sub("s4", "lead")];
 
@@ -80,6 +80,52 @@ function ringAt(scene: Scene, target: Object3D, id: string) {
 }
 
 describe("M5.18 visible crew marker ownership", () => {
+  it("keeps a running child's marker fallback when its hidden parent finishes", async () => {
+    const { scene, marker } = await collapsed(true);
+    try {
+      scene.set([...FOUR.slice(0, -1), sub("s4", "lead", { finishedAt: T }), sub("nested", "s4")]);
+      await scene.frames(5);
+      scene.selection.select("nested");
+      await scene.frames(5);
+      anchorAt(scene, "nested", marker, true);
+      ringAt(scene, marker, "nested");
+      expect(scene.anchors.getAnchor(agentAnchorId("s4"))).toBeUndefined();
+    } finally {
+      await scene.unmount();
+    }
+  }, 60_000);
+
+  it("selects counted descendants at their visible count or ancestor marker and clears removed IDs", async () => {
+    const agents = [...FOUR, sub("nested", "s4"), sub("deep", "nested")];
+    const scene = await mount(agents, { anchor: [0, 0, 0], interaction: true, size: [480, 360] });
+    try {
+      await scene.frames(3);
+      scene.clock.now = WORKING_MS;
+      await scene.frames(5);
+      const [marker] = scene.spritesOf([pillMaterial(crewMarkerLabel(1))]);
+      expect(marker).toBeDefined();
+      scene.selection.select("deep");
+      await scene.frames(5);
+      ringAt(scene, marker as Sprite, "deep");
+      anchorAt(scene, "deep", marker as Sprite, true);
+      await fanOut(scene, marker as Sprite);
+      const [deeper] = scene.spritesOf([pillMaterial("1 deeper")]);
+      expect(deeper).toBeDefined();
+      ringAt(scene, deeper as Sprite, "deep");
+      anchorAt(scene, "deep", deeper as Sprite, true);
+      await collapse(scene);
+      ringAt(scene, marker as Sprite, "deep");
+      anchorAt(scene, "deep", marker as Sprite, true);
+      scene.set(agents.slice(0, -1));
+      await scene.frames(5);
+      await vi.waitFor(() => expect(scene.selection.getSnapshot()).toBeNull(), FRAME_WAIT);
+      expect(isShown(selectionRing(scene))).toBe(false);
+      expect(scene.anchors.getAnchor(agentAnchorId("deep"))).toBeUndefined();
+    } finally {
+      await scene.unmount();
+    }
+  }, 60_000);
+
   it("publishes the fourth child's bubble anchor at the marker, bot on fan-out, then marker again", async () => {
     const { scene, marker } = await collapsed();
     try {
