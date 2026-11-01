@@ -72,26 +72,79 @@ describe("store to agents and navigation", () => {
     ],
   };
 
-  it("maps each live agent to a view with a stable placement, and finished agents leave", () => {
+  it("maps each live non-subagent to a view with a stable placement, and finished agents leave", () => {
     const placementFor = pool();
     const { views, intents } = buildModels(input, DEFAULT_ACTIVITY_AREAS, placementFor);
-    expect(views.map((v) => v.id)).toEqual(["ada", "dee", "sub", "subsub"]);
+    // Subagents are drawn by the crew layer, so they have no block-agent view here (M5.02).
+    expect(views.map((v) => v.id)).toEqual(["ada", "dee"]);
+    // They keep their navigation intents, so the navigator still knows them.
     expect(intents.map((i) => i.id)).toEqual(["ada", "dee", "sub", "subsub"]);
 
-    const [ada, dee, sub, subsub] = views;
+    const [ada, dee] = views;
     expect(ada).toMatchObject({ kind: "lead", teamId: "t1", activity: "dispatching", depth: 0 });
     expect(ada?.attention).toMatchObject({ level: "trouble", heuristic: true });
     expect(dee).toMatchObject({ displayName: "DEE", activity: "testing" });
     // The most urgent record wins.
     expect(dee?.attention?.level).toBe("needs_you");
-    expect(sub).toMatchObject({ kind: "subagent", agentType: "security-reviewer", depth: 1 });
-    expect(sub?.parentIdentity).toBe("demo:7:ada");
-    expect(subsub).toMatchObject({ depth: 2, activity: "unknown" });
     expect(dee?.placement).toBe(placementFor("dee"));
 
     // A second build reuses the placement objects navigation mutates.
     const again = buildModels(input, DEFAULT_ACTIVITY_AREAS, placementFor);
     expect(again.views[1]?.placement).toBe(dee?.placement);
+  });
+
+  it("draws a subagent once: no block-agent view at any depth, intent kept", () => {
+    const { views, intents } = buildModels(input, DEFAULT_ACTIVITY_AREAS, pool());
+    expect(views.some((v) => v.kind === "subagent")).toBe(false);
+    expect(views.map((v) => v.id)).not.toContain("sub");
+    expect(views.map((v) => v.id)).not.toContain("subsub");
+    expect(intents.find((i) => i.id === "sub")).toEqual({
+      id: "sub",
+      area: "security",
+      hold: false,
+      rest: "working",
+      parentId: "ada",
+    });
+    expect(intents.find((i) => i.id === "subsub")).toMatchObject({ parentId: "sub" });
+  });
+
+  it("leaves leads, teammates and solo sessions as block-agent views", () => {
+    const { views, intents } = buildModels(
+      {
+        agents: [
+          agent("lead1", { kind: "lead", teamId: "t1" }),
+          agent("mate", { kind: "teammate", teamId: "t1", parentAgentId: "lead1" }),
+          agent("solo"),
+          agent("kid", { kind: "subagent", parentAgentId: "solo" }),
+        ],
+        activity: {},
+        attention: [],
+      },
+      DEFAULT_ACTIVITY_AREAS,
+      pool(),
+    );
+    expect(views.map((v) => [v.id, v.kind])).toEqual([
+      ["lead1", "lead"],
+      ["mate", "teammate"],
+      ["solo", "session"],
+    ]);
+    expect(intents.map((i) => i.id)).toEqual(["lead1", "mate", "solo", "kid"]);
+  });
+
+  it("keeps a subagent's needs-you hold in its intent, though it has no view", () => {
+    const { views, intents } = buildModels(
+      {
+        agents: [agent("solo"), agent("kid", { kind: "subagent", parentAgentId: "solo" })],
+        activity: {},
+        attention: [
+          { agentId: "kid", level: "needs_you", kind: "permission", since: T, heuristic: false },
+        ],
+      },
+      DEFAULT_ACTIVITY_AREAS,
+      pool(),
+    );
+    expect(views.map((v) => v.id)).toEqual(["solo"]);
+    expect(intents.find((i) => i.id === "kid")?.hold).toBe(true);
   });
 
   it("derives destinations, holds and rest states from the recorded state", () => {
