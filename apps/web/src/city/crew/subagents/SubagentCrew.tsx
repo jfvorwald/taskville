@@ -134,13 +134,21 @@ function CrewFamilyView({
     if (handle === null) bots.current.delete(id);
     else bots.current.set(id, handle);
   }, []);
-  // The ids are the family's, so the places are dropped with the bots.
+  // The ids are the family's, so the places are dropped with the bots. A store update that keeps a
+  // member keeps its place (and its hidden flag): its crew must not reappear behind the marker.
+  const placed = useRef<string[]>([]);
   useEffect(() => {
     const ids = family.members.map((m) => m.id);
-    return () => {
-      for (const id of ids) places.delete(id);
-    };
+    const kept = new Set(ids);
+    for (const id of placed.current) if (!kept.has(id)) places.delete(id);
+    placed.current = ids;
   }, [family.members, places]);
+  useEffect(
+    () => () => {
+      for (const id of placed.current) places.delete(id);
+    },
+    [places],
+  );
 
   const onMarkerClick = useCallback(() => {
     fannedAtMs.current = store.now();
