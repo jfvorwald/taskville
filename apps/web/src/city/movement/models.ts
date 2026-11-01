@@ -2,6 +2,7 @@ import type { Agent, Attention, AttentionCounts, ProjectState } from "../../data
 import type { AgentCounts } from "../../overlays/host/types.ts";
 import { identityKey } from "../agents/identity.ts";
 import type { AgentView, AttentionView, Placement } from "../agents/types.ts";
+import { troubleDetail } from "../attention/detail.ts";
 import { type ActivityAreaTable, areaFor } from "./areas.ts";
 import type { NavIntent, RestState } from "./navigator.ts";
 
@@ -27,20 +28,16 @@ export interface Models {
 
 const MAX_DEPTH = 8;
 
-/** Short trouble text for the label (`Trouble: <detail>`). Guesses say so. */
-const TROUBLE_DETAIL: Record<string, string> = {
-  stop_failure: "turn failed",
-  tool_failures: "tool failures",
-  silent: "quiet",
-};
-
 function attentionView(record: Attention | undefined): AttentionView | undefined {
   if (record === undefined) return undefined;
-  const detail = record.level === "trouble" ? TROUBLE_DETAIL[record.kind] : undefined;
+  const detail = troubleDetail(record);
+  const sinceMs = Date.parse(record.since);
   return {
     level: record.level,
+    kind: record.kind,
     heuristic: record.heuristic,
-    ...(detail === undefined ? {} : { detail }),
+    ...(Number.isNaN(sinceMs) ? {} : { sinceMs }),
+    ...(detail === undefined ? {} : { detail: detail.text }),
   };
 }
 

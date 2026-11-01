@@ -24,6 +24,10 @@ export interface AttentionView {
   readonly detail?: string;
   /** True for guesses (silent trouble). The label says so through `detail`. */
   readonly heuristic?: boolean;
+  /** The domain attention kind (such as "permission" or "silent"); picks the emote. */
+  readonly kind?: string;
+  /** When the record began, epoch milliseconds; the pulse runs on the time since. */
+  readonly sinceMs?: number;
 }
 
 /**

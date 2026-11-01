@@ -73,6 +73,8 @@ export type DataStore = StoreApi<DataState> & {
    * affects neither state nor other listeners. Returns an idempotent unsubscribe.
    */
   onEvent(listener: (event: StoredEnvelope) => void): () => void;
+  /** The clock the store derives attention from (the injected `now`, `Date.now` by default). */
+  readonly now: () => number;
 };
 
 export interface DataStoreOptions {
@@ -149,6 +151,7 @@ export function createDataStore(options: DataStoreOptions = {}): DataStore {
   }));
 
   return Object.assign(store, {
+    now,
     onEvent(listener: (event: StoredEnvelope) => void) {
       const entry = (event: StoredEnvelope) => listener(event);
       listeners.add(entry);

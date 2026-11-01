@@ -4,6 +4,7 @@ import {
   AGENT_KINDS,
   COMMAND_TYPES,
   normalizeSourceEnum,
+  REQUEST_DECISIONS,
   REQUEST_KINDS,
   REQUEST_RESOLUTIONS,
   sourceEnumValueSchema,
@@ -91,6 +92,8 @@ const commonPayloadSchemas = {
   "request.resolved": z.strictObject({
     requestId: idSchema,
     resolution: z.enum(REQUEST_RESOLUTIONS),
+    /** Which way the user answered, when the engine learned it from a terminal answer (#116). */
+    decision: z.enum(REQUEST_DECISIONS).optional(),
   }),
   "request.expired": z.strictObject({ requestId: idSchema }),
   "command.requested": z.strictObject({

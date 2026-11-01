@@ -239,4 +239,17 @@ describe("openSession: cwd must be an existing directory", () => {
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(allowed).toMatchObject({ status: "opened" });
   });
+
+  it("skips the directory check and still opens when the template has no {cwd}", async () => {
+    const isDirectory = vi.fn(async (_path: string) => false);
+    const execFile = fakeExecFile();
+    const result = await openSession(
+      { sessionId: "sess-1", cwd: "/Users/dev/repo" },
+      { config: { sessionOpener: ["open-thing", "--id={sessionId}"] }, execFile, isDirectory },
+    );
+    expect(isDirectory).not.toHaveBeenCalled();
+    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(execFile.mock.calls[0]?.[1]).toEqual(["--id=sess-1"]);
+    expect(result).toEqual({ status: "opened", sessionId: "sess-1", cwd: "/Users/dev/repo" });
+  });
 });
