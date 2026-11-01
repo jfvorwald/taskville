@@ -38,6 +38,11 @@ const AGENTS: AgentView[] = [
 // browser config ever forwards it). A normal run must not touch the working tree.
 const CAPTURE = import.meta.env.VITE_TV_CAPTURE === "1" || import.meta.env.TV_CAPTURE === "1";
 
+// The full browser suite runs files in parallel on software WebGL (SwiftShader), and a page can
+// then go several seconds without a frame (4.6 s measured), so a frame-bound wait needs far more
+// than `vi.waitFor`'s 1 s default. A healthy run still meets each condition in milliseconds.
+const FRAME_WAIT = { timeout: 10_000 };
+
 describe("AgentsLayer", () => {
   it("draws every agent from pooled geometry, and captures a screenshot for the task report", async () => {
     let scene: Scene | undefined;
@@ -60,9 +65,9 @@ describe("AgentsLayer", () => {
         </Canvas>
       </div>,
     );
-    await vi.waitFor(() => expect(scene).toBeDefined());
+    await vi.waitFor(() => expect(scene).toBeDefined(), FRAME_WAIT);
     // Wait on conditions, not time: a few frames rendered and every label texture drawn.
-    await vi.waitFor(() => expect(root?.gl.info.render.frame).toBeGreaterThan(3));
+    await vi.waitFor(() => expect(root?.gl.info.render.frame).toBeGreaterThan(3), FRAME_WAIT);
     await vi.waitFor(() => {
       const versions: number[] = [];
       scene?.traverse((o) => {
@@ -70,7 +75,7 @@ describe("AgentsLayer", () => {
       });
       expect(versions).toHaveLength(5);
       expect(versions.every((v) => v >= 1)).toBe(true);
-    });
+    }, FRAME_WAIT);
     const groups: Object3D[] = [];
     const geometries = new Set<string>();
     const sprites: Object3D[] = [];
@@ -89,7 +94,7 @@ describe("AgentsLayer", () => {
         .getByTestId("stage")
         .screenshot({ path: "../../../../../docs/tasks/M3.05/agents.png" });
     }
-  });
+  }, 30_000);
 
   it("freezes the work-loop pose under reduced motion and animates it otherwise", async () => {
     const worker = (): AgentView[] => [
@@ -100,6 +105,7 @@ describe("AgentsLayer", () => {
       const screen = await render(
         <div style={{ width: 200, height: 150 }}>
           <Canvas
+            frameloop="never"
             camera={{ position: [0, 1.5, 3], fov: 40 }}
             onCreated={(s) => {
               state = s;
@@ -109,23 +115,34 @@ describe("AgentsLayer", () => {
           </Canvas>
         </div>,
       );
-      await vi.waitFor(() => expect(state?.clock.elapsedTime).toBeGreaterThan(0.1));
+      await vi.waitFor(
+        () => expect(state?.scene.children.some((o) => o.userData.agentId === "w1")).toBe(true),
+        FRAME_WAIT,
+      );
       return { state: state as RootState, screen };
     };
-    /** Arm swing angles (every child group of the agent root: the two shoulders), per sample. */
-    const sampleArms = async (state: RootState, ms: number) => {
+    /**
+     * Drives `seconds` of 20 ms frames by hand (`frameloop="never"`: `advance` sets the clock and
+     * draws), so a starved requestAnimationFrame cannot thin the samples. Records the arm swing
+     * angles (every child group of the agent root: the two shoulders) after each frame.
+     */
+    const sampleArms = (state: RootState, seconds: number) => {
       const body = state.scene.children.find((o) => o.userData.agentId === "w1");
       expect(body).toBeDefined();
       const t0 = state.clock.elapsedTime;
+      const f0 = state.gl.info.render.frame;
       const samples: number[][] = [];
-      const until = performance.now() + ms;
-      while (performance.now() < until) {
+      for (let i = 1; i <= Math.round(seconds / 0.02); i++) {
+        state.advance(t0 + i * 0.02);
         samples.push(
           (body?.children ?? []).filter((c) => c.type === "Group").map((c) => c.rotation.x),
         );
-        await new Promise((r) => setTimeout(r, 20));
       }
-      return { samples, clockAdvance: state.clock.elapsedTime - t0 };
+      return {
+        samples,
+        clockAdvance: state.clock.elapsedTime - t0,
+        framesDrawn: state.gl.info.render.frame - f0,
+      };
     };
     const spread = (samples: number[][]) => {
       const cols = samples[0]?.length ?? 0;
@@ -138,18 +155,20 @@ describe("AgentsLayer", () => {
     };
 
     const still = await stage(true);
-    const frozen = await sampleArms(still.state, 800);
+    const frozen = sampleArms(still.state, 0.8);
     await still.screen.unmount();
-    // The clock ran (so frames did too), the arms are posed, and nothing moved.
+    // The clock ran and frames were drawn, the arms are posed, and nothing moved.
     expect(frozen.clockAdvance).toBeGreaterThan(0.5);
+    expect(frozen.framesDrawn).toBe(frozen.samples.length);
     expect(frozen.samples[0]?.some((x) => Math.abs(x) > 0.5)).toBe(true);
     expect(spread(frozen.samples)).toBeLessThan(1e-9);
 
     const moving = await stage(false);
-    const live = await sampleArms(moving.state, 800);
+    const live = sampleArms(moving.state, 0.8);
     await moving.screen.unmount();
     expect(live.clockAdvance).toBeGreaterThan(0.5);
+    expect(live.framesDrawn).toBe(live.samples.length);
     // The hammer arm swings through about 1.8 rad per loop; 0.8 s covers most of a 1.2 s loop.
     expect(spread(live.samples)).toBeGreaterThan(0.5);
-  });
+  }, 30_000);
 });
