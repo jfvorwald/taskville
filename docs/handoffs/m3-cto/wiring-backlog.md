@@ -1,0 +1,14 @@
+# M3 wiring backlog (lead integration, after merges)
+- M3.03 header counts <- M3.02 store (M3.06 doing it)
+- M3.05 AgentsLayer mount + labels via worldAnchors (M3.06 doing it)
+- M3.07: LabelSprite reads --tv-text once; subscribe useTheme(s=>s.tokens) for live relabel
+- M3.15 settings: theme -> themeController (fallback on unknown id), pass real theme list via themes prop; dayNight -> M3.12 lighting; reducedMotion -> resolveReducedMotion for agents/nav
+- M3.15 mount in overlays/index.tsx (registry array + ENABLED) conflicts with others
+- M3.07 ThemedCity mount in city/index.tsx conflicts with M3.06 agents mount
+- M3.11 selection Selector -> overlay host selection prop
+- M3.09: walls grey-cream under shared lights (check with M3.12 lighting); vines/benches not built
+- themes/core/themes.ts registration conflicts: M3.08, M3.09, M3.10 (cyberpunk stays first/default)
+- Screenshot reproducibility: ?theme= hook or exposed controller (M3.08 lesson); goes with settings wiring
+- Lesson: M3.08 re-ran full pnpm check on a 2-file load flake without capturing names (rule: rerun failing files alone)
+- M3.10 aero: translucent glass volumes and pond island not expressible in contract (opaque boxes, single plaza); walls light grey under shared lights
+- Pattern: pnpm check tail hides which test failed (M3.08, M3.10); brief should say capture FAIL lines
