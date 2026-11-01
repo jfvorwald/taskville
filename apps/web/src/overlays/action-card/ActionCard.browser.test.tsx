@@ -1345,6 +1345,30 @@ describe("ActionCard: an input that overflows its box must be scrolled to the en
     await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 
+  it("re-engages after a reveal makes a fitting input overflow: Allow goes off until scrolled to the end", async () => {
+    const lines = Array.from({ length: 200 }, (_, i) => `secret-line-${i}`);
+    const engine = createEngine();
+    engine.input = () => json(200, held({ command: "echo hi", password: lines }));
+    await mount({ engine });
+    await loaded();
+    await expect.poll(() => reveals().elements().length).toBe(1);
+    const box = inputEl() as HTMLElement;
+    expect(box.scrollHeight).toBeLessThanOrEqual(box.clientHeight);
+    await sleep(800); // past the settle delay: only the mask keeps Allow off now
+    await expect.element(allow()).toBeDisabled();
+
+    await reveals().first().click();
+    expect(reveals().elements()).toHaveLength(0);
+    expect(inputEl()?.textContent).toContain("secret-line-199");
+    expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
+    await sleep(150);
+    await expect.element(allow()).toBeDisabled();
+    await expect.element(deny()).toBeEnabled();
+
+    box.scrollTop = box.scrollHeight;
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+  });
+
   it("does not gate Allow for an input that fits", async () => {
     const engine = createEngine();
     engine.input = () => json(200, held("echo one\necho two\necho three"));
@@ -1821,6 +1845,14 @@ describe("ActionCard: a request that never answers ends with a message", () => {
     await expect.element(openSession()).toBeEnabled();
     await expect.element(allow()).toBeEnabled();
     expect(posts(engine)).toHaveLength(1);
+
+    // The timed-out command may have been delivered: a second click on the same action is a retry
+    // and must carry the same idempotency key.
+    (deny().element() as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(posts(engine)).toHaveLength(2));
+    const [first, second] = posts(engine).map((p) => p.body?.idempotencyKey);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBe(first);
   });
 });
 
