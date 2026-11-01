@@ -1,3 +1,4 @@
+import { OrthographicCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import {
   CITY_CAMERA,
@@ -63,4 +64,63 @@ describe("fixed orthographic isometric camera", () => {
   it("is safe on a zero-size viewport", () => {
     expect(fitZoom({ width: 0, height: 0 }, CITY_CAMERA, CITY_LAYOUT)).toBeGreaterThan(0);
   });
+});
+
+describe("projectToScreen agrees with a real three.js orthographic camera", () => {
+  /** A camera posed and framed the way R3F frames a non-manual orthographic camera. */
+  function realCamera(viewport: { width: number; height: number }, zoom: number) {
+    const cam = new OrthographicCamera(
+      -viewport.width / 2,
+      viewport.width / 2,
+      viewport.height / 2,
+      -viewport.height / 2,
+      CITY_CAMERA.near,
+      CITY_CAMERA.far,
+    );
+    const p = cameraPosition(CITY_CAMERA);
+    cam.position.set(p.x, p.y, p.z);
+    cam.zoom = zoom;
+    cam.lookAt(CITY_CAMERA.target.x, CITY_CAMERA.target.y, CITY_CAMERA.target.z);
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld(true);
+    return cam;
+  }
+
+  const points = [
+    { x: 0, y: 0, z: 0 },
+    { x: 10, y: 0, z: 0 },
+    { x: 0, y: 0, z: 10 },
+    { x: -12, y: 3, z: 7 },
+    { x: 8, y: 6, z: -14 },
+    { x: -17, y: 0, z: -17 },
+    { x: 17, y: 5, z: 17 },
+    { x: 3.3, y: 9, z: -2.1 },
+  ];
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+  ]) {
+    it(`matches Vector3.project mapped to pixels at ${viewport.width}x${viewport.height}`, () => {
+      const zoom = fitZoom(viewport, CITY_CAMERA, CITY_LAYOUT);
+      const cam = realCamera(viewport, zoom);
+      for (const point of points) {
+        const ndc = new Vector3(point.x, point.y, point.z).project(cam);
+        const expected = {
+          x: ((ndc.x + 1) / 2) * viewport.width,
+          y: ((1 - ndc.y) / 2) * viewport.height,
+        };
+        const actual = projectToScreen(point, zoom, viewport, CITY_CAMERA);
+        expect(actual.x, `x of ${JSON.stringify(point)}`).toBeCloseTo(expected.x, 3);
+        expect(actual.y, `y of ${JSON.stringify(point)}`).toBeCloseTo(expected.y, 3);
+      }
+    });
+
+    it(`puts the camera target at the viewport centre at ${viewport.width}x${viewport.height}`, () => {
+      const zoom = fitZoom(viewport, CITY_CAMERA, CITY_LAYOUT);
+      const s = projectToScreen(CITY_CAMERA.target, zoom, viewport, CITY_CAMERA);
+      expect(s.x).toBeCloseTo(viewport.width / 2, 6);
+      expect(s.y).toBeCloseTo(viewport.height / 2, 6);
+    });
+  }
 });

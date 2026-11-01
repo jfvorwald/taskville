@@ -32,8 +32,33 @@ describe("procedural building parts", () => {
         );
         expect(p.position.x + p.size.x / 2).toBeLessThanOrEqual(f.cx + f.halfX + 1e-6);
         expect(p.position.z - p.size.z / 2).toBeGreaterThanOrEqual(f.cz - f.halfZ - 1e-6);
-        expect(p.position.z + p.size.z / 2).toBeLessThanOrEqual(f.cz + f.halfZ + 1e-6);
+        // Doors and columns may protrude a hair past the south wall so they do not z-fight with it.
+        expect(p.position.z + p.size.z / 2).toBeLessThanOrEqual(f.cz + f.halfZ + 0.05);
         expect(p.position.y - p.size.y / 2).toBeGreaterThanOrEqual(-1e-6);
+      }
+    }
+  });
+
+  it("never leaves a part's front face coplanar with the body's south wall (no z-fighting)", () => {
+    const MIN_PROTRUSION = 0.01;
+    for (const area of CITY_LAYOUT.areas) {
+      const parts = buildingParts(area);
+      const body = parts.find((p) => p.role === "body");
+      expect(body, area.id).toBeDefined();
+      if (!body) continue;
+      const bodySouth = body.position.z + body.size.z / 2;
+      const bodyTop = body.position.y + body.size.y / 2;
+      for (const p of parts.filter((q) => q.role === "door" || q.role === "feature")) {
+        const front = p.position.z + p.size.z / 2;
+        const bottom = p.position.y - p.size.y / 2;
+        // Only parts that stand against the body's south wall can fight with it: their front face
+        // reaches the wall plane and they sit below the roofline.
+        if (bottom >= bodyTop - 1e-6) continue;
+        if (Math.abs(front - bodySouth) > 0.05) continue;
+        expect(
+          front - bodySouth,
+          `${area.id} ${p.role} at x=${p.position.x.toFixed(2)} must protrude past the wall`,
+        ).toBeGreaterThanOrEqual(MIN_PROTRUSION);
       }
     }
   });
