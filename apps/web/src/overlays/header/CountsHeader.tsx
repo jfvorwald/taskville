@@ -4,7 +4,7 @@ import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
 import { selectAttentionHeader } from "./attention.ts";
 import { AttentionChips } from "./attentionChips.tsx";
-import { useAttentionFeed } from "./attentionSync.ts";
+import { useAttentionFeed, useAttentionReady } from "./attentionSync.ts";
 import { describeCounts, formatCounts } from "./counts.ts";
 import styles from "./header.module.css";
 
@@ -17,10 +17,11 @@ export function CountsHeader({ selectors }: OverlayProps) {
   const value = useSyncExternalStore(counts.subscribe, counts.getSnapshot, counts.getSnapshot);
   const feed = useAttentionFeed();
   const currentProjectId = useCurrentProjectId();
-  const { otherProjects } = selectAttentionHeader(feed, currentProjectId);
-  // The needs-you count spans every project: this project's own count, which is exact, plus the
-  // agents waiting in the others, which the chips name.
-  const needsYou = otherProjects.reduce((sum, p) => sum + p.needsYou, value.needsYou);
+  const ready = useAttentionReady();
+  const { needsYouTotal, otherProjects } = selectAttentionHeader(feed, currentProjectId);
+  // The needs-you count spans every project, so it comes from the global feed. Until the feed's
+  // first snapshot arrives there is nothing to total, and this project's own count stands in.
+  const needsYou = ready ? needsYouTotal : value.needsYou;
   const shown = { ...value, needsYou };
   const away = currentProjectId !== DEFAULT_PROJECT_ID;
   return (

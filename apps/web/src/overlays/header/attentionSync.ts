@@ -139,6 +139,11 @@ export function useAttentionFeed(store: AttentionStore = attentionStore): Attent
   return useStore(store, (s) => s.feed);
 }
 
+/** True once the feed delivered its first snapshot, so its totals can be trusted. */
+export function useAttentionReady(store: AttentionStore = attentionStore): boolean {
+  return useStore(store, (s) => s.ready);
+}
+
 /** Agents that need you across every project, for the tab title. A number, so it is cheap to select. */
 export function useNeedsYouTotal(store: AttentionStore = attentionStore): number {
   return useStore(store, (s) => selectAttentionHeader(s.feed, null).needsYouTotal);
