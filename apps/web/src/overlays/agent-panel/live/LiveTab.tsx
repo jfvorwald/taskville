@@ -27,6 +27,7 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import styles from "./live.module.css";
 
 export interface LiveTabProps {
@@ -427,6 +428,9 @@ function GroupCard({
   toggleExpanded,
   position,
   size,
+  detailPage,
+  detailPageSize,
+  onDetailPage,
 }: {
   kind: "read" | "search";
   calls: readonly ToolCallFrame[];
@@ -436,9 +440,13 @@ function GroupCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
+  detailPage: number;
+  detailPageSize: number;
+  onDetailPage: (id: string, page: number) => void;
 }) {
   const heading = useId();
   const list = useId();
+  const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
   return (
     <article
@@ -474,9 +482,28 @@ function GroupCard({
       >
         {kind === "read" ? "Expand paths" : "Expand patterns"}
       </Button>
+      {expanded && page.count > 1 ? (
+        <div>
+          <Button
+            aria-label={kind === "read" ? "Previous read details" : "Previous search details"}
+            isDisabled={page.index === 0}
+            onPress={() => onDetailPage(calls[0].toolCallId, page.index - 1)}
+          >
+            Previous
+          </Button>
+          <span role="status">{`Details page ${page.index + 1} of ${page.count}`}</span>
+          <Button
+            aria-label={kind === "read" ? "Next read details" : "Next search details"}
+            isDisabled={page.index + 1 === page.count}
+            onPress={() => onDetailPage(calls[0].toolCallId, page.index + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      ) : null}
       {expanded ? (
         <ul id={list}>
-          {calls.map((call) => {
+          {page.calls.map((call) => {
             const body = bodyOfCall(call, "input", evidence);
             const output = bodyOfCall(call, "output", evidence);
             const input = object(bodyValue(body));
@@ -531,6 +558,12 @@ function GroupCard({
 }
 
 type Item = { key: string; kind: "call" | "read" | "search"; calls: readonly ToolCallFrame[] };
+
+function groupDetails(calls: readonly ToolCallFrame[], wanted: number, size: number) {
+  const count = Math.max(1, Math.ceil(calls.length / size));
+  const index = Math.max(0, Math.min(wanted, count - 1));
+  return { index, count, calls: calls.slice(index * size, (index + 1) * size) };
+}
 
 const RUNS = new Map<string, "read" | "search">([
   ["Read", "read"],
@@ -588,6 +621,7 @@ function LiveFeed({
   // The offset the virtualizer last wrote, so its measurement corrections are not read as a reader.
   const written = useRef<number | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [detailPages, setDetailPages] = useState<ReadonlyMap<string, number>>(() => new Map());
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
   const items = useMemo(() => group(calls), [calls]);
   const focusNewest = useRef(false);
@@ -605,16 +639,44 @@ function LiveFeed({
     scrollMargin,
     useFlushSync: false,
   });
+  const virtualItems = virtualizer.getVirtualItems();
+  const singleCount = virtualItems.filter(({ index }) => items[index].kind === "call").length;
+  const expandedCount = virtualItems.filter(
+    ({ index }) => items[index].kind !== "call" && expanded.has(items[index].key),
+  ).length;
+  // Reserve both body parts per call and share the remaining budget across presented groups.
+  const detailPageSize = Math.max(
+    1,
+    Math.min(
+      32,
+      Math.floor(
+        (Math.floor(EVIDENCE_BODY_CAPACITY / 2) - singleCount) / Math.max(1, expandedCount),
+      ),
+    ),
+  );
   // Report after commit, so even transient follow ranges are genuinely mounted. Collapsed
   // groups show metadata only; their member details become requested when expanded.
   useEffect(() => {
     onVisibleCalls?.(
-      virtualizer.getVirtualItems().flatMap(({ index }) => {
+      virtualItems.flatMap(({ index }) => {
         const item = items[index];
-        return item.kind === "call" || expanded.has(item.key) ? item.calls : [];
+        if (item.kind === "call") return item.calls;
+        return expanded.has(item.key)
+          ? groupDetails(item.calls, detailPages.get(item.key) ?? 0, detailPageSize).calls
+          : [];
       }),
     );
   });
+  const onDetailPage = useCallback((id: string, page: number) => {
+    setDetailPages((old) => new Map(old).set(id, page));
+  }, []);
+  useEffect(() => {
+    const keys = new Set(items.map((item) => item.key));
+    setDetailPages((old) => {
+      if ([...old.keys()].every((key) => keys.has(key))) return old;
+      return new Map([...old].filter(([key]) => keys.has(key)));
+    });
+  }, [items]);
   // The shell and controlled consumers already own scrolling. Include content before the list
   // in the virtualizer's coordinates rather than creating a second nested viewport.
   useLayoutEffect(() => {
@@ -809,6 +871,9 @@ function LiveFeed({
                   {...{ evidence, evicted }}
                   kind={item.kind}
                   calls={item.calls}
+                  detailPage={detailPages.get(item.key) ?? 0}
+                  detailPageSize={detailPageSize}
+                  onDetailPage={onDetailPage}
                 />
               )}
             </div>
