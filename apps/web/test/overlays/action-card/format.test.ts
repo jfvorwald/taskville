@@ -50,6 +50,34 @@ describe("visibleControls", () => {
     ],
     ["C0 controls except tab and newline", [...range(0x00, 0x08), ...range(0x0b, 0x1f)]],
     ["C1 controls (U+0080-009F)", range(0x80, 0x9f)],
+    ["soft hyphen (M4.15 L-A)", [0x00ad]],
+    [
+      "invisible operators and deprecated formatting",
+      [...range(0x2061, 0x2064), ...range(0x206a, 0x206f)],
+    ],
+    ["variation selectors", range(0xfe00, 0xfe0f)],
+    ["astral tags including the explicitly listed range", range(0xe0000, 0xe007f)],
+    ["Hangul fillers", [0x3164, 0xffa0]],
+    ["line and paragraph separators (Zl/Zp)", [0x2028, 0x2029]],
+    ["Mongolian vowel separator and combining grapheme joiner", [0x180e, 0x034f]],
+    ["remaining Cc controls", [0x7f]],
+    [
+      "remaining Cf format characters",
+      [
+        ...range(0x0600, 0x0605),
+        0x06dd,
+        0x070f,
+        0x0890,
+        0x0891,
+        0x08e2,
+        ...range(0xfff9, 0xfffb),
+        0x110bd,
+        0x110cd,
+        ...range(0x13430, 0x1343f),
+        ...range(0x1bca0, 0x1bca3),
+        ...range(0x1d173, 0x1d17a),
+      ],
+    ],
   ];
 
   it.each(groups)("marks %s", (_name, codes) => {
@@ -64,6 +92,10 @@ describe("visibleControls", () => {
 
   it("marks every occurrence and keeps the text between", () => {
     expect(visibleControls("\u202eabc\u202e\u200bdef")).toBe("<U+202E>abc<U+202E><U+200B>def");
+  });
+
+  it("marks astral tags as one code point between ordinary astral text and layout", () => {
+    expect(visibleControls("😀\u{e0061}\tco\u00adpy\n🚀")).toBe("😀<U+E0061>\tco<U+00AD>py\n🚀");
   });
 
   it("returns an empty string unchanged", () => {
