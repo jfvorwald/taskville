@@ -1,0 +1,20 @@
+{
+  "needs_you": [
+    "Clear for takeoff? Need your OK",
+    "Tower, requesting clearance",
+    "Awaiting your go-ahead",
+    "Permission to proceed, captain?"
+  ],
+  "trouble": [
+    "Turbulence ahead, please help",
+    "Mayday, I am off course",
+    "Warning light is flashing",
+    "Losing altitude on this one"
+  ],
+  "waiting": [
+    "Holding pattern, ready to roll",
+    "Parked at the gate",
+    "Cruising and standing by",
+    "Engines idle, awaiting orders"
+  ]
+}

@@ -106,6 +106,23 @@ export function SettingsPanel({
 
           <Switch
             className={styles.switch}
+            isSelected={values.desktopNotifications}
+            onChange={(on) => {
+              // Asked on the click that turns it on, the only moment a browser lets it prompt.
+              if (
+                on &&
+                typeof Notification !== "undefined" &&
+                Notification.permission === "default"
+              ) {
+                void Notification.requestPermission();
+              }
+              store.set("desktopNotifications", on);
+            }}
+          >
+            Desktop notifications
+          </Switch>
+          <Switch
+            className={styles.switch}
             isDisabled
             aria-label="Sound"
             aria-describedby="settings-sound-note"
