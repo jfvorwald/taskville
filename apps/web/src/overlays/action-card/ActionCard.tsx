@@ -374,7 +374,9 @@ function CardBody({
     }
     const code = timedOut ? "timeout" : result.code;
     // The first command may still be running (or have run), so its retry must stay a replay.
-    const unresolved = code === "network" || code === "timeout" || code === "command_in_flight";
+    const unreadableSuccess = code === "unknown" && result.status >= 200 && result.status < 300;
+    const unresolved =
+      code === "network" || code === "timeout" || code === "command_in_flight" || unreadableSuccess;
     retry.current = unresolved ? { signature, key } : null;
     fail(code);
   };
