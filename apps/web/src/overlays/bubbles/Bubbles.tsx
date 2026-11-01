@@ -13,27 +13,40 @@ import { type Bubble, selectBubbles } from "./select.ts";
 /** How often the open quip windows are re-checked. Bubbles last 4 s, so this is coarse enough. */
 const TICK_MS = 500;
 
-const NONE: readonly Bubble[] = [];
+/** A bubble and the key that restarts its fade: the agent plus the event behind the line. */
+interface Shown {
+  key: string;
+  bubble: Bubble;
+}
 
-const same = (a: readonly Bubble[], b: readonly Bubble[]) =>
+const NONE: readonly Shown[] = [];
+
+const same = (a: readonly Shown[], b: readonly Shown[]) =>
   a.length === b.length &&
-  a.every((x, i) => x.agentId === b[i].agentId && x.line === b[i].line && x.fact === b[i].fact);
+  a.every(
+    (x, i) =>
+      x.key === b[i].key &&
+      x.bubble.line === b[i].bubble.line &&
+      x.bubble.fact === b[i].bubble.fact,
+  );
 
 /**
  * The bubbles to show now. Recomputed when attention changes and on a coarse timer while anything
  * needs attention; React re-renders only when the visible set actually changes.
  */
-function useBubbles(selectedAgentId: string | null, theme: string): readonly Bubble[] {
+function useBubbles(selectedAgentId: string | null, theme: string): readonly Shown[] {
   const records = useData((s) => s.attention);
   const requests = useData((s) => s.state?.requests);
   const [bubbles, setBubbles] = useState(NONE);
   useEffect(() => {
     const update = () => {
-      const next = selectBubbles(bubbleCandidates(records, requests ?? {}, dataStore.now()), {
-        selectedAgentId,
-        now: dataStore.now(),
-        theme,
-      });
+      const now = dataStore.now();
+      const candidates = bubbleCandidates(records, requests ?? {}, now);
+      const eventIds = new Map(candidates.map((c) => [c.agentId, c.eventId]));
+      const next = selectBubbles(candidates, { selectedAgentId, now, theme }).map((bubble) => ({
+        key: `${bubble.agentId}:${eventIds.get(bubble.agentId)}`,
+        bubble,
+      }));
       setBubbles((prev) => (same(prev, next) ? prev : next));
     };
     update();
@@ -54,10 +67,10 @@ export function Bubbles({ anchors, selection }: OverlayProps) {
   const bubbles = useBubbles(selection.selectedId, theme);
   return (
     <AnchorLayer source={anchors} gap={4} margin={48}>
-      {bubbles.map((b) => (
+      {bubbles.map(({ key, bubble: b }) => (
         <Anchored
-          key={b.agentId}
-          id={`bubble:${b.agentId}`}
+          key={key}
+          id={`bubble:${key}`}
           anchorId={agentAnchorId(b.agentId)}
           priority={b.level === "needs_you" ? 8 : 4}
         >
