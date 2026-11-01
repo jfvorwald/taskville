@@ -34,7 +34,7 @@ describe("agentLabel", () => {
       ["handing_off", "Handing off"],
       ["waiting", "Waiting"],
       ["idle", "Idle"],
-      ["unknown", "Working"],
+      ["unknown", "Unknown"],
     ] as const;
     for (const [activity, text] of acts) {
       expect(agentLabel(view({ activity })).status).toBe(text);
@@ -48,11 +48,36 @@ describe("agentLabel", () => {
     expect(agentLabel(view({ attention: { level: "waiting" } })).status).toBe("Waiting");
   });
 
-  it("labels heuristic trouble as such, with the selector's detail", () => {
+  it("keeps an unknown source state visible as Unknown, never as Working", () => {
+    expect(agentLabel(view({ activity: "unknown" })).status).toBe("Unknown");
+  });
+
+  it("labels heuristic trouble as possible, with the selector's detail", () => {
     const label = agentLabel(
       view({ attention: { level: "trouble", detail: "quiet for 12 min", heuristic: true } }),
     );
-    expect(label.status).toBe("Trouble: quiet for 12 min");
+    expect(label.status).toBe("Possible trouble: quiet for 12 min");
+  });
+
+  it("labels heuristic trouble without detail as plain Possible trouble", () => {
+    expect(agentLabel(view({ attention: { level: "trouble", heuristic: true } })).status).toBe(
+      "Possible trouble",
+    );
+    expect(
+      agentLabel(view({ attention: { level: "trouble", detail: " \u0000 ", heuristic: true } }))
+        .status,
+    ).toBe("Possible trouble");
+  });
+
+  it("keeps non-heuristic trouble as Trouble", () => {
+    expect(agentLabel(view({ attention: { level: "trouble" } })).status).toBe("Trouble");
+    expect(
+      agentLabel(view({ attention: { level: "trouble", detail: "build failed" } })).status,
+    ).toBe("Trouble: build failed");
+    expect(
+      agentLabel(view({ attention: { level: "trouble", detail: "build failed", heuristic: false } }))
+        .status,
+    ).toBe("Trouble: build failed");
   });
 
   it("cleans agent-supplied names: control characters out, length capped", () => {

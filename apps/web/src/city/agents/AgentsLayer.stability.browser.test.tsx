@@ -155,6 +155,40 @@ describe("onLabels notifications", () => {
     await vi.waitFor(() => expect(onLabels.mock.calls.at(-1)?.[0]).toEqual([]));
   });
 
+  it("hands the current entries to an onLabels that arrives after mount", async () => {
+    let state: RootState | undefined;
+    const onState = (s: RootState) => {
+      state = s;
+    };
+    const list = agents();
+    // Mounted without a callback: local labels draw, nobody to tell.
+    const screen = await render(<Stage list={list} onState={onState} />);
+    await vi.waitFor(() => expect(state).toBeDefined());
+    const root = state as RootState;
+    await framesLater(root, 3);
+
+    // The slot attaches later with the agents unchanged: local labels hide, so it must hear them.
+    const onLabels = vi.fn<(entries: readonly AgentLabelEntry[]) => void>();
+    await screen.rerender(<Stage list={list} onLabels={onLabels} onState={onState} />);
+    await vi.waitFor(() => expect(onLabels).toHaveBeenCalled());
+    await framesLater(root, 5);
+    expect(onLabels).toHaveBeenCalledTimes(1);
+    expect(onLabels.mock.calls[0]?.[0].map((e) => `${e.name}/${e.status}`)).toEqual([
+      "Ada/Implementing",
+      "Grace/Idle",
+    ]);
+
+    // Same agents again (new objects, same text) and an inline replacement callback: no repeat.
+    const second = vi.fn<(entries: readonly AgentLabelEntry[]) => void>();
+    await screen.rerender(<Stage list={agents()} onLabels={second} onState={onState} />);
+    await framesLater(root, 5);
+    expect(onLabels).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+
+    await screen.unmount();
+    await vi.waitFor(() => expect(second.mock.calls.at(-1)?.[0]).toEqual([]));
+  });
+
   it("does not call back repeatedly when the callback is a new inline function each render", async () => {
     let state: RootState | undefined;
     const received: Array<readonly AgentLabelEntry[]> = [];
