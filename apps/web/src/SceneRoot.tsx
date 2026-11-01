@@ -1,5 +1,6 @@
 import { Canvas } from "@react-three/fiber";
 import { CityRoot } from "./city/index.tsx";
+import { RenderPacer } from "./city/runtime/index.ts";
 import { AnchorBridge, worldAnchors } from "./overlays/host/index.ts";
 import { OverlayRoot } from "./overlays/index.tsx";
 import styles from "./SceneRoot.module.css";
@@ -15,11 +16,13 @@ export function SceneRoot() {
       <Canvas
         camera={{ position: [16, 14, 16], fov: 45 }}
         dpr={[1, 2]}
+        frameloop="demand"
         onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
       >
         <color attach="background" args={[readCssToken("--tv-scene-bg", "#11141a")]} />
         <AnchorBridge source={worldAnchors} />
         <CityRoot />
+        <RenderPacer />
       </Canvas>
       <OverlayRoot />
     </div>

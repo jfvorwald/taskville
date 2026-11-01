@@ -3,6 +3,7 @@ import { cameraControlsOverlay, useSelection } from "../city/interaction/index.t
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
 import { useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
+import { agentListOverlay } from "./agent-list/index.ts";
 import { countsHeaderOverlay } from "./header/index.ts";
 import {
   createOverlayRegistry,
@@ -22,8 +23,15 @@ const registry = createOverlayRegistry([
   agentLabelsOverlay,
   cameraControlsOverlay,
   settingsOverlay,
+  agentListOverlay,
 ]);
-const ENABLED = ["counts-header", "agent-labels", "camera-controls", "settings-panel"];
+const ENABLED = [
+  "counts-header",
+  "agent-labels",
+  "camera-controls",
+  "settings-panel",
+  "agent-list",
+];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
 
