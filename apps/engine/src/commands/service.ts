@@ -43,7 +43,7 @@ export interface CommandBridge {
 
 export interface CommandServiceOptions {
   /** The booted engine; the service uses its storage and stream hub. */
-  engine: Pick<Engine, "storage" | "hub">;
+  engine: Pick<Engine, "storage" | "hub"> & Partial<Pick<Engine, "onCommit">>;
   bridge: CommandBridge;
   /** The opener comes only from the loaded engine config, never from a request. */
   opener: { config: OpenSessionConfig; execFile: OpenSessionExecFile };
@@ -142,6 +142,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
   const commitOptions: EngineCommitOptions = {
     storage: engine.storage,
     hub: engine.hub,
+    ...(engine.onCommit ? { onCommit: engine.onCommit } : {}),
     now,
     ...(options.logger ? { logger: options.logger } : {}),
   };
