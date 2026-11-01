@@ -69,13 +69,20 @@ export function inputMaskSpans(toolInput: unknown, text: string): MaskSpan[] {
     const range = ranges.get(JSON.stringify(path));
     const first = masked[0];
     if (range === undefined || first === undefined) continue;
-    // Only a non-string value can be sealed whole; the text pass already covers strings.
+    // A value the JSON redactor masked from its first character to its last is sealed whole: an
+    // object, array, number or boolean under a sensitive name, or a string such as the `value`
+    // of a `name`/`value` pair whose two properties are not side by side. The text pass cannot
+    // tell those apart from other text, so cover the displayed value (a string without its quotes).
     const node = path.reduce<unknown>(
       (at, key) => (at as Record<string | number, unknown>)[key],
       toolInput,
     );
-    const sealed = first.start === 0 && typeof node !== "string";
-    if (sealed) wholes.push({ kind: first.kind, start: range[0], end: range[1] });
+    if (first.start !== 0) continue;
+    if (typeof node !== "string") {
+      wholes.push({ kind: first.kind, start: range[0], end: range[1] });
+    } else if (first.end >= node.length && node.length > 0) {
+      wholes.push({ kind: first.kind, start: range[0] + 1, end: range[1] - 1 });
+    }
   }
   return merge([...spans, ...wholes]);
 }
