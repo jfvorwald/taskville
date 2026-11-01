@@ -66,6 +66,8 @@ interface Held extends HeldRequest {
   resolve: (response: Response) => void;
   cancelTimer: () => void;
   onAbort: () => void;
+  /** When the hold began (engine clock), to tell a hook timeout from a terminal No. */
+  heldAtMs: number;
 }
 
 interface Tracked {
@@ -218,6 +220,7 @@ export class PermissionBridge {
         resolve,
         cancelTimer: () => {},
         onAbort,
+        heldAtMs: this.#nowMs(),
       };
       this.#held.set(requestId, held);
       signal.addEventListener("abort", onAbort, { once: true });
@@ -293,7 +296,11 @@ export class PermissionBridge {
     const held = this.#take(requestId);
     const tracked = this.#tracked.get(requestId);
     if (held === undefined) return;
-    if (tracked !== undefined && tracked.state === "open") {
+    // The hook's own timeout is the hold window plus a margin. A close after the window means the
+    // hold timer was late (a stalled event loop), so it is a timeout, not an answer: record
+    // nothing and let the request expire at the next start.
+    const timedOut = this.#nowMs() - held.heldAtMs >= this.#holdWindowMs;
+    if (!timedOut && tracked !== undefined && tracked.state === "open") {
       tracked.state = "closed";
       this.#recordTerminal(requestId, tracked, "deny");
     }
@@ -325,6 +332,10 @@ export class PermissionBridge {
     held.cancelTimer();
     held.signal.removeEventListener("abort", held.onAbort);
     return held;
+  }
+
+  #nowMs(): number {
+    return (this.#options.now ?? (() => new Date()))().getTime();
   }
 
   #close(requestId: string): void {
