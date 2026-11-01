@@ -56,3 +56,15 @@ export const guessedTestRun = (agentId = "a1") =>
   envelope("activity.started", { activity: "testing", heuristic: true }, { agentId });
 
 export const activityEnded = (agentId = "a1") => envelope("activity.ended", {}, { agentId });
+
+/** The same event with envelope fields overridden (provenance, late). */
+export function withEnvelope(
+  event: StoredEnvelope,
+  overrides: { provenance?: "live" | "imported" | "demo"; late?: boolean },
+): StoredEnvelope {
+  return { ...event, ...overrides } as StoredEnvelope;
+}
+
+export const imported = (event: StoredEnvelope) => withEnvelope(event, { provenance: "imported" });
+export const demo = (event: StoredEnvelope) => withEnvelope(event, { provenance: "demo" });
+export const late = (event: StoredEnvelope) => withEnvelope(event, { late: true });
