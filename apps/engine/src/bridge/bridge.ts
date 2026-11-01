@@ -1,0 +1,474 @@
+import { randomUUID } from "node:crypto";
+import { attributeHook, isHookId } from "@taskville/adapters/claude-code";
+import { redactJson } from "@taskville/adapters/redact";
+import { hashCanonical } from "@taskville/domain/hash";
+import type { ProjectState } from "@taskville/domain/reducer";
+import { BRIDGE_SOURCE_ID } from "@taskville/domain/reducer/attention";
+import {
+  ID_MAX_LENGTH,
+  INPUT_PREVIEW_MAX_CHARS,
+  RESERVED_SOURCE_PREFIX,
+} from "@taskville/protocol";
+import type { Logger } from "pino";
+import { resolveProjectId } from "../sources/claude-code/index.ts";
+import type { Storage } from "../storage/index.ts";
+import type { StreamHub } from "../stream/index.ts";
+import { commitEngineEvent } from "./commit.ts";
+
+/** Hold window default (decision #116 D1): 90 seconds, whether or not a viewer is focused. */
+export const DEFAULT_HOLD_WINDOW_MS = 90_000;
+
+/**
+ * Requests the bridge remembers for matching a later PostToolUse (oldest forgotten first). A
+ * forgotten request is never closed by a PostToolUse; it still expires at the next engine start.
+ * Forgetting one could hide that a later identical request is a duplicate, so a session that
+ * lost a request is never attributed a PostToolUse again (the ambiguity check stays safe).
+ */
+export const MAX_TRACKED_REQUESTS = 1000;
+
+/** Sessions that lost a request and so close nothing by PostToolUse (oldest forgotten first). */
+export const MAX_LOSSY_SESSIONS = 1000;
+
+/** Hook responses held at once; a request over the cap is recorded but not held. */
+export const MAX_HELD = 64;
+
+/** Serialized `tool_input` size in UTF-8 bytes a held request may keep; larger inputs are not held. */
+export const MAX_HELD_INPUT_BYTES = 262_144;
+
+/** `request.opened` for a request the bridge is not holding: red, but never answerable. */
+const UNHELD_SOURCE_ID = `${RESERVED_SOURCE_PREFIX}bridge-unheld`;
+
+/** What a city user decides (the M4.03 command service calls `decide`). */
+export type BridgeDecision = { behavior: "allow" } | { behavior: "deny"; message: string };
+
+/** A held request as the decision card needs it: the exact input, never stored or logged. */
+export interface HeldRequest {
+  requestId: string;
+  projectId: string;
+  sessionId: string;
+  toolName: string;
+  toolInput: unknown;
+}
+
+export interface PermissionBridgeOptions {
+  storage: Storage;
+  hub: StreamHub;
+  /** How long a hook response is held for the city, in milliseconds. Default 90,000. */
+  holdWindowMs?: number;
+  /** Runs `run` after `delayMs` and returns a cancel function. Defaults to `setTimeout`. */
+  schedule?: (run: () => void, delayMs: number) => () => void;
+  now?: () => Date;
+  /** Milliseconds on a monotonic clock, to time the hold. Defaults to `performance.now()`. */
+  monotonicNowMs?: () => number;
+  newRequestId?: () => string;
+  newEventId?: () => string;
+  logger?: Logger;
+}
+
+interface Held extends HeldRequest {
+  signal: AbortSignal;
+  resolve: (response: Response) => void;
+  cancelTimer: () => void;
+  onAbort: () => void;
+  /** When the hold began (engine clock), to tell a hook timeout from a terminal No. */
+  heldAtMs: number;
+}
+
+interface Tracked {
+  projectId: string;
+  sessionId: string;
+  agentId: string;
+  /** Session, agent, prompt, tool name, and input hash, as S-1 correlates them; undefined if unhashable. */
+  key: string | undefined;
+  /** `open` until the bridge records an outcome or a city decision reaches the hook. */
+  state: "open" | "closed";
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const own = (record: Record<string, unknown>, key: string): unknown =>
+  Object.hasOwn(record, key) ? record[key] : undefined;
+
+/** Telemetry's bound on `prompt_id` (adapters' `map.ts`); a value outside it counts as absent. */
+const MAX_PROMPT_ID = 100;
+
+/** The hook's `prompt_id`, validated as telemetry does so the request and its PostToolUse agree. */
+const promptIdOf = (raw: Record<string, unknown>): string | undefined => {
+  const id = own(raw, "prompt_id");
+  return isHookId(id, MAX_PROMPT_ID) ? id : undefined;
+};
+
+const idText = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 && value.length <= ID_MAX_LENGTH
+    ? value
+    : undefined;
+
+/** Whether a tool input is small enough to keep in memory while its hook response is held. */
+function withinHeldInputCap(toolInput: unknown): boolean {
+  try {
+    const text = JSON.stringify(toolInput);
+    return (text === undefined ? 0 : Buffer.byteLength(text, "utf8")) <= MAX_HELD_INPUT_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+/** The hook's answer when Taskville does not answer: Claude Code falls through to its own dialog. */
+const fallThrough = (): Response => new Response("", { status: 200 });
+
+function decisionResponse(decision: BridgeDecision): Response {
+  return Response.json({
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision:
+        decision.behavior === "allow"
+          ? { behavior: "allow" }
+          : { behavior: "deny", message: decision.message },
+    },
+  });
+}
+
+function correlationKey(
+  sessionId: string,
+  sourceAgentId: string | undefined,
+  promptId: string | undefined,
+  toolName: string,
+  toolInput: unknown,
+): string | undefined {
+  try {
+    return hashCanonical([
+      sessionId,
+      sourceAgentId ?? null,
+      promptId ?? null,
+      toolName,
+      toolInput ?? null,
+    ]);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The masked, capped copy of a tool input that events and the projection carry. */
+function inputPreview(toolInput: unknown): string | undefined {
+  if (toolInput === undefined) return undefined;
+  try {
+    const { value } = redactJson(JSON.parse(JSON.stringify(toolInput)));
+    const text = JSON.stringify(value);
+    return text === undefined ? undefined : [...text].slice(0, INPUT_PREVIEW_MAX_CHARS).join("");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The permission bridge (ARCHITECTURE.md 8.1 and 9, S-1, decision #116). It holds each
+ * PermissionRequest hook response open so a paired viewer can answer it, and records how the
+ * request ended. The exact tool input lives only in a held request's memory, for the decision
+ * card; events, the projection, logs, and errors get the masked copy.
+ */
+export class PermissionBridge {
+  readonly #options: PermissionBridgeOptions;
+  readonly #holdWindowMs: number;
+  readonly #schedule: (run: () => void, delayMs: number) => () => void;
+  readonly #held = new Map<string, Held>();
+  readonly #tracked = new Map<string, Tracked>();
+  /** Sessions with a forgotten request: their PostToolUse closes nothing. */
+  readonly #lossySessions = new Set<string>();
+  /**
+   * Set once a session fell off `#lossySessions`: from then on a forgotten request may belong to
+   * any session, so no PostToolUse closes anything until the engine restarts (fail closed).
+   */
+  #lossyOverflow = false;
+  #closed = false;
+
+  constructor(options: PermissionBridgeOptions) {
+    this.#options = options;
+    this.#holdWindowMs = options.holdWindowMs ?? DEFAULT_HOLD_WINDOW_MS;
+    this.#schedule =
+      options.schedule ??
+      ((run, delayMs) => {
+        const timer = setTimeout(run, delayMs);
+        return () => clearTimeout(timer);
+      });
+  }
+
+  /**
+   * Handles one raw PermissionRequest hook body. Resolves with the hook's answer: the allow or
+   * deny JSON when the city decided, otherwise an empty 200 (fall through to the terminal
+   * dialog). Resolves undefined when the body is not a usable hook. `signal` aborts when Claude
+   * Code closes the connection.
+   */
+  async handle(raw: unknown, signal: AbortSignal): Promise<Response | undefined> {
+    if (!isRecord(raw)) return undefined;
+    const sessionId = idText(own(raw, "session_id"));
+    const toolName = idText(own(raw, "tool_name"));
+    if (sessionId === undefined || toolName === undefined) return undefined;
+    // The hook's agent, as telemetry attributes it. A hook telemetry would ignore (a bad agent_id)
+    // gets the empty 2xx and records nothing.
+    const attribution = attributeHook(raw);
+    if (!attribution.ok) return fallThrough();
+    const { agentId, sourceAgentId } = attribution.subject;
+    const toolInput = own(raw, "tool_input");
+    const promptId = promptIdOf(raw);
+
+    const projectId = await resolveProjectId(own(raw, "cwd"), this.#options.storage.projects());
+    if (this.#closed) return fallThrough();
+    // A viewer is a stream open on the hook's project. With none, nobody can answer: the request
+    // is still recorded (the agent turns red) but is not bridge-held, so it is not answerable.
+    const hold =
+      !signal.aborted &&
+      this.#options.hub.subscriberCount(projectId) > 0 &&
+      !this.#closed &&
+      this.#held.size < MAX_HELD &&
+      withinHeldInputCap(toolInput);
+    const requestId = (this.#options.newRequestId ?? (() => `bridge:request:${randomUUID()}`))();
+    const preview = inputPreview(toolInput);
+    const opened = this.#commit({
+      projectId,
+      sourceId: hold ? BRIDGE_SOURCE_ID : UNHELD_SOURCE_ID,
+      sourceEventId: `request.opened:${requestId}`,
+      agentId,
+      sessionId,
+      type: "request.opened",
+      ...(promptId === undefined ? {} : { correlationId: promptId }),
+      payload: {
+        requestId,
+        kind: "permission",
+        toolName,
+        ...(preview === undefined ? {} : { inputPreview: preview }),
+      },
+    });
+    if (opened === undefined) return fallThrough();
+
+    this.#track(requestId, {
+      projectId,
+      sessionId,
+      agentId,
+      key: correlationKey(sessionId, sourceAgentId, promptId, toolName, toolInput),
+      state: "open",
+    });
+    if (!hold) return fallThrough();
+
+    return new Promise<Response>((resolve) => {
+      const onAbort = () => {
+        // An abort listener that throws is an uncaught exception; the hold is released regardless.
+        try {
+          this.#closedByTerminal(requestId);
+        } catch (error) {
+          this.#logFailure(error, "bridge terminal outcome failed");
+        }
+      };
+      const held: Held = {
+        requestId,
+        projectId,
+        sessionId,
+        toolName,
+        toolInput,
+        signal,
+        resolve,
+        cancelTimer: () => {},
+        onAbort,
+        heldAtMs: this.#nowMs(),
+      };
+      this.#held.set(requestId, held);
+      signal.addEventListener("abort", onAbort, { once: true });
+      // The hold ends with an empty 2xx; the request stays open (see class docs on fall-through).
+      held.cancelTimer = this.#schedule(
+        () => this.#take(requestId)?.resolve(fallThrough()),
+        this.#holdWindowMs,
+      );
+    });
+  }
+
+  /** The exact input of a request that is still held, or undefined. */
+  lookup(requestId: string): HeldRequest | undefined {
+    const held = this.#held.get(requestId);
+    if (held === undefined) return undefined;
+    const { projectId, sessionId, toolName, toolInput } = held;
+    return { requestId, projectId, sessionId, toolName, toolInput };
+  }
+
+  /**
+   * Answers a held hook. True only when the decision reached a still-open response; a response
+   * that was released, timed out, or whose connection closed reaches nothing. Records no events:
+   * the command service (M4.03) records `answered_here` and the command's progress, and a
+   * delivered decision is "sent, unconfirmed" (decision #116 D4).
+   */
+  decide(requestId: string, decision: BridgeDecision): boolean {
+    const held = this.#held.get(requestId);
+    if (held === undefined || held.signal.aborted) return false;
+    this.#take(requestId);
+    this.#close(requestId);
+    held.resolve(decisionResponse(decision));
+    return true;
+  }
+
+  /**
+   * Telemetry the bridge may use: a PostToolUse that matches exactly one PermissionRequest (same
+   * session, prompt, tool name, and input) shows the user allowed it in the terminal (decision
+   * #116 D3), so that request closes as `answered_elsewhere` with `decision: "allow"`. Anything
+   * else, a Notification and other same-session events included, closes nothing. Two requests
+   * with identical correlation fields (open or already closed) are ambiguous and close nothing.
+   */
+  observeHook(raw: unknown): void {
+    if (this.#closed) return;
+    try {
+      this.#observeHook(raw);
+    } catch (error) {
+      this.#logFailure(error, "bridge telemetry outcome failed");
+    }
+  }
+
+  /** Counts for tests and diagnostics: no request content. */
+  stats(): { held: number; tracked: number; lossySessions: number } {
+    return {
+      held: this.#held.size,
+      tracked: this.#tracked.size,
+      lossySessions: this.#lossySessions.size,
+    };
+  }
+
+  #observeHook(raw: unknown): void {
+    if (!isRecord(raw) || own(raw, "hook_event_name") !== "PostToolUse") return;
+    const sessionId = idText(own(raw, "session_id"));
+    const toolName = idText(own(raw, "tool_name"));
+    if (sessionId === undefined || toolName === undefined) return;
+    if (this.#tracked.size === 0) return;
+    const attribution = attributeHook(raw);
+    if (!attribution.ok) return;
+    if (this.#lossyOverflow || this.#lossySessions.has(sessionId)) return;
+    const key = correlationKey(
+      sessionId,
+      attribution.subject.sourceAgentId,
+      promptIdOf(raw),
+      toolName,
+      own(raw, "tool_input"),
+    );
+    if (key === undefined) return;
+    const matches = [...this.#tracked].filter(([, tracked]) => tracked.key === key);
+    const [match] = matches;
+    if (matches.length !== 1 || match === undefined) return;
+    const [requestId, tracked] = match;
+    if (tracked.state !== "open") return;
+    tracked.state = "closed";
+    try {
+      this.#recordTerminal(requestId, tracked, "allow");
+    } finally {
+      this.#take(requestId)?.resolve(fallThrough());
+    }
+  }
+
+  /** Releases every held response with an empty 2xx and writes nothing (engine shutdown). */
+  close(): void {
+    this.#closed = true;
+    for (const requestId of [...this.#held.keys()]) this.#take(requestId)?.resolve(fallThrough());
+  }
+
+  /** Claude Code closed the hook connection before any city answer: a terminal No (#116 D2). */
+  #closedByTerminal(requestId: string): void {
+    const held = this.#take(requestId);
+    const tracked = this.#tracked.get(requestId);
+    if (held === undefined) return;
+    // The hook's own timeout is the hold window plus a margin. A close after the window means the
+    // hold timer was late (a stalled event loop), so it is a timeout, not an answer: record
+    // nothing and let the request expire at the next start.
+    try {
+      const timedOut = this.#nowMs() - held.heldAtMs >= this.#holdWindowMs;
+      if (!timedOut && tracked !== undefined && tracked.state === "open") {
+        tracked.state = "closed";
+        this.#recordTerminal(requestId, tracked, "deny");
+      }
+    } finally {
+      held.resolve(fallThrough());
+    }
+  }
+
+  #recordTerminal(requestId: string, tracked: Tracked, decision: "allow" | "deny"): void {
+    // A request the projection merged into another ("one prompt, one red state") has no record of
+    // its own; resolving its ID would close the record it was merged into, which may be a
+    // different request whose hook is still held.
+    const projection = this.#options.storage.projection<ProjectState>(tracked.projectId);
+    if (projection === undefined || !Object.hasOwn(projection.state.requests, requestId)) return;
+    this.#commit({
+      projectId: tracked.projectId,
+      sourceId: BRIDGE_SOURCE_ID,
+      sourceEventId: `request.resolved:${requestId}`,
+      agentId: tracked.agentId,
+      sessionId: tracked.sessionId,
+      type: "request.resolved",
+      payload: { requestId, resolution: "answered_elsewhere", decision },
+    });
+  }
+
+  /** Removes a held request, stops its timer and listener, and drops its exact input. */
+  #take(requestId: string): Held | undefined {
+    const held = this.#held.get(requestId);
+    if (held === undefined) return undefined;
+    this.#held.delete(requestId);
+    held.cancelTimer();
+    held.signal.removeEventListener("abort", held.onAbort);
+    return held;
+  }
+
+  /** Monotonic, so a wall-clock jump cannot turn a terminal answer into a timeout. */
+  #nowMs(): number {
+    return (this.#options.monotonicNowMs ?? (() => performance.now()))();
+  }
+
+  #close(requestId: string): void {
+    const tracked = this.#tracked.get(requestId);
+    if (tracked !== undefined) tracked.state = "closed";
+  }
+
+  #track(requestId: string, tracked: Tracked): void {
+    this.#tracked.set(requestId, tracked);
+    if (this.#tracked.size <= MAX_TRACKED_REQUESTS) return;
+    // Never forget a request whose hook is still held: the city could no longer answer it.
+    for (const [id, entry] of this.#tracked) {
+      if (this.#held.has(id)) continue;
+      this.#tracked.delete(id);
+      this.#markLossy(entry.sessionId);
+      return;
+    }
+  }
+
+  #markLossy(sessionId: string): void {
+    this.#lossySessions.delete(sessionId);
+    this.#lossySessions.add(sessionId);
+    if (this.#lossySessions.size > MAX_LOSSY_SESSIONS) {
+      const [oldest] = this.#lossySessions;
+      if (oldest !== undefined) this.#lossySessions.delete(oldest);
+      this.#lossyOverflow = true;
+    }
+  }
+
+  /** Logs the error name only: a storage error message can carry request content. */
+  #logFailure(error: unknown, message: string): void {
+    this.#options.logger?.error({ errName: (error as Error).name }, message);
+  }
+
+  #commit(event: Record<string, unknown>) {
+    return commitEngineEvent(
+      {
+        storage: this.#options.storage,
+        hub: this.#options.hub,
+        ...(this.#options.now ? { now: this.#options.now } : {}),
+        ...(this.#options.newEventId ? { newEventId: this.#options.newEventId } : {}),
+        ...(this.#options.logger ? { logger: this.#options.logger } : {}),
+      },
+      {
+        schemaVersion: 1,
+        occurredAt: (this.#options.now ?? (() => new Date()))().toISOString(),
+        evidenceIds: [],
+        provenance: "live",
+        late: false,
+        ...event,
+      },
+    );
+  }
+}
+
+export function createPermissionBridge(options: PermissionBridgeOptions): PermissionBridge {
+  return new PermissionBridge(options);
+}

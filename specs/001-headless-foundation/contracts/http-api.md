@@ -156,6 +156,42 @@ now. A request with any token gets `403 credential_not_allowed`. A paired browse
 session with a matching `Origin` gets `501 not_implemented` until the command
 service lands in M4. No side effects.
 
+### `POST /v1/bridge/claude-code/permission` (M4.02)
+
+The Claude Code `PermissionRequest` `http` hook (ARCHITECTURE.md 8.1). Accepts the bridge token
+only (`bridge` scope); the CLI token and a paired browser session get `403
+credential_not_allowed`. The body is the raw hook JSON; a body that is not a JSON object with a
+`session_id` and a `tool_name` is `400 bad_request`. A body over 1 MiB is `413 payload_too_large`.
+The project comes from the hook's `cwd`. The `agentId` is the adapters' attribution, as telemetry
+records it: `claude-code:<session_id>` for the lead and `claude-code:<session_id>:<agent_id>` for a
+child agent (subagent or teammate). A hook whose `session_id` or `agent_id` is not a valid hook ID
+gets the empty `2xx` and nothing is recorded. A `prompt_id` that is not a valid hook ID (as
+telemetry validates it, at most 100 characters) is treated as absent: no `correlationId`, and the
+same absent value in the `PostToolUse` match.
+
+The engine records `request.opened` (source `taskville:bridge`, answerable) and holds the response
+while a viewer is connected on the project, for `bridge.holdWindowSeconds` (default 90). Answers:
+
+- City decision within the window: `200` with the hook JSON, `{ "hookSpecificOutput": {
+  "hookEventName": "PermissionRequest", "decision": { "behavior": "allow" } } }` or the same with
+  `{ "behavior": "deny", "message": "..." }`.
+- Window over, no viewer connected, or engine shutdown: `200` with an empty body, so Claude Code
+  falls through to its own dialog. With no viewer the request is still recorded (the agent turns
+  red) under the source `taskville:bridge-unheld`, so it is never answerable. A request that fell
+  through stays open until a matching `PostToolUse` closes it or the next engine start expires it.
+- Over a cap: at most 64 responses are held at once and a held request's serialized input is at
+  most 256 KiB (262,144 UTF-8 bytes). A request over either cap is recorded unheld (source
+  `taskville:bridge-unheld`) and answered at once with the empty `2xx`.
+- Hook connection closed by Claude Code before any city answer: recorded as
+  `request.resolved { resolution: "answered_elsewhere", decision: "deny" }` (decision #116 D2).
+
+After fall-through the request stays open and unanswerable: the bridge no longer holds it, so a
+later city decision cannot reach Claude Code (decision #271).
+
+A matching `PostToolUse` (exactly one request with the same session, prompt, agent, tool name, and
+input) closes the request as `answered_elsewhere` with `decision: "allow"` (decision #116 D3).
+The exact tool input stays in memory for the decision card; events carry the masked copy.
+
 ### `GET /health`
 
 `200 { "status": "ok", "db": "ok", "walMode": true, "uptimeSeconds", "version" }`;
@@ -163,7 +199,6 @@ service lands in M4. No side effects.
 
 ## Later routes (ARCHITECTURE.md section 10, not in this feature)
 
-`POST /v1/sources/claude-code/hooks` (M2),
-`POST /v1/bridge/claude-code/permission` (M4), `GET /v1/agents/:id/feed` and
+`POST /v1/sources/claude-code/hooks` (M2), `GET /v1/agents/:id/feed` and
 `GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06), timelines (M6),
 imports (M8), OTLP (M5.12). Each inherits the security checks above.

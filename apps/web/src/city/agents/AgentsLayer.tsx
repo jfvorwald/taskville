@@ -11,10 +11,12 @@ export interface AgentsLayerProps {
    * the agent set changes. When set, the local fallback labels are not drawn.
    */
   onLabels?: (entries: readonly AgentLabelEntry[]) => void;
+  /** The clock the attention marks pulse on; the data store's `now`. Default `Date.now`. */
+  now?: () => number;
 }
 
 /** All block agents, mounted inside the scene's `<Canvas>`. */
-export function AgentsLayer({ agents, reducedMotion = false, onLabels }: AgentsLayerProps) {
+export function AgentsLayer({ agents, reducedMotion = false, onLabels, now }: AgentsLayerProps) {
   // A store update replaces every `AgentView`, usually with the same text. Keep the previous
   // entries while the text is unchanged so the slot hears about real changes only.
   const stable = useRef<readonly AgentLabelEntry[]>([]);
@@ -47,6 +49,7 @@ export function AgentsLayer({ agents, reducedMotion = false, onLabels }: AgentsL
           agent={agent}
           reducedMotion={reducedMotion}
           localLabel={onLabels === undefined}
+          {...(now === undefined ? {} : { now })}
         />
       ))}
     </>
