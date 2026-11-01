@@ -6,6 +6,7 @@ import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
+import { ACTION_CARD_ID, actionCardOverlay, useCardTarget } from "./action-card/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
 import {
@@ -33,6 +34,7 @@ const registry = createOverlayRegistry([
   themedSettingsOverlay,
   agentListOverlay,
   bubblesOverlay,
+  actionCardOverlay,
 ]);
 const ENABLED = [
   "counts-header",
@@ -41,6 +43,7 @@ const ENABLED = [
   "settings-panel",
   "agent-list",
   "bubbles",
+  ACTION_CARD_ID,
 ];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
@@ -74,12 +77,15 @@ export function OverlayRoot() {
   useDesktopNotifications();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
+  // The one sidebar goes to the action card while the selected agent needs you.
+  const cardOpen = useCardTarget(dataStore, selection.selectedId) !== null;
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
       <OverlayHost
         registry={registry}
         enabled={ENABLED}
+        sidebar={cardOpen ? ACTION_CARD_ID : null}
         mode="live"
         selectors={selectors}
         selection={selection}
