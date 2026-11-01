@@ -272,6 +272,16 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
       node = node.parentElement;
     setViewport(node ?? null);
   }, []);
+  // The virtualizer and follow already hold the reading position. Browser scroll anchoring on
+  // the same viewport would move it a second time when a row is added or measured.
+  useLayoutEffect(() => {
+    if (!viewport) return;
+    const previous = viewport.style.overflowAnchor;
+    viewport.style.overflowAnchor = "none";
+    return () => {
+      viewport.style.overflowAnchor = previous;
+    };
+  }, [viewport]);
   useLayoutEffect(() => {
     if (!viewport || !rows.current) return;
     const measure = () => {
@@ -338,11 +348,29 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
   // Reconcile after each measured layout, including streaming output and expansion. Recording
   // our own scroll offset keeps measurement corrections from looking like an upward gesture.
   useLayoutEffect(() => {
-    if (!viewport || !following || !followingRef.current) return;
-    // Native scroll events can arrive after a measurement-driven React commit. Respect an
-    // upward move immediately; clamping at a shrinking bottom is still our own follow.
+    if (!viewport) return;
+    // Native scroll events can arrive after a measurement-driven React commit. Read an upward
+    // move before measuring below, whose own correction also moves scrollTop.
     const bottom = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-    if (viewport.scrollTop < Math.min(lastTop.current, bottom) - 1) {
+    const movedUp = viewport.scrollTop < Math.min(lastTop.current, bottom) - 1;
+    // TanStack measures rows mounted during a scroll only on the next ResizeObserver frame,
+    // then corrects the estimate above the fold by writing scrollTop from its last reported
+    // offset. That late write moves a paused reader, overwrites a newer scroll and looks like
+    // an upward gesture. Measure new rows in this commit instead, before paint.
+    for (const node of Array.from(rows.current?.children ?? [])) {
+      const index = virtualizer.indexFromElement(node as HTMLDivElement);
+      if (
+        index >= 0 &&
+        index < calls.length &&
+        !virtualizer.itemSizeCache.has(calls[index].toolCallId)
+      )
+        virtualizer.resizeItem(
+          index,
+          virtualizer.options.measureElement(node as HTMLDivElement, undefined, virtualizer),
+        );
+    }
+    if (!following || !followingRef.current) return;
+    if (movedUp) {
       changeFollow(false);
       return;
     }
