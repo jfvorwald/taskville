@@ -1,16 +1,23 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { storedEnvelopeSchema } from "../../../../../packages/protocol/src/index.ts";
 import { useCurrentProjectId } from "../../data/project.ts";
 import { createDataStore, type DataStore, dataStore } from "../../data/store.ts";
 import { SESSION_HEADER } from "../../pairing/pair.ts";
 import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
-import { createHistoryStore, type HistoryStore } from "../state/store.ts";
+import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
 
 interface Presentation {
   mode: "live" | "history";
   store: DataStore;
   time: number | null;
   range: { first: number; last: number } | null;
+  sequence: number | null;
+  playing: boolean;
+  rate: ReplayRate;
+  play(): void;
+  pause(): void;
+  setRate(rate: ReplayRate): void;
   pending: boolean;
   error: string | null;
   enter(): void;
@@ -21,6 +28,12 @@ interface Presentation {
 const live = { mode: "live" as const, store: dataStore, time: null, range: null };
 const fallback: Presentation = {
   ...live,
+  sequence: null,
+  playing: false,
+  rate: 1,
+  play() {},
+  pause() {},
+  setRate() {},
   pending: false,
   error: null,
   enter() {},
@@ -49,6 +62,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     let controller: HistoryStore | undefined;
     let unsubscribeHistory: (() => void) | undefined;
     let replayTime = 0;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let moments: { sequence: number; time: number }[] = [];
     const snapshot = createDataStore({ now: () => replayTime });
     snapshot.getState().reset(projectId);
     let value: Presentation;
@@ -59,6 +74,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     }
     function cancel() {
       generation += 1;
+      clearInterval(timer);
+      timer = undefined;
+      moments = [];
       metadata?.abort();
       metadata = undefined;
       unsubscribeHistory?.();
@@ -72,13 +90,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       themeController.setHistory(false);
       publish({ ...live, pending: false, error: null });
     }
-    function seek(time: number) {
+    function seek(sequence: number) {
       const range = value.range;
-      if (!active || !controller || !range || !Number.isFinite(time)) return;
+      if (!active || !controller || !range || !Number.isSafeInteger(sequence)) return;
+      const moment = moments.find((item) => item.sequence === sequence);
+      if (!moment) return;
+      controller.getState().pause();
       const requestGeneration = generation;
       void controller
         .getState()
-        .seek(Math.max(range.first, Math.min(range.last, time)))
+        .seekSequence(moment.sequence, moment.time)
         .catch(() => {
           if (requestGeneration === generation)
             publish({ error: "Could not load recorded state." });
@@ -120,16 +141,100 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         const first =
           typeof timeline.firstAt === "string" ? Date.parse(timeline.firstAt) : Number.NaN;
         const last = typeof timeline.lastAt === "string" ? Date.parse(timeline.lastAt) : Number.NaN;
-        if (!Number.isFinite(first) || !Number.isFinite(last) || first > last)
+        if (!Number.isFinite(first) || !Number.isFinite(last)) throw new Error("metadata");
+        const firstSequence = timeline.firstSequence;
+        const lastSequence = timeline.lastSequence;
+        if (
+          !Number.isSafeInteger(firstSequence) ||
+          firstSequence !== 1 ||
+          !Number.isSafeInteger(lastSequence) ||
+          lastSequence < firstSequence
+        )
           throw new Error("metadata");
+        // Walk the server-issued cursors with the session's original end pinned.
+        let cursor: string | null = null;
+        const cursors = new Set<string>();
+        const eventIds = new Set<string>();
+        let expected = firstSequence;
+        do {
+          const query = new URLSearchParams({
+            from: String(firstSequence),
+            to: String(lastSequence),
+          });
+          if (cursor) query.set("cursor", cursor);
+          const pageResponse = await fetch(
+            `/v1/timelines/${encodeURIComponent(timeline.id)}/events?${query}`,
+            {
+              headers: { [SESSION_HEADER]: secret },
+              signal: abort.signal,
+            },
+          );
+          if (!pageResponse.ok) throw new Error("events");
+          const page = await pageResponse.json();
+          if (!active || requestGeneration !== generation) return;
+          if (
+            page?.timelineId !== timeline.id ||
+            !Array.isArray(page.events) ||
+            !page.events.length
+          )
+            throw new Error("events");
+          for (const raw of page.events) {
+            const event = storedEnvelopeSchema.parse(raw);
+            const time = Date.parse(event.receivedAt);
+            if (
+              event.projectId !== projectId ||
+              event.ingestSequence !== expected ||
+              expected > lastSequence ||
+              !Number.isFinite(time) ||
+              eventIds.has(event.eventId)
+            )
+              throw new Error("events");
+            eventIds.add(event.eventId);
+            moments.push({ sequence: expected++, time });
+          }
+          cursor = page.nextCursor;
+          if (cursor !== null) {
+            if (
+              typeof cursor !== "string" ||
+              !cursor ||
+              cursors.has(cursor) ||
+              expected > lastSequence
+            )
+              throw new Error("cursor");
+            cursors.add(cursor);
+          }
+        } while (cursor !== null);
+        if (
+          expected !== lastSequence + 1 ||
+          moments[0]?.time !== first ||
+          moments.at(-1)?.time !== last
+        )
+          throw new Error("events");
         controller = createHistoryStore({
           liveStore: dataStore,
           timelineId: timeline.id,
           secret,
           fetch,
-          now: Date.now,
+          now: () => Date.now(),
+          moments,
         });
         unsubscribeHistory = controller.subscribe((state) => {
+          clearInterval(timer);
+          timer = undefined;
+          if (state.playing && state.mode === "history") {
+            const playingController = controller;
+            timer = setInterval(() => {
+              void playingController
+                ?.getState()
+                .tick()
+                .catch(() => {
+                  if (active && requestGeneration === generation) {
+                    playingController.getState().pause();
+                    publish({ error: "Could not load recorded state." });
+                  }
+                });
+            }, 100);
+          }
           // Live notifications during the initial seek must not clear its range or pending flag.
           // The live subscription below owns project/reset cancellation.
           if (state.mode === "history" && state.state && state.time !== null) {
@@ -141,13 +246,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
               mode: "history",
               store: snapshot,
               time: state.time,
+              sequence: state.state.head,
+              playing: state.playing,
+              rate: state.rate,
               pending: false,
               error: null,
             });
           }
         });
-        publish({ range: { first, last } });
-        await controller.getState().seek(last);
+        publish({ range: { first: firstSequence, last: lastSequence } });
+        await controller.getState().seekSequence(lastSequence, last);
       } catch {
         if (active && requestGeneration === generation) {
           cancel();
@@ -161,6 +269,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         void enter();
       },
       seek,
+      play: () => controller?.getState().play(),
+      pause: () => controller?.getState().pause(),
+      setRate: (rate) => controller?.getState().setRate(rate),
       exit,
     };
     publish({});

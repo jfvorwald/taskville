@@ -13,6 +13,7 @@ export interface HistoryState {
   playing: boolean;
   rate: ReplayRate;
   seek(epochMs: number): Promise<void>;
+  seekSequence(sequence: number, recordedAt: number): Promise<void>;
   play(): void;
   pause(): void;
   setRate(rate: ReplayRate): void;
@@ -29,6 +30,7 @@ export interface HistoryStoreOptions {
   secret: string;
   fetch?: typeof fetch;
   now?: () => number;
+  moments?: readonly { sequence: number; time: number }[];
 }
 
 export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
@@ -42,6 +44,16 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
   let pendingPlayback = false;
   let elapsedAt = now();
   let target: number | null = null;
+  let exact = false;
+  const moments = options.moments?.map((moment, index, all) => ({
+    ...moment,
+    duration: index === 0 ? 0 : Math.max(0, moment.time - (all[index - 1]?.time ?? moment.time)),
+  }));
+  let duration = 0;
+  const positions = moments?.map((moment) => {
+    duration += moment.duration;
+    return { ...moment, elapsed: duration };
+  });
 
   function cancel() {
     generation += 1;
@@ -52,12 +64,15 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
 
   function anchor() {
     elapsedAt = now();
-    target = store.getState().time;
+    target = exact
+      ? (positions?.find((moment) => moment.sequence === store.getState().state?.head)?.elapsed ??
+        null)
+      : store.getState().time;
   }
 
-  async function seek(time: number, playback = false): Promise<void> {
+  async function seek(time: number, playback = false, sequence?: number): Promise<void> {
     if (disposed || liveStore.getState().projectId !== projectId) return;
-    const at = new Date(time).toISOString();
+    const at = sequence === undefined ? new Date(time).toISOString() : String(sequence);
     cancel();
     const current = generation;
     const controller = new AbortController();
@@ -87,9 +102,15 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       if (data.reducerVersion !== REDUCER_VERSION || state.reducerVersion !== REDUCER_VERSION) {
         throw new Error("reducer_mismatch");
       }
-      if (state.projectId !== projectId || state.head !== data.cursor || position !== data.cursor) {
+      if (
+        state.projectId !== projectId ||
+        state.head !== data.cursor ||
+        position !== data.cursor ||
+        (sequence !== undefined && data.cursor !== sequence)
+      ) {
         throw new Error("bad_response");
       }
+      exact = sequence !== undefined;
       store.setState({ mode: "history", state, time });
       if (!playback) anchor();
     } catch (error) {
@@ -111,6 +132,16 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     playing: false,
     rate: 1,
     seek: (time) => seek(time),
+    seekSequence: (sequence, time) => {
+      if (!Number.isSafeInteger(sequence) || sequence < 1 || !Number.isFinite(time))
+        return Promise.reject(new Error("bad_position"));
+      if (
+        positions &&
+        !positions.some((moment) => moment.sequence === sequence && moment.time === time)
+      )
+        return Promise.reject(new Error("bad_position"));
+      return seek(time, false, sequence);
+    },
     play: () => {
       if (disposed || get().mode !== "history" || get().playing) return;
       anchor();
@@ -136,7 +167,21 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       const elapsed = now();
       target += Math.max(0, elapsed - elapsedAt) * get().rate;
       elapsedAt = elapsed;
-      await seek(target, true);
+      if (exact && positions?.length) {
+        const end = positions[positions.length - 1];
+        if (!end) return;
+        target = Math.min(target, end.elapsed);
+        let moment = positions[0];
+        for (const candidate of positions) {
+          if (candidate.elapsed > target) break;
+          moment = candidate;
+        }
+        if (moment && moment.sequence !== get().state?.head)
+          await seek(moment.time, true, moment.sequence);
+        if (get().state?.head === end.sequence) get().pause();
+      } else {
+        await seek(target, true);
+      }
     },
     returnLive: () => {
       if (disposed) return;

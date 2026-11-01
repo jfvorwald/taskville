@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { ReplayRate } from "../state/store.ts";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
 import styles from "./history.module.css";
 
@@ -13,6 +14,7 @@ function editing(target: EventTarget | null): boolean {
 
 export function HistoryControls() {
   const history = useHistoryPresentation();
+  const range = history.range;
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       if (
@@ -55,19 +57,48 @@ export function HistoryControls() {
         ) : null}
         {history.error ? <span role="status">{history.error}</span> : null}
       </div>
-      {history.mode === "history" && history.range && history.time !== null ? (
+      {history.mode === "history" && range && history.time !== null ? (
         <div className={styles.timeline}>
           <label htmlFor="history-time">Timeline time</label>
           <input
             id="history-time"
             type="range"
-            min={history.range.first}
-            max={history.range.last}
+            min={range.first}
+            max={range.last}
             step={1}
-            value={history.time}
+            value={history.sequence ?? range.first}
             aria-valuetext={new Date(history.time).toLocaleString()}
             onChange={(event) => history.seek(Number(event.currentTarget.value))}
           />
+          <button
+            type="button"
+            disabled={history.sequence === range.first}
+            onClick={() => history.seek((history.sequence ?? range.first) - 1)}
+          >
+            Previous moment
+          </button>
+          <button
+            type="button"
+            disabled={history.sequence === range.last}
+            onClick={() => history.seek((history.sequence ?? range.last) + 1)}
+          >
+            Next moment
+          </button>
+          <button type="button" onClick={history.playing ? history.pause : history.play}>
+            {history.playing ? "Pause" : "Play"}
+          </button>
+          <label htmlFor="history-speed">Playback speed</label>
+          <select
+            id="history-speed"
+            value={history.rate}
+            onChange={(event) => history.setRate(Number(event.currentTarget.value) as ReplayRate)}
+          >
+            {[1, 10, 60, 600].map((rate) => (
+              <option key={rate} value={rate}>
+                {rate}x
+              </option>
+            ))}
+          </select>
           <button type="button" onClick={history.exit}>
             Return live
           </button>
