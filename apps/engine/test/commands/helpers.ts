@@ -1,4 +1,5 @@
 import { type EventType, type StoredEnvelope, storedEnvelopeSchemas } from "@taskville/protocol";
+import pino, { type Logger } from "pino";
 import { vi } from "vitest";
 import {
   type CommandBridge,
@@ -123,12 +124,16 @@ export function seedEvents(engine: Engine, projectId: string, events: SeedEvent[
   });
 }
 
-export function sessionStarted(cwd: string | undefined): SeedEvent {
+export function sessionStarted(
+  cwd: string | undefined,
+  sessionId: string = SESSION_ID,
+  agentId: string = AGENT_ID,
+): SeedEvent {
   return {
     type: "session.started",
     payload: cwd === undefined ? {} : { workingDirectory: cwd },
-    agentId: AGENT_ID,
-    sessionId: SESSION_ID,
+    agentId,
+    sessionId,
   };
 }
 
@@ -136,6 +141,8 @@ export function requestOpened(options: {
   requestId?: string;
   sourceId?: string;
   kind?: "permission" | "elicitation" | "input";
+  sessionId?: string;
+  agentId?: string;
 }): SeedEvent {
   return {
     type: "request.opened",
@@ -146,8 +153,8 @@ export function requestOpened(options: {
       inputPreview: "ls",
     },
     sourceId: options.sourceId ?? "taskville:bridge",
-    agentId: AGENT_ID,
-    sessionId: SESSION_ID,
+    agentId: options.agentId ?? AGENT_ID,
+    sessionId: options.sessionId ?? SESSION_ID,
   };
 }
 
@@ -170,13 +177,106 @@ export interface HarnessOptions {
   /** Events seeded into the `demo` project before the service starts. */
   seed?: SeedEvent[];
   holdBridgeRequest?: boolean;
+  /** The project's configured roots (project.created); the opener cwd must lie inside one. */
+  roots?: string[];
+  /** Passed to the command service, so a test can read what it logs. */
+  logger?: Logger;
+  /**
+   * Extra `createCommandService` options for names pinned by a test but not yet in the type
+   * (such as `maxRememberedResults`). Spread into the options object.
+   */
+  serviceExtras?: Record<string, unknown>;
+}
+
+/** A logger whose lines are collected as strings, like `makeApp` does for the access log. */
+export function capturingLogger(): { logger: Logger; lines: string[] } {
+  const lines: string[] = [];
+  const logger = pino({ level: "debug" }, { write: (line: string) => lines.push(line) });
+  return { logger, lines };
+}
+
+/**
+ * Makes the next `times` appends of `eventType` through `storage.transaction` throw an error
+ * named `errName` (message `errMessage`); every other append goes through. Returns a restore
+ * function. This is the storage/append seam: the service's own `record` goes through it.
+ */
+export function failAppend(
+  storage: Engine["storage"],
+  eventType: string,
+  options: { times?: number; errName?: string; errMessage?: string } = {},
+): () => void {
+  let remaining = options.times ?? 1;
+  const real = storage.transaction.bind(storage);
+  const spy = vi.spyOn(storage, "transaction").mockImplementation(((
+    fn: (tx: Parameters<Parameters<typeof real>[0]>[0]) => unknown,
+  ) =>
+    real((tx) =>
+      fn({
+        ...tx,
+        appendEvent: (envelope, hash) => {
+          if (envelope.type === eventType && remaining > 0) {
+            remaining -= 1;
+            throw Object.assign(new Error(options.errMessage ?? "append refused"), {
+              name: options.errName ?? "InjectedAppendError",
+            });
+          }
+          return tx.appendEvent(envelope, hash);
+        },
+      }),
+    )) as never);
+  return () => spy.mockRestore();
+}
+
+/**
+ * Stops the engine in `h` and starts a new one on the same database, as a restart does, then
+ * creates a new command service on it. `beforeService` runs between the boot and the service,
+ * for a test that must break something the service touches while it starts.
+ */
+export function restartService(
+  h: Harness,
+  dbPath: string,
+  options: {
+    sessionOpener?: string[] | null;
+    logger?: Logger;
+    beforeService?: (engine: Engine) => void;
+  } = {},
+) {
+  h.engine.close();
+  const booted = bootInProcess(dbPath);
+  options.beforeService?.(booted.engine);
+  const execFile = vi.fn<OpenSessionExecFile>(async () => undefined);
+  const decide = vi.fn(() => false);
+  const service = createCommandService({
+    engine: booted.engine,
+    bridge: { lookup: () => undefined, decide },
+    opener: { config: { sessionOpener: options.sessionOpener ?? null }, execFile },
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+  });
+  registerCommandRoutes(booted.app, service);
+  const session = booted.pairing.exchange(booted.pairing.issueCode()) ?? "";
+  return {
+    engine: booted.engine,
+    execFile,
+    decide,
+    post: (body: unknown) =>
+      Promise.resolve(
+        booted.app.request(
+          `${BASE}/v1/commands`,
+          postJson(body, { ...sessionHeaders(session), Origin: ORIGIN }),
+        ),
+      ),
+    get: (id: string) =>
+      Promise.resolve(
+        booted.app.request(`${BASE}/v1/commands/${id}`, { headers: sessionHeaders(session) }),
+      ),
+  };
 }
 
 /** Boots an in-process engine with project `demo`, registers the command routes, pairs a browser. */
 export function bootHarness(dbPath: string, options: HarnessOptions = {}): Harness {
   const booted = bootInProcess(dbPath, { now: () => new Date(T0) });
   const { app, engine, pairing } = booted;
-  addProject(engine.storage, PROJECT);
+  addProject(engine.storage, PROJECT, options.roots ?? []);
   seedEvents(engine, PROJECT, options.seed ?? [requestOpened({})]);
   const bridge = fakeBridge();
   if (options.holdBridgeRequest ?? true) bridge.hold();
@@ -186,6 +286,8 @@ export function bootHarness(dbPath: string, options: HarnessOptions = {}): Harne
     bridge,
     opener: { config: { sessionOpener: options.sessionOpener ?? null }, execFile },
     now: () => new Date(T0),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...options.serviceExtras,
   });
   registerCommandRoutes(app, service);
   const session = pairing.exchange(pairing.issueCode()) ?? "";

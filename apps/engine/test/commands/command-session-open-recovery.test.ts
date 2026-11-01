@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,7 +43,7 @@ let reopened: { close(): void } | undefined;
 let root = "";
 let cwd = "";
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "taskville-recover-"));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "taskville-recover-")));
   cwd = join(root, "repo");
   mkdirSync(cwd);
 });
@@ -76,6 +76,7 @@ function staleOpen(): SeedEvent {
 function boot(options: { execFile?: OpenSessionExecFile; seed?: SeedEvent[] } = {}): Harness {
   harness = bootHarness(dbPath(), {
     sessionOpener: TEMPLATE,
+    roots: [root],
     ...(options.execFile === undefined ? {} : { execFile: options.execFile }),
     seed: [sessionStarted(cwd), requestOpened({}), ...(options.seed ?? [])],
   });

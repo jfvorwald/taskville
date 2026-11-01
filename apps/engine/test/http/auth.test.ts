@@ -293,6 +293,25 @@ describe("command routes", () => {
     });
   });
 
+  it("answers 501 not_implemented on both routes for a paired session when no command service is registered", async () => {
+    // createApp alone carries the stub; registerCommandRoutes retires it.
+    const { app, pairing } = makeApp();
+    const session = await pair(app, pairing.issueCode());
+    const post = await app.request(
+      "/v1/commands",
+      postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
+    );
+    expect(post.status).toBe(501);
+    expect(await post.json()).toEqual({
+      error: { code: "not_implemented", message: expect.any(String) },
+    });
+    const get = await app.request("/v1/commands/cmd-1", { headers: sessionHeaders(session) });
+    expect(get.status).toBe(501);
+    expect(await get.json()).toEqual({
+      error: { code: "not_implemented", message: expect.any(String) },
+    });
+  });
+
   it("refuses a paired session with no Origin or a foreign Origin", async () => {
     const { app, pairing } = await makeCommandApp();
     const session = await pair(app, pairing.issueCode());

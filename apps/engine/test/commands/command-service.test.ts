@@ -1,5 +1,6 @@
 import { sseFrameSchema } from "@taskville/protocol";
 import { afterEach, describe, expect, it } from "vitest";
+import { MAX_DENY_MESSAGE_CHARS } from "../../src/commands/schema.ts";
 import { ENGINE_SOURCE_ID } from "../../src/storage/index.ts";
 import { SseReader, streamRequest } from "../stream/helpers.ts";
 import {
@@ -40,9 +41,13 @@ import {
 //   400 bad_request                          invalid body: nothing recorded or sent
 // GET /v1/commands/:id -> 200 { command }, 404 unknown_command.
 //
-// request.resolved: M4.02 adds an optional `decision` field that is not on main yet, so this file
-// does not assert on it. The allow/deny choice is asserted through the bridge call and through the
+// request.resolved carries `decision: "allow" | "deny"` (the M4.02 field, on main now), asserted
+// below for both choices. The choice is also asserted through the bridge call and through the
 // audit payload of command.requested ({ payload: { decision: { behavior } } }).
+//
+// Limits: a body over 16 KiB is 413 payload_too_large; a deny note over MAX_DENY_MESSAGE_CHARS is
+// 400 bad_request. The recorded state is checked before the bridge: a closed request the bridge no
+// longer holds is request_not_open (409), not request_expired (410).
 
 const dbPath = useDbPath();
 let harness: Harness | undefined;
@@ -150,9 +155,10 @@ describe("permission.decide: delivery", () => {
       idempotencyKey: "key-1",
       payload: { decision: { behavior: "allow" } },
     });
-    expect(events[1]?.payload).toMatchObject({
+    expect(events[1]?.payload).toEqual({
       requestId: REQUEST_ID,
       resolution: "answered_here",
+      decision: "allow",
     });
     expect(events[2]?.payload).toEqual({ commandId });
     for (const event of events.filter((e) => e.type.startsWith("command."))) {
@@ -179,8 +185,15 @@ describe("permission.decide: delivery", () => {
       behavior: "deny",
       message: "not this one",
     });
-    expect(commandEvents(h.engine)[0]?.payload).toMatchObject({
+    const events = commandEvents(h.engine);
+    expect(events[0]?.payload).toMatchObject({
       payload: { decision: { behavior: "deny" } },
+    });
+    expect(events[1]?.type).toBe("request.resolved");
+    expect(events[1]?.payload).toEqual({
+      requestId: REQUEST_ID,
+      resolution: "answered_here",
+      decision: "deny",
     });
   });
 
@@ -407,6 +420,31 @@ describe("permission.decide: requests that cannot be answered", () => {
     expect(events[1]?.payload).toMatchObject({ commandId: body.command?.id });
   });
 
+  it("answers a closed request the bridge no longer holds with request_not_open, not request_expired", async () => {
+    // Pins the order of the checks: the recorded state first, then the bridge.
+    const h = boot({
+      holdBridgeRequest: false,
+      seed: [
+        requestOpened({}),
+        {
+          type: "request.expired",
+          payload: { requestId: REQUEST_ID },
+          sourceId: ENGINE_SOURCE_ID,
+        },
+      ],
+    });
+    const res = await h.post(decideBody());
+    expect(res.status).toBe(409);
+    const body = await json(res);
+    expect(body.error?.code).toBe("request_not_open");
+    expect(body.command?.status).toBe("failed");
+    expect(h.bridge.decide).not.toHaveBeenCalled();
+    expect(types(commandEvents(h.engine).filter((e) => e.type.startsWith("command.")))).toEqual([
+      "command.requested",
+      "command.failed",
+    ]);
+  });
+
   it("marks a request the bridge did not hold as unsupported, 422 not_answerable", async () => {
     const h = boot({ seed: [requestOpened({ sourceId: "claude-code" })] });
     const res = await h.post(decideBody());
@@ -491,6 +529,39 @@ describe("request validation", () => {
       expect(commandEvents(h.engine)).toEqual([]);
     });
   }
+
+  it("answers 413 payload_too_large for a body over 16 KiB, with no side effects", async () => {
+    const h = boot();
+    const pad = "x".repeat(16 * 1024 + 1);
+    const res = await h.app.request(`${BASE}/v1/commands`, {
+      method: "POST",
+      headers: { ...sessionHeaders(h.session), Origin: ORIGIN, "Content-Type": "application/json" },
+      body: JSON.stringify(decideBody({ idempotencyKey: pad })),
+    });
+    expect(res.status).toBe(413);
+    expect((await json(res)).error?.code).toBe("payload_too_large");
+    expect(h.bridge.decide).not.toHaveBeenCalled();
+    expect(commandEvents(h.engine)).toEqual([]);
+  });
+
+  it("answers 400 bad_request for a deny note over MAX_DENY_MESSAGE_CHARS, and accepts one at the limit", async () => {
+    const h = boot();
+    const over = await h.post(
+      decideBody({
+        decision: { behavior: "deny", message: "n".repeat(MAX_DENY_MESSAGE_CHARS + 1) },
+      }),
+    );
+    expect(over.status).toBe(400);
+    expect((await json(over)).error?.code).toBe("bad_request");
+    expect(h.bridge.decide).not.toHaveBeenCalled();
+    expect(commandEvents(h.engine)).toEqual([]);
+
+    const atLimit = await h.post(
+      decideBody({ decision: { behavior: "deny", message: "n".repeat(MAX_DENY_MESSAGE_CHARS) } }),
+    );
+    expect(atLimit.status).toBe(200);
+    expect(h.bridge.decide).toHaveBeenCalledTimes(1);
+  });
 
   it("answers 400 bad_request for a body that is not JSON", async () => {
     const h = boot();

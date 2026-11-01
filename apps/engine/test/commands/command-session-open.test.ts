@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -24,10 +24,13 @@ import {
 // M4.03 command service, session.open (ARCHITECTURE.md 2.4 and 9.2).
 //
 // Request:  POST /v1/commands { type: "session.open", projectId, sessionId, requestId,
-//   idempotencyKey, context? }. `requestId` is the needs-you request whose card was clicked; it is
-//   only recorded (command.requested needs one) and need not be open. The working directory is
-//   read from the RECORDED session state (session.started workingDirectory), never from the body:
-//   a body with `cwd`, `template`, or `sessionOpener` gets 400 bad_request and nothing runs.
+//   idempotencyKey, context? }. `requestId` is the needs-you request whose card was clicked; it
+//   must be an OPEN request of the same session (CTO decision on roborev 5906; see
+//   command-session-open-request.test.ts). The working directory is read from the RECORDED
+//   session state (session.started workingDirectory), never from the body: a body with `cwd`,
+//   `template`, or `sessionOpener` gets 400 bad_request and nothing runs. It must also lie inside
+//   one of the project's configured roots (see command-open-cwd-roots.test.ts); these tests
+//   configure the project with `roots: [root]` and use a realpath'd temp root.
 // Success:  200 { command: { id, type, requestId, status: "succeeded",
 //   result: { outcome: "opened" | "copy-only", sessionId, cwd } } }
 //   events: command.requested, command.delivered, command.succeeded
@@ -42,7 +45,8 @@ let harness: Harness | undefined;
 let cwd = "";
 let root = "";
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "taskville-open-"));
+  // Real path: the opener cwd is resolved with realpath (tmpdir is a symlink on macOS).
+  root = realpathSync(mkdtempSync(join(tmpdir(), "taskville-open-")));
   cwd = join(root, "repo");
   mkdirSync(cwd);
 });
@@ -55,6 +59,7 @@ afterEach(() => {
 function boot(options: Parameters<typeof bootHarness>[1] = {}): Harness {
   harness = bootHarness(dbPath(), {
     seed: [sessionStarted(cwd), requestOpened({})],
+    roots: [root],
     ...options,
   });
   return harness;

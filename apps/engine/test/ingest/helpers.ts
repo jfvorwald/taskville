@@ -46,9 +46,9 @@ export function useStorage(projects: readonly string[] = ["demo"]): {
 }
 
 /** What `POST /v1/projects` (#16) will do: the project row and its project.created event. */
-export function addProject(storage: Storage, id: string): void {
+export function addProject(storage: Storage, id: string, roots: readonly string[] = []): void {
   storage.transaction((tx) => {
-    tx.insertProject({ id, name: id, createdAt: T0, roots: [], builtin: false });
+    tx.insertProject({ id, name: id, createdAt: T0, roots: [...roots], builtin: false });
     const created: StoredEnvelope = {
       schemaVersion: 1,
       eventId: randomUUID(),
@@ -59,7 +59,7 @@ export function addProject(storage: Storage, id: string): void {
       receivedAt: T0,
       ingestSequence: 1,
       type: "project.created",
-      payload: { name: id, roots: [], builtin: false },
+      payload: { name: id, roots: [...roots], builtin: false },
       evidenceIds: [],
       provenance: "live",
       late: false,
