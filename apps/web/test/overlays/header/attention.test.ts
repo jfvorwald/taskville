@@ -214,14 +214,14 @@ describe("decideDesktopNotifications", () => {
     ]);
   });
 
-  it("uses a key that is stable for the request, so a caller can dedupe", () => {
+  it("uses a key that is stable for the agent's entry, so a caller can dedupe", () => {
     const [first] = decideDesktopNotifications(base);
     const [second] = decideDesktopNotifications({
       ...base,
       view: { ...hidden, projectId: "beta" },
     });
     expect(first?.key).toBe(second?.key);
-    const other = feedOf(project("beta", [needsYou("b1", "r9")], "Beta"));
+    const other = feedOf(project("beta", [needsYou("b2", "r9")], "Beta"));
     const [third] = decideDesktopNotifications({
       ...base,
       previous: EMPTY_ATTENTION_FEED,
@@ -251,7 +251,7 @@ describe("decideDesktopNotifications", () => {
     expect(decideDesktopNotifications({ ...base, previous: after, next: before })).toEqual([]);
   });
 
-  it("fires once for each new request when several arrive together", () => {
+  it("fires once for each agent that enters needs-you when several arrive together", () => {
     const next = feedOf(
       project("alpha", [needsYou("a1", "r1"), needsYou("a2", "r3")], "Alpha"),
       project("beta", [needsYou("b1", "r2")], "Beta"),
@@ -260,11 +260,53 @@ describe("decideDesktopNotifications", () => {
     expect(fired.map((n) => n.requestId).sort()).toEqual(["r2", "r3"]);
   });
 
-  it("fires for a new request from an agent that already had a different one", () => {
+  it("fires once per entry into needs-you, not per request: an agent already needing you stays quiet", () => {
+    // A second request from an agent that was already in needs-you is not an entry.
     const next = feedOf(project("alpha", [needsYou("a1", "r1"), needsYou("a1", "r5")], "Alpha"));
+    expect(decideDesktopNotifications({ ...base, previous: before, next })).toEqual([]);
+  });
+
+  it("does not notify again when the requestId changes for an agent that stays in needs-you", () => {
+    // Telemetry opened the prompt, then the bridge took it: same prompt, new requestId, so the
+    // reducer replaces the record (ARCHITECTURE 2.2: one prompt, one red state).
+    const telemetry = feedOf(project("alpha", [needsYou("a1", "tel-1")], "Alpha"));
+    const bridge = feedOf(project("alpha", [needsYou("a1", "bridge-1")], "Alpha"));
+    expect(decideDesktopNotifications({ ...base, previous: telemetry, next: bridge })).toEqual([]);
+  });
+
+  it("notifies again when an agent leaves needs-you and later re-enters it", () => {
+    const needing = feedOf(project("alpha", [needsYou("a1", "r1")], "Alpha"));
+    const cleared = EMPTY_ATTENTION_FEED;
+    const reentered = feedOf(project("alpha", [needsYou("a1", "r2")], "Alpha"));
+    expect(decideDesktopNotifications({ ...base, previous: needing, next: cleared })).toEqual([]);
     expect(
-      decideDesktopNotifications({ ...base, previous: before, next }).map((n) => n.requestId),
-    ).toEqual(["r5"]);
+      decideDesktopNotifications({ ...base, previous: cleared, next: reentered }).map(
+        (n) => n.agentId,
+      ),
+    ).toEqual(["a1"]);
+    // Trouble in between counts as having left needs-you.
+    const troubled = feedOf(project("alpha", [trouble("a1")], "Alpha"));
+    expect(
+      decideDesktopNotifications({ ...base, previous: troubled, next: reentered }),
+    ).toHaveLength(1);
+  });
+
+  it("notifies once for each of two different agents that enter needs-you together", () => {
+    const next = feedOf(
+      project("alpha", [needsYou("a1", "r1")], "Alpha"),
+      project("beta", [needsYou("b1", "r2"), needsYou("b2", "r3")], "Beta"),
+    );
+    const fired = decideDesktopNotifications({ ...base, previous: before, next });
+    expect(fired.map((n) => n.agentId).sort()).toEqual(["b1", "b2"]);
+  });
+
+  it("tells agents apart per project: the same agent ID entering in another project notifies", () => {
+    const next = feedOf(
+      project("alpha", [needsYou("a1", "r1")], "Alpha"),
+      project("beta", [needsYou("a1", "r7")], "Beta"),
+    );
+    const fired = decideDesktopNotifications({ ...base, previous: before, next });
+    expect(fired.map((n) => n.projectId)).toEqual(["beta"]);
   });
 
   it("does nothing for the first snapshot, whose needs-you were already there when the page opened", () => {
