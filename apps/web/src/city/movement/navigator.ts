@@ -207,6 +207,8 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     while (q === undefined && line.length > 0) {
       const next = walkers.get(line.shift() as string);
       if (next?.view.queued && next.area === slot.areaId) q = next;
+      // Dropped from the line, so it is no longer in it (retarget would otherwise wait on it forever).
+      else if (next) next.view.queued = false;
     }
     if (q === undefined) return;
     q.view.queued = false;
