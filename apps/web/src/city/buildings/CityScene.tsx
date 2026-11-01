@@ -8,7 +8,7 @@ import { Scenery } from "./Scenery.tsx";
 
 /**
  * The static city: camera, light, ground, streets, plaza, buildings and scenery, drawn from the
- * layout data. Agents (M3.05) mount beside it. The scene root already supplies ambient light.
+ * layout data. Agents (M3.05) mount beside it. Lights and sky come from `DayNightLighting` (M3.12).
  */
 export function CityScene({
   layout = CITY_LAYOUT,
@@ -21,7 +21,6 @@ export function CityScene({
   return (
     <group name="city">
       <CityCamera />
-      <directionalLight position={[-12, 24, 16]} intensity={1.4} />
       <Ground layout={layout} materials={materials} />
       <Buildings layout={layout} materials={materials} />
       <Scenery layout={layout} materials={materials} />
