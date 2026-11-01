@@ -3,6 +3,7 @@ import {
   areaSelectionId,
   createSelectionStore,
   parseSelectionId,
+  selectionAfterRescan,
 } from "../../../src/city/interaction/selection.ts";
 
 describe("selection store", () => {
@@ -38,5 +39,36 @@ describe("selection store", () => {
     expect(parseSelectionId("area:review")).toEqual({ kind: "area", id: "review" });
     expect(parseSelectionId("sess-42")).toEqual({ kind: "agent", id: "sess-42" });
     expect(parseSelectionId(null)).toBeNull();
+  });
+});
+
+describe("selectionAfterRescan", () => {
+  it("leaves a selection alone until its object has been seen once", () => {
+    // A selection made from the agent list before the agent mounts must survive.
+    expect(selectionAfterRescan({ seen: false, found: false })).toEqual({
+      seen: false,
+      clear: false,
+    });
+  });
+
+  it("marks the object seen when the rescan finds it", () => {
+    expect(selectionAfterRescan({ seen: false, found: true })).toEqual({
+      seen: true,
+      clear: false,
+    });
+  });
+
+  it("keeps a seen object's selection while it is still found", () => {
+    expect(selectionAfterRescan({ seen: true, found: true })).toEqual({
+      seen: true,
+      clear: false,
+    });
+  });
+
+  it("clears the selection when an object that was seen is gone", () => {
+    expect(selectionAfterRescan({ seen: true, found: false })).toEqual({
+      seen: false,
+      clear: true,
+    });
   });
 });

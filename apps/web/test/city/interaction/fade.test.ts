@@ -1,5 +1,13 @@
-import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial } from "three";
-import { describe, expect, it } from "vitest";
+import {
+  BoxGeometry,
+  Group,
+  InstancedMesh,
+  type Material,
+  Matrix4,
+  Mesh,
+  MeshLambertMaterial,
+} from "three";
+import { describe, expect, it, vi } from "vitest";
 import { windowSites } from "../../../src/city/buildings/parts.ts";
 import { createBuildingFader } from "../../../src/city/interaction/fade.ts";
 import { CITY_LAYOUT } from "../../../src/city/layout/index.ts";
@@ -137,5 +145,120 @@ describe("building fader and theme changes", () => {
     expect(during.color.getHex()).toBe(themed.color.getHex());
     fader.update(10, () => false);
     expect(meshes.get(first)?.[0]?.material).toBe(themed);
+  });
+});
+
+function watchDispose(m: Material) {
+  const spy = vi.fn();
+  m.addEventListener("dispose", spy);
+  return spy;
+}
+
+describe("building fader when the theme changes mid-fade", () => {
+  const options = { sites: windowSites(CITY_LAYOUT), fadedOpacity: 0.2, seconds: 0.5 };
+
+  it.each([
+    ["part way faded", 0.1],
+    ["fully faded", 10],
+  ])("ends on the new theme's materials when they arrived while %s", (_label, fadeSeconds) => {
+    const { root, meshes } = city();
+    const fader = createBuildingFader(options);
+    fader.bind(root);
+    fader.update(fadeSeconds, (id) => id === first);
+    const list = meshes.get(first) ?? [];
+    const oldClones = list.map((m) => m.material as Material);
+    const oldDisposed = oldClones.map(watchDispose);
+
+    const themedWall = new MeshLambertMaterial({ color: "#ff00ff" });
+    const themedRoof = new MeshLambertMaterial({ color: "#00ffff" });
+    const themedDisposed = [watchDispose(themedWall), watchDispose(themedRoof)];
+    const [wallMesh, roofMesh] = list;
+    if (wallMesh === undefined || roofMesh === undefined) throw new Error("fixture");
+    wallMesh.material = themedWall;
+    roofMesh.material = themedRoof;
+
+    fader.update(10, () => false);
+
+    expect(list[0]?.material).toBe(themedWall);
+    expect(list[1]?.material).toBe(themedRoof);
+    for (const spy of oldDisposed) expect(spy).toHaveBeenCalled();
+    // The shared theme materials belong to the theme, not to the fader.
+    for (const spy of themedDisposed) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("keeps fading, on clones of the new material, when the theme changes mid fade-out", () => {
+    const { root, meshes } = city();
+    const fader = createBuildingFader(options);
+    fader.bind(root);
+    fader.update(0.1, (id) => id === first);
+    const before = fader.opacityOf(first);
+    const list = meshes.get(first) ?? [];
+    const oldDisposed = list.map((m) => watchDispose(m.material as Material));
+
+    const themed = new MeshLambertMaterial({ color: "#ff00ff" });
+    for (const m of list) m.material = themed;
+
+    fader.update(0.05, (id) => id === first);
+    const now = fader.opacityOf(first);
+    expect(now).toBeLessThan(before);
+    for (const m of list) {
+      const mat = m.material as MeshLambertMaterial;
+      expect(mat).not.toBe(themed);
+      expect(mat.color.getHex()).toBe(themed.color.getHex());
+      expect(mat.transparent).toBe(true);
+      expect(mat.opacity).toBeCloseTo(now);
+    }
+    expect(themed.opacity).toBe(1);
+    for (const spy of oldDisposed) expect(spy).toHaveBeenCalled();
+
+    fader.update(10, (id) => id === first);
+    for (const m of list) expect((m.material as MeshLambertMaterial).opacity).toBeCloseTo(0.2);
+  });
+
+  it("fades a replacement material even when the building was already fully faded", () => {
+    const { root, meshes } = city();
+    const fader = createBuildingFader(options);
+    fader.bind(root);
+    fader.update(10, (id) => id === first);
+    const list = meshes.get(first) ?? [];
+    const themed = new MeshLambertMaterial({ color: "#ff00ff" });
+    for (const m of list) m.material = themed;
+
+    fader.update(0.016, (id) => id === first);
+    const swapped = list.map((m) => m.material as MeshLambertMaterial);
+    for (const mat of swapped) {
+      expect(mat).not.toBe(themed);
+      expect(mat.color.getHex()).toBe(themed.color.getHex());
+      expect(mat.transparent).toBe(true);
+      expect(mat.opacity).toBeCloseTo(0.2);
+    }
+
+    // Once adopted, the clones are kept: no new clone per frame.
+    fader.update(0.016, (id) => id === first);
+    list.forEach((m, i) => {
+      expect(m.material).toBe(swapped[i]);
+    });
+  });
+});
+
+describe("building fader duration at runtime (reduced motion)", () => {
+  it("completes a fade in one update at zero seconds, and restores the 0.25 s fade", () => {
+    const { root } = city();
+    const fader = createBuildingFader({ sites: windowSites(CITY_LAYOUT), fadedOpacity: 0.2 });
+    fader.bind(root);
+
+    fader.setSeconds(0);
+    fader.update(0.016, (id) => id === first);
+    expect(fader.opacityOf(first)).toBeCloseTo(0.2);
+    fader.update(0.016, () => false);
+    expect(fader.opacityOf(first)).toBe(1);
+
+    fader.setSeconds(0.25);
+    fader.update(0.05, (id) => id === first);
+    const mid = fader.opacityOf(first);
+    expect(mid).toBeLessThan(1);
+    expect(mid).toBeGreaterThan(0.2);
+    fader.update(0.2, (id) => id === first);
+    expect(fader.opacityOf(first)).toBeCloseTo(0.2);
   });
 });
