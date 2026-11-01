@@ -198,12 +198,11 @@ function CrewFamilyView({
       }
     }
     if (representative?.parent === null) representative = null;
-    // Finishing suppresses this agent's fallback, but its running descendants still inherit it.
-    const ownRepresentative = byId.get(id)?.finishedAt === undefined ? representative : null;
-    object.userData.crewRepresentative = ownRepresentative;
-    if (ownRepresentative === null) anchors.removeAnchor(agentAnchorId(id));
+    // The tracker retains finished bots through return/fade, including their marker fallback.
+    object.userData.crewRepresentative = representative;
+    if (representative === null) anchors.removeAnchor(agentAnchorId(id));
     else {
-      ownRepresentative.getWorldPosition(markerPosition);
+      representative.getWorldPosition(markerPosition);
       const point = anchorPoint.current;
       point[0] = markerPosition.x;
       point[1] = markerPosition.y;
@@ -432,7 +431,9 @@ function CrewFamilyView({
       markerHue.current = urgent;
     }
     if (waiting.current !== null) {
-      waiting.current.visible = parentIsWaiting(phases.current) || family.deepCount > 0;
+      waiting.current.visible =
+        anchors.getAnchor(agentAnchorId(family.parentId)) !== undefined &&
+        (parentIsWaiting(phases.current) || family.deepCount > 0);
     }
   });
 
