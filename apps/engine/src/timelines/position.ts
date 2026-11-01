@@ -18,7 +18,9 @@ export function parsePosition(raw: string): Position | undefined {
   if (!parts) return undefined;
   const [year, month, day] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
   // Date.parse rolls an impossible date (February 30) forward; refuse it instead.
-  const calendar = new Date(Date.UTC(year, month - 1, day));
+  // setUTCFullYear keeps years 0 to 99 as written; Date.UTC would read them as 1900 to 1999.
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
   if (calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) return undefined;
   const ms = Date.parse(raw);
   return Number.isNaN(ms) ? undefined : { kind: "time", ms };

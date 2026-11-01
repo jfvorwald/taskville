@@ -100,21 +100,32 @@ function resolveFrom(storage: Storage, projectId: string, head: number, at: Posi
   return scanTime(storage, projectId, at.ms).atOrAfter ?? head + 1;
 }
 
-function encodeCursor(timelineId: string, next: number): string {
-  return CURSOR_PREFIX + Buffer.from(JSON.stringify([timelineId, next])).toString("base64url");
+/** Where a page resumes, and the last sequence the walk was pinned to by an explicit `to`. */
+interface CursorState {
+  next: number;
+  until: number | null;
 }
 
-/** The sequence a cursor issued for `timelineId` resumes at; undefined if it is not one of ours. */
-function decodeCursor(timelineId: string, cursor: string): number | undefined {
+function encodeCursor(timelineId: string, state: CursorState): string {
+  const body = JSON.stringify([timelineId, state.next, state.until]);
+  return CURSOR_PREFIX + Buffer.from(body).toString("base64url");
+}
+
+const isSequence = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+
+/** What a cursor issued for `timelineId` says; undefined if it is not one of ours. */
+function decodeCursor(timelineId: string, cursor: string): CursorState | undefined {
   if (!cursor.startsWith(CURSOR_PREFIX)) return undefined;
   try {
     const parsed: unknown = JSON.parse(
       Buffer.from(cursor.slice(CURSOR_PREFIX.length), "base64url").toString("utf8"),
     );
-    if (!Array.isArray(parsed) || parsed.length !== 2) return undefined;
-    const [id, next] = parsed as [unknown, unknown];
-    if (id !== timelineId || typeof next !== "number") return undefined;
-    return Number.isSafeInteger(next) && next >= 1 ? next : undefined;
+    if (!Array.isArray(parsed) || parsed.length !== 3) return undefined;
+    const [id, next, until] = parsed as [unknown, unknown, unknown];
+    if (id !== timelineId || !isSequence(next)) return undefined;
+    if (until !== null && !isSequence(until)) return undefined;
+    return { next, until };
   } catch {
     return undefined;
   }
@@ -207,15 +218,17 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     if (rawTo !== undefined && !to) return bad(c, "to must be a sequence or a timestamp");
 
     const rawCursor = c.req.query("cursor");
-    let resumeAt: number | undefined;
+    let resume: CursorState | undefined;
     if (rawCursor !== undefined) {
-      resumeAt = decodeCursor(timelineId, rawCursor);
-      if (resumeAt === undefined) return bad(c, "cursor is not one this timeline issued");
+      resume = decodeCursor(timelineId, rawCursor);
+      if (resume === undefined) return bad(c, "cursor is not one this timeline issued");
     }
 
-    // The cursor supersedes `from`, so a timestamp `from` is not re-resolved on later pages.
-    const first = resumeAt ?? (from ? resolveFrom(storage, projectId, head, from) : 1);
-    const last = to ? resolveUpTo(storage, projectId, head, to) : head;
+    // The cursor supersedes `from`, and carries an explicit `to` as first resolved, so later
+    // pages do not move when events are ingested between requests.
+    const first = resume?.next ?? (from ? resolveFrom(storage, projectId, head, from) : 1);
+    const pinned = resume ? resume.until : to ? resolveUpTo(storage, projectId, head, to) : null;
+    const last = pinned ?? head;
 
     const events: StoredEnvelope[] = [];
     if (first <= last) {
@@ -226,7 +239,9 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     }
     const lastSent = events.at(-1)?.ingestSequence;
     const nextCursor =
-      lastSent !== undefined && lastSent < last ? encodeCursor(timelineId, lastSent + 1) : null;
+      lastSent !== undefined && lastSent < last
+        ? encodeCursor(timelineId, { next: lastSent + 1, until: pinned })
+        : null;
     return c.json({ timelineId, events, nextCursor });
   });
 }
