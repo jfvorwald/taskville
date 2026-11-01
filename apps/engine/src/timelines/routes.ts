@@ -100,10 +100,10 @@ function resolveFrom(storage: Storage, projectId: string, head: number, at: Posi
   return scanTime(storage, projectId, at.ms).atOrAfter ?? head + 1;
 }
 
-/** Where a page resumes, and the last sequence the walk was pinned to by an explicit `to`. */
+/** Where a page resumes, and the last sequence the walk was pinned to when it began. */
 interface CursorState {
   next: number;
-  until: number | null;
+  until: number;
 }
 
 function encodeCursor(timelineId: string, state: CursorState): string {
@@ -124,7 +124,7 @@ function decodeCursor(timelineId: string, cursor: string): CursorState | undefin
     if (!Array.isArray(parsed) || parsed.length !== 3) return undefined;
     const [id, next, until] = parsed as [unknown, unknown, unknown];
     if (id !== timelineId || !isSequence(next)) return undefined;
-    if (until !== null && !isSequence(until)) return undefined;
+    if (!isSequence(until)) return undefined;
     return { next, until };
   } catch {
     return undefined;
@@ -224,11 +224,12 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
       if (resume === undefined) return bad(c, "cursor is not one this timeline issued");
     }
 
-    // The cursor supersedes `from`, and carries an explicit `to` as first resolved, so later
-    // pages do not move when events are ingested between requests.
+    // The cursor supersedes `from`, and carries the end as first resolved (`to`, else the head),
+    // so later pages do not move when events are ingested between requests. A forged end past
+    // the head is clamped to it, so the page that reaches the head is the last.
     const first = resume?.next ?? (from ? resolveFrom(storage, projectId, head, from) : 1);
-    const pinned = resume ? resume.until : to ? resolveUpTo(storage, projectId, head, to) : null;
-    const last = pinned ?? head;
+    const pinned = resume ? resume.until : to ? resolveUpTo(storage, projectId, head, to) : head;
+    const last = Math.min(pinned, head);
 
     const events: StoredEnvelope[] = [];
     if (first <= last) {
@@ -240,7 +241,7 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     const lastSent = events.at(-1)?.ingestSequence;
     const nextCursor =
       lastSent !== undefined && lastSent < last
-        ? encodeCursor(timelineId, { next: lastSent + 1, until: pinned })
+        ? encodeCursor(timelineId, { next: lastSent + 1, until: last })
         : null;
     return c.json({ timelineId, events, nextCursor });
   });

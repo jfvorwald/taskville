@@ -22,6 +22,8 @@ export function parsePosition(raw: string): Position | undefined {
   const calendar = new Date(0);
   calendar.setUTCFullYear(year, month - 1, day);
   if (calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) return undefined;
+  // Date.parse reads T24:00 as midnight of the next day; the grammar has no hour 24.
+  if (Number(parts[4]) > 23) return undefined;
   const ms = Date.parse(raw);
   return Number.isNaN(ms) ? undefined : { kind: "time", ms };
 }
