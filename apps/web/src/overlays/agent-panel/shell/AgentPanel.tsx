@@ -75,7 +75,10 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
   const byId = state?.agents;
   const agents = useMemo(() => Object.values(byId ?? {}), [byId]);
   const selectedId = selection.selectedId;
-  const agent = selectedId === null ? undefined : byId?.[selectedId];
+  const agent =
+    selectedId === null || byId === undefined || !Object.hasOwn(byId, selectedId)
+      ? undefined
+      : byId[selectedId];
   const known = agent !== undefined;
   const { select } = selection;
 
@@ -97,9 +100,13 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
   if (agent === undefined || state === null) return null;
 
   const needsYou = attention.some((a) => a.agentId === agent.id && a.level === "needs_you");
+  const recorded = state.activity[agent.id];
+  // A heuristic activity is a guess (constitution IV), so the header says so.
   const status = needsYou
     ? "Needs you"
-    : activityText(state.activity[agent.id]?.activity ?? "unknown");
+    : recorded?.heuristic === true
+      ? `Possibly ${activityText(recorded.activity).toLowerCase()}`
+      : activityText(recorded?.activity ?? "unknown");
   const elapsed = elapsedMs(agent, nowMs);
   const file = currentFile(agent.id, state.toolCalls);
   const crumbs = familyPath(agent.id, agents);
