@@ -1,4 +1,4 @@
-import { type Context, Hono } from "hono";
+import { type Context, Hono, type Next } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import pino, { type Logger } from "pino";
@@ -39,6 +39,14 @@ export interface AppOptions {
 
 const PAIRING_EXCHANGE = "/v1/pairing";
 const PUBLIC_ROUTES: ReadonlySet<string> = new Set([`POST ${PAIRING_EXCHANGE}`]);
+
+/** Apps whose real command routes are registered; the stub below steps aside for them. */
+const appsWithCommandRoutes = new WeakSet<object>();
+
+/** Called by `registerCommandRoutes`: the `501` command stub then passes requests on to it. */
+export function markCommandRoutesRegistered(app: Hono<AppEnv>): void {
+  appsWithCommandRoutes.add(app);
+}
 
 const ExchangeBody = z.strictObject({ code: z.string().min(1).max(256) });
 
@@ -110,9 +118,12 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     return c.json({ revoked });
   });
 
-  // Command stub: the full credential rules apply now; the command service lands in M4.
-  const notYet = (c: Context<AppEnv>) =>
-    apiError(c, 501, "not_implemented", "Commands arrive with the command service (M4)");
+  // Command stub: the full credential rules apply, and it answers 501 until the command service
+  // registers its routes (`registerCommandRoutes`), after which it passes requests on to them.
+  const notYet = (c: Context<AppEnv>, next: Next) =>
+    appsWithCommandRoutes.has(app)
+      ? next()
+      : apiError(c, 501, "not_implemented", "Commands arrive with the command service (M4)");
   app.post("/v1/commands", requireScope("command"), notYet);
   app.get("/v1/commands/:id", requireScope("command"), notYet);
 

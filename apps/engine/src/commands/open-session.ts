@@ -30,9 +30,9 @@ export interface OpenSessionDeps {
   config: OpenSessionConfig;
   execFile: OpenSessionExecFile;
   /**
-   * Directory check for the request cwd. Optional so callers with a fake `execFile` need no real
-   * path, but the production wiring (the M4.03 command service) must pass `defaultIsDirectory`:
-   * without it a cwd that is a file (such as an `x.command` script) reaches the opener.
+   * Directory check for the request cwd. Defaults to `defaultIsDirectory`, so a caller that
+   * leaves it out fails closed: a cwd that is a file (such as an `x.command` script) or missing
+   * never reaches the opener. Tests with a fake `execFile` pass their own check.
    */
   isDirectory?: (path: string) => Promise<boolean>;
 }
@@ -117,7 +117,8 @@ export async function openSession(
   // The cwd only reaches the opener through a `{cwd}` placeholder, so a template without one
   // needs no directory (a session can start without a working directory).
   const usesCwd = template.some((arg) => arg.includes("{cwd}"));
-  if (usesCwd && deps.isDirectory && !(await deps.isDirectory(cwd))) {
+  const isDirectory = deps.isDirectory ?? defaultIsDirectory;
+  if (usesCwd && !(await isDirectory(cwd))) {
     return {
       status: "failed",
       reason: "invalid-value",
