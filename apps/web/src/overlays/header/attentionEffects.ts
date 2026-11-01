@@ -59,7 +59,7 @@ function desktopNotificationsEnabled(): boolean {
 function raise(notification: DesktopNotification): void {
   const shown = new Notification(`${plainText(notification.projectName)} needs you`, {
     body: `${plainText(notification.agentId)} is waiting for your answer`,
-    // The request ID makes the tag, so the browser never shows the same request twice.
+    // The request that opened the entry makes the tag, so a re-entry (a new request) shows again.
     tag: notification.key,
   });
   shown.onclick = () => {

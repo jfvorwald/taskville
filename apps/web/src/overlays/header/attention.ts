@@ -119,7 +119,7 @@ export function isDesktopNotificationsEnabled(settings: OverlaySettings): boolea
 export type NotificationPermissionState = "default" | "granted" | "denied";
 
 export interface DesktopNotification {
-  /** Stable for the request, so it can serve as the notification `tag` and dedupe. */
+  /** Stable for the entry (the project and the request that opened it): the notification `tag`. */
   key: string;
   projectId: string;
   projectName: string;
@@ -144,10 +144,15 @@ export interface NotificationDecision {
 }
 
 const requestKey = (projectId: string, requestId: string) => `${projectId}:${requestId}`;
+const agentKey = (projectId: string, agentId: string) => `${projectId}\u0000${agentId}`;
 
 /**
- * One notification per `needs_you` request that is in `next` and was not in `previous`. Silent
- * when the viewer is already looking at that project in a visible, focused tab.
+ * One notification per agent that enters `needs_you` in a project: it has a `needs_you` record in
+ * `next` and none in `previous`. A request swap while the agent stays in needs-you (the bridge's
+ * request replacing the telemetry one) is not an entry, and neither is a second request from an
+ * agent that already needs you. Leaving and re-entering is a new entry. The notification names the
+ * request that opened the entry. Silent when the viewer is already looking at that project in a
+ * visible, focused tab.
  */
 export function decideDesktopNotifications(input: NotificationDecision): DesktopNotification[] {
   const { previous, next, enabled, permission, view } = input;
@@ -155,9 +160,7 @@ export function decideDesktopNotifications(input: NotificationDecision): Desktop
   const known = new Set<string>();
   for (const project of Object.values(previous)) {
     for (const record of project.attention) {
-      if (record.level === "needs_you" && record.requestId !== undefined) {
-        known.add(requestKey(project.projectId, record.requestId));
-      }
+      if (record.level === "needs_you") known.add(agentKey(project.projectId, record.agentId));
     }
   }
   const fired: DesktopNotification[] = [];
@@ -165,11 +168,11 @@ export function decideDesktopNotifications(input: NotificationDecision): Desktop
     if (view.visible && view.focused && view.projectId === project.projectId) continue;
     for (const record of project.attention) {
       if (record.level !== "needs_you" || record.requestId === undefined) continue;
-      const key = requestKey(project.projectId, record.requestId);
-      if (known.has(key)) continue;
-      known.add(key);
+      const entered = agentKey(project.projectId, record.agentId);
+      if (known.has(entered)) continue;
+      known.add(entered);
       fired.push({
-        key,
+        key: requestKey(project.projectId, record.requestId),
         projectId: project.projectId,
         projectName: project.name,
         agentId: record.agentId,
