@@ -45,6 +45,7 @@ export function recordedCardTarget(args: {
       sinceMs: Date.parse(request.openedAt),
       answerable: false,
       requestState: request.state,
+      ...(request.heuristic === true ? { heuristic: true } : {}),
     };
   }
   return null;

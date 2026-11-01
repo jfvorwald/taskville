@@ -471,6 +471,11 @@ function CardBody({
       data-readonly={readOnly ? "true" : undefined}
     >
       <h2 className={styles.title}>{visibleControls(target.agentName)}</h2>
+      {target.heuristic === true && (
+        <p className={styles.hint}>
+          Possibly needs you: the source guessed which agent this request belongs to.
+        </p>
+      )}
       <dl className={styles.facts}>
         <dt>Project</dt>
         <dd>{projectId === null ? null : visibleControls(projectId)}</dd>
