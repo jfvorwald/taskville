@@ -66,3 +66,32 @@ describe("agentLabel", () => {
     expect(agentLabel(view({ displayName: "\u0000 " })).name).toBe("agent-ab");
   });
 });
+
+// A UTF-16 slice can cut an emoji in half and leave a lone surrogate, which renders as a
+// replacement glyph (and makes `String#isWellFormed` false).
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+describe("agentLabel truncation keeps surrogate pairs whole", () => {
+  it("does not split an emoji that straddles the name cap", () => {
+    // NAME_MAX is 24 and the ellipsis is 3, so the cut falls after 21 code units. Put the
+    // pair at code units 20 and 21 so a plain slice keeps only its high half.
+    for (let pad = 17; pad <= 22; pad++) {
+      const name = agentLabel(view({ displayName: `${"x".repeat(pad)}😀😀😀😀😀😀` })).name;
+      expect(name, `pad ${pad}`).not.toMatch(LONE_SURROGATE);
+      expect(name.length, `pad ${pad}`).toBeLessThanOrEqual(24);
+    }
+  });
+
+  it("still ends in an ellipsis and keeps the leading text after a safe cut", () => {
+    const name = agentLabel(view({ displayName: `${"x".repeat(20)}😀😀😀😀😀😀` })).name;
+    expect(name.startsWith("x".repeat(20))).toBe(true);
+    expect(name.endsWith("...")).toBe(true);
+  });
+
+  it("does not split an emoji at the short-id fallback boundary", () => {
+    // ID_SHORT is 8: the pair sits at code units 7 and 8.
+    const name = agentLabel(view({ id: "abcdefg😀tail" })).name;
+    expect(name).not.toMatch(LONE_SURROGATE);
+    expect(name.startsWith("abcdefg")).toBe(true);
+  });
+});

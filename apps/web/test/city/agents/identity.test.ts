@@ -69,3 +69,76 @@ describe("agentColors", () => {
     expect(a.body).not.toBe(b.body);
   });
 });
+
+/** Hue in degrees, 0 to 360, of a `#rrggbb` color. */
+function hueOf(hex: string): number {
+  const n = Number.parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (d === 0) return 0;
+  let h: number;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+// ARCHITECTURE 2.2: red and amber belong to "needs you" and "trouble", so no identity color may
+// look like them. Hue bands are the CTO's decision on this ticket: [345, 360), [0, 20], [30, 50].
+function inReservedHue(hue: number): boolean {
+  return hue >= 345 || hue <= 20 || (hue >= 30 && hue <= 50);
+}
+
+describe("identity colors avoid the attention hues", () => {
+  const reserved = (hex: string) => inReservedHue(hueOf(hex));
+
+  it("never gives a session, teammate or subagent body a red or amber hue", () => {
+    const bad: string[] = [];
+    for (let i = 0; i < 2000; i++) {
+      const colors = [
+        agentColors(view({ id: `agent-${i}` })).body,
+        agentColors(view({ id: `a${i}`, sourceId: "cc", sourceAgentId: `s-${i}` })).body,
+        agentColors(view({ id: `t${i}`, kind: "teammate", teamId: "t1", displayName: `m${i}` }))
+          .body,
+        agentColors(view({ id: `u${i}`, kind: "subagent", agentType: `type-${i}` })).body,
+      ];
+      for (const c of colors) if (reserved(c)) bad.push(`${c} (hue ${Math.round(hueOf(c))})`);
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+  });
+
+  it("keeps the hash-derived trims (team scarf, parent color) out of the reserved hues too", () => {
+    const bad: string[] = [];
+    for (let i = 0; i < 2000; i++) {
+      const scarf = agentColors(
+        view({ id: `t${i}`, kind: "lead", teamId: `team-${i}`, displayName: "lead" }),
+      ).trim;
+      const parentTrim = agentColors(
+        view({
+          id: `u${i}`,
+          kind: "subagent",
+          agentType: "Explore",
+          parentIdentity: `cc:parent-${i}`,
+        }),
+      ).trim;
+      for (const c of [scarf, parentTrim]) {
+        if (reserved(c)) bad.push(`${c} (hue ${Math.round(hueOf(c))})`);
+      }
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+  });
+
+  it("still separates identities and stays stable once the bands are excluded", () => {
+    const make = (i: number) => view({ id: `agent-${i}`, sourceId: "cc", sourceAgentId: `s-${i}` });
+    const bodies = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const first = agentColors(make(i));
+      expect(agentColors(make(i))).toEqual(first);
+      bodies.add(first.body);
+    }
+    expect(bodies.size).toBeGreaterThanOrEqual(150);
+  });
+});
