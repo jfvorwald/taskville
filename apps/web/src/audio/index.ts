@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { dataStore } from "../data/store.ts";
+import { attentionStore } from "../overlays/header/attentionSync.ts";
 import { themeController } from "../themes/core/index.ts";
 import { createWebAudioBackend } from "./backend.ts";
 import { connectSoundscape } from "./connect.ts";
 import { loadAmbientLoop } from "./loops.ts";
 import { getSoundSettingsStore } from "./settings.ts";
-import { createSoundscape, type Soundscape } from "./soundscape.ts";
+import { type ChimingSoundscape, createSoundscape, type Soundscape } from "./soundscape.ts";
 
 export type { AudioBackend, Cue } from "./backend.ts";
 export { createWebAudioBackend } from "./backend.ts";
@@ -17,15 +18,15 @@ export {
   type SoundSettings,
   type SoundSettingsStore,
 } from "./settings.ts";
-export { createSoundscape, type Soundscape } from "./soundscape.ts";
+export { type ChimingSoundscape, createSoundscape, type Soundscape } from "./soundscape.ts";
 
-let appSoundscape: Soundscape | undefined;
+let appSoundscape: ChimingSoundscape | undefined;
 
 /**
  * The app-wide soundscape, created on first use. Off until `enable()` is called from a click, and
  * it creates no AudioContext before that.
  */
-export function getSoundscape(): Soundscape {
+export function getSoundscape(): ChimingSoundscape {
   appSoundscape ??= createSoundscape({
     backend: createWebAudioBackend(),
     settings: getSoundSettingsStore(),
@@ -35,10 +36,15 @@ export function getSoundscape(): Soundscape {
   return appSoundscape;
 }
 
-/** Feeds live attention, live events and the current theme to the soundscape while mounted. */
+/** Feeds the global attention feed, live events and the current theme to the soundscape while mounted. */
 export function useSoundscape(): void {
   useEffect(
-    () => connectSoundscape(getSoundscape(), { data: dataStore, theme: themeController.store }),
+    () =>
+      connectSoundscape(getSoundscape(), {
+        attention: attentionStore,
+        data: dataStore,
+        theme: themeController.store,
+      }),
     [],
   );
 }

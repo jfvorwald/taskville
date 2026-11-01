@@ -35,9 +35,15 @@ export interface Soundscape {
   setHistory(history: boolean): void;
 }
 
+/** A soundscape that can also chime on demand, for a caller that decides itself who entered. */
+export interface ChimingSoundscape extends Soundscape {
+  /** One needs-you chime, unless sound is off, muted, or in history mode. */
+  chime(): void;
+}
+
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
-export function createSoundscape(options: SoundscapeOptions): Soundscape {
+export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape {
   const { backend, settings, loadLoop } = options;
   let theme = options.theme;
   let enabled = false;
@@ -155,6 +161,10 @@ export function createSoundscape(options: SoundscapeOptions): Soundscape {
       for (const id of now) if (!red.has(id)) entered = true;
       red = now;
       if (entered && !silenced()) backend.playCue("chime");
+    },
+
+    chime() {
+      if (!silenced()) backend.playCue("chime");
     },
 
     handleEvent(event) {
