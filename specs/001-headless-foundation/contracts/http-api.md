@@ -35,7 +35,7 @@ Route access:
 
 | Route | CLI token | Browser session | Bridge token |
 | --- | --- | --- | --- |
-| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events` | yes | yes | no |
+| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/attention/events` | yes | yes | no |
 | `POST /v1/events/batch`, `POST /v1/projects`, `POST /v1/pairing/revoke` | yes | no | no |
 | `POST /v1/commands`, `GET /v1/commands/:id` | **never** | yes | **never** |
 | `POST /v1/pairing` | no credential; pairing code in body | | |
@@ -118,6 +118,36 @@ Other subscribers are unaffected. A cut-off client that has not read the final
 above that the route answers `503 too_many_streams`. Revoking pairings
 (`POST /v1/pairing/revoke`) ends every stream opened with a browser session
 (security review #17, F1 and F5).
+
+### `GET /v1/attention/events` (SSE, M4.01)
+
+The global attention feed: which projects have an agent that needs you or is in
+trouble, whichever project a client is viewing. `Content-Type: text/event-stream`.
+CLI token or paired browser session; the bridge token gets `403 credential_not_allowed`.
+No CORS headers. Counts toward the same 64-stream cap (`503 too_many_streams`), and
+revoking pairings ends a feed opened with a browser session.
+
+```text
+event: snapshot           (first frame, no id)
+data: {"projects":[{"projectId","name","attention":Attention[]}],"computedAt"}
+
+event: attention          (a project's set changed, no id)
+data: {"projectId","name","attention":Attention[],"computedAt"}
+
+event: heartbeat          (every 15 s, no id)
+data: {}
+```
+
+`attention` holds only the `needs_you` and `trouble` records of the domain
+`attention(state, now)` selector at `computedAt` (engine clock), never `waiting`;
+silence-based trouble keeps `heuristic: true`. The snapshot lists only projects with
+at least one such record. An `attention` frame with an empty array means the project
+cleared. A frame is sent only when the set of records changes (agent, level, kind,
+request ID); a change in reason text alone sends nothing. The engine recomputes on
+each commit and on a timer (30 s by default, `BootOptions.attentionTickMs`) so
+silence appears without an event. Frames carry no `id` and the feed is not resumable:
+a reconnect starts with a fresh snapshot, which replaces what the client held. A client
+that stops reading fills its 1,000 frame queue and is disconnected.
 
 ### `POST /v1/commands`, `GET /v1/commands/:id` (M4.03)
 
@@ -227,7 +257,6 @@ The exact tool input stays in memory for the decision card; events carry the mas
 
 ## Later routes (ARCHITECTURE.md section 10, not in this feature)
 
-`GET /v1/attention/events` (M4.01), `POST /v1/sources/claude-code/hooks` (M2),
-`GET /v1/agents/:id/feed` and
+`POST /v1/sources/claude-code/hooks` (M2), `GET /v1/agents/:id/feed` and
 `GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06), timelines (M6),
 imports (M8), OTLP (M5.12). Each inherits the security checks above.
