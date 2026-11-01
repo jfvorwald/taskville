@@ -133,6 +133,45 @@ describe("fetchExactInput", () => {
     };
     expect(await fetchExactInput({ ...args, fetch })).toStrictEqual({ kind: "failed" });
   });
+
+  // M4.07 review fix (L1): the body must be for the request that was asked about.
+  it("reports failed for a 200 whose requestId is not the one requested", async () => {
+    const other = { ...held, requestId: "req/2" };
+    expect(await fetchExactInput({ ...args, fetch: async () => json(200, other) })).toStrictEqual({
+      kind: "failed",
+    });
+  });
+
+  // M4.07 review fix (code review 8): the card aborts the request when it goes away.
+  it("passes an AbortSignal to fetch when given one", async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn(async () => json(200, held));
+    await fetchExactInput({ ...args, fetch, signal: controller.signal });
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+    expect(new Headers(init.headers).get("X-Taskville-Session")).toBe(SECRET);
+  });
+
+  it("reports failed when the request is aborted", async () => {
+    const controller = new AbortController();
+    const fetch = (_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    const pending = fetchExactInput({
+      ...args,
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      signal: controller.signal,
+    });
+    controller.abort();
+    const settled = await Promise.race([
+      pending,
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 300)),
+    ]);
+    expect(settled).toStrictEqual({ kind: "failed" });
+  });
 });
 
 describe("sendCommand", () => {

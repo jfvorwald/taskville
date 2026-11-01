@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { type JsonValue, redactJson } from "../../../../../packages/adapters/src/redact/json.ts";
 import { inputText } from "../../../src/overlays/action-card/input.ts";
 import { inputMaskSpans, maskSpans } from "../../../src/overlays/action-card/mask.ts";
 
@@ -272,5 +273,105 @@ describe("inputMaskSpans: shape and non-secrets", () => {
   it("falls back to the text pass for a Bash command input", () => {
     const { text, spans } = shown({ command: `export GH=${GITHUB}` });
     expect(spans.map((s) => text.slice(s.start, s.end))).toEqual([GITHUB]);
+  });
+});
+
+// --- H1 (security review): secrets in multi-line strings of a pretty-JSON input ---------------
+//
+// Pretty JSON shows a newline in a string as backslash and n, so the text pass reads `\nsk_live_..`
+// as one word and misses the key, and reads a quoted or indented assignment differently. The
+// property pinned here: every secret the engine's `redactJson` finds in a raw string value, in
+// whatever form it appears in the displayed text, lies inside some mask span. A span may be wider
+// than the secret (fail closed); it may not be narrower.
+
+const STRIPE = "sk_live_abcdefghijklmnop1234";
+const PEM =
+  "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nabcdEFGH1234\n-----END PRIVATE KEY-----";
+
+/** The substrings of string values that `redactJson` masked, as raw strings. */
+function engineSecrets(toolInput: JsonValue): string[] {
+  const secrets: string[] = [];
+  for (const { path, spans } of redactJson(toolInput).masks) {
+    const node = path.reduce<unknown>(
+      (at, key) => (at as Record<string | number, unknown>)[key],
+      toolInput,
+    );
+    if (typeof node !== "string") continue;
+    for (const span of spans) secrets.push(node.slice(span.start, span.end));
+  }
+  return secrets;
+}
+
+/** Every offset at which `needle` starts in `haystack`. */
+function occurrences(haystack: string, needle: string): number[] {
+  const found: number[] = [];
+  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+    found.push(at);
+  }
+  return found;
+}
+
+describe("inputMaskSpans: every secret redactJson finds in a multi-line string is masked", () => {
+  const cases: Array<[string, JsonValue]> = [
+    [
+      "a written .env file",
+      { file_path: ".env", content: `A=1\nDB_PASSWORD=hunter2x9\nSTRIPE=${STRIPE}` },
+    ],
+    [
+      "a Bash heredoc with a description",
+      {
+        command: `cat > .env <<'EOF'\nA=1\nDB_PASSWORD=hunter2x9\nSTRIPE=${STRIPE}\nEOF`,
+        description: "write the env file",
+      },
+    ],
+    ["a provider key alone on its own line", { file_path: ".env", content: `A=1\n${STRIPE}\nB=2` }],
+    [
+      "a provider key at the start of a later line",
+      { file_path: ".env", content: `A=1\n\n${GITHUB}\nB=2` },
+    ],
+    [
+      "an indented, quoted assignment",
+      { file_path: ".env", content: `A=1\n\tDB_PASSWORD="hunter2x9"\nB=2` },
+    ],
+    ["a PEM private key", { file_path: "k.pem", content: PEM }],
+    [
+      "a bearer token on a later line",
+      {
+        command: "curl x",
+        description: `step 1\nAuthorization: Bearer abcdefghijklmnop1234\nstep 3`,
+      },
+    ],
+  ];
+
+  it.each(cases)("%s", (_name, toolInput) => {
+    const text = inputText(toolInput);
+    const spans = inputMaskSpans(toolInput, text);
+    const secrets = engineSecrets(toolInput);
+    expect(secrets.length).toBeGreaterThan(0);
+    for (const secret of secrets) {
+      // The secret as the text shows it: raw, or with JSON escapes.
+      const forms = [secret, JSON.stringify(secret).slice(1, -1)];
+      const where = forms.flatMap((form) => occurrences(text, form).map((at) => [at, form.length]));
+      expect(where.length, `"${secret}" is in the displayed text`).toBeGreaterThan(0);
+      for (const [at, length] of where) {
+        const covered = spans.some((s) => s.start <= at && at + length <= s.end);
+        expect(covered, `"${secret}" at ${at} is inside a mask span`).toBe(true);
+      }
+    }
+  });
+
+  it("masks the whole displayed input when the value layout cannot be mapped and redactJson found a mask", () => {
+    // `text` is not the two-space pretty layout of `toolInput`, so ranges cannot be trusted.
+    const toolInput = { file_path: "a", password: { value: "hunter2-nested" } };
+    const text = JSON.stringify(toolInput);
+    const spans = inputMaskSpans(toolInput, text);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.start).toBe(0);
+    expect(spans[0]?.end).toBe(text.length);
+  });
+
+  it("does not mask the whole input when the layout cannot be mapped but redactJson found nothing", () => {
+    const toolInput = { file_path: "a", flags: ["-a", "-b"] };
+    expect(inputMaskSpans(toolInput, JSON.stringify(toolInput))).toEqual([]);
   });
 });

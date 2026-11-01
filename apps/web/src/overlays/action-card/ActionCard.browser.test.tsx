@@ -33,6 +33,8 @@ let clock = NOW;
 const SECRET_HEADER = "X-Taskville-Session";
 const SESSION_SECRET = "secret-1";
 const RAW = "SECRET-RAW-TEXT /Users/me/private";
+/** How long a test waits for Allow: the exact input renders, then Allow settles for ~500 ms. */
+const SETTLE = 4000;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -429,7 +431,7 @@ describe("ActionCard: exact input", () => {
     await expect.element(deny()).toBeEnabled();
     await expect.element(openSession()).toBeEnabled();
     pending.resolve(json(200, held()));
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 
   it("says so, and keeps Allow disabled, when the input cannot be loaded", async () => {
@@ -480,7 +482,7 @@ describe("ActionCard: masked secrets", () => {
     await reveals().first().click();
     expect(inputEl()?.textContent).toContain(GITHUB);
     expect(reveals().elements()).toHaveLength(0);
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 
   it("sends nothing when a disabled Allow is clicked", async () => {
@@ -505,7 +507,7 @@ describe("ActionCard: masked secrets", () => {
     await mount();
     await loaded();
     expect(reveals().elements()).toHaveLength(0);
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 });
 
@@ -579,7 +581,7 @@ describe("ActionCard: masked values sealed whole", () => {
     await reveals().first().click();
     expect(inputEl()?.textContent).toContain(c.shownAfterReveal);
     expect(reveals().elements()).toHaveLength(0);
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 
   it("keeps Allow off until a sealed value and a text-pass secret are both revealed", async () => {
@@ -592,7 +594,7 @@ describe("ActionCard: masked values sealed whole", () => {
     await reveals().first().click();
     await expect.element(allow()).toBeDisabled();
     await reveals().first().click();
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 });
 
@@ -686,7 +688,7 @@ describe("ActionCard: Allow once, Deny, Open session", () => {
     await loaded();
     await allow().click();
     await vi.waitFor(() => expect(posts(engine)).toHaveLength(1));
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
     await allow().click();
     await vi.waitFor(() => expect(posts(engine)).toHaveLength(2));
     const [first, second] = posts(engine).map((p) => p.body?.idempotencyKey);
@@ -772,7 +774,7 @@ describe("ActionCard: Allow once, Deny, Open session", () => {
     await vi.waitFor(() => expect(cardText()).toMatch(/copied/i));
     // Opening a session does not answer the prompt: the decision stays open.
     expect(stateOf()).toBe("open");
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 
   it("opened: says the session was opened", async () => {
@@ -859,26 +861,13 @@ describe("ActionCard: states", () => {
     await expectAllDisabled();
   });
 
-  it("expired at open (410 on the exact input): the bridge no longer holds it", async () => {
+  it("a recorded `expired` outranks everything: says expired, disables every button", async () => {
     const engine = createEngine();
     engine.input = () => errorResponse(410, "request_expired");
-    await mount({ engine });
+    const store = makeStore({ requests: { "req-1": request({ state: "expired" }) } });
+    await mount({ engine, store });
     await vi.waitFor(() => expect(stateOf()).toBe("expired"));
     expect(cardText()).toMatch(/expired/i);
-    expect(cardText()).toMatch(/terminal/i);
-    expect(cardText()).not.toContain(RAW);
-    await expectAllDisabled();
-  });
-
-  it("expired when sending (410 request_expired): says expired, disables every button", async () => {
-    const engine = createEngine();
-    engine.command = () => errorResponse(410, "request_expired");
-    await mount({ engine });
-    await loaded();
-    await allow().click();
-    await vi.waitFor(() => expect(stateOf()).toBe("expired"));
-    expect(cardText()).toMatch(/expired/i);
-    expect(cardText()).not.toMatch(/sent, unconfirmed/i);
     await expectAllDisabled();
   });
 
@@ -937,7 +926,7 @@ describe("ActionCard: states", () => {
     await vi.waitFor(() => expect(cardText()).toMatch(/try again/i));
     expect(cardText()).not.toContain(RAW);
     expect(stateOf()).toBe("open");
-    await expect.element(allow()).toBeEnabled();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
   });
 });
 
@@ -1046,5 +1035,805 @@ describe("ActionCard: history mode is read-only (ARCHITECTURE 3)", () => {
     await mount();
     await loaded();
     expect(cardEl()?.hasAttribute("data-readonly")).toBe(false);
+  });
+});
+
+// =================================================================================================
+// M4.07 review-fix round (security review BLOCKED on H1, code review BLOCKED on coverage)
+//
+// Names and behaviour the implementer must provide, beyond what the tests above already pin:
+//   - `fetchExactInput({ ..., signal? })` passes `signal` to fetch; the card aborts it on unmount
+//     and when the selection moves to another request.
+//   - Timeouts use `setTimeout` (not `AbortSignal.timeout`): a wait of 5 to 15 s per engine call.
+//   - A persistent `role="status"` element, the first one inside the card, exists from the start.
+//   - `visibleControls(text)` in format.ts (see test/overlays/action-card/format.test.ts).
+// =================================================================================================
+
+const STRIPE = "sk_live_abcdefghijklmnop1234";
+const SLACK = "xoxb-1234567890-abcdefghij";
+
+/** Click reveal buttons one at a time until none remain. */
+async function revealAll() {
+  for (let i = 0; i < 20 && reveals().elements().length > 0; i++) {
+    await reveals().first().click();
+  }
+}
+
+/** Texts of the enabled buttons in the card. */
+const enabledButtons = () =>
+  Array.from(cardEl()?.querySelectorAll("button:not(:disabled)") ?? []).map((b) =>
+    (b.textContent ?? "").trim(),
+  );
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The characters of `text` that hide or reorder what is read: C0 and C1 controls (but not tab and
+ * newline), bidi formatting, zero-width characters and the byte order mark.
+ */
+function hiddenChars(text: string): string[] {
+  return Array.from(text).filter((ch) => {
+    const c = ch.codePointAt(0) ?? 0;
+    return (
+      (c <= 0x1f && c !== 0x09 && c !== 0x0a) ||
+      (c >= 0x7f && c <= 0x9f) ||
+      (c >= 0x200b && c <= 0x200f) ||
+      (c >= 0x202a && c <= 0x202e) ||
+      c === 0x2060 ||
+      (c >= 0x2066 && c <= 0x2069) ||
+      c === 0x061c ||
+      c === 0xfeff
+    );
+  });
+}
+
+function twoAgents() {
+  return makeStore({
+    agents: { a1: { id: "a1", displayName: "Ada" }, a2: { id: "a2", displayName: "Bo" } },
+    requests: {
+      "req-1": request(),
+      "req-2": request({ id: "req-2", agentId: "a2", sessionId: "sess-2" }),
+    },
+    attention: [needsYou("a1", "req-1"), needsYou("a2", "req-2")],
+  });
+}
+
+/** An engine whose exact-input route answers per request id. */
+function routedEngine(inputs: Record<string, unknown>) {
+  const engine = createEngine();
+  engine.input = () => {
+    const id = (engine.calls[engine.calls.length - 1]?.path ?? "").split("/")[3] ?? "";
+    return json(200, { ...held(inputs[id]), requestId: id });
+  };
+  return engine;
+}
+
+/** A request that never answers, until its signal aborts it. */
+function hang(init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () =>
+      reject(new DOMException("aborted", "AbortError")),
+    );
+  });
+}
+
+function hangOn(engine: Engine, match: (url: string, init?: RequestInit) => boolean) {
+  const base = engine.fetch;
+  engine.fetch = ((url: RequestInfo | URL, init?: RequestInit) =>
+    match(String(url), init) ? hang(init) : base(url, init)) as typeof fetch;
+}
+
+/** The signals the card passes with its GETs of the exact input. */
+function trackSignals(engine: Engine) {
+  const signals: AbortSignal[] = [];
+  const base = engine.fetch;
+  engine.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+    if (String(url).startsWith("/v1/requests/") && init?.signal) signals.push(init.signal);
+    return base(url, init);
+  }) as typeof fetch;
+  return signals;
+}
+
+/**
+ * Takes over `setTimeout` for waits of 5 to 30 s (the fetch timeout is 10 s) so a test can end
+ * them at once. Shorter waits (the 500 ms settle, polling) run for real.
+ */
+function holdLongTimers() {
+  const realSet = window.setTimeout.bind(window);
+  const realClear = window.clearTimeout.bind(window);
+  const pending = new Map<number, () => void>();
+  const delays: number[] = [];
+  let next = -1;
+  const set = vi.spyOn(window, "setTimeout").mockImplementation(((
+    fn: TimerHandler,
+    ms?: number,
+    ...args: unknown[]
+  ) => {
+    if (typeof fn === "function" && typeof ms === "number" && ms >= 5000 && ms <= 30_000) {
+      const id = next--;
+      delays.push(ms);
+      pending.set(id, () => fn(...args));
+      return id;
+    }
+    return realSet(fn, ms, ...args);
+  }) as unknown as typeof setTimeout);
+  const clear = vi.spyOn(window, "clearTimeout").mockImplementation(((id?: number) => {
+    if (id !== undefined && pending.has(id)) pending.delete(id);
+    else realClear(id);
+  }) as typeof clearTimeout);
+  return {
+    count: () => pending.size,
+    delays,
+    fire: () => {
+      for (const run of [...pending.values()]) run();
+      pending.clear();
+    },
+    restore: () => {
+      set.mockRestore();
+      clear.mockRestore();
+    },
+  };
+}
+
+// --- H1: secrets in multi-line strings of a pretty-JSON input ---------------------------------
+//
+// A structured input is shown as pretty JSON, where a newline in a string is the two characters
+// backslash and n. The text redactor read that escaped text and missed secrets that sit after a
+// newline. Whatever `redactJson` finds in the raw value must be masked in the card (the whole
+// displayed string may be masked: fail closed), absent from the markup until revealed, and Allow
+// stays off until revealed.
+
+describe("ActionCard: secrets in multi-line strings of a structured input (H1)", () => {
+  const cases: Array<{ name: string; toolInput: unknown; hidden: string[] }> = [
+    {
+      name: "a written .env file with a sensitive assignment and a provider key",
+      toolInput: {
+        file_path: ".env",
+        content: `A=1\nDB_PASSWORD=hunter2x9\nSTRIPE=${STRIPE}`,
+      },
+      hidden: ["hunter2x9", STRIPE],
+    },
+    {
+      name: "a Bash heredoc with a description",
+      toolInput: {
+        command: `cat > .env <<'EOF'\nA=1\nDB_PASSWORD=hunter2x9\nSTRIPE=${STRIPE}\nEOF`,
+        description: "write the env file",
+      },
+      hidden: ["hunter2x9", STRIPE],
+    },
+    {
+      name: "a provider key alone on its own line",
+      toolInput: { file_path: ".env", content: `A=1\n${STRIPE}\nB=2` },
+      hidden: [STRIPE],
+    },
+    {
+      name: "an indented, quoted assignment",
+      toolInput: { file_path: ".env", content: `A=1\n\tDB_PASSWORD="hunter2x9"\nB=2` },
+      hidden: ["hunter2x9"],
+    },
+    {
+      name: "a PEM private key",
+      toolInput: {
+        file_path: "k.pem",
+        content:
+          "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nabcdEFGH1234\n-----END PRIVATE KEY-----",
+      },
+      hidden: ["MIIEvQIBADANBgkqhkiG9w0BAQEFAASC"],
+    },
+  ];
+
+  it.each(cases)("$name: masked, absent from the markup, Allow off until revealed", async (c) => {
+    const engine = createEngine();
+    engine.input = () => json(200, held(c.toolInput));
+    await mount({ engine });
+    await loaded();
+    await expect.poll(() => reveals().elements().length).toBeGreaterThan(0);
+    for (const fragment of c.hidden) {
+      expect(inputEl()?.textContent).not.toContain(fragment);
+      expect(cardEl()?.innerHTML).not.toContain(fragment);
+    }
+    await sleep(700);
+    await expect.element(allow()).toBeDisabled();
+
+    await revealAll();
+    for (const fragment of c.hidden) expect(inputEl()?.textContent).toContain(fragment);
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+  });
+});
+
+// --- M1: characters that hide or reorder text are made visible ---------------------------------
+
+describe("ActionCard: invisible and reordering characters are shown as <U+XXXX> (M1)", () => {
+  it("marks them in a Bash command, and keeps newline and tab as they are", async () => {
+    const engine = createEngine();
+    engine.input = () =>
+      json(200, held({ command: "ls \u202egnp.exe\u200b\u0007 \u0085end\tTAB\nnext" }));
+    await mount({ engine });
+    await vi.waitFor(() =>
+      expect(inputEl()?.textContent).toBe(
+        "ls <U+202E>gnp.exe<U+200B><U+0007> <U+0085>end\tTAB\nnext",
+      ),
+    );
+    expect(hiddenChars(cardEl()?.textContent ?? "")).toEqual([]);
+  });
+
+  it("marks them in a pretty-JSON input", async () => {
+    const engine = createEngine();
+    engine.input = () =>
+      json(200, held({ command: "echo hi", description: "a\u202eb\u2069c\u2060d\ufeffe" }));
+    await mount({ engine });
+    await vi.waitFor(() =>
+      expect(inputEl()?.textContent).toContain("a<U+202E>b<U+2069>c<U+2060>d<U+FEFF>e"),
+    );
+    expect(hiddenChars(cardEl()?.textContent ?? "")).toEqual([]);
+  });
+
+  it("marks them in the agent name, session id, tool name and working directory", async () => {
+    const engine = createEngine();
+    engine.input = () => json(200, { ...held(), cwd: "/work/\u2066app\u200d" });
+    const store = makeStore({
+      agents: { a1: { id: "a1", displayName: "Ada\u202eevil" } },
+      requests: {
+        "req-1": request({ sessionId: "sess\u200b-1", toolName: "Ba\u0007sh" }),
+      },
+    });
+    await mount({ engine, store });
+    await loaded();
+    await vi.waitFor(() => expect(cardText()).toContain("/work/<U+2066>app<U+200D>"));
+    expect(cardText()).toContain("Ada<U+202E>evil");
+    expect(cardText()).toContain("sess<U+200B>-1");
+    expect(cardText()).toContain("Ba<U+0007>sh");
+    expect(hiddenChars(cardEl()?.textContent ?? "")).toEqual([]);
+  });
+
+  it.each([
+    ["a Bash command", { command: `echo \u202e ${GITHUB}\u200b done` }, "echo <U+202E> "],
+    [
+      "a pretty-JSON input",
+      { command: `echo \u202e ${GITHUB}\u200b done`, description: "d" },
+      "echo <U+202E> ",
+    ],
+  ])("keeps mask offsets right around markers in %s", async (_name, toolInput, lead) => {
+    const engine = createEngine();
+    engine.input = () => json(200, held(toolInput));
+    await mount({ engine });
+    await loaded();
+    await expect.poll(() => reveals().elements().length).toBe(1);
+    expect(inputEl()?.textContent).toContain(lead);
+    expect(inputEl()?.textContent).toContain("<U+200B> done");
+    expect(cardEl()?.innerHTML).not.toContain(GITHUB);
+    await reveals().first().click();
+    expect(inputEl()?.textContent).toContain(`${lead}${GITHUB}<U+200B> done`);
+  });
+});
+
+// --- M2: a long input must be read to the end before Allow -------------------------------------
+
+describe("ActionCard: an input that overflows its box must be scrolled to the end (M2)", () => {
+  const long = Array.from({ length: 200 }, (_, i) => `echo step ${i}`).join("\n");
+
+  it("shows how many lines there are and keeps Allow off until the box is scrolled to the end", async () => {
+    const engine = createEngine();
+    engine.input = () => json(200, held(long));
+    await mount({ engine });
+    await vi.waitFor(() => expect(inputEl()?.textContent).toBe(long));
+    const box = inputEl() as HTMLElement;
+    expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
+    expect(cardText()).toMatch(/\b200 lines\b/i);
+
+    await sleep(800); // past the settle delay
+    await expect.element(allow()).toBeDisabled();
+    box.scrollTop = Math.floor((box.scrollHeight - box.clientHeight) / 2);
+    await sleep(150);
+    await expect.element(allow()).toBeDisabled();
+    await expect.element(deny()).toBeEnabled();
+
+    box.scrollTop = box.scrollHeight;
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+  });
+
+  it("does not gate Allow for an input that fits", async () => {
+    const engine = createEngine();
+    engine.input = () => json(200, held("echo one\necho two\necho three"));
+    await mount({ engine });
+    await loaded();
+    const box = inputEl() as HTMLElement;
+    expect(box.scrollHeight).toBeLessThanOrEqual(box.clientHeight);
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+  });
+});
+
+// --- L1: the right request, and a settle delay -------------------------------------------------
+
+describe("ActionCard: the exact input must be for this request, and Allow settles (L1)", () => {
+  it("treats a 200 for a different request as a failed load", async () => {
+    const engine = createEngine();
+    engine.input = () => json(200, { ...held({ command: "rm -rf /" }), requestId: "req-OTHER" });
+    await mount({ engine });
+    await vi.waitFor(() => expect(cardText()).toMatch(/could not load/i));
+    expect(inputEl()).toBeNull();
+    expect(cardText()).not.toContain("rm -rf");
+    await expect.element(allow()).toBeDisabled();
+    await expect.element(deny()).toBeEnabled();
+  });
+
+  it("keeps Allow off for about half a second after the input renders", async () => {
+    await mount();
+    await vi.waitFor(() => expect(inputEl()?.textContent ?? "").not.toBe(""));
+    const seen = performance.now();
+    expect((allow().element() as HTMLButtonElement).disabled).toBe(true);
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    expect(performance.now() - seen).toBeGreaterThanOrEqual(300);
+  });
+
+  it("settles again for the input of a newly selected request", async () => {
+    const inputs = { "req-1": "echo one", "req-2": "echo two" };
+    const { reselect } = await mount({ store: twoAgents(), engine: routedEngine(inputs) });
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    await reselect("a2");
+    await vi.waitFor(() => expect(inputEl()?.textContent).toBe("echo two"));
+    expect((allow().element() as HTMLButtonElement).disabled).toBe(true);
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+  });
+});
+
+// --- L2, L3: the clipboard text and the note --------------------------------------------------
+
+describe("ActionCard: copy-only text and the deny note (L2, L3)", () => {
+  const dirty = "/work/app\u001b]0;pwned\u0007\nrm -rf ~\r";
+
+  it.each([
+    ["the command result's", true],
+    ["the exact input's (when the result has none)", false],
+  ])(
+    "strips control characters from the working directory in %s copy-only text",
+    async (_n, fromResult) => {
+      const writeText = stubClipboard();
+      const engine = createEngine();
+      engine.input = () => json(200, { ...held(), cwd: fromResult ? "/work/app" : dirty });
+      engine.command = (body) =>
+        json(200, {
+          command: {
+            id: "c-open",
+            type: "session.open",
+            requestId: body.requestId,
+            status: "succeeded",
+            result: {
+              outcome: "copy-only",
+              sessionId: "sess-1",
+              ...(fromResult ? { cwd: dirty } : {}),
+            },
+          },
+        });
+      await mount({ engine });
+      await loaded();
+      await openSession().click();
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      const copied = writeText.mock.calls[0]?.[0] ?? "";
+      expect(copied).toContain("sess-1");
+      expect(copied).toContain("/work/app");
+      expect(copied.split("\n")).toHaveLength(2);
+      expect(hiddenChars(copied)).toEqual([]);
+      expect(copied).not.toContain("\t");
+    },
+  );
+
+  it("limits the deny note to 1000 characters (the engine's MAX_DENY_MESSAGE_CHARS)", async () => {
+    await mount();
+    await loaded();
+    expect((note().element() as HTMLTextAreaElement).maxLength).toBe(1000);
+  });
+});
+
+// --- selection change starts clean (code review 7) ---------------------------------------------
+
+describe("ActionCard: a new selection starts clean", () => {
+  const inputs = { "req-1": `export A=${GITHUB}`, "req-2": `export B=${SLACK}` };
+
+  it("select A, reveal its mask and type a note; select B: B is masked, Allow off, note empty", async () => {
+    const { reselect } = await mount({ store: twoAgents(), engine: routedEngine(inputs) });
+    await expect.poll(() => reveals().elements().length).toBe(1);
+    await reveals().first().click();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    await note().fill("note for A");
+
+    await reselect("a2");
+    await vi.waitFor(() => expect(inputEl()?.textContent ?? "").toContain("export B="));
+    expect(cardText()).toContain("Bo");
+    expect(reveals().elements()).toHaveLength(1);
+    expect(inputEl()?.textContent).not.toContain(SLACK);
+    expect(cardEl()?.innerHTML).not.toContain(SLACK);
+    await expect.element(allow()).toBeDisabled();
+    expect((note().element() as HTMLTextAreaElement).value).toBe("");
+    expect(stateOf()).toBe("open");
+  });
+
+  it("select A, send; select B: B is open and not sent", async () => {
+    const { reselect } = await mount({ store: twoAgents(), engine: routedEngine(inputs) });
+    await expect.poll(() => reveals().elements().length).toBe(1);
+    await deny().click();
+    await vi.waitFor(() => expect(stateOf()).toBe("sent"));
+
+    await reselect("a2");
+    await vi.waitFor(() => expect(cardText()).toContain("Bo"));
+    expect(stateOf()).toBe("open");
+    expect(cardText()).not.toMatch(/sent, unconfirmed/i);
+    await expect.element(deny()).toBeEnabled();
+    await expect.element(openSession()).toBeEnabled();
+  });
+});
+
+// --- unmount (code review 8) -------------------------------------------------------------------
+
+describe("ActionCard: unmount", () => {
+  it("aborts the exact-input request with an AbortSignal", async () => {
+    const pending = deferred<Response>();
+    const engine = createEngine();
+    engine.input = () => pending.promise;
+    const signals = trackSignals(engine);
+    const { view } = await mount({ engine });
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    expect(signals[0]?.aborted).toBe(false);
+    await view.unmount();
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
+  it("aborts the request of the card that the selection moved away from", async () => {
+    const engine = routedEngine({ "req-1": "echo one", "req-2": "echo two" });
+    const base = engine.input;
+    engine.input = () =>
+      engine.calls[engine.calls.length - 1]?.path.includes("req-1")
+        ? new Promise<Response>(() => {})
+        : base();
+    const signals = trackSignals(engine);
+    const { reselect } = await mount({ store: twoAgents(), engine });
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    await reselect("a2");
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it("clears the elapsed-time interval", async () => {
+    const created: Array<{ id: unknown; ms: unknown }> = [];
+    const cleared: unknown[] = [];
+    const realSet = window.setInterval.bind(window);
+    const realClear = window.clearInterval.bind(window);
+    const set = vi.spyOn(window, "setInterval").mockImplementation(((
+      fn: TimerHandler,
+      ms?: number,
+      ...args: unknown[]
+    ) => {
+      const id = realSet(fn, ms, ...args);
+      created.push({ id, ms });
+      return id;
+    }) as unknown as typeof setInterval);
+    const clear = vi.spyOn(window, "clearInterval").mockImplementation(((id?: number) => {
+      cleared.push(id);
+      realClear(id);
+    }) as typeof clearInterval);
+    try {
+      const { view } = await mount();
+      await loaded();
+      const cards = created.filter((c) => typeof c.ms === "number" && c.ms >= 250);
+      expect(cards.length).toBeGreaterThan(0);
+      await view.unmount();
+      for (const c of cards) expect(cleared).toContain(c.id);
+    } finally {
+      set.mockRestore();
+      clear.mockRestore();
+    }
+  });
+
+  it("does nothing once unmounted when a pending session.open answers (no clipboard write)", async () => {
+    const writeText = stubClipboard();
+    const pending = deferred<Response>();
+    const engine = createEngine();
+    engine.command = () => pending.promise;
+    const { view } = await mount({ engine });
+    await loaded();
+    await openSession().click();
+    await vi.waitFor(() => expect(posts(engine)).toHaveLength(1));
+    await view.unmount();
+    pending.resolve(
+      json(200, {
+        command: {
+          id: "c-open",
+          type: "session.open",
+          status: "succeeded",
+          result: { outcome: "copy-only", sessionId: "sess-1", cwd: "/work/app" },
+        },
+      }),
+    );
+    await sleep(200);
+    expect(writeText).not.toHaveBeenCalled();
+  });
+});
+
+// --- the bridge no longer holds the request (#271 D2) ------------------------------------------
+//
+// After the fall-through the bridge drops the exact input and `decide` fails as expired. That is
+// not a dead end: the card becomes the open-session-only variant (Open session enabled, and the
+// text says the hold ended and to answer in the terminal or open the session). A state the store
+// recorded outranks it.
+
+describe("ActionCard: the bridge no longer holds the request (#271 D2)", () => {
+  async function expectOpenSessionOnly() {
+    await vi.waitFor(() => expect(cardEl()?.getAttribute("data-variant")).toBe("open-only"));
+    await expect.element(openSession()).toBeEnabled();
+    await expect.element(allow()).not.toBeInTheDocument();
+    await expect.element(deny()).not.toBeInTheDocument();
+    expect(cardText()).toMatch(/\b(hold|holds|held)\b/i);
+    expect(cardText()).toMatch(/terminal/i);
+    expect(cardText()).not.toContain(RAW);
+  }
+
+  it("a 410 on the exact input turns the card into the open-session-only variant", async () => {
+    const engine = createEngine();
+    engine.input = () => errorResponse(410, "request_expired");
+    await mount({ engine });
+    await expectOpenSessionOnly();
+  });
+
+  it("request_expired when sending turns the card into the open-session-only variant", async () => {
+    const engine = createEngine();
+    engine.command = () => errorResponse(410, "request_expired");
+    await mount({ engine });
+    await loaded();
+    await allow().click();
+    await expectOpenSessionOnly();
+    expect(cardText()).not.toMatch(/sent, unconfirmed/i);
+  });
+
+  it("Open session still works from that variant", async () => {
+    const writeText = stubClipboard();
+    const engine = createEngine();
+    engine.input = () => errorResponse(410, "request_expired");
+    await mount({ engine });
+    await expectOpenSessionOnly();
+    await openSession().click();
+    await vi.waitFor(() => expect(posts(engine)).toHaveLength(1));
+    expect(posts(engine)[0]?.body).toMatchObject({ type: "session.open", sessionId: "sess-1" });
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    ["answered_elsewhere", "answered_elsewhere", "answered_elsewhere"],
+    ["answered_here", "answered_here", undefined],
+    ["a state the card does not know", "cancelled", "closed"],
+  ])(
+    "a recorded %s outranks a 410 on the input: nothing is enabled",
+    async (_name, state, dataState) => {
+      const engine = createEngine();
+      engine.input = () => errorResponse(410, "request_expired");
+      const store = makeStore({ requests: { "req-1": request({ state }) } });
+      await mount({ engine, store });
+      await sleep(300);
+      expect(stateOf()).not.toBe("open");
+      expect(stateOf()).not.toBe("expired"); // the recorded state outranks the 410
+      if (dataState !== undefined) expect(stateOf()).toBe(dataState);
+      expect(cardEl()?.getAttribute("data-variant")).not.toBe("open-only");
+      expect(enabledButtons()).toEqual([]);
+    },
+  );
+
+  it("a state recorded after a 410 on decide takes over from the open-session-only variant", async () => {
+    const engine = createEngine();
+    engine.command = () => errorResponse(410, "request_expired");
+    const { store } = await mount({ engine });
+    await loaded();
+    await allow().click();
+    await expectOpenSessionOnly();
+    closeRequest(store, "req-1", "answered_elsewhere");
+    await vi.waitFor(() => expect(stateOf()).toBe("answered_elsewhere"));
+    expect(enabledButtons()).toEqual([]);
+  });
+});
+
+// --- a request recorded as answered here (code review 10) --------------------------------------
+
+describe("ActionCard: a request answered from another tab", () => {
+  it("shows its recorded state and disables every button", async () => {
+    const store = makeStore({ requests: { "req-1": request({ state: "answered_here" }) } });
+    await mount({ store });
+    await vi.waitFor(() => expect(stateOf()).not.toBe("open"));
+    expect(cardText()).toMatch(/answered|decision|sent|no longer open/i);
+    await expectAllDisabled();
+  });
+});
+
+// --- what counts as sent (code review 11, 12) --------------------------------------------------
+
+describe("ActionCard: sent means the engine delivered it", () => {
+  it.each([["failed"], ["requested"], ["rejected"], ["a missing status"]])(
+    "a 200 whose command status is %s is an error, not 'sent'",
+    async (status) => {
+      const engine = createEngine();
+      engine.command = (body) =>
+        json(200, {
+          command: {
+            id: "c",
+            type: "permission.decide",
+            requestId: body.requestId,
+            ...(status === "a missing status" ? {} : { status }),
+          },
+        });
+      await mount({ engine });
+      await loaded();
+      await deny().click();
+      await vi.waitFor(() => expect(posts(engine)).toHaveLength(1));
+      await sleep(150);
+      expect(enabledButtons()).toContain("Deny");
+      expect(stateOf()).toBe("open");
+      expect(cardText()).not.toMatch(/sent, unconfirmed/i);
+      expect(cardEl()?.querySelector('[role="alert"]')).not.toBeNull();
+    },
+  );
+
+  it.each([
+    ["an HTML body", () => new Response("<html>ok</html>", { status: 200 })],
+    ["an empty body", () => new Response("", { status: 200 })],
+    ["a body with no command", () => json(200, { ok: true })],
+  ])("a 200 with %s is an error, not 'sent'", async (_name, respond) => {
+    const engine = createEngine();
+    engine.command = respond;
+    await mount({ engine });
+    await loaded();
+    await deny().click();
+    await vi.waitFor(() => expect(posts(engine)).toHaveLength(1));
+    await sleep(150);
+    expect(enabledButtons()).toContain("Deny");
+    expect(stateOf()).toBe("open");
+    expect(cardText()).not.toMatch(/sent, unconfirmed/i);
+    expect(cardEl()?.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it("a network failure says the decision may have been sent, and the retry reuses the key", async () => {
+    const engine = createEngine();
+    const answer = engine.command;
+    let calls = 0;
+    engine.command = (body) => {
+      calls += 1;
+      if (calls === 1) throw new TypeError(RAW);
+      return answer(body);
+    };
+    await mount({ engine });
+    await loaded();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    await allow().click();
+    await vi.waitFor(() =>
+      expect(cardText()).toMatch(/(may|might)( already)? have been (sent|delivered|received)/i),
+    );
+    expect(cardText()).not.toContain(RAW);
+    expect(stateOf()).toBe("open");
+    await expect.element(allow()).toBeEnabled();
+
+    await allow().click();
+    await vi.waitFor(() => expect(stateOf()).toBe("sent"));
+    expect(posts(engine)).toHaveLength(2);
+    const [first, second] = posts(engine).map((p) => p.body?.idempotencyKey);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBe(first);
+  });
+});
+
+// --- timeouts (code review 13) -----------------------------------------------------------------
+
+describe("ActionCard: a request that never answers ends with a message", () => {
+  it("a hung exact-input request ends after the timeout; Deny and Open session stay usable", async () => {
+    const engine = createEngine();
+    hangOn(engine, (url) => url.startsWith("/v1/requests/"));
+    const timers = holdLongTimers();
+    try {
+      await mount({ engine });
+      await vi.waitFor(() => expect(cardText()).toMatch(/loading/i));
+      await vi.waitFor(() => expect(timers.count()).toBeGreaterThan(0));
+      expect(timers.delays.every((ms) => ms >= 5000 && ms <= 15_000)).toBe(true);
+      timers.fire();
+    } finally {
+      timers.restore();
+    }
+    await vi.waitFor(() => expect(cardText()).toMatch(/could not load|timed out|took too long/i));
+    expect(cardText()).not.toMatch(/loading/i);
+    await expect.element(allow()).toBeDisabled();
+    await expect.element(deny()).toBeEnabled();
+    await expect.element(openSession()).toBeEnabled();
+  });
+
+  it("a hung command ends after the timeout with a clear message and re-enabled buttons", async () => {
+    const engine = createEngine();
+    hangOn(engine, (url, init) => url === "/v1/commands" && init?.method === "POST");
+    await mount({ engine });
+    await loaded();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    const timers = holdLongTimers();
+    try {
+      (deny().element() as HTMLButtonElement).click();
+      await vi.waitFor(() => expect(timers.count()).toBeGreaterThan(0));
+      expect(timers.delays.every((ms) => ms >= 5000 && ms <= 15_000)).toBe(true);
+      await expect.element(deny()).toBeDisabled();
+      timers.fire();
+    } finally {
+      timers.restore();
+    }
+    await vi.waitFor(() =>
+      expect(cardText()).toMatch(/timed out|too long|not respond|no response|may have been/i),
+    );
+    expect(stateOf()).toBe("open");
+    await expect.element(deny()).toBeEnabled();
+    await expect.element(openSession()).toBeEnabled();
+    await expect.element(allow()).toBeEnabled();
+    expect(posts(engine)).toHaveLength(1);
+  });
+});
+
+// --- focus (code review 14) --------------------------------------------------------------------
+
+describe("ActionCard: focus follows what the user did", () => {
+  it("after a reveal, focus goes to the next reveal button, then to the revealed text", async () => {
+    const engine = createEngine();
+    engine.input = () =>
+      json(
+        200,
+        held(
+          `curl -H "Authorization: Bearer ${BEARER}" https://api.example.com && export GH=${GITHUB}`,
+        ),
+      );
+    await mount({ engine });
+    await expect.poll(() => reveals().elements().length).toBe(2);
+
+    await reveals().first().click();
+    await vi.waitFor(() => expect(reveals().elements()).toHaveLength(1));
+    await vi.waitFor(() => expect(document.activeElement).toBe(reveals().element()));
+
+    await reveals().first().click();
+    await vi.waitFor(() => expect(reveals().elements()).toHaveLength(0));
+    await vi.waitFor(() => {
+      const active = document.activeElement;
+      expect(active).not.toBe(document.body);
+      expect(inputEl()?.contains(active)).toBe(true);
+      expect(active?.textContent).toContain(GITHUB);
+    });
+  });
+
+  const statusEl = () => cardEl()?.querySelector<HTMLElement>('[role="status"]') ?? null;
+
+  it("has a role=status live region before anything is sent, and focuses it after a send", async () => {
+    await mount();
+    await loaded();
+    const before = statusEl();
+    expect(before).not.toBeNull();
+    expect(before?.textContent).not.toMatch(/sent/i);
+
+    await deny().click();
+    await vi.waitFor(() => expect(stateOf()).toBe("sent"));
+    expect(statusEl()).toBe(before);
+    expect(before?.textContent).toMatch(/sent, unconfirmed/i);
+    expect(document.activeElement).toBe(before);
+  });
+});
+
+// --- a kept target that is no longer live (code review 15) -------------------------------------
+
+describe("ActionCard: a kept card whose request is no longer live offers no decision", () => {
+  const decisions = () => enabledButtons().filter((t) => t === "Allow once" || t === "Deny");
+
+  it("a request that left attention while still open and unsent", async () => {
+    const { store } = await mount();
+    await loaded();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    store.setState({ attention: [] });
+    await sleep(200);
+    expect(decisions()).toEqual([]);
+  });
+
+  it("a request that is gone from state after a resnapshot", async () => {
+    const { store } = await mount();
+    await loaded();
+    await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    const current = store.getState().state as unknown as { requests: Record<string, unknown> };
+    store.setState({ attention: [], state: { ...current, requests: {} } as never });
+    await sleep(200);
+    expect(decisions()).toEqual([]);
   });
 });

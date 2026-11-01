@@ -117,6 +117,23 @@ describe("OverlayRoot wiring: action card", () => {
     expect(new Headers(call?.init?.headers).get("X-Taskville-Session")).toBe("test-session");
   });
 
+  // Code review 6: the card and the settings panel share the one sidebar. The panel holds it
+  // whenever the card is not up, and gets it back once the selection is cleared.
+  it("keeps the settings panel in the sidebar while nothing is selected, and returns it after the card closes", async () => {
+    const sidebar = () => document.querySelector('[data-slot="sidebar"]');
+    await mountSeeded();
+    await vi.waitFor(() => expect(sidebar()?.textContent).toContain("Settings"));
+    expect(card()).toBeNull();
+
+    selectionStore.select("a1");
+    await vi.waitFor(() => expect(card()).not.toBeNull());
+    expect(sidebar()?.textContent).not.toContain("Settings");
+
+    selectionStore.select(null);
+    await vi.waitFor(() => expect(card()).toBeNull());
+    await vi.waitFor(() => expect(sidebar()?.textContent).toContain("Settings"));
+  });
+
   it("gives the sidebar back when the selection is cleared", async () => {
     await mountSeeded();
     selectionStore.select("a1");
