@@ -34,7 +34,11 @@ export interface LiveTabProps {
   store: DataStore;
   select: (id: string | null) => void;
   calls: readonly ToolCallFrame[];
-  evidence: Readonly<Record<string, EvidenceResponse>>;
+  evidence:
+    | Readonly<Record<string, EvidenceResponse>>
+    | ((id: string) => EvidenceResponse | undefined);
+  /** Internal connected loader: only calls whose details are currently rendered. */
+  onVisibleCalls?: (calls: readonly ToolCallFrame[]) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
 }
@@ -206,7 +210,7 @@ const bodyOfCall = (
   evidence: LiveTabProps["evidence"],
 ) => {
   const ref = call.evidence?.[part];
-  return ref ? evidence[ref.id] : undefined;
+  return ref ? (typeof evidence === "function" ? evidence(ref.id) : evidence[ref.id]) : undefined;
 };
 const oneLine = (text: string) => text.split("\n", 1)[0].slice(0, 120);
 /** The pretty printed body of a deep value is large. It is computed once per body, not per render. */
@@ -474,6 +478,7 @@ function GroupCard({
         <ul id={list}>
           {calls.map((call) => {
             const body = bodyOfCall(call, "input", evidence);
+            const output = bodyOfCall(call, "output", evidence);
             const input = object(bodyValue(body));
             const subject =
               kind === "read"
@@ -485,9 +490,7 @@ function GroupCard({
                 ? [
                     ...new Set([
                       ...call.filePaths,
-                      ...stringList(
-                        object(bodyValue(bodyOfCall(call, "output", evidence))).filenames,
-                      ),
+                      ...stringList(object(bodyValue(output)).filenames),
                     ]),
                   ]
                 : [];
@@ -496,6 +499,8 @@ function GroupCard({
                 {subject === undefined ? (
                   isGone(call.evidence?.input, body, evicted) ? (
                     EVICTED
+                  ) : call.evidence?.input?.status === "stored" ? (
+                    "details not loaded"
                   ) : (
                     "not reported"
                   )
@@ -504,6 +509,11 @@ function GroupCard({
                 ) : (
                   bounded(subject).text
                 )}
+                {kind === "search" && isGone(call.evidence?.output, output, evicted) ? (
+                  <span> {EVICTED}</span>
+                ) : kind === "search" && !output && call.evidence?.output?.status === "stored" ? (
+                  <span> details not loaded</span>
+                ) : null}
                 {call.phase === "succeeded" ? null : <span> ({safe(String(call.phase))})</span>}
                 {hits.map((path) => (
                   <span key={path}>
@@ -560,7 +570,15 @@ export function LiveTab(props: LiveTabProps) {
 
 const NONE: ReadonlySet<string> = new Set();
 
-function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: LiveTabProps) {
+function LiveFeed({
+  agentId,
+  store,
+  select,
+  calls,
+  evidence,
+  evicted = NONE,
+  onVisibleCalls,
+}: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<HTMLElement | null>(null);
@@ -586,6 +604,16 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
     overscan: 5,
     scrollMargin,
     useFlushSync: false,
+  });
+  // Report after commit, so even transient follow ranges are genuinely mounted. Collapsed
+  // groups show metadata only; their member details become requested when expanded.
+  useEffect(() => {
+    onVisibleCalls?.(
+      virtualizer.getVirtualItems().flatMap(({ index }) => {
+        const item = items[index];
+        return item.kind === "call" || expanded.has(item.key) ? item.calls : [];
+      }),
+    );
   });
   // The shell and controlled consumers already own scrolling. Include content before the list
   // in the virtualizer's coordinates rather than creating a second nested viewport.
