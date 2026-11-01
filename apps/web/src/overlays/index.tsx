@@ -8,6 +8,7 @@ import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
+import { AGENT_PANEL_ID, agentPanelOverlay } from "./agent-panel/shell/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
 import {
   countsHeaderOverlay,
@@ -34,6 +35,7 @@ const registry = createOverlayRegistry([
   themedSettingsOverlay,
   agentListOverlay,
   bubblesOverlay,
+  agentPanelOverlay,
 ]);
 const ENABLED = [
   "counts-header",
@@ -42,6 +44,7 @@ const ENABLED = [
   "settings-panel",
   "agent-list",
   "bubbles",
+  AGENT_PANEL_ID,
 ];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
@@ -76,12 +79,18 @@ export function OverlayRoot() {
   useSoundscape();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
+  const agents = useData((s) => s.state?.agents);
+  const selectedAgent =
+    selection.selectedId !== null &&
+    agents !== undefined &&
+    Object.hasOwn(agents, selection.selectedId);
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
       <OverlayHost
         registry={registry}
         enabled={ENABLED}
+        sidebar={selectedAgent ? AGENT_PANEL_ID : "settings-panel"}
         mode="live"
         selectors={selectors}
         selection={selection}

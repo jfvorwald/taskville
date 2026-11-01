@@ -6,6 +6,7 @@ import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
+import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
 import styles from "./agent-panel.module.css";
 import { currentFile, elapsedMs, formatElapsed } from "./facts.ts";
 import { familyPath, stepFamily } from "./family.ts";
@@ -29,7 +30,7 @@ const KIND_LABEL: Record<Agent["kind"], string> = {
 export interface AgentPanelProps extends OverlayProps {
   /** Defaults to the app-wide store; tests pass their own. */
   store?: DataStore;
-  /** The content of the selected tab. The shell draws none of its own (M5.06 to M5.08). */
+  /** Overrides the selected tab content. Files uses the paired feed by default. */
   renderTab?: (tab: PanelTab, agentId: string) => ReactNode;
 }
 
@@ -189,7 +190,11 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
           data-testid="agent-panel-tab-slot"
           data-tab={active}
         >
-          {renderTab?.(active, agent.id)}
+          {renderTab !== undefined ? (
+            renderTab(active, agent.id)
+          ) : active === "files" ? (
+            <ConnectedFilesTab agentId={agent.id} />
+          ) : null}
         </TabPanel>
       </Tabs>
     </InteractiveRegion>
