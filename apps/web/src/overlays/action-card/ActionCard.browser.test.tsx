@@ -1117,10 +1117,23 @@ function hang(init?: RequestInit): Promise<Response> {
   });
 }
 
+/** Hangs the matching requests, but records each one first, as the engine does for every call. */
 function hangOn(engine: Engine, match: (url: string, init?: RequestInit) => boolean) {
   const base = engine.fetch;
-  engine.fetch = ((url: RequestInfo | URL, init?: RequestInit) =>
-    match(String(url), init) ? hang(init) : base(url, init)) as typeof fetch;
+  engine.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+    if (!match(String(url), init)) return base(url, init);
+    const parsed = new URL(String(url), "http://localhost");
+    engine.calls.push({
+      path: parsed.pathname,
+      search: parsed.search,
+      method: init?.method ?? "GET",
+      headers: new Headers(init?.headers),
+      ...(init?.body === undefined
+        ? {}
+        : { body: JSON.parse(String(init.body)) as Record<string, unknown> }),
+    });
+    return hang(init);
+  }) as typeof fetch;
 }
 
 /** The signals the card passes with its GETs of the exact input. */
@@ -1714,6 +1727,50 @@ describe("ActionCard: sent means the engine delivered it", () => {
     const [first, second] = posts(engine).map((p) => p.body?.idempotencyKey);
     expect(first).toEqual(expect.any(String));
     expect(second).toBe(first);
+  });
+
+  it("after command_in_flight the retry of the same action reuses the key", async () => {
+    const engine = createEngine();
+    const answer = engine.command;
+    let calls = 0;
+    engine.command = (body) => {
+      calls += 1;
+      return calls === 1 ? errorResponse(409, "command_in_flight") : answer(body);
+    };
+    await mount({ engine });
+    await loaded();
+    await openSession().click();
+    await vi.waitFor(() => expect(cardText()).toMatch(/already running|in progress/i));
+    await expect.element(openSession()).toBeEnabled();
+
+    await openSession().click();
+    await vi.waitFor(() => expect(posts(engine)).toHaveLength(2));
+    const [first, second] = posts(engine).map((p) => p.body?.idempotencyKey);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBe(first);
+  });
+
+  it("after command_in_flight a different, later action gets a fresh key", async () => {
+    const engine = createEngine();
+    const answer = engine.command;
+    let calls = 0;
+    engine.command = (body) => {
+      calls += 1;
+      return calls === 1 ? errorResponse(409, "command_in_flight") : answer(body);
+    };
+    await mount({ engine });
+    await loaded();
+    await openSession().click();
+    await vi.waitFor(() => expect(cardText()).toMatch(/already running|in progress/i));
+    await expect.element(deny()).toBeEnabled();
+
+    await deny().click();
+    await vi.waitFor(() => expect(posts(engine)).toHaveLength(2));
+    const [open, decide] = posts(engine);
+    expect(open?.body?.type).toBe("session.open");
+    expect(decide?.body?.type).toBe("permission.decide");
+    expect(decide?.body?.idempotencyKey).toEqual(expect.any(String));
+    expect(decide?.body?.idempotencyKey).not.toBe(open?.body?.idempotencyKey);
   });
 });
 
