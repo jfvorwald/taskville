@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildingParts } from "../../../src/city/buildings/parts.ts";
+import { DEFAULT_CITY_PALETTE } from "../../../src/city/buildings/index.ts";
 import { CITY_LAYOUT } from "../../../src/city/layout/index.ts";
 import {
   applyHistoryTint,
@@ -9,6 +9,7 @@ import {
   parseHex,
   REQUIRED_TOKENS,
   resolveTokens,
+  type ThemeAccent,
   validateAccents,
   validateTheme,
 } from "../../../src/themes/core/index.ts";
@@ -131,7 +132,93 @@ describe("theme contract", () => {
     expect(cyberpunkTheme.voice.phrases).toEqual({});
   });
 
-  it("does not change building footprints (accents are extra parts)", () => {
-    for (const area of CITY_LAYOUT.areas) expect(buildingParts(area).length).toBeGreaterThan(2);
+  it("keeps the shared building footprints and heights (themes only add accents)", () => {
+    expect(
+      CITY_LAYOUT.areas.map((a) => ({
+        id: a.id,
+        cx: a.footprint.cx,
+        cz: a.footprint.cz,
+        halfX: a.footprint.halfX,
+        halfZ: a.footprint.halfZ,
+        height: a.height,
+      })),
+    ).toEqual([
+      { id: "dispatch", cx: -10, cz: -10, halfX: 2.4, halfZ: 2.4, height: 5.6 },
+      { id: "workshop", cx: 10, cz: -10, halfX: 2.8, halfZ: 2.4, height: 3.2 },
+      { id: "test_lab", cx: 10, cz: 0, halfX: 2.4, halfZ: 2.4, height: 3.8 },
+      { id: "review", cx: 10, cz: 10, halfX: 2.6, halfZ: 2.6, height: 4.6 },
+      { id: "security", cx: -10, cz: 10, halfX: 2.4, halfZ: 2.8, height: 3.4 },
+      { id: "archives", cx: -10, cz: 0, halfX: 3.0, halfZ: 2.2, height: 2.6 },
+    ]);
+  });
+
+  it("lists exactly the keys of the default city palette (CITY_PALETTE_KEYS cannot go stale)", () => {
+    expect([...CITY_PALETTE_KEYS].sort()).toEqual(Object.keys(DEFAULT_CITY_PALETTE).sort());
+  });
+
+  it("reports a bad night color and names the token", () => {
+    const broken = { ...cyberpunkTheme, night: { "--tv-neon": "cyan" } } as never;
+    const problems = validateTheme(broken);
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems.join("\n")).toContain("--tv-neon");
+  });
+});
+
+describe("validateAccents input checks", () => {
+  const good: ThemeAccent = {
+    id: "ok",
+    areas: ["dispatch"],
+    tone: "neon",
+    glow: true,
+    x: 0,
+    y: 2,
+    z: 0,
+    sx: 1,
+    sy: 1,
+    sz: 1,
+  };
+
+  it("accepts the baseline accent used by the cases below", () => {
+    expect(validateAccents(CITY_LAYOUT, [good])).toEqual([]);
+  });
+
+  it.each([
+    ["x is NaN", { x: Number.NaN }],
+    ["y is NaN", { y: Number.NaN }],
+    ["z is NaN", { z: Number.NaN }],
+    ["sx is NaN", { sx: Number.NaN }],
+    ["sy is NaN", { sy: Number.NaN }],
+    ["sz is NaN", { sz: Number.NaN }],
+    ["sx is zero", { sx: 0 }],
+    ["sy is zero", { sy: 0 }],
+    ["sz is zero", { sz: 0 }],
+    ["sx is negative", { sx: -1 }],
+    ["sy is negative", { sy: -1 }],
+    ["sz is negative", { sz: -1 }],
+  ] satisfies Array<[string, Partial<ThemeAccent>]>)(
+    "reports a problem when %s",
+    (_name, patch) => {
+      const problems = validateAccents(CITY_LAYOUT, [{ ...good, id: "bad", ...patch }]);
+      expect(problems.length).toBeGreaterThan(0);
+      expect(problems.join("\n")).toContain("bad");
+    },
+  );
+
+  it("reports an unknown area id even when a known one is listed too", () => {
+    const problems = validateAccents(CITY_LAYOUT, [
+      { ...good, id: "mixed", areas: ["dispatch", "typo" as never] },
+    ]);
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems.join("\n")).toContain("typo");
+  });
+
+  it("reports duplicate accent ids (they collide on the React key)", () => {
+    const problems = validateAccents(CITY_LAYOUT, [
+      { ...good, id: "twin" },
+      { ...good, id: "twin", x: 0.5 },
+    ]);
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems.join("\n")).toMatch(/duplicate/i);
+    expect(problems.join("\n")).toContain("twin");
   });
 });

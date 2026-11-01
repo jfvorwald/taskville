@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { initialState, reduce } from "../../../src/data/domain.ts";
 import { createDataStore } from "../../../src/data/store.ts";
-import { createThemeController, type ThemeRoot } from "../../../src/themes/core/index.ts";
+import {
+  CITY_PALETTE_KEYS,
+  cityPaletteFromTokens,
+  cityToken,
+  createThemeController,
+  resolveTokens,
+  type ThemeController,
+  type ThemeRoot,
+} from "../../../src/themes/core/index.ts";
 import { cyberpunkTheme } from "../../../src/themes/cyberpunk/index.ts";
 import { eventBuilder, PROJECT, registered } from "../../data/fake-engine.ts";
 import { otherTheme } from "./fixtures.ts";
@@ -16,6 +24,18 @@ function fakeRoot() {
     setAttribute: (k, v) => void attrs.set(k, v),
   };
   return { root, props, attrs };
+}
+
+/** Every published property is the resolved token for the active theme and mode. */
+function expectPublished(c: ThemeController, props: Map<string, string>) {
+  const { themeId, mode, tokens } = c.store.getState();
+  const def = c.themes.find((t) => t.id === themeId);
+  if (def === undefined) throw new Error(`no theme ${themeId}`);
+  const resolved = resolveTokens(def, mode);
+  expect(tokens).toEqual(resolved);
+  for (const [name, value] of Object.entries(resolved)) expect(props.get(name), name).toBe(value);
+  const palette = cityPaletteFromTokens(tokens);
+  for (const key of CITY_PALETTE_KEYS) expect(palette[key], key).toBe(props.get(cityToken(key)));
 }
 
 describe("theme controller", () => {
@@ -64,6 +84,8 @@ describe("theme controller", () => {
       .applySnapshotState(registered(emit, "a1", "a2").reduce(reduce, initialState(PROJECT)));
     data.getState().select("a2");
     const before = data.getState();
+    const spy = vi.fn();
+    data.subscribe(spy);
 
     const c = createThemeController({ themes: [cyberpunkTheme, otherTheme] });
     c.attach(fakeRoot().root);
@@ -76,5 +98,32 @@ describe("theme controller", () => {
     expect(after.selectedAgentId).toBe("a2");
     expect(after.agents.map((a) => a.id)).toEqual(["a1", "a2"]);
     expect(after.cursor).toBe(before.cursor);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("publishes exactly resolveTokens(theme, mode) after attach, on mode and theme changes", () => {
+    const c = createThemeController({ themes: [cyberpunkTheme, otherTheme] });
+    const { root, props } = fakeRoot();
+    c.attach(root);
+    expectPublished(c, props);
+    c.setMode("night");
+    expectPublished(c, props);
+    c.setTheme("steampunk");
+    expectPublished(c, props);
+    c.setMode("day");
+    expectPublished(c, props);
+    c.setTheme("cyberpunk");
+    expectPublished(c, props);
+  });
+
+  it("keeps the same tokens object when a history toggle changes neither theme nor mode", () => {
+    const c = createThemeController({ themes: [cyberpunkTheme, otherTheme] });
+    c.setMode("night"); // night merges overrides into a fresh object, so a rebuild is visible
+    const before = c.store.getState().tokens;
+    c.setHistory(true);
+    expect(c.store.getState().history).toBe(true);
+    expect(c.store.getState().tokens).toBe(before);
+    c.setHistory(false);
+    expect(c.store.getState().tokens).toBe(before);
   });
 });
