@@ -100,7 +100,11 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       },
       () => {
         // No loop for this theme, or it failed to load: stay quiet rather than complain.
-        if (token === loadToken) loading = null;
+        if (token !== loadToken) return;
+        loading = null;
+        // The old theme's loop must not play on under the new theme.
+        if (playing !== null) backend.stopLoop();
+        playing = null;
       },
     );
   }
