@@ -11,7 +11,7 @@ export interface RecordedMoment {
   readonly sequence: number;
   readonly time: number;
   readonly agentId: string | undefined;
-  readonly marker: "Needs you" | "Task completed" | "Commit" | undefined;
+  readonly marker: "Needs you" | "Possibly needs you" | "Task completed" | "Commit" | undefined;
   /** The request a non-late `request.opened` at this sequence opened. */
   readonly requestId?: string | undefined;
 }
@@ -239,7 +239,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             // Only recorded event facts become markers. Late prompts cannot open needs-you.
             const marker =
               event.type === "request.opened" && !event.late
-                ? "Needs you"
+                ? event.payload.heuristic === true
+                  ? "Possibly needs you"
+                  : "Needs you"
                 : event.type === "task.status_changed" && event.payload.status === "completed"
                   ? "Task completed"
                   : event.type === "git.commit"

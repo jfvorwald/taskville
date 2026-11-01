@@ -77,7 +77,8 @@
   padding: 2px 6px;
 }
 
-.markers button[data-marker="Needs you"] {
+.markers button[data-marker="Needs you"],
+.markers button[data-marker="Possibly needs you"] {
   color: #e13d4e;
   border-color: currentColor;
 }

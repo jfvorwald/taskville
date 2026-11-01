@@ -9,12 +9,12 @@ import { type DataStore, dataStore } from "../data/store.ts";
 import {
   PresentedSidebar,
   presentedActionCardOverlay,
+  presentedAgentListOverlay,
   presentedAgentPanelOverlay,
   useRecordedTarget,
 } from "../history/ui/PresentedSidebar.tsx";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { ACTION_CARD_ID, useCardTarget } from "./action-card/index.ts";
-import { agentListOverlay } from "./agent-list/index.ts";
 import { AGENT_PANEL_ID } from "./agent-panel/shell/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
 import {
@@ -41,7 +41,7 @@ const registry = createOverlayRegistry([
   agentLabelsOverlay,
   cameraControlsOverlay,
   themedSettingsOverlay,
-  agentListOverlay,
+  presentedAgentListOverlay,
   bubblesOverlay,
   presentedAgentPanelOverlay,
   presentedActionCardOverlay,

@@ -36,9 +36,9 @@ function TeamPage({ teamId, store }: { teamId: string; store: DataStore }) {
 }
 
 /** Literal task text and native paging controls mirror each active team's scene queue. */
-export function TeamTaskQueue() {
-  const state = useData((s) => s.state);
+export function TeamTaskQueue({ store = dataStore }: { store?: DataStore }) {
+  const state = useData((s) => s.state, store);
   return Object.values(state?.teams ?? {})
     .filter((team) => team.endedAt === undefined)
-    .map((team) => <TeamPage key={team.id} teamId={team.id} store={dataStore} />);
+    .map((team) => <TeamPage key={team.id} teamId={team.id} store={store} />);
 }

@@ -2,6 +2,7 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { useData } from "../../data/react.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { ACTION_CARD_ID, ActionCard, type CardTarget } from "../../overlays/action-card/index.ts";
+import { AgentList } from "../../overlays/agent-list/AgentList.tsx";
 import { AGENT_PANEL_ID, AgentPanel } from "../../overlays/agent-panel/shell/index.ts";
 import type { OverlayDefinition, OverlayProps } from "../../overlays/host/types.ts";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
@@ -51,6 +52,18 @@ function PresentedAgentPanel(props: OverlayProps) {
   const { store } = useContext(Context);
   return <AgentPanel {...props} store={store} />;
 }
+
+function PresentedAgentList(props: OverlayProps) {
+  const { store } = useContext(Context);
+  return <AgentList {...props} store={store} />;
+}
+
+export const presentedAgentListOverlay: OverlayDefinition = {
+  id: "agent-list",
+  slot: "timeline",
+  modes: ["live", "history"],
+  Component: PresentedAgentList,
+};
 
 export const presentedActionCardOverlay: OverlayDefinition = {
   id: ACTION_CARD_ID,

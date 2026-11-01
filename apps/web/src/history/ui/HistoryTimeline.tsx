@@ -74,7 +74,11 @@ export function HistoryTimeline() {
                   aria-pressed={sequence === moment.sequence}
                   onClick={() => history.seek(moment.sequence)}
                 >
-                  {moment.marker === "Commit" ? "●" : moment.marker === "Needs you" ? "!" : "✓"}
+                  {moment.marker === "Commit"
+                    ? "●"
+                    : moment.marker === "Needs you" || moment.marker === "Possibly needs you"
+                      ? "!"
+                      : "✓"}
                 </button>
               );
             })}
