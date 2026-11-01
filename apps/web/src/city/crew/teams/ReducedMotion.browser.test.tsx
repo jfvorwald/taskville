@@ -61,6 +61,12 @@ it("keeps an implementing lead's body pose and hat offset stationary under CityA
     );
     expect(head).toBeDefined();
     if (!head) throw new Error("Missing pooled lead head");
+    // Navigation places the body after AgentBlock captures its initial position.
+    // One frame observes that move; the next establishes the frozen work pose.
+    // Keep this finite so continuing motion still fails the measured baseline below.
+    const mountedAt = root.clock.elapsedTime;
+    root.advance(mountedAt + 0.02);
+    root.advance(mountedAt + 0.04);
     const samples: { pose: number[]; offset: number[] }[] = [];
     const start = root.clock.elapsedTime;
     const frames = root.gl.info.render.frame;
@@ -80,9 +86,9 @@ it("keeps an implementing lead's body pose and hat offset stationary under CityA
     expect(root.clock.elapsedTime - start).toBeCloseTo(1.2);
     expect(root.gl.info.render.frame - frames).toBe(60);
     expect(
-      samples[0]?.pose.some((value) => value < -0.5),
-      "implementing work pose is present",
-    ).toBe(true);
+      samples[0]?.pose.slice(-2),
+      "implementing work pose holds the left arm steady and the hammer arm raised",
+    ).toEqual([-0.5, -2.2]);
     for (const sample of samples) {
       expect(sample.pose, "body and arms stay stationary as the frame clock advances").toEqual(
         samples[0]?.pose,
