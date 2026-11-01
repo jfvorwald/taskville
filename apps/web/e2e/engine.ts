@@ -26,7 +26,12 @@ mkdirSync(dirname(CODES_FILE), { recursive: true });
 writeFileSync(
   CODES_FILE,
   // `home` lets a test run CLI producers (`taskville demo start --home`) against this engine.
-  JSON.stringify({ paired: parts.pairing.issueCode(), fresh: parts.pairing.issueCode(), home }),
+  JSON.stringify({
+    paired: parts.pairing.issueCode(),
+    fresh: parts.pairing.issueCode(),
+    movement: parts.pairing.issueCode(),
+    home,
+  }),
 );
 const server = await startServer({ app: parts.app, port });
 process.stdout.write(`e2e engine listening on http://127.0.0.1:${server.port}\n`);
