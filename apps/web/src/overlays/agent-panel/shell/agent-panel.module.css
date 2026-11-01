@@ -1,0 +1,116 @@
+/*
+ * No animation and no transition anywhere in the panel, so reduced motion holds by construction.
+ * The panel is one InteractiveRegion in the sidebar slot; the tab slot grows with its content.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 320px;
+  max-height: 100%;
+  min-height: 0;
+  margin: 16px;
+  padding: 14px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font-size: 0.875rem;
+  overflow-y: auto;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--tv-text-muted);
+}
+
+.separator {
+  color: var(--tv-text-muted);
+}
+
+.crumb {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: calc(var(--tv-radius) - 2px);
+  background: transparent;
+  color: var(--tv-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.crumb[aria-current="true"] {
+  color: var(--tv-text);
+  font-weight: 600;
+}
+
+.crumb[data-hovered] {
+  background: color-mix(in srgb, var(--tv-accent) 25%, transparent);
+}
+
+.crumb[data-focus-visible],
+.tab[data-focus-visible] {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name {
+  margin: 0;
+  font-size: 1.125rem;
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--tv-text-muted);
+}
+
+.facts [data-urgent="true"] {
+  color: var(--tv-needs-you);
+  font-weight: 600;
+}
+
+.file {
+  margin: 0;
+  color: var(--tv-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.tabList {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  padding: 4px 12px;
+  border-radius: calc(var(--tv-radius) - 2px);
+  color: var(--tv-text-muted);
+  cursor: pointer;
+}
+
+.tab[data-selected] {
+  background: color-mix(in srgb, var(--tv-accent) 25%, transparent);
+  color: var(--tv-text);
+}
+
+.slot {
+  min-height: 0;
+}
