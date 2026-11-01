@@ -14,15 +14,18 @@ import { windowSites } from "../buildings/parts.ts";
 import { CITY_CAMERA, CITY_LAYOUT } from "../layout/index.ts";
 import { CameraDriver } from "./CameraDriver.tsx";
 import { type CameraRig, cameraRig } from "./cameraRig.ts";
+import { shouldClearOnEscape } from "./escape.ts";
 import { createBuildingFader } from "./fade.ts";
 import { fixtureAgents, fixtureRequested, installFixtureProbe } from "./fixture.ts";
 import { createHullGlow } from "./hull.ts";
 import { markOccluders, viewDirection } from "./occlusion.ts";
 import { collectPickables, createPicker, ownerOf } from "./pick.ts";
+import { shouldSelectOnRelease } from "./pointer.ts";
 import {
   type ParsedSelection,
   parseSelectionId,
   type SelectionStore,
+  selectionAfterRescan,
   selectionStore,
 } from "./selection.ts";
 
@@ -33,6 +36,11 @@ export interface InteractionLayerProps {
   glowColor?: string | undefined;
   /** Selection marker color. Defaults to the `--tv-focus` token. */
   markerColor?: string | undefined;
+  /**
+   * Whether to skip animation (the occlusion fade completes at once). Defaults to the OS
+   * `prefers-reduced-motion` setting when not given.
+   */
+  reducedMotion?: boolean | undefined;
 }
 
 const CLICK_SLOP_PX = 4;
@@ -45,6 +53,7 @@ const SOLID_ABOVE = 0.99;
 const LOOK_THROUGH_BELOW = 0.6;
 const LOST_TARGET_RETRY_SECONDS = 0.5;
 const MARKER_LIFT = 0.04;
+const FADE_SECONDS = 0.25;
 
 const tmpPosition = new Vector3();
 const tmpScale = new Vector3();
@@ -82,6 +91,7 @@ export function InteractionLayer({
   rig = cameraRig,
   glowColor,
   markerColor,
+  reducedMotion,
 }: InteractionLayerProps) {
   const fixture = useMemo(
     () =>
@@ -94,7 +104,13 @@ export function InteractionLayer({
   return (
     <>
       <CameraDriver rig={rig} />
-      <Interaction store={store} rig={rig} glowColor={glowColor} markerColor={markerColor} />
+      <Interaction
+        store={store}
+        rig={rig}
+        glowColor={glowColor}
+        markerColor={markerColor}
+        reducedMotion={reducedMotion}
+      />
       {fixture !== null && <AgentsLayer agents={fixture} />}
     </>
   );
@@ -105,8 +121,9 @@ function Interaction({
   rig,
   glowColor,
   markerColor,
+  reducedMotion,
 }: Required<Pick<InteractionLayerProps, "store" | "rig">> &
-  Pick<InteractionLayerProps, "glowColor" | "markerColor">) {
+  Pick<InteractionLayerProps, "glowColor" | "markerColor" | "reducedMotion">) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -114,10 +131,11 @@ function Interaction({
   const picker = useMemo(() => createPicker(), []);
   const pickables = useMemo<Object3D[]>(() => [], []);
   const sites = useMemo(() => windowSites(CITY_LAYOUT), []);
-  const fader = useMemo(
-    () => createBuildingFader({ sites, seconds: prefersReducedMotion() ? 0 : 0.25 }),
-    [sites],
-  );
+  const fader = useMemo(() => createBuildingFader({ sites }), [sites]);
+  const reduced = reducedMotion ?? prefersReducedMotion();
+  useEffect(() => {
+    fader.setSeconds(reduced ? 0 : FADE_SECONDS);
+  }, [fader, reduced]);
   const glowMaterial = useMemo(
     () =>
       new MeshBasicMaterial({
@@ -178,6 +196,7 @@ function Interaction({
   const st = useRef({
     sel: parseSelectionId(store.getSnapshot()) as ParsedSelection | null,
     selectedObject: null as Object3D | null,
+    seen: false,
     retry: 0,
     hoverId: null as string | null,
     hoverDirty: false,
@@ -198,9 +217,11 @@ function Interaction({
   useEffect(() => {
     st.current.sel = parseSelectionId(store.getSnapshot());
     st.current.selectedObject = null;
+    st.current.seen = false;
     return store.subscribe(() => {
       st.current.sel = parseSelectionId(store.getSnapshot());
       st.current.selectedObject = null;
+      st.current.seen = false;
       st.current.retry = 0;
     });
   }, [store]);
@@ -260,9 +281,10 @@ function Interaction({
       if (s.moved) {
         dom.style.cursor = "";
         s.hoverDirty = true;
-        return;
       }
-      store.select(pickAt(e.clientX, e.clientY));
+      if (shouldSelectOnRelease({ type: e.type, moved: s.moved })) {
+        store.select(pickAt(e.clientX, e.clientY));
+      }
     };
     const onLeave = () => {
       s.hoverDirty = false;
@@ -277,7 +299,7 @@ function Interaction({
       rig.zoomBy(Math.exp(-e.deltaY * WHEEL_ZOOM_PER_UNIT));
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !e.defaultPrevented) store.select(null);
+      if (shouldClearOnEscape(e)) store.select(null);
     };
 
     dom.addEventListener("pointerdown", onDown);
@@ -350,6 +372,10 @@ function Interaction({
               break;
             }
           }
+          // An agent that was there and is gone clears its selection; one not mounted yet waits.
+          const rescan = selectionAfterRescan({ seen: s.seen, found: obj !== null });
+          s.seen = rescan.seen;
+          if (rescan.clear) store.select(null);
         }
       }
       if (obj !== null) {

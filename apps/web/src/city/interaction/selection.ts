@@ -44,3 +44,16 @@ export function parseSelectionId(id: string | null): ParsedSelection | null {
   if (id.startsWith(AREA_PREFIX)) return { kind: "area", id: id.slice(AREA_PREFIX.length) };
   return { kind: "agent", id };
 }
+
+/**
+ * What a rescan for the selected object means. A selection can be made before its object mounts
+ * (from the agent list), so nothing is cleared until the object has been seen once; after that, a
+ * rescan that finds nothing means it is gone and the selection is cleared.
+ */
+export function selectionAfterRescan(input: { seen: boolean; found: boolean }): {
+  seen: boolean;
+  clear: boolean;
+} {
+  if (input.found) return { seen: true, clear: false };
+  return { seen: false, clear: input.seen };
+}

@@ -26,6 +26,8 @@ export interface BuildingFader {
    * opacity moved this call, so a caller can skip further work on a still scene.
    */
   update(dt: number, wanted: (areaId: string) => boolean): boolean;
+  /** Changes the fade duration (0 is instant), effective from the next `update`. */
+  setSeconds(seconds: number): void;
   /** Current opacity of a building, 1 when not bound. */
   opacityOf(areaId: string): number;
   dispose(): void;
@@ -62,7 +64,7 @@ function cloneForFade(m: Material): Material {
  */
 export function createBuildingFader(options: BuildingFaderOptions): BuildingFader {
   const faded = options.fadedOpacity ?? 0.18;
-  const seconds = options.seconds ?? 0.25;
+  let seconds = options.seconds ?? 0.25;
   const states = new Map<string, BuildingState>();
   let windowsMesh: InstancedMesh | null = null;
 
@@ -99,6 +101,28 @@ export function createBuildingFader(options: BuildingFaderOptions): BuildingFade
       if (c) m.material = c;
     });
     state.swapped = true;
+  };
+
+  // A theme change assigns new shared materials to the meshes. Compare what each mesh holds with
+  // what the fader last put there (the clone while swapped, the shared material otherwise) and
+  // adopt the new one: a swapped mesh gets a fresh clone at the current opacity, the old clone is
+  // disposed, and the shared material is only ever remembered, never disposed.
+  const adoptReplacedMaterials = (state: BuildingState) => {
+    const { meshes, originals, clones } = state;
+    for (let i = 0; i < meshes.length; i++) {
+      const mesh = meshes[i];
+      if (mesh === undefined) continue;
+      const current = mesh.material as Material;
+      const held = state.swapped ? clones?.[i] : originals[i];
+      if (current === held) continue;
+      originals[i] = current;
+      if (clones === null || !state.swapped) continue;
+      clones[i]?.dispose();
+      const c = cloneForFade(current);
+      c.opacity = state.opacity;
+      clones[i] = c;
+      mesh.material = c;
+    }
   };
 
   const swapOut = (state: BuildingState) => {
@@ -142,6 +166,7 @@ export function createBuildingFader(options: BuildingFaderOptions): BuildingFade
     update(dt, wanted) {
       let changed = false;
       for (const state of states.values()) {
+        adoptReplacedMaterials(state);
         const target = wanted(state.id) ? faded : 1;
         if (state.opacity === target && state.swapped === target < 1) continue;
         const next = stepFade(state.opacity, target, dt, seconds / (1 - faded));
@@ -156,6 +181,9 @@ export function createBuildingFader(options: BuildingFaderOptions): BuildingFade
         if (hide !== state.windowsHidden) writeWindows(state, hide);
       }
       return changed;
+    },
+    setSeconds(next) {
+      seconds = next;
     },
     opacityOf: (areaId) => states.get(areaId)?.opacity ?? 1,
     dispose() {
