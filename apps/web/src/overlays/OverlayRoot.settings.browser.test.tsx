@@ -168,14 +168,14 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     await vi.waitFor(() => expect(settingsShown()).toBe(true));
     expect(actionCard()).toBeNull();
     // Nothing is hidden silently: the header still counts the request behind the open Settings.
-    await expect.element(counts()).toHaveTextContent("1 needs you");
+    await expect.element(counts()).toMatchTextContent("1 needs you");
     expect(selectionStore.getSnapshot()).toBe("a1");
 
     await toggle().click();
 
     await vi.waitFor(() => expect(actionCard()).not.toBeNull());
     expect(settingsShown()).toBe(false);
-    await expect.element(counts()).toHaveTextContent("1 needs you");
+    await expect.element(counts()).toMatchTextContent("1 needs you");
   });
 
   it("announces a needs-you request that arrives while Settings is open, and shows its card once Settings is closed", async () => {
@@ -184,11 +184,11 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
     await toggle().click();
     await vi.waitFor(() => expect(settingsShown()).toBe(true));
-    await expect.element(counts()).toHaveTextContent("0 need you");
+    await expect.element(counts()).toMatchTextContent("0 need you");
 
     seed(["a2"]);
 
-    await expect.element(counts()).toHaveTextContent("1 needs you");
+    await expect.element(counts()).toMatchTextContent("1 needs you");
     // Settings was an explicit choice, so the arrival does not take the sidebar from it.
     expect(settingsShown()).toBe(true);
     expect(actionCard()).toBeNull();
