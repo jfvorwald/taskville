@@ -24,6 +24,10 @@ export interface SettingsPanelProps extends OverlayProps {
   /** Defaults to the app-wide store; tests and the theme system pass their own. */
   store?: SettingsStore;
   themes?: readonly ThemeOption[];
+  /** The theme in use, when that is not the stored setting. Defaults to the stored setting. */
+  themeId?: string;
+  /** Called with the chosen theme. Defaults to storing it. */
+  onThemeChange?: (id: string) => void;
 }
 
 /**
@@ -33,11 +37,14 @@ export interface SettingsPanelProps extends OverlayProps {
 export function SettingsPanel({
   store = getSettingsStore(),
   themes = DEFAULT_THEMES,
+  themeId,
+  onThemeChange = (id) => store.set("theme", id),
 }: SettingsPanelProps) {
   const values = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [open, setOpen] = useState(false);
   // The theme system falls back to the default for an unknown id, so the panel shows that.
-  const theme = themes.some((t) => t.id === values.theme) ? values.theme : DEFAULT_SETTINGS.theme;
+  const inUse = themeId ?? values.theme;
+  const theme = themes.some((t) => t.id === inUse) ? inUse : DEFAULT_SETTINGS.theme;
 
   return (
     <InteractiveRegion className={styles.panel}>
@@ -51,11 +58,7 @@ export function SettingsPanel({
       </Button>
       {open ? (
         <div id="settings-panel-body" className={styles.body}>
-          <RadioGroup
-            className={styles.group}
-            value={theme}
-            onChange={(v) => store.set("theme", v)}
-          >
+          <RadioGroup className={styles.group} value={theme} onChange={onThemeChange}>
             <Label className={styles.legend}>Theme</Label>
             {themes.map((t) => (
               <Radio key={t.id} value={t.id} className={styles.radio}>
