@@ -1,5 +1,6 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { diffWordsWithSpace } from "diff";
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
 import { type JsonValue, redactJson } from "../../../../../../packages/adapters/src/redact/json.ts";
 import { redactText } from "../../../../../../packages/adapters/src/redact/text.ts";
@@ -94,13 +95,16 @@ function ToolCard({
   evidence,
   agents,
   select,
+  expanded,
+  toggleExpanded,
 }: {
   call: ToolCallFrame;
   evidence: LiveTabProps["evidence"];
   agents: readonly Agent[];
   select: LiveTabProps["select"];
+  expanded: boolean;
+  toggleExpanded: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const inputBody = call.evidence.input ? evidence[call.evidence.input.id] : undefined;
   const outputBody = call.evidence.output ? evidence[call.evidence.output.id] : undefined;
   const inputValue = bodyValue(inputBody);
@@ -186,7 +190,7 @@ function ToolCard({
       ) : tool === "Bash" ? (
         <>
           <p>{string(input.command) ?? "not reported"}</p>
-          <Button onPress={() => setExpanded(!expanded)} aria-expanded={expanded}>
+          <Button onPress={toggleExpanded} aria-expanded={expanded}>
             {expanded ? "Collapse output" : "Expand output"}
           </Button>
           <pre>
@@ -237,7 +241,114 @@ function ToolCard({
   );
 }
 
-export function LiveTab({ agentId, store, select, calls, evidence }: LiveTabProps) {
+export function LiveTab(props: LiveTabProps) {
+  const projectId = useData((s) => s.state?.projectId, props.store);
+  return <LiveFeed key={JSON.stringify([projectId, props.agentId])} {...props} />;
+}
+
+function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
+  const feed = useRef<HTMLDivElement>(null);
+  const rows = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<HTMLElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const [following, setFollowing] = useState(true);
+  const followingRef = useRef(true);
+  const lastTop = useRef(0);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
+    count: calls.length,
+    getScrollElement: () => viewport,
+    getItemKey: (index) => calls[index].toolCallId,
+    estimateSize: () => 240,
+    overscan: 5,
+    scrollMargin,
+    useFlushSync: false,
+  });
+  // The shell and controlled consumers already own scrolling. Include content before the list
+  // in the virtualizer's coordinates rather than creating a second nested viewport.
+  useLayoutEffect(() => {
+    let node = feed.current?.parentElement;
+    while (node && !/(auto|scroll)/.test(getComputedStyle(node).overflowY))
+      node = node.parentElement;
+    setViewport(node ?? null);
+  }, []);
+  useLayoutEffect(() => {
+    if (!viewport || !rows.current) return;
+    const measure = () => {
+      if (!rows.current) return;
+      setScrollMargin(
+        rows.current.getBoundingClientRect().top -
+          viewport.getBoundingClientRect().top -
+          viewport.clientTop +
+          viewport.scrollTop,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    if (feed.current) observer.observe(feed.current);
+    return () => observer.disconnect();
+  }, [viewport]);
+  const changeFollow = useCallback(
+    (value: boolean) => {
+      followingRef.current = value;
+      if (value && viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+        lastTop.current = viewport.scrollTop;
+      }
+      setFollowing(value);
+    },
+    [viewport],
+  );
+  useEffect(() => {
+    if (!viewport) return;
+    lastTop.current = viewport.scrollTop;
+    const onScroll = () => {
+      if (viewport.scrollTop < lastTop.current - 1) {
+        followingRef.current = false;
+        setFollowing(false);
+      }
+      lastTop.current = viewport.scrollTop;
+    };
+    viewport.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => viewport.removeEventListener("scroll", onScroll, true);
+  }, [viewport]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        event.key.toLowerCase() !== "f" ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]"))) ||
+        !feed.current?.getClientRects().length
+      )
+        return;
+      event.preventDefault();
+      changeFollow(!followingRef.current);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [changeFollow]);
+  // Reconcile after each measured layout, including streaming output and expansion. Recording
+  // our own scroll offset keeps measurement corrections from looking like an upward gesture.
+  useLayoutEffect(() => {
+    if (!viewport || !following || !followingRef.current) return;
+    // Native scroll events can arrive after a measurement-driven React commit. Respect an
+    // upward move immediately; clamping at a shrinking bottom is still our own follow.
+    const bottom = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    if (viewport.scrollTop < Math.min(lastTop.current, bottom) - 1) {
+      changeFollow(false);
+      return;
+    }
+    viewport.scrollTop = viewport.scrollHeight;
+    lastTop.current = viewport.scrollTop;
+  });
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
   const target = cardTarget({
@@ -248,7 +359,7 @@ export function LiveTab({ agentId, store, select, calls, evidence }: LiveTabProp
   });
   const agents = Object.values(state?.agents ?? {});
   return (
-    <div className={styles.feed}>
+    <div ref={feed} className={styles.feed}>
       {target ? (
         <article className={styles.card}>
           <h3>Needs you: {safe(target.toolName ?? "not reported")}</h3>
@@ -257,9 +368,36 @@ export function LiveTab({ agentId, store, select, calls, evidence }: LiveTabProp
           <Button onPress={() => select(target.agentId)}>Open request action card</Button>
         </article>
       ) : null}
-      {calls.map((call) => (
-        <ToolCard key={call.toolCallId} {...{ call, evidence, agents, select }} />
-      ))}
+      <div className={styles.follow}>
+        {!following ? <Button onPress={() => changeFollow(true)}>Jump to latest</Button> : null}
+      </div>
+      <div ref={rows} className={styles.rows} style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((item) => {
+          const call = calls[item.index];
+          return (
+            <div
+              key={item.key}
+              ref={virtualizer.measureElement}
+              data-index={item.index}
+              className={styles.row}
+              style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
+            >
+              <ToolCard
+                {...{ call, evidence, agents, select }}
+                expanded={expanded.has(call.toolCallId)}
+                toggleExpanded={() =>
+                  setExpanded((old) => {
+                    const next = new Set(old);
+                    if (next.has(call.toolCallId)) next.delete(call.toolCallId);
+                    else next.add(call.toolCallId);
+                    return next;
+                  })
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
       {!calls.length && !target ? <p>No tool calls reported.</p> : null}
     </div>
   );

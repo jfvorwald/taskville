@@ -1,4 +1,7 @@
-.feed { min-width: 0; }
+.feed { min-width: 0; overflow-anchor: none; }
+.rows { position: relative; }
+.row { position: absolute; top: 0; left: 0; width: 100%; display: flow-root; }
+.follow { position: sticky; top: 0; z-index: 1; height: 0; text-align: right; }
 .card { padding: 8px; margin-block: 8px; border: 1px solid var(--tv-accent); border-radius: var(--tv-radius); overflow-wrap: anywhere; }
 .card h3 { font-size: inherit; }
 .card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; }
