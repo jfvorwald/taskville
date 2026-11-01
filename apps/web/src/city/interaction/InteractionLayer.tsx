@@ -201,6 +201,7 @@ function Interaction({
     retry: 0,
     hoverId: null as string | null,
     hoverDirty: false,
+    inside: false,
     ndcX: 0,
     ndcY: 0,
     down: false,
@@ -229,9 +230,13 @@ function Interaction({
 
   useEffect(
     () =>
-      markHoverDirtyOnCameraChange(rig, () => {
-        st.current.hoverDirty = true;
-      }),
+      markHoverDirtyOnCameraChange(
+        rig,
+        () => {
+          st.current.hoverDirty = true;
+        },
+        () => st.current.inside,
+      ),
     [rig],
   );
 
@@ -265,7 +270,11 @@ function Interaction({
       s.downY = s.lastY = e.clientY;
       dom.setPointerCapture?.(e.pointerId);
     };
+    const onEnter = () => {
+      s.inside = true;
+    };
     const onMove = (e: PointerEvent) => {
+      s.inside = true;
       if (s.down) {
         if (!s.moved && Math.hypot(e.clientX - s.downX, e.clientY - s.downY) > CLICK_SLOP_PX) {
           s.moved = true;
@@ -296,6 +305,7 @@ function Interaction({
       }
     };
     const onLeave = () => {
+      s.inside = false;
       s.hoverDirty = false;
       if (s.hoverId !== null) {
         s.hoverId = null;
@@ -312,6 +322,7 @@ function Interaction({
     };
 
     dom.addEventListener("pointerdown", onDown);
+    dom.addEventListener("pointerenter", onEnter);
     dom.addEventListener("pointermove", onMove);
     dom.addEventListener("pointerup", onUp);
     dom.addEventListener("pointercancel", onUp);
@@ -320,6 +331,7 @@ function Interaction({
     window.addEventListener("keydown", onKey);
     return () => {
       dom.removeEventListener("pointerdown", onDown);
+      dom.removeEventListener("pointerenter", onEnter);
       dom.removeEventListener("pointermove", onMove);
       dom.removeEventListener("pointerup", onUp);
       dom.removeEventListener("pointercancel", onUp);
