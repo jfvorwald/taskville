@@ -2,6 +2,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import { GridList, GridListItem } from "react-aria-components";
 import { TeamTaskQueue } from "../../city/crew/teams/TeamTaskQueue.tsx";
 import { movementLabels } from "../../city/movement/labels.ts";
+import type { DataStore } from "../../data/store.ts";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
 import styles from "./agent-list.module.css";
@@ -11,7 +12,7 @@ import { agentListRows } from "./rows.ts";
  * The scene's agents as a list for keyboard and screen reader users. One tab stop, arrows move
  * between rows, Enter selects the agent in the city, and the selected row is aria-selected. It reads the same rows as the world labels.
  */
-export function AgentList({ selection }: OverlayProps) {
+export function AgentList({ selection, store }: OverlayProps & { store?: DataStore }) {
   const labels = useSyncExternalStore(
     movementLabels.subscribe,
     movementLabels.getSnapshot,
@@ -55,7 +56,7 @@ export function AgentList({ selection }: OverlayProps) {
         )}
       </GridList>
       <div className={styles.queues}>
-        <TeamTaskQueue />
+        <TeamTaskQueue {...(store === undefined ? {} : { store })} />
       </div>
     </InteractiveRegion>
   );

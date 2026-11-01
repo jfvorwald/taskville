@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { HistoryProvider } from "./history/index.ts";
 import { PairingNotice } from "./pairing/PairingNotice.tsx";
 import { SessionProvider, usePairing } from "./pairing/session.tsx";
 import { SceneRoot } from "./SceneRoot.tsx";
@@ -12,7 +13,9 @@ export function App() {
   if (state.status === "paired") {
     return (
       <SessionProvider value={state.secret}>
-        <SceneRoot />
+        <HistoryProvider>
+          <SceneRoot />
+        </HistoryProvider>
       </SessionProvider>
     );
   }

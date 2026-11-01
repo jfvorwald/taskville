@@ -5,11 +5,17 @@ import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
 import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
-import { dataStore } from "../data/store.ts";
+import { type DataStore, dataStore } from "../data/store.ts";
+import {
+  PresentedSidebar,
+  presentedActionCardOverlay,
+  presentedAgentListOverlay,
+  presentedAgentPanelOverlay,
+  useRecordedTarget,
+} from "../history/ui/PresentedSidebar.tsx";
 import { themedSettingsOverlay } from "../wiring/index.ts";
-import { ACTION_CARD_ID, actionCardOverlay, useCardTarget } from "./action-card/index.ts";
-import { agentListOverlay } from "./agent-list/index.ts";
-import { AGENT_PANEL_ID, agentPanelOverlay } from "./agent-panel/shell/index.ts";
+import { ACTION_CARD_ID, useCardTarget } from "./action-card/index.ts";
+import { AGENT_PANEL_ID } from "./agent-panel/shell/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
 import {
   countsHeaderOverlay,
@@ -24,6 +30,7 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
+import { SETTINGS_OVERLAY_ID } from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
@@ -34,10 +41,10 @@ const registry = createOverlayRegistry([
   agentLabelsOverlay,
   cameraControlsOverlay,
   themedSettingsOverlay,
-  agentListOverlay,
+  presentedAgentListOverlay,
   bubblesOverlay,
-  agentPanelOverlay,
-  actionCardOverlay,
+  presentedAgentPanelOverlay,
+  presentedActionCardOverlay,
 ]);
 const ENABLED = [
   "counts-header",
@@ -49,8 +56,6 @@ const ENABLED = [
   AGENT_PANEL_ID,
   ACTION_CARD_ID,
 ];
-
-const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
 
 const noIntent = () => {};
 
@@ -66,7 +71,14 @@ function localStorageOrNull(): Storage | null {
  * The DOM layer over the canvas: the overlay host plus the paired badge. `pointer-events: none`
  * on the layer lets the canvas keep the pointer; an overlay that needs it uses InteractiveRegion.
  */
-export function OverlayRoot() {
+export function OverlayRoot({
+  store = dataStore,
+  mode = "live",
+}: {
+  store?: DataStore;
+  mode?: "live" | "history";
+}) {
+  const selectors: OverlaySelectors = useMemo(() => ({ counts: countsSelector(store) }), [store]);
   useDataSync(useCurrentProjectId());
   // The selected agent belongs to the project that was shown; it is not in the next one.
   useEffect(
@@ -82,28 +94,35 @@ export function OverlayRoot() {
   useSoundscape();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
-  const agents = useData((s) => s.state?.agents);
+  const agents = useData((s) => s.state?.agents, store);
   const selectedAgent =
     selection.selectedId !== null &&
     agents !== undefined &&
     Object.hasOwn(agents, selection.selectedId);
+  // The live card is asked of the app's own store only, so it keeps its final request across a
+  // recording and replay facts never become the remembered target.
+  const liveTarget = useCardTarget(dataStore, selection.selectedId);
+  const liveCard = liveTarget !== null;
+  const recordedTarget = useRecordedTarget(store, mode, selection.selectedId);
   // Needs-you takes the single sidebar ahead of the selected agent and settings.
-  const cardOpen = useCardTarget(dataStore, selection.selectedId) !== null;
-  const sidebar = cardOpen ? ACTION_CARD_ID : selectedAgent ? AGENT_PANEL_ID : "settings-panel";
+  const cardOpen = mode === "history" ? (recordedTarget ?? null) !== null : liveCard;
+  const sidebar = cardOpen ? ACTION_CARD_ID : selectedAgent ? AGENT_PANEL_ID : SETTINGS_OVERLAY_ID;
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
-      <OverlayHost
-        registry={registry}
-        enabled={ENABLED}
-        sidebar={sidebar}
-        mode="live"
-        selectors={selectors}
-        selection={selection}
-        anchors={worldAnchors}
-        runIntent={noIntent}
-        storage={storage}
-      />
+      <PresentedSidebar store={store} recordedTarget={recordedTarget} liveTarget={liveTarget}>
+        <OverlayHost
+          registry={registry}
+          enabled={ENABLED}
+          sidebar={sidebar}
+          mode={mode}
+          selectors={selectors}
+          selection={selection}
+          anchors={worldAnchors}
+          runIntent={noIntent}
+          storage={storage}
+        />
+      </PresentedSidebar>
       <p className={styles.badge}>
         {connection === "stale" ? "Taskville · stale" : "Taskville · paired"}
       </p>

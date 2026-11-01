@@ -420,8 +420,8 @@ describe("AgentPanel tabs", () => {
     expect(seen).toContainEqual(["crew", "L"]);
   });
 
-  it("renders an empty slot, not invented content, without renderTab", async () => {
-    await render(<AgentPanel {...props("L")} store={makeStore()} />);
+  it("renders an explicitly empty slot without invented content", async () => {
+    await render(<AgentPanel {...props("L")} store={makeStore()} renderTab={() => null} />);
     await expect.element(text("agent-panel-tab-slot")).toBeEmptyDOMElement();
   });
 

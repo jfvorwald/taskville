@@ -1,3 +1,5 @@
+import { useData } from "../data/react.ts";
+import { type DataStore, dataStore } from "../data/store.ts";
 import { ThemedCity } from "../themes/core/index.ts";
 import { useReducedMotion } from "../wiring/index.ts";
 import { SubagentCrew } from "./crew/subagents/index.ts";
@@ -11,14 +13,33 @@ import { CityAgents } from "./movement/index.ts";
  * with a one-line edit (an import and one element). `DayNightLighting` comes after `ThemedCity`
  * on purpose: it owns the lights and the sky, and its background write must run second.
  */
-export function CityRoot() {
+export function CityRoot({
+  store = dataStore,
+  mode = "live",
+}: {
+  store?: DataStore;
+  mode?: "live" | "history";
+  historyTime?: number | null;
+}) {
   const reducedMotion = useReducedMotion();
+  const historySequence = useData(
+    (state) => (mode === "history" ? state.state?.head : undefined),
+    store,
+  );
   return (
     <>
       <ThemedCity />
       <DayNightLighting />
-      <CityAgents reducedMotion={reducedMotion} />
-      <SubagentCrew reducedMotion={reducedMotion} />
+      <CityAgents
+        key={mode === "history" ? `history:${historySequence}` : "live"}
+        store={store}
+        reducedMotion={reducedMotion}
+      />
+      <SubagentCrew
+        key={mode === "history" ? `crew:history:${historySequence}` : "crew:live"}
+        store={store}
+        reducedMotion={reducedMotion}
+      />
       <Celebrations reducedMotion={reducedMotion} />
       <InteractionLayer reducedMotion={reducedMotion} />
     </>
