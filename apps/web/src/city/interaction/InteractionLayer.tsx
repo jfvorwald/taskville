@@ -396,14 +396,22 @@ function Interaction({
 
     if (sel?.kind === "agent") {
       let obj = s.selectedObject;
-      if (obj !== null && obj.parent === null) obj = s.selectedObject = null;
+      if (
+        obj !== null &&
+        (obj.parent === null ||
+          (Array.isArray(obj.userData.crewAgentIds) && !obj.userData.crewAgentIds.includes(sel.id)))
+      )
+        obj = s.selectedObject = null;
       if (obj === null) {
         s.retry -= delta;
         if (s.retry <= 0) {
           s.retry = LOST_TARGET_RETRY_SECONDS;
           collectPickables(scene, pickables);
           for (const p of pickables) {
-            if (p.userData.agentId === sel.id) {
+            if (
+              p.userData.agentId === sel.id ||
+              (Array.isArray(p.userData.crewAgentIds) && p.userData.crewAgentIds.includes(sel.id))
+            ) {
               obj = s.selectedObject = p;
               break;
             }

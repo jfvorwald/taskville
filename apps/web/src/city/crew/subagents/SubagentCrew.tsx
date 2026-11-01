@@ -175,6 +175,7 @@ function CrewFamilyView({
   const root = useRef<Group>(null);
   const waiting = useRef<Sprite>(null);
   const marker = useRef<Sprite>(null);
+  const deeper = useRef<Sprite>(null);
   const bots = useRef(new Map<string, BotHandle>());
   const fannedAtMs = useRef<number | undefined>(undefined);
   const markerCount = useRef(0);
@@ -189,7 +190,7 @@ function CrewFamilyView({
   const markerPosition = useMemo(() => new Vector3(), []);
 
   // Private presentation metadata, read by InteractionLayer without changing actual agent IDs.
-  const representHidden = (id: string, bot: BotHandle, representative: Object3D | null) => {
+  const representHidden = (id: string, object: Object3D, representative: Object3D | null) => {
     for (let object = representative; object !== null; object = object.parent) {
       if (!object.visible) {
         representative = null;
@@ -199,7 +200,7 @@ function CrewFamilyView({
     if (representative?.parent === null) representative = null;
     // Finishing suppresses this agent's fallback, but its running descendants still inherit it.
     const ownRepresentative = byId.get(id)?.finishedAt === undefined ? representative : null;
-    bot.root.userData.crewRepresentative = ownRepresentative;
+    object.userData.crewRepresentative = ownRepresentative;
     if (ownRepresentative === null) anchors.removeAnchor(agentAnchorId(id));
     else {
       ownRepresentative.getWorldPosition(markerPosition);
@@ -228,7 +229,7 @@ function CrewFamilyView({
   const placed = useRef<string[]>([]);
   useEffect(() => {
     settled.current = false;
-    const ids = family.members.map((m) => m.id);
+    const ids = [...family.members.map((m) => m.id), ...family.deepIds];
     const kept = new Set(ids);
     for (const id of placed.current) {
       if (!kept.has(id)) {
@@ -237,7 +238,7 @@ function CrewFamilyView({
       }
     }
     placed.current = ids;
-  }, [family.members, places, anchors]);
+  }, [family.members, family.deepIds, places, anchors]);
   useEffect(
     () => () => {
       for (const id of placed.current) {
@@ -281,7 +282,7 @@ function CrewFamilyView({
         const frame = tracker.frame(id, nowMs);
         const representative = representHidden(
           id,
-          bot,
+          bot.root,
           frame === undefined || frame.phase === "gone" || frame.phase === "absent"
             ? null
             : (parentPlace.representative ?? null),
@@ -291,6 +292,11 @@ function CrewFamilyView({
           place.hidden = true;
           place.representative = representative;
         } else places.set(id, { x: 0, z: 0, hidden: true, representative });
+      }
+      if (deeper.current !== null) {
+        for (const id of family.deepIds) {
+          representHidden(id, deeper.current, parentPlace.representative ?? null);
+        }
       }
       return;
     }
@@ -329,6 +335,9 @@ function CrewFamilyView({
     const doorX = (lastDoor.current as Place).x;
     const doorZ = (lastDoor.current as Place).z;
     g.position.set(doorX, 0, doorZ);
+    if (deeper.current !== null) {
+      for (const id of family.deepIds) representHidden(id, deeper.current, deeper.current);
+    }
 
     const view = collapseCrew(live.current, {
       nowMs,
@@ -348,7 +357,7 @@ function CrewFamilyView({
         bot.root.visible = false;
         const representative = representHidden(
           id,
-          bot,
+          bot.root,
           found === undefined || index === undefined ? null : marker.current,
         );
         // Gone: its running crew stays where it last stood. Behind the marker: its crew goes with it.
@@ -442,6 +451,8 @@ function CrewFamilyView({
       />
       {family.deepCount > 0 && (
         <sprite
+          ref={deeper}
+          userData={{ crewAgentIds: family.deepIds }}
           material={pillMaterial(
             `${family.deepCount} deeper`,
             deepTint === undefined ? undefined : TINT_HEX[deepTint.hue],

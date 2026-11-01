@@ -130,6 +130,7 @@ export function CityAgents({
   // list still names them.
   const crewEntries = useRef<readonly AgentLabelEntry[]>([]);
   const crewIds = useRef<ReadonlySet<string>>(new Set());
+  const activeCrewIds = useRef<ReadonlySet<string>>(new Set());
   const urgent = useRef<ReadonlySet<string>>(new Set());
   const shown = useRef(new Map<string, { state: PresentationState; onTheWay: boolean }>());
   const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
@@ -176,8 +177,16 @@ export function CityAgents({
     if (models === null) return;
     nav.sync(models.intents, { place: !placedOnce.current });
     placedOnce.current = true;
-    crewEntries.current = crewLabelEntries(models.crew);
-    crewIds.current = new Set(models.crew.map((v) => v.id));
+    activeCrewIds.current = new Set(models.crew.map((v) => v.id));
+    // Crew owns its return/fade clock. Keep its last list row while its drawn anchor exists.
+    const retained = crewEntries.current.filter(
+      (entry) =>
+        !activeCrewIds.current.has(entry.id) &&
+        state?.agents[entry.id]?.finishedAt !== undefined &&
+        anchors.getAnchor(agentAnchorId(entry.id)) !== undefined,
+    );
+    crewEntries.current = [...crewLabelEntries(models.crew), ...retained];
+    crewIds.current = new Set(crewEntries.current.map((entry) => entry.id));
     urgent.current = new Set(
       [...models.views, ...models.crew]
         .filter((v) => v.attention?.level === "needs_you")
@@ -185,7 +194,7 @@ export function CityAgents({
     );
     publishPositions();
     publishLabels();
-  }, [models, nav, publishPositions, publishLabels]);
+  }, [models, nav, publishPositions, publishLabels, anchors, state]);
 
   useEffect(
     () => () => {
@@ -208,6 +217,26 @@ export function CityAgents({
   useFrame((frame) => {
     nav.tick(frame.clock.elapsedTime * 1000);
     publishPositions();
+    // A clock-only fade can remove a crew anchor without another domain event.
+    let crewGone = false;
+    for (const entry of crewEntries.current) {
+      if (
+        !activeCrewIds.current.has(entry.id) &&
+        anchors.getAnchor(agentAnchorId(entry.id)) === undefined
+      ) {
+        crewGone = true;
+        break;
+      }
+    }
+    if (crewGone) {
+      crewEntries.current = crewEntries.current.filter(
+        (entry) =>
+          activeCrewIds.current.has(entry.id) ||
+          anchors.getAnchor(agentAnchorId(entry.id)) !== undefined,
+      );
+      crewIds.current = new Set(crewEntries.current.map((entry) => entry.id));
+      publishLabels();
+    }
     let changed = false;
     let gone = false;
     for (const a of nav.list()) {
