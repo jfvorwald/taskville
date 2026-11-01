@@ -106,3 +106,27 @@ describe("picker", () => {
     expect(picker.pick(0.9, 0, cam, pickables, (id) => id === "area:review")).toBeNull();
   });
 });
+
+// M3.24 (roborev 5618 #2): a hit on an invisible object (an agent prop with visible=false) must
+// not count as the thing under the pointer.
+describe("createPicker and invisible objects", () => {
+  it("skips a hit on an invisible agent and returns the next visible owner", () => {
+    const s = new Scene();
+    const hiddenAgent = agentGroup("ghost", 0, 0);
+    hiddenAgent.position.y = 5;
+    for (const child of hiddenAgent.children) child.visible = false;
+    s.add(hiddenAgent);
+    s.add(building("review", 0, 0));
+    const pickables = collectPickables(s, []);
+    expect(createPicker().pick(0, 0, topCamera(), pickables)).toBe("area:review");
+  });
+
+  it("returns null when the only thing under the pointer is invisible", () => {
+    const s = new Scene();
+    const ghost = agentGroup("ghost", 0, 0);
+    ghost.visible = false;
+    s.add(ghost);
+    const pickables = collectPickables(s, []);
+    expect(createPicker().pick(0, 0, topCamera(), pickables)).toBeNull();
+  });
+});
