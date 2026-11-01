@@ -1,6 +1,13 @@
 import type { ProjectState } from "../../../data/domain.ts";
 
-export type QueueState = "pending" | "claimed" | "completed" | "unknown";
+export type QueueState =
+  | "pending"
+  | "claimed"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "blocked"
+  | "unknown";
 export function dispatchQueue(state: Pick<ProjectState, "teams" | "tasks">, teamId: string) {
   const team = Object.hasOwn(state.teams, teamId) ? state.teams[teamId] : undefined;
   if (team === undefined) return [];
@@ -28,7 +35,9 @@ export function dispatchQueue(state: Pick<ProjectState, "teams" | "tasks">, team
           ? "claimed"
           : task.status === "queued"
             ? "pending"
-            : "unknown") as QueueState,
+            : task.status === "failed" || task.status === "cancelled" || task.status === "blocked"
+              ? task.status
+              : "unknown") as QueueState,
       claimedBy: task.assignedAgentIds,
       ...(task.completedByAgentId === undefined
         ? {}

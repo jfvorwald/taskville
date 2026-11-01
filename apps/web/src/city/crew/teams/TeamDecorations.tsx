@@ -12,9 +12,9 @@ import { teamAccessories } from "./accessories.ts";
 import { teamScarfColor } from "./color.ts";
 import { teammateIdle } from "./idle.ts";
 import { QUEUE_PAGE_SIZE as PAGE_SIZE, useQueuePage } from "./pages.ts";
-import { dispatchQueue, type QueueState, teamProgress } from "./queue.ts";
+import { dispatchQueue, teamProgress } from "./queue.ts";
 
-const STATUS_COLOR: Record<QueueState, string> = {
+const STATUS_COLOR = {
   pending: "#9aa7ad",
   claimed: "#5aa9c9",
   completed: "#6eb58b",
