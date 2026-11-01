@@ -1,10 +1,20 @@
-import { useFrame } from "@react-three/fiber";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useData } from "../../data/react.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
 import { AgentsLayer } from "../agents/index.ts";
 import type { AgentLabelEntry, AgentView, Placement } from "../agents/types.ts";
+import { presentationEpoch } from "../runtime/epoch.ts";
+import { rebuildPresentation } from "../runtime/rebuild.ts";
 import { agentAnchorId } from "./AgentLabels.tsx";
 import { type LabelStore, labelRows, movementLabels } from "./labels.ts";
 import { buildModels } from "./models.ts";
@@ -56,6 +66,20 @@ export function CityAgents({
   if (navRef.current === null) navRef.current = createNavigator();
   const nav = navRef.current;
   useEffect(() => nav.setReducedMotion(reduced), [nav, reduced]);
+
+  // Back from a long absence the walkers snap to where their paths end (ARCHITECTURE.md 2.8).
+  const clock = useThree((s) => s.clock);
+  const epoch = useSyncExternalStore(
+    presentationEpoch.subscribe,
+    presentationEpoch.getSnapshot,
+    presentationEpoch.getSnapshot,
+  );
+  const seenEpoch = useRef(epoch.epoch);
+  useEffect(() => {
+    if (seenEpoch.current === epoch.epoch) return;
+    seenEpoch.current = epoch.epoch;
+    rebuildPresentation(nav, clock.getElapsedTime() * 1000, reduced, epoch.hiddenForMs);
+  }, [epoch, nav, clock, reduced]);
 
   const table = useMemo(() => loadActivityAreas(localStorageOrNull()), []);
   const placements = useRef(new Map<string, Placement>());

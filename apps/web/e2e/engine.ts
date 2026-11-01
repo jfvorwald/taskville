@@ -31,6 +31,7 @@ writeFileSync(
     fresh: parts.pairing.issueCode(),
     interaction: parts.pairing.issueCode(),
     celebrations: parts.pairing.issueCode(),
+    accessibility: parts.pairing.issueCode(),
     home,
   }),
 );

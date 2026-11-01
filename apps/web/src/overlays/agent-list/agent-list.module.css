@@ -1,0 +1,65 @@
+/*
+ * No animation and no transition anywhere in the list, so reduced motion holds by construction;
+ * the media query below keeps it that way if one is added later.
+ */
+.panel {
+  display: inline-block;
+  max-height: 40vh;
+  overflow-y: auto;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font-size: 0.875rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  margin: 0;
+  padding: 4px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 10px;
+  border-radius: calc(var(--tv-radius) - 2px);
+  cursor: pointer;
+}
+
+.row[data-hovered] {
+  background: color-mix(in srgb, var(--tv-accent) 25%, transparent);
+}
+
+.row[data-focus-visible] {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: -2px;
+}
+
+.row[data-selected] {
+  box-shadow: inset 3px 0 0 var(--tv-accent);
+}
+
+.row[data-urgent="true"] .name {
+  font-weight: 600;
+}
+
+.status {
+  color: var(--tv-text-muted);
+}
+
+.empty {
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--tv-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .panel * {
+    animation: none;
+    transition: none;
+  }
+}
