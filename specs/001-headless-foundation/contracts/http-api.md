@@ -23,7 +23,7 @@ Credentials:
 | Kind | Sent as | Source | Notes |
 | --- | --- | --- | --- |
 | CLI token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/token` (mode 0600, 256-bit, created on first `serve`) | Used by the CLI, the demo producer, and the telemetry shim (M2) |
-| Bridge token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/bridge-token` (mode 0600) | Accepted only on `POST /v1/bridge/claude-code/permission` (M4). Not used in this feature |
+| Bridge token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/bridge-token` (mode 0600) | Accepted only on `POST /v1/bridge/claude-code/permission` (M4.02). The installed hook reads it from the `TASKVILLE_BRIDGE_TOKEN` variable (`allowedEnvVars`); it is never written to settings or printed |
 | Browser session | `X-Taskville-Session: <secret>` | Returned by `POST /v1/pairing` | Kept by the page in `localStorage`; stored by the engine only as a hash |
 
 No cookies: the engine never sends `Set-Cookie` and ignores any `Cookie` header.
@@ -37,7 +37,7 @@ Route access:
 | --- | --- | --- | --- |
 | `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/projects/:id/timelines`, `GET /v1/timelines/:id/state`, `GET /v1/timelines/:id/events`, `GET /v1/attention/events` | yes | yes | no |
 | `POST /v1/events/batch`, `POST /v1/projects`, `POST /v1/pairing/revoke` | yes | no | no |
-| `POST /v1/commands`, `GET /v1/commands/:id` | **never** | yes | **never** |
+| `POST /v1/commands`, `GET /v1/commands/:id`, `GET /v1/requests/:requestId/input` | **never** | yes | **never** |
 | `POST /v1/pairing` | no credential; pairing code in body | | |
 
 The CLI, shim, and bridge tokens can never authorize a command (ARCHITECTURE.md
@@ -205,8 +205,9 @@ that stops reading fills its 1,000 frame queue and is disconnected.
 
 Registered with the full security middleware. A request with any token gets `403
 credential_not_allowed`; a paired browser session needs a matching `Origin`. Until the command
-service registers its routes (`registerCommandRoutes`; `taskville serve` wires it in M4.04) the
-paths answer `501 not_implemented` with no side effects.
+service registers its routes (`registerCommandRoutes`) the paths answer `501 not_implemented` with
+no side effects. `taskville serve` registers them (M4.04) through `wirePermissionBridge`, which
+also wires the bridge and the input route below.
 
 Request bodies are strict: an unknown key at any level is `400 bad_request`, and a body over 16 KiB
 is `413 payload_too_large`. Every body carries `projectId`, `requestId`, and `idempotencyKey`, and
@@ -234,7 +235,7 @@ it).
 Success is `200 { "command": { "id", "type", "requestId", "status", "result"? } }`.
 `permission.decide` ends `delivered` ("sent, unconfirmed", decision #116 D4): the engine records
 `command.requested`, `request.resolved` (`answered_here`, with `decision`), and `command.delivered`,
-and never `command.succeeded` (M4.04 owns confirmation from telemetry). `session.open` ends
+and never `command.succeeded`: a decision is "sent, unconfirmed" and no later telemetry, M4.04's wiring included, upgrades it (decision #116 D4). `session.open` ends
 `succeeded` with `result: { "outcome": "opened" | "copy-only", "sessionId", "cwd"? }` (events:
 `command.requested`, `command.delivered`, `command.succeeded`). The `result` is held in memory
 only (the newest 500 by default; `maxRememberedResults`), so after a restart or once forgotten a
@@ -301,6 +302,47 @@ later city decision cannot reach Claude Code (decision #271).
 A matching `PostToolUse` (exactly one request with the same session, prompt, agent, tool name, and
 input) closes the request as `answered_elsewhere` with `decision: "allow"` (decision #116 D3).
 The exact tool input stays in memory for the decision card; events carry the masked copy.
+
+### `GET /v1/requests/:requestId/input?projectId=<id>` (M4.04)
+
+The exact, unmasked tool input of a request whose hook response the bridge still holds, for the
+decision card. A paired browser session only (`command` scope): the CLI, shim, and bridge tokens
+get `403 credential_not_allowed`. The response carries `Cache-Control: no-store` and, like every
+route, no CORS header. The input is never logged and never appears in an error.
+
+`200 { "requestId", "projectId", "sessionId", "toolName", "toolInput"?, "cwd"? }`. `toolInput` is
+the hook's `tool_input` as sent, so it is absent when the hook sent none; `cwd` is the hook's
+working directory, when it sent one. Errors:
+
+| Status | Code | When |
+| --- | --- | --- |
+| 400 | `bad_request` | no `projectId` query parameter |
+| 404 | `unknown_request` | no such request, or the request belongs to another project |
+| 410 | `request_expired` | the request is recorded but no longer held: decided, hold window over, closed by a matching `PostToolUse`, or never held |
+
+### Hold window and the installed hook (M4.04)
+
+`bridge.holdWindowSeconds` in `config.json` is a whole number of seconds from 1 to 300 (default
+90); anything else is refused by `taskville serve` and `taskville install claude-code` with
+`bridge.holdWindowSeconds: must be a whole number of seconds from 1 to 300`. The hook's own
+timeout is the hold window plus 5 seconds, so the engine always answers first.
+
+`taskville install claude-code` now loads `config.json` on every run, also when `--url` or
+`$TASKVILLE_URL` gives the engine URL (the timeout and the range check need it). An unreadable or
+invalid config file, or a `--url` / `$TASKVILLE_URL` that is not `http://127.0.0.1:<port>` or
+`http://localhost:<port>`, fails the install with exit code 1 and writes nothing.
+
+`taskville install claude-code` writes, besides the 15 telemetry command hooks,
+`hooks.PermissionRequest = [{ "hooks": [{ "type": "http", "url":
+"<engine url>/v1/bridge/claude-code/permission", "timeout": <holdWindowSeconds + 5>, "headers": {
+"Authorization": "Bearer $TASKVILLE_BRIDGE_TOKEN" }, "allowedEnvVars": ["TASKVILLE_BRIDGE_TOKEN"]
+}] }]` with no matcher. The port follows the telemetry hooks (`--url`, `$TASKVILLE_URL`, the
+config port), but the hook URL always uses the loopback IP `127.0.0.1`, never `localhost`, which
+can resolve to `::1` (decision #284 default); the timeout is read from `config.json` even when
+`--url` is given. The install output suggests setting `TASKVILLE_BRIDGE_TOKEN` for the Claude Code
+launch only (`env TASKVILLE_BRIDGE_TOKEN="$(cat <home>/bridge-token)" claude`) and names the token
+file; the token is never written to the settings file or printed. Uninstall removes only an `http` hook whose URL is exactly
+a loopback origin plus the bridge route.
 
 ### `GET /health`
 

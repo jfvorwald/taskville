@@ -48,6 +48,8 @@ export interface HeldRequest {
   sessionId: string;
   toolName: string;
   toolInput: unknown;
+  /** The hook's working directory, when it sent one. */
+  cwd?: string;
 }
 
 export interface PermissionBridgeOptions {
@@ -211,6 +213,8 @@ export class PermissionBridge {
     const { agentId, sourceAgentId } = attribution.subject;
     const toolInput = own(raw, "tool_input");
     const promptId = promptIdOf(raw);
+    const hookCwd = own(raw, "cwd");
+    const cwd = typeof hookCwd === "string" ? hookCwd : undefined;
 
     const projectId = await resolveProjectId(own(raw, "cwd"), this.#options.storage.projects());
     if (this.#closed) return fallThrough();
@@ -265,6 +269,7 @@ export class PermissionBridge {
         sessionId,
         toolName,
         toolInput,
+        ...(cwd === undefined ? {} : { cwd }),
         signal,
         resolve,
         cancelTimer: () => {},
@@ -285,8 +290,15 @@ export class PermissionBridge {
   lookup(requestId: string): HeldRequest | undefined {
     const held = this.#held.get(requestId);
     if (held === undefined) return undefined;
-    const { projectId, sessionId, toolName, toolInput } = held;
-    return { requestId, projectId, sessionId, toolName, toolInput };
+    const { projectId, sessionId, toolName, toolInput, cwd } = held;
+    return {
+      requestId,
+      projectId,
+      sessionId,
+      toolName,
+      toolInput,
+      ...(cwd === undefined ? {} : { cwd }),
+    };
   }
 
   /**

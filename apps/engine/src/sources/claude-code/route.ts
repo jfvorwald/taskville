@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { type AppEnv, requireScope } from "../../http/app.ts";
 import { apiError } from "../../http/errors.ts";
-import type { ClaudeCodeSource } from "./source.ts";
+import type { ClaudeCodeSource, HookIngestResponse } from "./source.ts";
 
 export const CLAUDE_CODE_HOOKS_PATH = "/v1/sources/claude-code/hooks";
 /** The batch route's byte limit (contracts/http-api.md): one hook is never larger than a batch. */
@@ -48,6 +48,18 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export interface ClaudeCodeRouteOptions {
+  /**
+   * Called with the raw payload of each accepted hook (at least one `accepted` event, not
+   * `ignored`), after its events committed. M4.04 passes the permission bridge's `observeHook`.
+   */
+  observeHook?: (payload: Record<string, unknown>) => void;
+}
+
+function isAccepted(response: HookIngestResponse): boolean {
+  return response.ignored !== true && response.results.some((r) => r.status === "accepted");
+}
+
 /**
  * `POST /v1/sources/claude-code/hooks` (ARCHITECTURE.md 8.1): the telemetry
  * shim posts one raw hook as `{ sourceEventId, payload }` with the CLI token.
@@ -61,7 +73,11 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
  * `payload_too_large` over 5 MB. Spooled hooks are not replayed through this
  * route: the spool (M2.07) calls `ClaudeCodeSource.ingestHook` with `late: true`.
  */
-export function registerClaudeCodeRoutes(app: Hono<AppEnv>, source: ClaudeCodeSource): void {
+export function registerClaudeCodeRoutes(
+  app: Hono<AppEnv>,
+  source: ClaudeCodeSource,
+  options: ClaudeCodeRouteOptions = {},
+): void {
   app.post(
     CLAUDE_CODE_HOOKS_PATH,
     requireScope("ingest"),
@@ -80,7 +96,17 @@ export function registerClaudeCodeRoutes(app: Hono<AppEnv>, source: ClaudeCodeSo
           "Expected { sourceEventId: string of 1 to 170 characters, payload: object }",
         );
       }
-      return c.json(await source.ingestHook(wrapper));
+      const response = await source.ingestHook(wrapper);
+      if (options.observeHook !== undefined && isAccepted(response)) {
+        // The observer is a side channel (the permission bridge closing a request): it cannot
+        // fail a hook whose events are already committed.
+        try {
+          options.observeHook(wrapper.payload);
+        } catch {
+          // Nothing to record here: the error could echo the hook's content.
+        }
+      }
+      return c.json(response);
     },
   );
 }

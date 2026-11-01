@@ -21,9 +21,13 @@ import {
 } from "./install-files.ts";
 import {
   addTaskvilleHooks,
+  BRIDGE_HOOK_EVENT,
+  BRIDGE_TOKEN_ENV,
+  bridgeHookHandler,
   detectIndent,
   HOOK_EVENTS,
   hookCommand,
+  isTaskvilleBridgeHook,
   isTaskvilleHook,
   type JsonObject,
   parseSettings,
@@ -31,6 +35,7 @@ import {
   SettingsError,
   SHIM_NAME,
   serialize,
+  shellQuote,
 } from "./install-settings.ts";
 
 // `taskville install claude-code` and `taskville uninstall claude-code` (#29, ARCHITECTURE.md 8.1
@@ -119,23 +124,26 @@ function resolveTaskvilleHome(io: Io, values: Values, userHome: string | undefin
 const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost):([0-9]{1,5})\/?$/;
 
 /**
- * The engine URL for the hook: `--url`, else `$TASKVILLE_URL`, else config.json's port. Only the
- * loopback forms the shim will contact are accepted.
+ * The engine URL for the hooks: `--url`, else `$TASKVILLE_URL`, else config.json's port. Only the
+ * loopback forms the shim will contact are accepted. The config file is always read, so a bad
+ * value (a hold window outside 1 to 300, say) stops the install, and the bridge hook's timeout
+ * (hold window plus 5 s) comes from it even when the URL is given.
  */
-function engineUrl(p: Plan): string {
+function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds: number } {
+  const userHome = nonEmpty(p.io.env.HOME);
+  let config: ReturnType<typeof loadConfig>["config"];
+  try {
+    ({ config } = loadConfig({
+      home: p.home,
+      ...(userHome === undefined ? {} : { homedir: userHome }),
+    }));
+  } catch (error) {
+    return fail(`cannot read the Taskville config: ${(error as Error).message}`);
+  }
+  const { hookTimeoutSeconds } = config.bridge;
   const raw = (p.values.url as string | undefined) ?? nonEmpty(p.io.env.TASKVILLE_URL);
   if (raw === undefined) {
-    const userHome = nonEmpty(p.io.env.HOME);
-    let port: number;
-    try {
-      ({ port } = loadConfig({
-        home: p.home,
-        ...(userHome === undefined ? {} : { homedir: userHome }),
-      }).config);
-    } catch (error) {
-      return fail(`cannot read the Taskville config: ${(error as Error).message}`);
-    }
-    return `http://127.0.0.1:${port}`;
+    return { url: `http://127.0.0.1:${config.port}`, port: config.port, hookTimeoutSeconds };
   }
   const match = LOOPBACK.exec(raw);
   const port = Number(match?.[2]);
@@ -144,7 +152,7 @@ function engineUrl(p: Plan): string {
       `--url ${raw} is not http://127.0.0.1:<port> or http://localhost:<port>; the shim contacts nothing else`,
     );
   }
-  return `http://${match[1]}:${port}`;
+  return { url: `http://${match[1]}:${port}`, port, hookTimeoutSeconds };
 }
 
 function readSettings(target: SettingsTarget): { state: FileState; settings: JsonObject } {
@@ -197,20 +205,39 @@ const matchesAll = (group: Record<string, unknown>) =>
 
 /**
  * True when the file already has exactly one Taskville handler per event, running `command`, in a
- * group that matches every occurrence. A group someone narrowed with a matcher does not count, so
- * a reinstall restores full coverage (roborev 5200).
+ * group that matches every occurrence, and exactly one bridge `http` handler equal to `bridge`
+ * under PermissionRequest, also in a group that matches every tool. A group someone narrowed with
+ * a matcher does not count, so a reinstall restores full coverage (roborev 5200).
  */
-function alreadyInstalled(settings: JsonObject, command: string): boolean {
+function alreadyInstalled(settings: JsonObject, command: string, bridge: JsonObject): boolean {
   const hooks = settings.hooks;
   if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) return false;
   const found: { event: string; handler: Record<string, unknown>; all: boolean }[] = [];
+  const bridges: { handler: Record<string, unknown>; all: boolean; event: string }[] = [];
   for (const [event, groups] of Object.entries(hooks)) {
     for (const group of groups as Record<string, unknown>[]) {
       const handlers = Array.isArray(group.hooks) ? group.hooks : [];
       for (const handler of handlers.filter(isTaskvilleHook)) {
         found.push({ event, handler: handler as Record<string, unknown>, all: matchesAll(group) });
       }
+      for (const handler of handlers.filter(isTaskvilleBridgeHook)) {
+        bridges.push({
+          event,
+          handler: handler as Record<string, unknown>,
+          all: matchesAll(group),
+        });
+      }
     }
+  }
+  const [theBridge] = bridges;
+  if (
+    bridges.length !== 1 ||
+    theBridge === undefined ||
+    theBridge.event !== BRIDGE_HOOK_EVENT ||
+    !theBridge.all ||
+    JSON.stringify(theBridge.handler) !== JSON.stringify(bridge)
+  ) {
+    return false;
   }
   if (found.length !== HOOK_EVENTS.length) return false;
   const events = new Set(found.map((x) => x.event));
@@ -228,7 +255,7 @@ function alreadyInstalled(settings: JsonObject, command: string): boolean {
 
 export async function install(io: Io, args: string[]): Promise<number> {
   const p = plan(io, args, INSTALL_USAGE);
-  const url = engineUrl(p);
+  const { url, port, hookTimeoutSeconds } = engineTarget(p);
   if (!isAbsolute(p.home)) fail(`the Taskville home ${p.home} is not absolute`);
   const shimSource = readFileSync(SHIM_SOURCE, "utf8");
   const shim = checkShim(p.home, SHIM_NAME, shimSource);
@@ -236,15 +263,22 @@ export async function install(io: Io, args: string[]): Promise<number> {
   // TASKVILLE_URL or TASKVILLE_HOME would otherwise win over what was installed (roborev 5200).
   const command = hookCommand({ shimPath: shim.path, home: p.home, url });
 
+  // Always the loopback IP, whatever host --url or $TASKVILLE_URL named: the engine listens on
+  // 127.0.0.1 only, and "localhost" may resolve to ::1 (decision #284).
+  const bridge = bridgeHookHandler({
+    url: `http://127.0.0.1:${port}`,
+    timeoutSeconds: hookTimeoutSeconds,
+  });
+
   const { state, settings } = readSettings(p.target);
-  const settingsDone = alreadyInstalled(settings, command);
+  const settingsDone = alreadyInstalled(settings, command, bridge);
   if (settingsDone && !shim.changes) {
     io.stdout(`Already installed in ${showPath(p.target)}; nothing to change.\n`);
     return EXIT.ok;
   }
   const next = settingsDone
     ? state.text
-    : serialize(addTaskvilleHooks(settings, command), detectIndent(state.text ?? ""));
+    : serialize(addTaskvilleHooks(settings, command, bridge), detectIndent(state.text ?? ""));
   const diff = settingsDiff(p.target.shown, state.text, next);
   const extra = [
     `Hook command: ${command}`,
@@ -263,7 +297,12 @@ export async function install(io: Io, args: string[]): Promise<number> {
     writeAtomic(p.target.path, next, state.mode);
   }
   io.stdout(
-    `Installed Taskville hooks for ${HOOK_EVENTS.length} events in ${showPath(p.target)}.\n`,
+    `Installed Taskville hooks for ${HOOK_EVENTS.length} events and the permission bridge (${BRIDGE_HOOK_EVENT}) in ${showPath(p.target)}.\n`,
+  );
+  // Only the variable name and the token file's path: the token itself is never printed. The hint
+  // sets the variable for the Claude Code launch only, not for the whole shell (decision #284).
+  io.stdout(
+    `To let Claude Code reach the bridge, start it with the token (file ${join(p.home, "bridge-token")}) for that launch only, for example: env ${BRIDGE_TOKEN_ENV}="$(cat ${shellQuote(join(p.home, "bridge-token"))})" claude\n`,
   );
   if (p.scope === "project") {
     io.stdout(
@@ -281,6 +320,19 @@ function installedCommand(settings: JsonObject): string | undefined {
     for (const group of groups as Record<string, unknown>[]) {
       const handler = (Array.isArray(group.hooks) ? group.hooks : []).find(isTaskvilleHook);
       if (handler !== undefined) return String((handler as Record<string, unknown>).command);
+    }
+  }
+  return undefined;
+}
+
+/** The first bridge `http` handler in `settings`, if any, so a restore rebuilds what was written. */
+function installedBridge(settings: JsonObject): JsonObject | undefined {
+  const hooks = settings.hooks;
+  if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) return undefined;
+  for (const groups of Object.values(hooks)) {
+    for (const group of groups as Record<string, unknown>[]) {
+      const handler = (Array.isArray(group.hooks) ? group.hooks : []).find(isTaskvilleBridgeHook);
+      if (handler !== undefined) return handler as JsonObject;
     }
   }
   return undefined;
@@ -310,7 +362,10 @@ export async function uninstall(io: Io, args: string[]): Promise<number> {
       const written =
         command === undefined
           ? undefined
-          : serialize(addTaskvilleHooks(parseSettings(backup), command), detectIndent(backup));
+          : serialize(
+              addTaskvilleHooks(parseSettings(backup), command, installedBridge(settings)),
+              detectIndent(backup),
+            );
       if (written === state.text) {
         next = backup;
         how = "restoring the original from the backup, byte for byte";
