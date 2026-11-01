@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { selectionStore } from "../city/interaction/selection.ts";
 import { DEFAULT_PROJECT_ID, selectProject } from "../data/project.ts";
@@ -69,8 +69,8 @@ const agent = (id: string, displayName: string) => ({
 
 const needsYou = (agentId: string, requestId: string) => ({
   agentId,
-  level: "needs_you",
-  kind: "permission",
+  level: "needs_you" as const,
+  kind: "permission" as const,
   since: SINCE,
   requestId,
   heuristic: false,
@@ -196,6 +196,81 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     await toggle().click();
     await vi.waitFor(() => expect(actionCard()).not.toBeNull());
     expect(settingsShown()).toBe(false);
+  });
+
+  it("keeps keyboard focus on the replacement Settings toggle when opening and closing", async () => {
+    await mountSeeded();
+    selectionStore.select("a2");
+    await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+    const floating = toggle().element();
+
+    // Reach the floating control through the browser's real tab order, then activate it.
+    for (let tabs = 0; document.activeElement !== floating && tabs < 30; tabs++) {
+      await userEvent.keyboard("{Tab}");
+    }
+    await expect.element(floating).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(toggle()).toHaveAttribute("aria-expanded", "true");
+    const panelToggle = toggle().element();
+    expect(panelToggle).not.toBe(floating);
+    expect(sidebar()?.contains(panelToggle)).toBe(true);
+    await expect.element(panelToggle).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(toggle()).toHaveAttribute("aria-expanded", "false");
+    await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+    const restored = toggle().element();
+    expect(restored).not.toBe(panelToggle);
+    expect(sidebar()?.contains(restored)).toBe(false);
+    await expect.element(restored).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(selectionStore.getSnapshot()).toBe("a2");
+  });
+
+  it("keeps the floating Settings toggle reachable without overlapping counts at 320px", async () => {
+    const restore = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await page.viewport(320, 640);
+      await mountSeeded(["a1"]);
+      selectionStore.select("a2");
+      await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+      await expect.element(counts()).toMatchTextContent("1 needs you");
+      await expect.element(toggle()).toBeVisible();
+
+      const button = toggle().element();
+      const buttonBox = button.getBoundingClientRect();
+      const countsBox = counts().element().getBoundingClientRect();
+      expect(window.innerWidth).toBe(320);
+      expect(buttonBox.width).toBeGreaterThan(0);
+      expect(buttonBox.height).toBeGreaterThan(0);
+      expect(buttonBox.left).toBeGreaterThanOrEqual(0);
+      expect(buttonBox.right).toBeLessThanOrEqual(window.innerWidth);
+      expect(buttonBox.top).toBeGreaterThanOrEqual(0);
+      expect(buttonBox.bottom).toBeLessThanOrEqual(window.innerHeight);
+      expect(countsBox.width).toBeGreaterThan(0);
+      expect(countsBox.height).toBeGreaterThan(0);
+      const overlaps =
+        buttonBox.left < countsBox.right &&
+        buttonBox.right > countsBox.left &&
+        buttonBox.top < countsBox.bottom &&
+        buttonBox.bottom > countsBox.top;
+      expect(overlaps).toBe(false);
+      expect(
+        button.contains(
+          document.elementFromPoint(
+            buttonBox.left + buttonBox.width / 2,
+            buttonBox.top + buttonBox.height / 2,
+          ),
+        ),
+      ).toBe(true);
+      await toggle().click();
+      await vi.waitFor(() => expect(settingsShown()).toBe(true));
+    } finally {
+      await page.viewport(restore.width, restore.height);
+    }
   });
 
   it("is unchanged with nothing selected: the toggle is there, closed, and opens Settings in the sidebar", async () => {
