@@ -8,6 +8,7 @@ export interface FilesTabProps {
   agentId: string;
   frames: readonly { id: number; data: ToolCallFrame }[];
   evidence?: Readonly<Record<string, EvidenceResponse>>;
+  onSelectionChange?: (path: string | null, calls: readonly ToolCallFrame[]) => void;
 }
 
 interface RecordedCall {
@@ -80,13 +81,17 @@ export function FilesTab(props: FilesTabProps) {
   return <AgentFiles key={props.agentId} {...props} />;
 }
 
-function AgentFiles({ agentId, frames, evidence }: FilesTabProps) {
+function AgentFiles({ agentId, frames, evidence, onSelectionChange }: FilesTabProps) {
   const files = useMemo(() => filesFor(agentId, frames), [agentId, frames]);
   const [selected, setSelected] = useState<string | null>(null);
   const file = files.find((item) => item.path === selected);
   useEffect(() => {
     if (file === undefined) setSelected(null);
   }, [file]);
+
+  useEffect(() => {
+    onSelectionChange?.(file?.path ?? null, file?.edits.map((call) => call.data) ?? []);
+  }, [file, onSelectionChange]);
 
   if (files.length === 0) return <p>No files reported for this agent.</p>;
 

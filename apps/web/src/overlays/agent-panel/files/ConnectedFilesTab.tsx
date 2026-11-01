@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
 import { useCurrentProjectId } from "../../../data/project.ts";
@@ -29,6 +29,12 @@ function SelectedFiles({
   const [evidence, setEvidence] = useState<Record<string, EvidenceResponse>>({});
   const [unavailable, setUnavailable] = useState(false);
 
+  const selectionReader = useRef<NonNullable<FilesTabProps["onSelectionChange"]>>(() => {});
+  const onSelectionChange = useCallback<NonNullable<FilesTabProps["onSelectionChange"]>>(
+    (path, calls) => selectionReader.current(path, calls),
+    [],
+  );
+
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
@@ -39,28 +45,73 @@ function SelectedFiles({
     let cursor = 0;
     let generation = 0;
 
+    let selectedPath: string | null = null;
+    let evidenceController = new AbortController();
+    let active = 0;
+    const queue: (() => Promise<void>)[] = [];
+
+    function resetEvidence() {
+      generation += 1;
+      evidenceController.abort();
+      evidenceController = new AbortController();
+      queue.length = 0;
+      requested.clear();
+      for (const timer of evidenceRetries) clearTimeout(timer);
+      evidenceRetries.clear();
+      setEvidence({});
+    }
+
+    function drain() {
+      while (!signal.aborted && active < 4 && queue.length > 0) {
+        const read = queue.shift();
+        if (!read) break;
+        active += 1;
+        void read().finally(() => {
+          active -= 1;
+          drain();
+        });
+      }
+    }
+
+    selectionReader.current = (path, calls) => {
+      if (signal.aborted) return;
+      if (path !== selectedPath) {
+        resetEvidence();
+        selectedPath = path;
+      }
+      if (path === null) return;
+      for (const call of calls) {
+        if (call.toolName !== "Edit" && call.toolName !== "Write") continue;
+        readEvidence(call);
+      }
+      drain();
+    };
+
     function readEvidence(call: ToolCallFrame) {
       const started = generation;
+      const bodySignal = evidenceController.signal;
+      const obsolete = () => signal.aborted || bodySignal.aborted || started !== generation;
       for (const part of ["input", "output"] as const) {
         const ref = call.evidence[part];
-        if (ref?.status !== "stored" || requested.has(ref.id)) continue;
-        requested.add(ref.id);
-        // Bodies are independent: a slow input must not block later frames or output reads.
+        if (ref?.status !== "stored") continue;
+        const key = JSON.stringify([ref.id, call.toolCallId, part]);
+        if (requested.has(key)) continue;
+        requested.add(key);
         const read = async (attempt: number): Promise<void> => {
-          if (signal.aborted || started !== generation) return;
+          if (obsolete()) return;
           try {
             const response = await fetch(`/v1/evidence/${encodeURIComponent(ref.id)}`, {
               headers,
-              signal,
+              signal: bodySignal,
             });
-            if (signal.aborted) return;
+            if (obsolete()) return;
             if (!response.ok) {
               if (response.status === 429 || response.status >= 500)
                 throw new Error("Evidence unavailable");
               return;
             }
             const body: EvidenceResponse = await response.json();
-            if (signal.aborted || started !== generation) return;
+            if (obsolete()) return;
             if (
               body.id !== ref.id ||
               body.projectId !== projectId ||
@@ -71,21 +122,23 @@ function SelectedFiles({
               return;
             setEvidence((old) => ({ ...old, [ref.id]: body }));
           } catch {
-            if (signal.aborted || started !== generation) return;
+            if (obsolete()) return;
             if (attempt < 2) {
               const timer = setTimeout(
                 () => {
                   evidenceRetries.delete(timer);
-                  void read(attempt + 1);
+                  if (obsolete()) return;
+                  queue.push(() => read(attempt + 1));
+                  drain();
                 },
                 500 * 2 ** attempt,
               );
               evidenceRetries.add(timer);
-            } else requested.delete(ref.id);
+            } else requested.delete(key);
             // Missing evidence stays honestly "not reported"; never log credentials or bodies.
           }
         };
-        void read(0);
+        queue.push(() => read(0));
       }
     }
 
@@ -111,11 +164,10 @@ function SelectedFiles({
         for await (const raw of readSseFrames(response.body, signal)) {
           if (signal.aborted) return;
           if (raw.event === "resnapshot") {
-            generation += 1;
+            resetEvidence();
+            selectedPath = null;
             cursor = 0;
-            requested.clear();
             setFrames([]);
-            setEvidence({});
             break;
           }
           if (raw.event !== "toolcall") continue;
@@ -132,7 +184,6 @@ function SelectedFiles({
             throw new Error("Invalid feed frame");
           cursor = id;
           setFrames((old) => [...old, { id, data }]);
-          if (data.toolName === "Edit" || data.toolName === "Write") void readEvidence(data);
         }
       } catch {
         if (!signal.aborted) setUnavailable(true);
@@ -142,6 +193,8 @@ function SelectedFiles({
     void stream();
     return () => {
       controller.abort();
+      evidenceController.abort();
+      queue.length = 0;
       clearTimeout(retry);
       for (const timer of evidenceRetries) clearTimeout(timer);
     };
@@ -150,7 +203,12 @@ function SelectedFiles({
   return (
     <>
       {unavailable ? <p role="status">Files feed unavailable.</p> : null}
-      <FilesTab agentId={agentId} frames={frames} evidence={evidence} />
+      <FilesTab
+        agentId={agentId}
+        frames={frames}
+        evidence={evidence}
+        onSelectionChange={onSelectionChange}
+      />
     </>
   );
 }
