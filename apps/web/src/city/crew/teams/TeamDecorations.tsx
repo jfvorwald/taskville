@@ -181,7 +181,7 @@ function TeamQueue({
       />
       {mates.map((mate, n) => {
         const tasks = queue.filter((t) =>
-          t.state === "completed" && t.completedByAgentId !== undefined
+          t.state === "completed"
             ? t.completedByAgentId === mate.id
             : t.claimedBy.includes(mate.id),
         );
