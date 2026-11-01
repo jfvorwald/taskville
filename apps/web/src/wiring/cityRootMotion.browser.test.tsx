@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
-import { getSettingsStore } from "../overlays/settings/index.ts";
 import { CityRoot } from "../city/index.tsx";
+import { getSettingsStore } from "../overlays/settings/index.ts";
 
 // M3.22: the settings panel's reduced-motion choice, resolved against the OS preference, must
 // reach every motion consumer CityRoot mounts. The children are stubbed to record the
