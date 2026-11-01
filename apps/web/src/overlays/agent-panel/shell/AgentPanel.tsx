@@ -99,11 +99,14 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
 
   if (agent === undefined || state === null) return null;
 
-  const needsYou = attention.some((a) => a.agentId === agent.id && a.level === "needs_you");
+  const urgent = attention.find((a) => a.agentId === agent.id && a.level === "needs_you");
+  const needsYou = urgent !== undefined;
   const recorded = state.activity[agent.id];
   // A heuristic activity is a guess (constitution IV), so the header says so.
   const status = needsYou
-    ? "Needs you"
+    ? urgent.heuristic
+      ? "Possibly needs you"
+      : "Needs you"
     : recorded?.heuristic === true
       ? `Possibly ${activityText(recorded.activity).toLowerCase()}`
       : activityText(recorded?.activity ?? "unknown");
