@@ -1,4 +1,5 @@
 import { ThemedCity } from "../themes/core/index.ts";
+import { InteractionLayer } from "./interaction/index.ts";
 import { CityAgents } from "./movement/index.ts";
 
 /**
@@ -10,6 +11,7 @@ export function CityRoot() {
     <>
       <ThemedCity />
       <CityAgents />
+      <InteractionLayer />
     </>
   );
 }
