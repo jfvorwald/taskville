@@ -21,12 +21,11 @@ import {
 //     { status: "failed", reason: "spawn-failed" } with the code in the message.
 //
 //   defaultIsDirectory(path) => Promise<boolean>   (real fs.stat; false for files and missing paths)
-//   OpenSessionDeps gains an OPTIONAL `isDirectory?: (path: string) => Promise<boolean>`.
-//     When supplied and it resolves false, openSession returns { status: "failed",
-//     reason: "invalid-value" } and runs nothing. When omitted, no directory check is made: the
-//     existing tests use the fake cwd /Users/dev/repo (absent on this machine) with a fake
-//     execFile, so a mandatory real check would break them. The production wiring (M4.03) must
-//     pass `isDirectory: defaultIsDirectory`.
+//   OpenSessionDeps has an OPTIONAL `isDirectory?: (path: string) => Promise<boolean>`.
+//     When it resolves false for a {cwd} template, openSession returns { status: "failed",
+//     reason: "invalid-value" } and runs nothing. When omitted, openSession fails closed: it uses
+//     defaultIsDirectory (real fs.stat). Tests that use the fake cwd /Users/dev/repo (absent on
+//     this machine) inject `isDirectory: async () => true`.
 
 const NASTY_NAME = "; $(whoami) `id` | & > \"' *";
 const GRACE_MS = 200;
@@ -169,7 +168,7 @@ setTimeout(() => writeFileSync(process.argv[3], "finished"), 1500);
   });
 });
 
-describe("openSession: cwd must be an existing directory (when isDirectory is supplied)", () => {
+describe("openSession: cwd must be an existing directory", () => {
   const config = { sessionOpener: ["/usr/bin/open", "{cwd}"] };
 
   function fakeExecFile() {

