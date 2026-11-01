@@ -2,8 +2,10 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export type ErrorCode =
+  | "ambiguous_agent"
   | "bad_request"
   | "credential_not_allowed"
+  | "evidence_evicted"
   | "forbidden_host"
   | "forbidden_origin"
   | "internal"
@@ -14,6 +16,8 @@ export type ErrorCode =
   | "payload_too_large"
   | "project_exists"
   | "unauthorized"
+  | "unknown_agent"
+  | "unknown_evidence"
   | "unknown_project";
 
 /** The API error shape: `{ "error": { "code", "message" } }`. Messages never carry request values. */

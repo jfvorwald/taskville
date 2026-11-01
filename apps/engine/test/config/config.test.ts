@@ -8,6 +8,7 @@ import {
   DEFAULT_PORT,
   DEFAULT_WORK_AREAS,
   loadConfig,
+  MAX_HOLD_WINDOW_SECONDS,
   parseConfig,
   UNSORTED_PROJECT_ID,
 } from "../../src/config/config.ts";
@@ -160,11 +161,25 @@ describe("bridge hold window", () => {
     });
   });
 
-  it("rejects values outside 1 to 600 whole seconds", () => {
-    for (const value of [0, 601, 1.5, "90"]) {
+  // M4.04: the hold window is 1 to 300 whole seconds (it was 1 to 600 before the bridge shipped).
+  it("accepts 1 and 300, the ends of the range, and caps the range at 300", () => {
+    expect(MAX_HOLD_WINDOW_SECONDS).toBe(300);
+    expect(parseConfig({ bridge: { holdWindowSeconds: 1 } }, ctx).config.bridge).toEqual({
+      holdWindowSeconds: 1,
+      hookTimeoutSeconds: 6,
+    });
+    expect(parseConfig({ bridge: { holdWindowSeconds: 300 } }, ctx).config.bridge).toEqual({
+      holdWindowSeconds: 300,
+      hookTimeoutSeconds: 305,
+    });
+  });
+
+  it("rejects values outside 1 to 300 whole seconds, with a clear message", () => {
+    for (const value of [0, -1, 301, 600, 601, 1.5, "90", null]) {
       expect(
-        issuesOf(() => parseConfig({ bridge: { holdWindowSeconds: value } }, ctx)).join("\n"),
-      ).toMatch(/^bridge\.holdWindowSeconds:/);
+        issuesOf(() => parseConfig({ bridge: { holdWindowSeconds: value } }, ctx)),
+        String(value),
+      ).toEqual(["bridge.holdWindowSeconds: must be a whole number of seconds from 1 to 300"]);
     }
   });
 });
@@ -259,6 +274,15 @@ describe("loadConfig", () => {
     writeFileSync(path, "{}");
     chmodSync(path, 0o664);
     expect(() => loadConfig({ home })).toThrow(/config\.json.*chmod/);
+  });
+
+  it("refuses a hold window over 300 s at load, naming the file, the setting, and the range", () => {
+    const path = join(home, "config.json");
+    writeFileSync(path, JSON.stringify({ bridge: { holdWindowSeconds: 301 } }), { mode: 0o600 });
+    chmodSync(path, 0o600);
+    expect(() => loadConfig({ home })).toThrow(
+      `${path}: bridge.holdWindowSeconds: must be a whole number of seconds from 1 to 300`,
+    );
   });
 
   it("prefixes issues with the file path in the error message", () => {

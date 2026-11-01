@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { useSoundscape } from "../audio/index.ts";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
@@ -75,6 +76,7 @@ export function OverlayRoot() {
   useAttentionSync();
   useAttentionTabTitle();
   useDesktopNotifications();
+  useSoundscape();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
   // The one sidebar goes to the action card while the selected agent needs you.

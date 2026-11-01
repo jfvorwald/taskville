@@ -23,7 +23,7 @@ Credentials:
 | Kind | Sent as | Source | Notes |
 | --- | --- | --- | --- |
 | CLI token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/token` (mode 0600, 256-bit, created on first `serve`) | Used by the CLI, the demo producer, and the telemetry shim (M2) |
-| Bridge token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/bridge-token` (mode 0600) | Accepted only on `POST /v1/bridge/claude-code/permission` (M4). Not used in this feature |
+| Bridge token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/bridge-token` (mode 0600) | Accepted only on `POST /v1/bridge/claude-code/permission` (M4.02). The installed hook reads it from the `TASKVILLE_BRIDGE_TOKEN` variable (`allowedEnvVars`); it is never written to settings or printed |
 | Browser session | `X-Taskville-Session: <secret>` | Returned by `POST /v1/pairing` | Kept by the page in `localStorage`; stored by the engine only as a hash |
 
 No cookies: the engine never sends `Set-Cookie` and ignores any `Cookie` header.
@@ -35,9 +35,9 @@ Route access:
 
 | Route | CLI token | Browser session | Bridge token |
 | --- | --- | --- | --- |
-| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/attention/events` | yes | yes | no |
+| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/projects/:id/timelines`, `GET /v1/timelines/:id/state`, `GET /v1/timelines/:id/events`, `GET /v1/attention/events`, `GET /v1/agents/:id/feed`, `GET /v1/agents/:id/crew`, `GET /v1/evidence/:id` | yes | yes | no |
 | `POST /v1/events/batch`, `POST /v1/projects`, `POST /v1/pairing/revoke` | yes | no | no |
-| `POST /v1/commands`, `GET /v1/commands/:id` | **never** | yes | **never** |
+| `POST /v1/commands`, `GET /v1/commands/:id`, `GET /v1/requests/:requestId/input` | **never** | yes | **never** |
 | `POST /v1/pairing` | no credential; pairing code in body | | |
 
 The CLI, shim, and bridge tokens can never authorize a command (ARCHITECTURE.md
@@ -119,6 +119,58 @@ above that the route answers `503 too_many_streams`. Revoking pairings
 (`POST /v1/pairing/revoke`) ends every stream opened with a browser session
 (security review #17, F1 and F5).
 
+### Timelines (M6.01)
+
+History mode reads a project's recorded past. Today a project has one timeline, its live
+recording, with ID `live:<projectId>`. Archive timelines arrive with imports (M8). The routes are
+read routes: the CLI token and a paired browser session may use them, the bridge token gets `403
+credential_not_allowed`, and they send no CORS headers. They offer no write method, never write
+to the event log or the projections, and have no path to the command service. A timeline ID that is
+not `live:<projectId>` is `404 not_found`; `live:<unknown project>` is `404 unknown_project`.
+
+A **position** (`at`, `from`, `to`) is either a decimal ingest sequence (digits only: no sign,
+fraction, exponent or hex) or a full ISO 8601 timestamp with a zone (`2026-01-01T12:00:00Z`,
+`...+02:00`). The grammar is strict: `YYYY-MM-DDTHH:MM[:SS[.fraction]]` then `Z` or `+HH:MM` or
+`-HH:MM`, upper-case `T` and `Z`, every field in range. Hour 24 (`T24:00`), minute or second 60,
+an offset past 23:59, a space for the `T` and lower-case `t` or `z` are `400 bad_request`, as are
+date-only, unzoned and any other form. A fraction finer than a millisecond is honored: a lower
+bound (`from`) rounds up to the next whole millisecond, an upper bound (`at`, `to`) down. The live
+timeline's clock is each event's `receivedAt`.
+
+#### `GET /v1/projects/:id/timelines`
+
+`200 { "projectId", "timelines": [{ "id": "live:<projectId>", "kind": "live", "projectId",
+"firstSequence", "lastSequence", "firstAt", "lastAt", "eventCount" }] }`. `firstSequence` and
+`lastSequence` are 1 and the head; `firstAt` and `lastAt` are those events' `receivedAt`;
+`eventCount` equals `lastSequence`. `404 unknown_project`.
+
+#### `GET /v1/timelines/:id/state?at=<position>`
+
+`200 { "timelineId", "at", "cursor", "reducerVersion", "stateHash", "state", "attention",
+"computedAt" }`. A sequence is that sequence; a timestamp is the greatest sequence received at or
+before it. `at` in the response is the resolved sequence and `cursor` equals it. `state` and
+`stateHash` equal a full replay of events 1 to `at`. `attention` is evaluated at the `receivedAt`
+of event `at` (the engine clock for position 0), not at the engine clock, so history never calls
+an agent silent because time has passed since; `computedAt` is the engine clock. Sequence 0 or a
+timestamp before the first event is the empty state at 0; a position past the head resolves to the
+head. A missing or malformed `at` is `400 bad_request`.
+
+#### `GET /v1/timelines/:id/events?from=&to=&limit=&cursor=`
+
+`200 { "timelineId", "events": StoredEnvelope[], "nextCursor": string | null }`: stored envelopes
+in ascending ingest order. `from` and `to` are inclusive positions, defaulting to 1 and the head
+when the request is served. A sequence `from` of 0 means 1; a sequence `to` past the head means
+the head; a timestamp `from` is the first event received at or after it and a timestamp `to` the
+last received at or before it. An empty range is `200` with no events. `limit` is an integer from
+1 to 1000 (default 200), else `400 bad_request`. `nextCursor` is opaque and `null` on the last
+page. Sending it back, with the same `from`, `to` and `limit`, returns the next page with no gap
+and no duplicate; it supersedes `from`. The cursor always pins the end of the walk as resolved on
+the first request (the explicit `to`, else the head at that moment), so pages stay within it and
+do not change as events are ingested; a fresh request without a cursor sees the new head. An end
+above the head (a forged cursor) is clamped to the head, and the page that reaches the head has
+`nextCursor: null`, never an extra empty page. A malformed cursor, one whose content has the wrong
+shape, or one issued for another timeline is `400 bad_request`.
+
 ### `GET /v1/attention/events` (SSE, M4.01)
 
 The global attention feed: which projects have an agent that needs you or is in
@@ -149,12 +201,114 @@ silence appears without an event. Frames carry no `id` and the feed is not resum
 a reconnect starts with a fresh snapshot, which replaces what the client held. A client
 that stops reading fills its 1,000 frame queue and is disconnected.
 
+### Agent feed, crew, and evidence (M5.01)
+
+Three read routes (ARCHITECTURE.md 2.9, 2.10 and 10). CLI token or paired browser session; the
+bridge token gets `403 credential_not_allowed`, no credential `401`. No CORS headers, `Cache-Control:
+no-store`. Agent IDs and evidence IDs are opaque strings, URL-encoded in the path.
+
+Which project: an agent is found by its events. Without `?projectId=`, exactly one project may hold
+the agent; when several do (one session whose working directory moved), the request is `409
+ambiguous_agent` and names no project. `?projectId=` names one: unknown project is `404
+unknown_project`, a project that has no events for the agent is `404 unknown_agent` (the same answer
+as an agent that exists nowhere). An agent ID that is not found, or was crafted, is `404
+unknown_agent`; it is never read as a path or query.
+
+#### `GET /v1/agents/:id/feed?after=N&projectId=P` (SSE)
+
+The ToolCalls of one agent. `Content-Type: text/event-stream`. Resumes like the project stream:
+`Last-Event-ID` overrides `after`, a malformed cursor is `400 bad_request`, a cursor past the
+project head is one `resnapshot` frame (`cursor_ahead_of_head`) and the stream closes. Counts toward
+the same 64-stream cap (`503 too_many_streams`), ends with the engine, and a feed opened with a
+browser session ends when pairings are revoked. A client that stops reading is cut off with
+`resnapshot` / `slow_consumer` (1,000 frames queued), and a write the client has not taken within
+5 s aborts the stream.
+
+```text
+id: 57
+event: toolcall
+data: <ToolCall frame>
+
+event: heartbeat          (once the backlog is sent, then every 15 s, no id)
+data: {"head":57}
+
+event: resnapshot         (then the server closes the stream)
+data: {"reason":"cursor_ahead_of_head" | "slow_consumer"}
+```
+
+One `toolcall` frame per change of a ToolCall: a `PreToolUse` makes a `running` frame and its
+`PostToolUse` a second frame for the same `toolCallId`. The frame `id` is the ingest sequence of the
+event behind it, so frame ids rise in order but are not consecutive, and a client resumes with
+`?after=<last id>`. A repeated start or finish changes nothing and sends no frame. Backlog and live
+frames are gap-free and duplicate-free within a connection. The frame is the ToolCall as of that
+event; a call whose finish never arrives stays `running`, with no `finishedAt` or `durationMs`,
+until the domain reducer closes it at a session or turn boundary (a turn end or failure, a prompt
+submission, a session end, or the agent finishing). The feed then sends one more frame for the call
+with `phase: "unfinished"`, `finishedAt` set to the boundary's time, no `durationMs` and no
+`evidence.output`: it reports that no result was recorded, not an outcome. The frame `id` is the
+boundary event's sequence. A `PostToolUse` that arrives later replaces `unfinished`, as in the
+reducer. Known limitation (#285): the reducer keeps at most 32 open calls per agent and, at a
+boundary, records only the latest-started open call as `unfinished`; a call it dropped for either
+reason never gets an `unfinished` frame and stays `running` in the feed.
+
+```text
+{ "toolCallId", "agentId", "toolName"?, "phase": "running" | "succeeded" | "failed" | "unfinished",
+  "startedAt"?, "finishedAt"?, "durationMs"?, "summary"?, "filePaths": string[],
+  "evidence": { "input": EvidenceRef | null, "output": EvidenceRef | null } }
+EvidenceRef = { "id", "status": "stored" | "evicted" }
+```
+
+`toolName` is absent only for a finish whose start was never recorded. `evidence.input` is set when
+a body was stored for the call, `evidence.output` only once the call finished (never for `running` or `unfinished`); `status` is the
+evidence store's state when the frame is written, so an evicted body still shows that the call
+happened (`GET /v1/evidence/:id` then answers `410`). The heartbeat after the backlog
+(carrying the head) marks the client as caught up; the engine sends it after the backlog frames and
+a turn of the event loop, and not at all if the stream already ended. The catch-up heartbeat's `head` is the last
+project event folded, so it may count frames still queued for the client and not yet written. An
+idle heartbeat carries the storage head; when that is ahead of what the stream folded, the stream
+goes back to the backlog and sends the missing frames before the next heartbeat.
+The stream cap is checked before the agent is looked up: with the cap full, an unknown agent or
+project is `503 too_many_streams`, not `404`.
+
+#### `GET /v1/agents/:id/crew?projectId=P`
+
+`200 { "agentId", "projectId", "team"?, "subagents": CrewMember[], "teammates": CrewMember[] }`.
+`subagents` are the agent's direct children and each carries its own `children`, recursively.
+`teammates` are the members of the team the agent leads, in order of first registration (empty for
+anyone else); `team` is `{ "id", "name"?, "leadAgentId", "startedAt", "endedAt"? }` for a lead or a
+member. A lead that ran several teams gets the one still running, else the latest started. A member is
+`{ "agentId", "kind": "subagent" | "teammate", "displayName"?, "agentType"?, "parentAgentId"?,
+"status": "running" | "finished", "currentActivity"?: { "activity", "since", "heuristic" },
+"startedAt", "finishedAt"?, "elapsedMs", "resultSummary"?, "heuristic", "children" }`.
+
+Links come only from recorded registrations (constitution IV): a subagent is a child after a
+registration named its parent, a teammate a member after a registration named its team. A heuristic
+guess is never a link, so `heuristic` is `false` for every member listed; `currentActivity.heuristic`
+carries the activity's own flag, and `currentActivity` is present only while the member runs.
+`status` is `running` until the agent finished or, for a teammate, its team ended. `elapsedMs` is
+`finishedAt` (or the engine clock while running) minus `startedAt`, from recorded times only.
+`resultSummary` is the summary of the agent's `agent.finished` event, when it had one. Finished
+agents beyond the reducer's retention are not listed.
+
+#### `GET /v1/evidence/:id`
+
+`200 { "id", "projectId", "toolCallId", "part": "input" | "output", "text", "masks":
+[{ "start", "end", "kind" }], "truncated", "bytes" }`. `text` is the stored, already redacted body as
+plain text, never HTML and never HTML-escaped (the client escapes at render time, ARCHITECTURE.md
+12). `masks` locate each `[REDACTED:kind]` marker in `text` by UTF-16 offsets, `[start, end)`,
+sorted; a body the redactor did not change has none. `masks` is a rendering hint, not proof of
+redaction: text the tool itself printed can contain a literal `[REDACTED:kind]` that looks like a
+mask, so a client treats the marker text and the spans as display help only. An evidence ID carries its project, so it
+resolves in one project only. `404 unknown_evidence` for an ID that was never handed out or whose
+body was never stored; `410 evidence_evicted` ("details no longer stored") when the cap evicted it.
+
 ### `POST /v1/commands`, `GET /v1/commands/:id` (M4.03)
 
 Registered with the full security middleware. A request with any token gets `403
 credential_not_allowed`; a paired browser session needs a matching `Origin`. Until the command
-service registers its routes (`registerCommandRoutes`; `taskville serve` wires it in M4.04) the
-paths answer `501 not_implemented` with no side effects.
+service registers its routes (`registerCommandRoutes`) the paths answer `501 not_implemented` with
+no side effects. `taskville serve` registers them (M4.04) through `wirePermissionBridge`, which
+also wires the bridge and the input route below.
 
 Request bodies are strict: an unknown key at any level is `400 bad_request`, and a body over 16 KiB
 is `413 payload_too_large`. Every body carries `projectId`, `requestId`, and `idempotencyKey`, and
@@ -182,7 +336,7 @@ it).
 Success is `200 { "command": { "id", "type", "requestId", "status", "result"? } }`.
 `permission.decide` ends `delivered` ("sent, unconfirmed", decision #116 D4): the engine records
 `command.requested`, `request.resolved` (`answered_here`, with `decision`), and `command.delivered`,
-and never `command.succeeded` (M4.04 owns confirmation from telemetry). `session.open` ends
+and never `command.succeeded`: a decision is "sent, unconfirmed" and no later telemetry, M4.04's wiring included, upgrades it (decision #116 D4). `session.open` ends
 `succeeded` with `result: { "outcome": "opened" | "copy-only", "sessionId", "cwd"? }` (events:
 `command.requested`, `command.delivered`, `command.succeeded`). The `result` is held in memory
 only (the newest 500 by default; `maxRememberedResults`), so after a restart or once forgotten a
@@ -250,6 +404,47 @@ A matching `PostToolUse` (exactly one request with the same session, prompt, age
 input) closes the request as `answered_elsewhere` with `decision: "allow"` (decision #116 D3).
 The exact tool input stays in memory for the decision card; events carry the masked copy.
 
+### `GET /v1/requests/:requestId/input?projectId=<id>` (M4.04)
+
+The exact, unmasked tool input of a request whose hook response the bridge still holds, for the
+decision card. A paired browser session only (`command` scope): the CLI, shim, and bridge tokens
+get `403 credential_not_allowed`. The response carries `Cache-Control: no-store` and, like every
+route, no CORS header. The input is never logged and never appears in an error.
+
+`200 { "requestId", "projectId", "sessionId", "toolName", "toolInput"?, "cwd"? }`. `toolInput` is
+the hook's `tool_input` as sent, so it is absent when the hook sent none; `cwd` is the hook's
+working directory, when it sent one. Errors:
+
+| Status | Code | When |
+| --- | --- | --- |
+| 400 | `bad_request` | no `projectId` query parameter |
+| 404 | `unknown_request` | no such request, or the request belongs to another project |
+| 410 | `request_expired` | the request is recorded but no longer held: decided, hold window over, closed by a matching `PostToolUse`, or never held |
+
+### Hold window and the installed hook (M4.04)
+
+`bridge.holdWindowSeconds` in `config.json` is a whole number of seconds from 1 to 300 (default
+90); anything else is refused by `taskville serve` and `taskville install claude-code` with
+`bridge.holdWindowSeconds: must be a whole number of seconds from 1 to 300`. The hook's own
+timeout is the hold window plus 5 seconds, so the engine always answers first.
+
+`taskville install claude-code` now loads `config.json` on every run, also when `--url` or
+`$TASKVILLE_URL` gives the engine URL (the timeout and the range check need it). An unreadable or
+invalid config file, or a `--url` / `$TASKVILLE_URL` that is not `http://127.0.0.1:<port>` or
+`http://localhost:<port>`, fails the install with exit code 1 and writes nothing.
+
+`taskville install claude-code` writes, besides the 15 telemetry command hooks,
+`hooks.PermissionRequest = [{ "hooks": [{ "type": "http", "url":
+"<engine url>/v1/bridge/claude-code/permission", "timeout": <holdWindowSeconds + 5>, "headers": {
+"Authorization": "Bearer $TASKVILLE_BRIDGE_TOKEN" }, "allowedEnvVars": ["TASKVILLE_BRIDGE_TOKEN"]
+}] }]` with no matcher. The port follows the telemetry hooks (`--url`, `$TASKVILLE_URL`, the
+config port), but the hook URL always uses the loopback IP `127.0.0.1`, never `localhost`, which
+can resolve to `::1` (decision #284 default); the timeout is read from `config.json` even when
+`--url` is given. The install output suggests setting `TASKVILLE_BRIDGE_TOKEN` for the Claude Code
+launch only (`env TASKVILLE_BRIDGE_TOKEN="$(cat <home>/bridge-token)" claude`) and names the token
+file; the token is never written to the settings file or printed. Uninstall removes only an `http` hook whose URL is exactly
+a loopback origin plus the bridge route.
+
 ### `GET /health`
 
 `200 { "status": "ok", "db": "ok", "walMode": true, "uptimeSeconds", "version" }`;
@@ -258,5 +453,5 @@ The exact tool input stays in memory for the decision card; events carry the mas
 ## Later routes (ARCHITECTURE.md section 10, not in this feature)
 
 `POST /v1/sources/claude-code/hooks` (M2), `GET /v1/agents/:id/feed` and
-`GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06), timelines (M6),
+`GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06),
 imports (M8), OTLP (M5.12). Each inherits the security checks above.

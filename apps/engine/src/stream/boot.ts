@@ -9,6 +9,7 @@ import {
   rebuildStaleProjections,
   type Storage,
 } from "../storage/index.ts";
+import { registerTimelineRoutes } from "../timelines/index.ts";
 import { ATTENTION_TICK_MS, AttentionFeed, registerAttentionRoute } from "./attention.ts";
 import { type ExpiredRequest, expireOpenRequests } from "./expire.ts";
 import { StreamHub } from "./hub.ts";
@@ -108,6 +109,7 @@ export function bootEngine(options: BootOptions): Engine {
       drainTimeoutMs,
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
     });
+    registerTimelineRoutes(options.app, { storage, now });
     return {
       storage,
       hub,
