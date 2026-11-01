@@ -10,7 +10,7 @@ import type { EntitiesState, Task } from "./types.ts";
 function withStatus(task: Task, to: TaskStatus, sourceValue: string | undefined, at: string): Task {
   const allowed = isAllowedTransition(task.status, to);
   return {
-    ...omit(task, ["sourceValue", "transitionWarning"]),
+    ...omit(task, ["sourceValue", "transitionWarning", "completedByAgentId"]),
     status: to,
     ...optional("sourceValue", to === "unknown" ? sourceValue : undefined),
     ...optional(
@@ -66,13 +66,17 @@ export function applyTaskStatusChanged(
 ): EntitiesState {
   const { status, sourceValue } = e.payload;
   const existing = getOwn(s.tasks, taskId);
-  const task =
+  const base =
     existing === undefined
       ? {
           ...newTask(taskId, status, e.occurredAt),
           ...optional("sourceValue", status === "unknown" ? sourceValue : undefined),
         }
       : withStatus(existing, status, sourceValue, e.occurredAt);
+  const task: Task = {
+    ...base,
+    ...optional("completedByAgentId", status === "completed" ? e.agentId : undefined),
+  };
   return { ...s, tasks: put(s.tasks, taskId, task) };
 }
 

@@ -63,3 +63,36 @@
     transition: none;
   }
 }
+
+.queues section {
+  padding: 4px 14px 10px;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
+.queues h3 {
+  font-size: inherit;
+}
+
+.queues ul {
+  padding-left: 20px;
+}
+
+.queues button {
+  color: var(--tv-text);
+  background: var(--tv-surface);
+  border: 1px solid var(--tv-text-muted);
+  border-radius: var(--tv-radius);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.queues button:focus-visible {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
+
+.queues button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

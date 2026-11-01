@@ -352,8 +352,11 @@ describe("no route mints a pairing code (#113, #174)", () => {
         // deliberate change to this test. Neither pairing route issues a code.
         expect(routes).toEqual([
           "GET /health",
+          "GET /v1/agents/:id/crew",
+          "GET /v1/agents/:id/feed",
           "GET /v1/attention/events",
           "GET /v1/commands/:id",
+          "GET /v1/evidence/:id",
           "GET /v1/projects",
           "GET /v1/projects/:id/events",
           "GET /v1/projects/:id/snapshot",
