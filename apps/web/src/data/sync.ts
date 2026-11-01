@@ -116,7 +116,13 @@ async function fetchSnapshot(
 ): Promise<ProjectState> {
   const response = await doFetch(`${base}/snapshot`, { headers, signal });
   checkStatus(response);
-  const parsed = snapshotResponseSchema.safeParse(await response.json().catch(() => undefined));
+  // Malformed JSON is the server's fault (fatal); a body that fails to download is transport
+  // trouble, so it propagates to the retry loop.
+  const body: unknown = await response.json().catch((error: unknown) => {
+    if (error instanceof SyntaxError) return undefined;
+    throw error;
+  });
+  const parsed = snapshotResponseSchema.safeParse(body);
   if (!parsed.success) throw new Fatal("bad_response");
   const snapshot = parsed.data;
   if (snapshot.reducerVersion !== REDUCER_VERSION) throw new Fatal("reducer_mismatch");

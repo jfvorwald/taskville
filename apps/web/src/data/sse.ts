@@ -15,11 +15,19 @@ export async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGen
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // A chunk can end between the "\r" and "\n" of one CRLF, so a trailing "\r" waits for the next
+  // chunk. At stream end a held "\r" is a lone "\r", which ends a line.
+  let heldCr = "";
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) return;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n?/g, "\n");
+      let text = heldCr + (done ? "" : decoder.decode(value, { stream: true }));
+      heldCr = "";
+      if (!done && text.endsWith("\r")) {
+        heldCr = "\r";
+        text = text.slice(0, -1);
+      }
+      buffer += text.replace(/\r\n?/g, "\n");
       let end = buffer.indexOf("\n\n");
       while (end >= 0) {
         const frame = parseFrame(buffer.slice(0, end));
@@ -27,6 +35,7 @@ export async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGen
         if (frame !== undefined) yield frame;
         end = buffer.indexOf("\n\n");
       }
+      if (done) return;
     }
   } finally {
     // Stops the download when the consumer leaves early (abort, resnapshot, bad frame).
