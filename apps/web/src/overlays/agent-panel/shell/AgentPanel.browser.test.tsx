@@ -171,6 +171,15 @@ describe("AgentPanel presence", () => {
     expect(b.container.querySelector('[data-testid="agent-panel"]')).toBeNull();
   });
 
+  it("renders nothing, and does not throw, for an id that is an inherited property name", async () => {
+    const store = makeStore();
+    for (const id of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      const view = await render(<AgentPanel {...props(id)} store={store} />);
+      expect(view.container.querySelector('[data-testid="agent-panel"]')).toBeNull();
+      await view.unmount();
+    }
+  });
+
   it("opens for a lead, a teammate, a subagent and a solo session alike", async () => {
     const store = makeStore();
     const view = await render(<AgentPanel {...props("L")} store={store} />);
@@ -266,6 +275,54 @@ describe("AgentPanel header", () => {
       <AgentPanel {...props("s1")} store={makeStore({ toolCalls: { c1: done } })} />,
     );
     expect(view.container.querySelector('[data-testid="agent-panel-file"]')).toBeNull();
+  });
+});
+
+describe("AgentPanel heuristic labels", () => {
+  const needsYou = (heuristic: boolean): Attention => ({
+    agentId: "s1",
+    level: "needs_you",
+    kind: "permission",
+    since: iso(-5_000),
+    requestId: "r1",
+    heuristic,
+  });
+
+  it("qualifies a heuristic activity as a guess, never as fact", async () => {
+    const store = makeStore({
+      activity: { s1: { ...activity("s1", "testing"), heuristic: true } },
+    });
+    await render(<AgentPanel {...props("s1")} store={store} />);
+    await expect.element(text("agent-panel-status")).toHaveTextContent("Possibly testing");
+  });
+
+  it("qualifies a multi-word heuristic activity the same way", async () => {
+    const store = makeStore({
+      activity: { s1: { ...activity("s1", "handing_off"), heuristic: true } },
+    });
+    await render(<AgentPanel {...props("s1")} store={store} />);
+    await expect.element(text("agent-panel-status")).toHaveTextContent("Possibly handing off");
+  });
+
+  it("shows an observed activity unqualified", async () => {
+    await render(<AgentPanel {...props("s1")} store={makeStore()} />);
+    const status = text("agent-panel-status");
+    await expect.element(status).toHaveTextContent("Testing");
+    expect(status.element().textContent).not.toMatch(/possibly/i);
+  });
+
+  it("qualifies a heuristic needs-you record as a guess", async () => {
+    const store = makeStore({ attention: [needsYou(true)] });
+    await render(<AgentPanel {...props("s1")} store={store} />);
+    await expect.element(text("agent-panel-status")).toHaveTextContent("Possibly needs you");
+  });
+
+  it("shows an observed needs-you record unqualified", async () => {
+    const store = makeStore({ attention: [needsYou(false)] });
+    await render(<AgentPanel {...props("s1")} store={store} />);
+    const status = text("agent-panel-status");
+    await expect.element(status).toHaveTextContent("Needs you");
+    expect(status.element().textContent).not.toMatch(/possibly/i);
   });
 });
 
@@ -475,5 +532,32 @@ describe("AgentPanel in history mode", () => {
     await page.getByRole("tab", { name: "Files" }).click();
     press("]");
     expect(sent).toEqual([]);
+  });
+});
+
+describe("AgentPanel in the sidebar slot", () => {
+  it("keeps its margins inside the slot when its content is taller than the slot", async () => {
+    const SLOT_HEIGHT = 300;
+    const MARGIN = 16;
+    const view = await render(
+      <div
+        data-testid="slot"
+        style={{ display: "flow-root", height: `${SLOT_HEIGHT}px`, width: "400px" }}
+      >
+        <AgentPanel
+          {...props("L")}
+          store={makeStore()}
+          renderTab={() => <div style={{ height: "2000px" }}>tall</div>}
+        />
+      </div>,
+    );
+    const slot = view.container.querySelector('[data-testid="slot"]') as HTMLElement;
+    const panel = view.container.querySelector('[data-testid="agent-panel"]') as HTMLElement;
+    const slotBox = slot.getBoundingClientRect();
+    const box = panel.getBoundingClientRect();
+    // The panel is capped (it scrolls inside) and its bottom margin still fits in the slot.
+    expect(box.height).toBeLessThan(2000);
+    expect(box.top - slotBox.top).toBeGreaterThanOrEqual(MARGIN - 1);
+    expect(slotBox.bottom - box.bottom).toBeGreaterThanOrEqual(MARGIN - 1);
   });
 });
