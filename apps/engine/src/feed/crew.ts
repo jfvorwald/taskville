@@ -115,7 +115,14 @@ export function buildCrew(
     teamOf: Team | undefined,
     seen: ReadonlySet<string>,
   ): CrewMember => {
-    const finishedAt = agent.finishedAt ?? (kind === "teammate" ? teamOf?.endedAt : undefined);
+    // A teammate is finished when it finished or its team ended, whichever came first.
+    const teamEnd = kind === "teammate" ? teamOf?.endedAt : undefined;
+    const finishedAt =
+      agent.finishedAt !== undefined && teamEnd !== undefined
+        ? compareTimestamps(teamEnd, agent.finishedAt) < 0
+          ? teamEnd
+          : agent.finishedAt
+        : (agent.finishedAt ?? teamEnd);
     const activity = Object.hasOwn(state.activity, agent.id) ? state.activity[agent.id] : undefined;
     const summary = summaries.get(agent.id);
     const elapsed = Date.parse(finishedAt ?? now.toISOString()) - Date.parse(agent.firstSeenAt);

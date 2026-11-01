@@ -65,9 +65,25 @@ export class ToolCallTracker {
     if (call !== undefined) {
       if (call.phase === "running") this.#open.add(call.toolCallId);
       else this.#open.delete(call.toolCallId);
+    } else {
+      this.#restoreRepeatedStart(event);
     }
     this.#forgetDropped();
     return call;
+  }
+
+  /**
+   * A repeated start sends no frame, but if the reducer had dropped the call and holds it running
+   * again, the open set must track it again, or a later boundary would close it unannounced.
+   */
+  #restoreRepeatedStart(event: StoredEnvelope): void {
+    if (event.agentId !== this.#agentId || event.type !== "tool_call.started") return;
+    const id = event.payload.toolCallId;
+    const reduced = Object.hasOwn(this.#state.toolCalls, id)
+      ? this.#state.toolCalls[id]
+      : undefined;
+    if (reduced?.phase === "running" && this.#calls.get(id)?.phase === "running")
+      this.#open.add(id);
   }
 
   /** How many of this agent's calls are tracked as open: never more than the reducer keeps. */
