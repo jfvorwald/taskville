@@ -6,8 +6,8 @@ import type { BubbleCandidate } from "./select.ts";
 export type RequestTools = Readonly<Record<string, { toolName?: string } | undefined>>;
 
 /**
- * One candidate per agent (its most urgent record; `records` is most urgent first) whose quip
- * window is open at `now`. The event ID is the request ID, or for records with no request the
+ * One candidate per agent (its most urgent record whose quip window is open at `now`;
+ * `records` is most urgent first). The event ID is the request ID, or for records with no request the
  * kind and start, which is stable for as long as the state lasts. The tool name comes only from
  * the request's own field, never from any text.
  */
@@ -20,11 +20,11 @@ export function bubbleCandidates(
   const candidates: BubbleCandidate[] = [];
   for (const record of records) {
     if (seen.has(record.agentId)) continue;
-    seen.add(record.agentId);
     const sinceMs = Date.parse(record.since);
     if (Number.isNaN(sinceMs)) continue;
     const eventId = record.requestId ?? `${record.kind}@${record.since}`;
     if (!quipVisibleAt({ agentId: record.agentId, eventId, sinceMs }, now)) continue;
+    seen.add(record.agentId);
     const toolName =
       record.requestId === undefined ? undefined : requests[record.requestId]?.toolName;
     candidates.push({
