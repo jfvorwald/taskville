@@ -17,8 +17,8 @@ export function CityRoot() {
       <ThemedCity />
       <DayNightLighting />
       <CityAgents reducedMotion={reducedMotion} />
-      <Celebrations />
-      <InteractionLayer />
+      <Celebrations reducedMotion={reducedMotion} />
+      <InteractionLayer reducedMotion={reducedMotion} />
     </>
   );
 }
