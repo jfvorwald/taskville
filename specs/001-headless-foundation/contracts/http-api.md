@@ -130,8 +130,12 @@ not `live:<projectId>` is `404 not_found`; `live:<unknown project>` is `404 unkn
 
 A **position** (`at`, `from`, `to`) is either a decimal ingest sequence (digits only: no sign,
 fraction, exponent or hex) or a full ISO 8601 timestamp with a zone (`2026-01-01T12:00:00Z`,
-`...+02:00`). The live timeline's clock is each event's `receivedAt`. Date-only, unzoned, or any
-other form is `400 bad_request`.
+`...+02:00`). The grammar is strict: `YYYY-MM-DDTHH:MM[:SS[.fraction]]` then `Z` or `+HH:MM` or
+`-HH:MM`, upper-case `T` and `Z`, every field in range. Hour 24 (`T24:00`), minute or second 60,
+an offset past 23:59, a space for the `T` and lower-case `t` or `z` are `400 bad_request`, as are
+date-only, unzoned and any other form. A fraction finer than a millisecond is honored: a lower
+bound (`from`) rounds up to the next whole millisecond, an upper bound (`at`, `to`) down. The live
+timeline's clock is each event's `receivedAt`.
 
 #### `GET /v1/projects/:id/timelines`
 
@@ -160,8 +164,12 @@ the head; a timestamp `from` is the first event received at or after it and a ti
 last received at or before it. An empty range is `200` with no events. `limit` is an integer from
 1 to 1000 (default 200), else `400 bad_request`. `nextCursor` is opaque and `null` on the last
 page. Sending it back, with the same `from`, `to` and `limit`, returns the next page with no gap
-and no duplicate; it supersedes `from`. With an explicit `to`, pages do not change as events are
-ingested. A malformed cursor, or one issued for another timeline, is `400 bad_request`.
+and no duplicate; it supersedes `from`. The cursor always pins the end of the walk as resolved on
+the first request (the explicit `to`, else the head at that moment), so pages stay within it and
+do not change as events are ingested; a fresh request without a cursor sees the new head. An end
+above the head (a forged cursor) is clamped to the head, and the page that reaches the head has
+`nextCursor: null`, never an extra empty page. A malformed cursor, one whose content has the wrong
+shape, or one issued for another timeline is `400 bad_request`.
 
 ### `GET /v1/attention/events` (SSE, M4.01)
 

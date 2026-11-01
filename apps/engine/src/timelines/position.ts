@@ -2,11 +2,18 @@
 // (contracts/http-api.md, "Timelines"). Anything looser is refused, so a client never gets a
 // quiet guess at what "1e3" or "2026-01-01" meant.
 
-export type Position = { kind: "sequence"; sequence: number } | { kind: "time"; ms: number };
+/**
+ * A timestamp is held as the whole millisecond at or before it (`ms`) and the one at or after it
+ * (`msCeil`), which differ only when the fraction goes past milliseconds: `Date.parse` drops
+ * those digits, and a lower bound must not do so.
+ */
+export type Position =
+  | { kind: "sequence"; sequence: number }
+  | { kind: "time"; ms: number; msCeil: number };
 
 const SEQUENCE = /^(0|[1-9][0-9]{0,15})$/;
 const ZONED =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /** The position `raw` names, or undefined when it is neither a sequence nor a zoned timestamp. */
 export function parsePosition(raw: string): Position | undefined {
@@ -25,5 +32,7 @@ export function parsePosition(raw: string): Position | undefined {
   // Date.parse reads T24:00 as midnight of the next day; the grammar has no hour 24.
   if (Number(parts[4]) > 23) return undefined;
   const ms = Date.parse(raw);
-  return Number.isNaN(ms) ? undefined : { kind: "time", ms };
+  if (Number.isNaN(ms)) return undefined;
+  const beyondMs = /[1-9]/.test((parts[7] ?? "").slice(3));
+  return { kind: "time", ms, msCeil: beyondMs ? ms + 1 : ms };
 }

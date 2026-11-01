@@ -69,7 +69,8 @@ function* eventsUpTo(storage: Storage, projectId: string, last: number) {
 
 /**
  * Resolves a timestamp against the whole log in one pass: the greatest sequence received at or
- * before `ms` (0 when none) and the smallest received at or after it (undefined when none). A
+ * before `ms` (0 when none) and the smallest received at or after `msCeil` (undefined when none;
+ * `msCeil` is `ms` unless the timestamp has a fraction finer than a millisecond). A
  * scan rather than a search, because the engine clock may step back and then `receivedAt` is not
  * sorted.
  */
@@ -77,13 +78,14 @@ function scanTime(
   storage: Storage,
   projectId: string,
   ms: number,
+  msCeil: number,
 ): { atOrBefore: number; atOrAfter: number | undefined } {
   let atOrBefore = 0;
   let atOrAfter: number | undefined;
   for (const event of storage.events(projectId)) {
     const received = Date.parse(event.receivedAt);
     if (received <= ms) atOrBefore = event.ingestSequence;
-    if (atOrAfter === undefined && received >= ms) atOrAfter = event.ingestSequence;
+    if (atOrAfter === undefined && received >= msCeil) atOrAfter = event.ingestSequence;
   }
   return { atOrBefore, atOrAfter };
 }
@@ -91,13 +93,13 @@ function scanTime(
 /** The last sequence a position includes, from 0 (none) to the head. */
 function resolveUpTo(storage: Storage, projectId: string, head: number, at: Position): number {
   if (at.kind === "sequence") return Math.min(at.sequence, head);
-  return scanTime(storage, projectId, at.ms).atOrBefore;
+  return scanTime(storage, projectId, at.ms, at.msCeil).atOrBefore;
 }
 
 /** The first sequence a position includes, from 1 to the head plus one (past the log). */
 function resolveFrom(storage: Storage, projectId: string, head: number, at: Position): number {
   if (at.kind === "sequence") return Math.max(at.sequence, 1);
-  return scanTime(storage, projectId, at.ms).atOrAfter ?? head + 1;
+  return scanTime(storage, projectId, at.ms, at.msCeil).atOrAfter ?? head + 1;
 }
 
 /** Where a page resumes, and the last sequence the walk was pinned to when it began. */
