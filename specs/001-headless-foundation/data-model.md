@@ -127,6 +127,11 @@ because the source is the authority, but flagged with a `transitionWarning` on t
 task so the UI can surface them later. Task statuses are task data only; they never
 raise attention by themselves.
 
+`Task.completedByAgentId` optionally records the envelope actor of the latest
+`task.status_changed` to `completed`. An actorless completion or a later
+non-completed status (including `task.assigned`) clears it. It never changes
+`assignedAgentIds`. It is retained with the task in JSON snapshots and replay.
+
 ### Connection vs activity
 
 `agent.disconnected` changes `connection` only. Activity, task, and attention are

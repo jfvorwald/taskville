@@ -1,0 +1,1267 @@
+{
+  "sourceHead": "4026d3148cf8896f4b5ff28d94cd0942972e3ac8",
+  "sourceCommit": "9229b96a3fe8d07df98aa74cb17f4c542c46b1c2",
+  "seed": 7,
+  "pace": "calm",
+  "epoch": 1793556508793,
+  "project": "unsorted",
+  "genuineDemoSteps": [42, 57],
+  "prerollEvents": 62,
+  "recordedEvents": 21,
+  "leadId": "d7-ada",
+  "mateId": "d7-rmvy58j95-mate18",
+  "pacing": "Preroll ingested before capture; original event timestamps/payloads retained; team segment paced at 900ms/change, 6s work and 2.5s idle holds for visibility.",
+  "pageErrors": [],
+  "observations": [
+    {
+      "phase": "arrival",
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": -6.699999999999999,
+          "heading": 2.961739153797315,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-43",
+      "types": ["tool_call.finished"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": -6.699999999999999,
+          "heading": 2.961739153797315,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-44",
+      "types": ["activity.started"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-45",
+      "types": ["session.turn_failed"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-46",
+      "types": ["tool_call.started"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-47",
+      "types": ["tool_call.started", "request.opened"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-48",
+      "types": ["tool_call.finished"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-49",
+      "types": ["session.prompt_submitted"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-50",
+      "types": ["tool_call.started"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-51",
+      "types": ["task.handoff"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-52",
+      "types": ["session.turn_ended"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-53",
+      "types": ["session.prompt_submitted"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "stuck",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-54",
+      "types": ["tool_call.finished"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-55",
+      "types": ["tool_call.finished"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    },
+    {
+      "phase": "step-56",
+      "types": ["activity.ended"],
+      "walkers": [
+        {
+          "id": "d7-ada",
+          "x": -11.8,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "dispatch:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-brook",
+          "x": 0,
+          "z": 0,
+          "heading": 0,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-cyd",
+          "x": 8.2,
+          "z": -6.699999999999999,
+          "heading": 2.642245931909663,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": "workshop:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-dee",
+          "x": 0,
+          "z": 3.5,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-eli",
+          "x": -3.5,
+          "z": 0,
+          "heading": 0,
+          "state": "waiting",
+          "onTheWay": false,
+          "slotId": null,
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-fay",
+          "x": -11.8,
+          "z": 3.1,
+          "heading": 2.6155262345930295,
+          "state": "working",
+          "onTheWay": false,
+          "slotId": "archives:0",
+          "queued": false,
+          "gone": false
+        },
+        {
+          "id": "d7-rmvy58j95-mate18",
+          "x": -10.6,
+          "z": 3.1,
+          "heading": 2.950408193992779,
+          "state": "idle",
+          "onTheWay": false,
+          "slotId": "archives:1",
+          "queued": false,
+          "gone": false
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "The existing demo team generator emits no task claims, so task queue/claim/pip behavior is not demonstrated by this clip.",
+    "This is a local engine and built client; no production or user config.",
+    "Physical queue raycasting and multiple-team camera packing are not covered.",
+    "Software WebGL recording is not a performance benchmark."
+  ]
+}
