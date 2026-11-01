@@ -17,7 +17,8 @@ function memoryStorage() {
   };
 }
 
-function fakeSoundscape() {
+function fakeSoundscape(options: { failEnableTimes?: number } = {}) {
+  let failures = options.failEnableTimes ?? 0;
   const log = {
     enableCalls: 0,
     /** navigator.userActivation.isActive at the moment enable() ran: true inside a click. */
@@ -32,6 +33,10 @@ function fakeSoundscape() {
     enable() {
       log.enableCalls += 1;
       log.activeDuringEnable.push(navigator.userActivation.isActive);
+      if (failures > 0) {
+        failures -= 1;
+        return Promise.reject(new Error("The AudioContext could not be started"));
+      }
       enabled = true;
       return Promise.resolve();
     },
@@ -80,6 +85,35 @@ describe("SoundSection", () => {
     expect(log.disableCalls).toBe(1);
     expect(soundscape.enabled).toBe(false);
     await expect.element(page.getByRole("button", { name: "Enable sound" })).toBeVisible();
+  });
+
+  it("stays on Enable sound and says so when sound could not start", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event.reason);
+    window.addEventListener("unhandledrejection", onUnhandled);
+    try {
+      const { soundscape, log } = fakeSoundscape({ failEnableTimes: 1 });
+      await render(
+        <SoundSection soundscape={soundscape} store={createSoundSettingsStore(memoryStorage())} />,
+      );
+      await page.getByRole("button", { name: "Enable sound" }).click();
+      expect(log.enableCalls).toBe(1);
+
+      // A short inline note, and the button still offers to try again.
+      await expect.element(page.getByText(/sound could not start/i)).toBeVisible();
+      await expect.element(page.getByRole("button", { name: "Enable sound" })).toBeVisible();
+      expect(page.getByRole("button", { name: "Turn sound off" }).elements()).toHaveLength(0);
+      // Let any stray rejection surface before checking.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(unhandled).toEqual([]);
+
+      // Trying again works, and the note goes away.
+      await page.getByRole("button", { name: "Enable sound" }).click();
+      await expect.element(page.getByRole("button", { name: "Turn sound off" })).toBeVisible();
+      expect(page.getByText(/sound could not start/i).elements()).toHaveLength(0);
+    } finally {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    }
   });
 
   it("shows the defaults: half volume, not muted, not chime only", async () => {

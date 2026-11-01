@@ -12,11 +12,14 @@ export type BackendCall =
   | { op: "playCue"; cue: Cue }
   | { op: "startLoop"; themeId: string; asset: unknown }
   | { op: "stopLoop" }
-  | { op: "silence" };
+  | { op: "silence" }
+  | { op: "suspend" };
 
 export function fakeBackend() {
   const calls: BackendCall[] = [];
-  const backend: AudioBackend = {
+  // suspend() is the idle-cost hook (M4.09 review): the soundscape parks the context when nothing
+  // can sound, and start() or playCue brings it back.
+  const backend: AudioBackend & { suspend(): void } = {
     async start() {
       calls.push({ op: "start" });
     },
@@ -35,11 +38,17 @@ export function fakeBackend() {
     silence() {
       calls.push({ op: "silence" });
     },
+    suspend() {
+      calls.push({ op: "suspend" });
+    },
   };
   const cues = (cue?: Cue) =>
     calls.filter((c) => c.op === "playCue" && (cue === undefined || c.cue === cue));
   /** How many times the backend was told to cut a ringing cue. */
   const silences = () => calls.filter((c) => c.op === "silence");
+  const suspends = () => calls.filter((c) => c.op === "suspend");
+  /** Index of the last call with this op, or -1. */
+  const lastIndex = (op: BackendCall["op"]) => calls.map((c) => c.op).lastIndexOf(op);
   const loops = () =>
     calls.filter((c): c is Extract<BackendCall, { op: "startLoop" }> => c.op === "startLoop");
   /** The loop playing now: the last startLoop with no stopLoop after it. */
@@ -58,7 +67,7 @@ export function fakeBackend() {
     }
     return undefined;
   };
-  return { backend, calls, cues, silences, loops, playingLoop, lastVolume };
+  return { backend, calls, cues, silences, suspends, lastIndex, loops, playingLoop, lastVolume };
 }
 
 export function fakeSettings(initial: Partial<SoundSettings> = {}) {
@@ -84,23 +93,32 @@ export function fakeSettings(initial: Partial<SoundSettings> = {}) {
 export function fakeLoader() {
   const requested: string[] = [];
   const pending = new Map<string, Array<(asset: unknown) => void>>();
+  const failures = new Map<string, Array<(error: unknown) => void>>();
   const loadLoop = (themeId: string) => {
     requested.push(themeId);
-    return new Promise<unknown>((resolve) => {
+    return new Promise<unknown>((resolve, reject) => {
       pending.set(themeId, [...(pending.get(themeId) ?? []), resolve]);
+      failures.set(themeId, [...(failures.get(themeId) ?? []), reject]);
     });
+  };
+  /** Fail every pending request for a theme, as a network or decode error would. */
+  const reject = (themeId: string) => {
+    for (const r of failures.get(themeId) ?? []) r(new Error(`load failed: ${themeId}`));
+    failures.delete(themeId);
+    pending.delete(themeId);
   };
   /** Resolve every pending request for a theme with the token `asset:<theme>`. */
   const resolve = (themeId: string) => {
     for (const r of pending.get(themeId) ?? []) r(`asset:${themeId}`);
     pending.delete(themeId);
+    failures.delete(themeId);
   };
   /** Resolves the moment it is called. */
   const instant = (themeId: string) => {
     requested.push(themeId);
     return Promise.resolve(`asset:${themeId}`);
   };
-  return { loadLoop, requested, resolve, instant };
+  return { loadLoop, requested, resolve, reject, instant };
 }
 
 let requestSeq = 0;
