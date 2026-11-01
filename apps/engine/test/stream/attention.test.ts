@@ -341,6 +341,22 @@ describe("stream lifecycle", () => {
     await reader.cancel();
   });
 
+  it("cuts off a client that does not read, at the engine's queueLimit, so it can resnapshot", async () => {
+    const { app } = setup({ queueLimit: 3 });
+    const res = await feedRequest(app, bearer(CLI_TOKEN));
+    expect(res.status).toBe(200);
+    expect(engine?.hub.openStreams()).toBe(1);
+
+    // The client never reads. Each commit changes the project's set, so each is one frame; far
+    // more than the limit of 3 pile up, while the default limit (1000) would hold them all.
+    for (let i = 0; i < 60; i++) {
+      await ingest(app, [needsYou("beta", `s${i}`, `agent-${i}`)]);
+    }
+    await waitFor(() => engine?.hub.openStreams() === 0);
+    expect(engine?.hub.openStreams()).toBe(0);
+    await res.body?.cancel();
+  });
+
   it("counts toward the stream cap and is released when the client disconnects", async () => {
     const { app } = setup({ maxStreams: 1 });
     const first = await openFeed(app);
