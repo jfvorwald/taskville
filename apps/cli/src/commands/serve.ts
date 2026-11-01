@@ -3,6 +3,7 @@ import {
   type PairingRecords,
   PairingStore,
 } from "@taskville/engine/src/auth/pairing.ts";
+import { wirePermissionBridge } from "@taskville/engine/src/bridge/wire.ts";
 import { loadConfig } from "@taskville/engine/src/config/config.ts";
 import { ensureHome } from "@taskville/engine/src/config/home.ts";
 import { resolveWebDir } from "@taskville/engine/src/config/web-dir.ts";
@@ -125,7 +126,10 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
   let engine: Engine | undefined;
   let evidence: EvidenceStore | undefined;
   let gitWatcher: GitWatcher | undefined;
+  let wired: ReturnType<typeof wirePermissionBridge> | undefined;
   const close = async () => {
+    // First, so no held hook response keeps the server from closing.
+    wired?.close();
     await gitWatcher?.stop();
     engine?.close();
     evidence?.close();
@@ -166,7 +170,10 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
       logger,
       now,
     });
-    registerClaudeCodeRoutes(app, claudeCode);
+    // The permission bridge and the command service (M4.04): held hook responses, the commands
+    // that answer them, and live PostToolUse telemetry closing a request answered in the terminal.
+    wired = wirePermissionBridge({ app, engine, config, logger, now });
+    registerClaudeCodeRoutes(app, claudeCode, { observeHook: wired.observeHook });
     for (const project of config.projects) {
       try {
         if (createProject(engine.storage, project, { now })) {

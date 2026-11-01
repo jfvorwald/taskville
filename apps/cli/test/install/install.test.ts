@@ -10,6 +10,7 @@ import {
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  bridgeHook,
   EVENTS,
   guardRealSettings,
   isLink,
@@ -51,8 +52,9 @@ describe("install --scope user", () => {
     const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
     expect(r.code, r.stderr).toBe(0);
     const hooks = hooksOf(sb.userSettings);
-    expect(Object.keys(hooks).sort()).toEqual([...EVENTS].sort());
-    expect(hooks).not.toHaveProperty("PermissionRequest");
+    // The 15 telemetry events plus the bridge's PermissionRequest http hook (M4.04).
+    expect(Object.keys(hooks).sort()).toEqual([...EVENTS, "PermissionRequest"].sort());
+    expect(hooks.PermissionRequest).toEqual([{ hooks: [bridgeHook()] }]);
     for (const event of EVENTS) {
       expect(hooks[event]).toEqual([
         { hooks: [{ type: "command", command: commandFor(sb), async: true }] },
@@ -70,6 +72,8 @@ describe("install --scope user", () => {
     expect(r.code).toBe(1);
     expect(r.stdout).toContain(sb.userSettings);
     expect(r.stdout).toContain(`+    "SessionStart": [`);
+    expect(r.stdout).toContain(`+    "PermissionRequest": [`);
+    expect(r.stdout).toContain("/v1/bridge/claude-code/permission");
     expect(r.stderr).toMatch(/--yes/);
     expect(existsSync(sb.userSettings)).toBe(false);
     expect(existsSync(sb.shim)).toBe(false);
@@ -92,6 +96,7 @@ describe("install --scope user", () => {
     });
     expect(yes.code, yes.stderr).toBe(0);
     expect(ours(sb.userSettings)).toHaveLength(EVENTS.length);
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([{ hooks: [bridgeHook()] }]);
   });
 
   it("--dry-run prints the diff and writes nothing", async () => {
@@ -141,6 +146,7 @@ describe("install --scope user", () => {
     expect(again.stdout).toMatch(/already installed/i);
     expect(read(sb.userSettings)).toBe(first);
     expect(ours(sb.userSettings)).toHaveLength(EVENTS.length);
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([{ hooks: [bridgeHook()] }]);
   });
 
   it("replaces its own entries when the hook command changes (another port)", async () => {
@@ -159,6 +165,10 @@ describe("install --scope user", () => {
     const commands = ours(sb.userSettings).map((h) => h.command);
     expect(commands).toHaveLength(EVENTS.length);
     expect(new Set(commands)).toEqual(new Set([commandFor(sb, "http://127.0.0.1:5123")]));
+    // The bridge hook follows the engine URL too, and is replaced, not duplicated.
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([
+      { hooks: [bridgeHook("http://127.0.0.1:5123")] },
+    ]);
   });
 
   it("keeps the file's mode and writes atomically (no temp files left)", async () => {
@@ -400,6 +410,9 @@ describe("hook command", () => {
     const r = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"]);
     expect(r.code, r.stderr).toBe(0);
     expect(ours(sb.userSettings)[0]?.command).toBe(commandFor(sb, "http://127.0.0.1:5999"));
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([
+      { hooks: [bridgeHook("http://127.0.0.1:5999")] },
+    ]);
   });
 });
 
@@ -477,7 +490,9 @@ describe("uninstall", () => {
     const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user"]);
     expect(r.code).toBe(1);
     expect(r.stdout).toContain(`-    "SessionStart": [`);
+    expect(r.stdout).toContain(`-    "PermissionRequest": [`);
     expect(ours(sb.userSettings)).toHaveLength(EVENTS.length);
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([{ hooks: [bridgeHook()] }]);
   });
 });
 
