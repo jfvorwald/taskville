@@ -81,6 +81,8 @@ export interface CommandService {
 /** The note the agent sees when a deny carries none (the bridge's hook response needs one). */
 const DEFAULT_DENY_MESSAGE = "Denied in Taskville";
 
+const INTERRUPTED_OPENER_MESSAGE = "The session opener was interrupted by an engine stop";
+
 /** Session results kept for replaying an idempotent session.open (oldest forgotten first). */
 const MAX_REMEMBERED_RESULTS = 500;
 
@@ -237,7 +239,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
         "failed",
         "opener_failed",
         502,
-        "The session opener was interrupted by an engine stop",
+        INTERRUPTED_OPENER_MESSAGE,
       );
     }
     return replay(existing);
@@ -415,6 +417,18 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     }
     return undefined;
   };
+
+  // A session.open still `requested` when the service starts was cut short by an engine stop (an
+  // opener runs only inside this process), so end it now and `GET` agrees with a repeated `POST`.
+  for (const project of engine.storage.projects()) {
+    for (const command of Object.values(stateOf(project.id)?.commands ?? {})) {
+      if (command.type !== "session.open" || command.status !== "requested") continue;
+      record(project.id, "command.failed", `command.failed:${command.id}`, {
+        commandId: command.id,
+        reason: INTERRUPTED_OPENER_MESSAGE,
+      });
+    }
+  }
 
   return {
     async submit(raw) {
