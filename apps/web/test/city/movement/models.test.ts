@@ -8,7 +8,7 @@ import {
   buildModels,
   type ModelInput,
 } from "../../../src/city/movement/models.ts";
-import type { Agent, Attention } from "../../../src/data/domain.ts";
+import { type Agent, type Attention, attention } from "../../../src/data/domain.ts";
 
 const T = "2026-10-31T10:00:00.000Z";
 
@@ -173,5 +173,46 @@ describe("agent labels", () => {
     store.set(labelRows([entry("a", "Testing")], () => ({ state: "walking", onTheWay: true })));
     expect(store.getSnapshot()).not.toBe(first);
     expect(calls).toBe(2);
+  });
+});
+
+describe("attention wiring into the agent view", () => {
+  const MIN = 60_000;
+  const SEEN = "2026-05-01T10:00:00.000Z";
+  const SEEN_MS = Date.parse(SEEN);
+
+  /** A real silent-trouble record: `since` is `lastSeenAt`, `reason.text` comes from the selector. */
+  function silentRecord(now: number): Attention {
+    const quiet = {
+      id: "a1",
+      connection: "connected" as const,
+      lastSeenAt: SEEN,
+      consecutiveToolFailures: 0,
+    };
+    const found = attention({ agents: { a1: quiet }, requests: {} }, now);
+    const first = found[0];
+    if (first === undefined) throw new Error("no attention record");
+    return first;
+  }
+
+  const build = (record: Attention) =>
+    buildModels(
+      { agents: [agent("a1")], activity: { a1: activity("a1", "idle") }, attention: [record] },
+      DEFAULT_ACTIVITY_AREAS,
+      pool(),
+    ).views[0]?.attention;
+
+  it("carries the parsed since, the kind and the selector's quiet text onto the view", () => {
+    const view = build(silentRecord(SEEN_MS + 12 * MIN));
+    expect(view?.sinceMs).toBe(Date.parse(SEEN));
+    expect(view?.kind).toBe("silent");
+    expect(view?.level).toBe("trouble");
+    expect(view?.detail).toBe("quiet for 12 min");
+  });
+
+  it("leaves sinceMs off the view when since does not parse", () => {
+    const view = build({ ...silentRecord(SEEN_MS + 12 * MIN), since: "not a date" });
+    expect(view).toBeDefined();
+    expect(view).not.toHaveProperty("sinceMs");
   });
 });
