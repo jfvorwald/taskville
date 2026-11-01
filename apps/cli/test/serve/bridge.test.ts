@@ -253,6 +253,39 @@ describe("taskville serve: bridge and command integration (ARCHITECTURE 9.1)", (
     });
   });
 
+  it("the input route: a request recorded but never held is 410 request_expired, and 404 unknown_request under another project", async () => {
+    // A project nobody watches: the hook gets the empty 2xx at once, so the request is recorded
+    // (taskville:bridge-unheld) but the bridge never held it. The answer comes from the projection.
+    const unheldRoot = "/tmp/spike-s1/unheld-input";
+    await h.addProject("unheld-input", unheldRoot);
+    const unheldSession = randomUUID();
+    expect(
+      (await h.telemetry({ ...sessionStart(), session_id: unheldSession, cwd: unheldRoot })).status,
+    ).toBe(200);
+    const c = call("unheld-input-1");
+    const res = await within(h.hook({ ...c.hook, session_id: unheldSession, cwd: unheldRoot }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    const opened = (await h.allEvents("unheld-input")).find((e) => e.type === "request.opened");
+    expect(opened?.sourceId).toBe("taskville:bridge-unheld");
+    const requestId = requestIdOf(opened as StoredEvent);
+
+    const expired = await h.requestInput(requestId, "unheld-input");
+    expect(expired.status).toBe(410);
+    expect(((await expired.json()) as { error: { code: string } }).error.code).toBe(
+      "request_expired",
+    );
+
+    // The same ID asked under a project that exists (the demo project) or does not: not found.
+    for (const projectId of [PROJECT, "no-such-project"]) {
+      const other = await h.requestInput(requestId, projectId);
+      expect(other.status, projectId).toBe(404);
+      expect(((await other.json()) as { error: { code: string } }).error.code).toBe(
+        "unknown_request",
+      );
+    }
+  });
+
   it("registers the real command routes (a bad body is 400, not the 501 stub)", async () => {
     const res = await h.command({});
     expect(res.status).toBe(400);
@@ -343,6 +376,32 @@ describe("taskville serve: hold window config", () => {
       expect(result.stdout).not.toContain("listening");
     } finally {
       dir.remove();
+    }
+  });
+
+  it("holds a hook for the configured window (1 s), not the 90 s default, then answers the empty 2xx", async () => {
+    const h = await startBridgeServe({ config: { bridge: { holdWindowSeconds: 1 } } });
+    try {
+      expect((await h.telemetry(sessionStart())).status).toBe(200);
+      // A viewer is connected, so the bridge holds the hook; nobody answers it.
+      const viewer = await h.viewer();
+      try {
+        const started = Date.now();
+        const held = h.hook(call("window-1").hook);
+        await openedFor(viewer, "window-1");
+        const res = await within(held, 15_000);
+        const elapsed = Date.now() - started;
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("");
+        // Held for about the window, and well under the 90 s default.
+        expect(elapsed).toBeGreaterThanOrEqual(900);
+        expect(elapsed).toBeLessThan(10_000);
+      } finally {
+        await viewer.close();
+      }
+    } finally {
+      expect(await h.stop()).toBe(0);
+      h.remove();
     }
   });
 

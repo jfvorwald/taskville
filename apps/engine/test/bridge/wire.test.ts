@@ -363,6 +363,16 @@ describe("GET /v1/requests/:requestId/input", () => {
     }
   });
 
+  it("is 400 bad_request for an empty projectId, even for a held request", async () => {
+    const h = boot();
+    const { requestId } = await held(h);
+    const res = await h.inputOf(requestId, "?projectId=");
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(JSON.parse(body)).toMatchObject({ error: { code: "bad_request" } });
+    expect(body).not.toContain(SECRET_TOKEN);
+  });
+
   it("is 410 request_expired once the hold window ended", async () => {
     const h = boot();
     const { requestId } = await held(h);

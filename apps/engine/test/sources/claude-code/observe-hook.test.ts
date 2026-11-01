@@ -77,6 +77,22 @@ describe("telemetry route -> bridge.observeHook", () => {
     expect(seen).toEqual([]);
   });
 
+  it("does not pass a hook with no accepted result: re-posting the same sourceEventId observes once in all", async () => {
+    const seen: unknown[] = [];
+    const { app } = setup((payload) => seen.push(payload));
+    const body = { sourceEventId: hookId("o-6"), payload: postToolUse() };
+    const first = await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
+    expect(first.status).toBe(200);
+    const again = await app.request(URL, postJson(body, bearer(CLI_TOKEN)));
+    expect(again.status).toBe(200);
+    const result = (await again.json()) as { ignored?: boolean; results: { status: string }[] };
+    // The replay is a 200 that is neither ignored nor accepted.
+    expect(result.ignored).not.toBe(true);
+    expect(result.results.some((r) => r.status === "accepted")).toBe(false);
+    expect(seen).toHaveLength(1);
+    expect([...db().events("repo", 1)]).toHaveLength(1);
+  });
+
   it("does not pass a hook the route rejects: bad body, bad ID, wrong credential", async () => {
     const seen: unknown[] = [];
     const { app, pairing } = setup((payload) => seen.push(payload));

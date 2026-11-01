@@ -95,6 +95,39 @@ describe("install: the PermissionRequest http hook", () => {
     expect(r.stdout).toContain(join(sb.tv, "bridge-token"));
   });
 
+  it("always writes the loopback IP 127.0.0.1 in the hook URL, never localhost, whether --url or $TASKVILLE_URL says localhost", async () => {
+    sb = sandbox();
+    const viaFlag = await install(["--url", "http://localhost:5123"]);
+    expect(viaFlag.code, viaFlag.stderr).toBe(0);
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([
+      { hooks: [bridgeHook("http://127.0.0.1:5123")] },
+    ]);
+    sb.remove();
+
+    sb = sandbox();
+    const viaEnv = await tv(sb, ["install", "claude-code", "--scope", "user", "--yes"], {
+      env: { HOME: sb.home, TASKVILLE_URL: "http://localhost:5124" },
+    });
+    expect(viaEnv.code, viaEnv.stderr).toBe(0);
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([
+      { hooks: [bridgeHook("http://127.0.0.1:5124")] },
+    ]);
+  });
+
+  it("suggests setting the token only for the Claude Code launch (env VAR=...), never a shell-wide export, and never prints the token", async () => {
+    sb = sandbox();
+    const token = "bridge-secret-Qm4Xw9Lr2Kd7Mn1Pv8Ts3Hb6Jc0Gf5Ye7U";
+    mkdirSync(sb.tv, { recursive: true, mode: 0o700 });
+    writeFileSync(join(sb.tv, "bridge-token"), `${token}\n`, { mode: 0o600 });
+    const r = await install();
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain(`env ${BRIDGE_ENV}=`);
+    expect(r.stdout).not.toContain(`export ${BRIDGE_ENV}`);
+    expect(r.stdout).toContain(join(sb.tv, "bridge-token"));
+    expect(r.stdout).not.toContain(token);
+    expect(r.stderr).not.toContain(token);
+  });
+
   it("follows the engine URL of the telemetry hooks", async () => {
     sb = sandbox();
     const r = await install(["--url", "http://127.0.0.1:5123"]);
@@ -210,6 +243,31 @@ describe("uninstall: only Taskville's PermissionRequest entry", () => {
     expect(json(sb.userSettings)).toEqual({
       model: "sonnet",
       hooks: { PermissionRequest: [{ matcher: "Bash", hooks: [mine, other, lookAlike] }] },
+    });
+  });
+
+  it("keeps look-alike URLs: another host, a non-loopback host with the port, a query string, a trailing slash", async () => {
+    sb = sandbox();
+    const lookAlikes = [
+      "https://corp.example/v1/bridge/claude-code/permission",
+      "http://host:4807/v1/bridge/claude-code/permission",
+      "http://127.0.0.1:4807/v1/bridge/claude-code/permission?x=1",
+      "http://127.0.0.1:4807/v1/bridge/claude-code/permission/",
+    ].map((url) => ({ type: "http", url }));
+    write(
+      sb.userSettings,
+      `${JSON.stringify({ hooks: { PermissionRequest: [{ hooks: lookAlikes }] } }, null, 2)}\n`,
+    );
+    await install();
+    // Edit the file so uninstall rewrites it instead of restoring the backup.
+    const edited = json(sb.userSettings);
+    edited.model = "sonnet";
+    writeFileSync(sb.userSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(json(sb.userSettings)).toEqual({
+      model: "sonnet",
+      hooks: { PermissionRequest: [{ hooks: lookAlikes }] },
     });
   });
 
