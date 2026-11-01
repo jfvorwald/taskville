@@ -149,6 +149,8 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
   const opening = new Set<string>();
   /** Results of session.open commands, for replays and `GET`. Not in the log. */
   const results = new Map<string, SessionOpenResult>();
+  /** session.open commands whose outcome could not be appended; their results are never forgotten. */
+  const unrecorded = new Set<string>();
   /**
    * permission.decide commands whose hook was answered but whose `command.delivered` could not be
    * appended: the log still says `requested`, the agent has its answer, so they show `delivered`.
@@ -469,6 +471,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
           commandId,
         });
       } catch (cause) {
+        unrecorded.add(commandId);
         logFailure(cause, "recording the opened session failed after the opener ran");
       }
       return {
@@ -490,10 +493,11 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
 
   const remember = (commandId: string, result: SessionOpenResult): void => {
     results.set(commandId, result);
-    while (results.size > maxRememberedResults) {
-      const [oldest] = results.keys();
-      if (oldest === undefined) break;
-      results.delete(oldest);
+    // Only results the log also holds are forgotten: an unrecorded one is the sole proof that the
+    // opener ran, and dropping it would make a retry record a failure for a session that opened.
+    for (const key of results.keys()) {
+      if (results.size <= maxRememberedResults) break;
+      if (!unrecorded.has(key)) results.delete(key);
     }
   };
 
