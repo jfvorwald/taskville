@@ -34,6 +34,7 @@ function SelectedFiles({
     const { signal } = controller;
     const headers = { [SESSION_HEADER]: secret };
     const requested = new Set<string>();
+    const evidenceRetries = new Set<ReturnType<typeof setTimeout>>();
     let retry: ReturnType<typeof setTimeout> | undefined;
     let cursor = 0;
     let generation = 0;
@@ -45,13 +46,19 @@ function SelectedFiles({
         if (ref?.status !== "stored" || requested.has(ref.id)) continue;
         requested.add(ref.id);
         // Bodies are independent: a slow input must not block later frames or output reads.
-        void (async () => {
+        const read = async (attempt: number): Promise<void> => {
+          if (signal.aborted || started !== generation) return;
           try {
             const response = await fetch(`/v1/evidence/${encodeURIComponent(ref.id)}`, {
               headers,
               signal,
             });
-            if (!response.ok || signal.aborted) return;
+            if (signal.aborted) return;
+            if (!response.ok) {
+              if (response.status === 429 || response.status >= 500)
+                throw new Error("Evidence unavailable");
+              return;
+            }
             const body: EvidenceResponse = await response.json();
             if (signal.aborted || started !== generation) return;
             if (
@@ -64,9 +71,21 @@ function SelectedFiles({
               return;
             setEvidence((old) => ({ ...old, [ref.id]: body }));
           } catch {
+            if (signal.aborted || started !== generation) return;
+            if (attempt < 2) {
+              const timer = setTimeout(
+                () => {
+                  evidenceRetries.delete(timer);
+                  void read(attempt + 1);
+                },
+                500 * 2 ** attempt,
+              );
+              evidenceRetries.add(timer);
+            } else requested.delete(ref.id);
             // Missing evidence stays honestly "not reported"; never log credentials or bodies.
           }
-        })();
+        };
+        void read(0);
       }
     }
 
@@ -84,6 +103,8 @@ function SelectedFiles({
         if (!response.ok || response.body === null) {
           await response.body?.cancel().catch(() => {});
           setUnavailable(true);
+          if (response.status === 429 || response.status >= 500)
+            throw new Error("Feed unavailable");
           return;
         }
         setUnavailable(false);
@@ -105,7 +126,7 @@ function SelectedFiles({
             !Array.isArray(data.filePaths) ||
             !data.filePaths.every((path) => typeof path === "string") ||
             typeof data.toolCallId !== "string" ||
-            typeof data.toolName !== "string" ||
+            (data.toolName !== undefined && typeof data.toolName !== "string") ||
             !data.evidence
           )
             throw new Error("Invalid feed frame");
@@ -122,6 +143,7 @@ function SelectedFiles({
     return () => {
       controller.abort();
       clearTimeout(retry);
+      for (const timer of evidenceRetries) clearTimeout(timer);
     };
   }, [projectId, agentId, secret]);
 
