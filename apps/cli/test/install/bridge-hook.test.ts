@@ -312,3 +312,95 @@ describe("uninstall: only Taskville's PermissionRequest entry", () => {
     expect(r.stdout).toContain("/v1/bridge/claude-code/permission");
   });
 });
+
+// roborev 6036: a hook is Taskville's only if the URL matches AND it carries the installer's own
+// Authorization header and allowedEnvVars. A hand-written hook at the exact bridge URL is the user's.
+describe("bridge hook ownership: URL alone does not make a hook Taskville's", () => {
+  const url = "http://127.0.0.1:4807/v1/bridge/claude-code/permission";
+  const otherHeader = {
+    type: "http",
+    url,
+    headers: { Authorization: "Bearer my-own-secret" },
+    allowedEnvVars: ["MY_OWN_TOKEN"],
+  };
+  const noAllowedEnvVars = {
+    type: "http",
+    url,
+    timeout: 30,
+    headers: { Authorization: `Bearer $${BRIDGE_ENV}` },
+  };
+  const bareUrl = { type: "http", url };
+  const theirs = [otherHeader, noAllowedEnvVars, bareUrl];
+
+  const seed = () =>
+    write(
+      sb.userSettings,
+      `${JSON.stringify({ hooks: { PermissionRequest: [{ matcher: "Bash", hooks: theirs }] } }, null, 2)}\n`,
+    );
+
+  it("install adds Taskville's hook beside hand-written hooks at the exact bridge URL and leaves theirs unchanged", async () => {
+    sb = sandbox();
+    seed();
+    const r = await install();
+    expect(r.code, r.stderr).toBe(0);
+    expect(hooksOf(sb.userSettings).PermissionRequest).toEqual([
+      { matcher: "Bash", hooks: theirs },
+      { hooks: [bridgeHook()] },
+    ]);
+  });
+
+  it("uninstall removes only Taskville's hook and keeps hand-written hooks at the exact bridge URL", async () => {
+    sb = sandbox();
+    seed();
+    expect((await install()).code).toBe(0);
+    // Edit the file so uninstall rewrites it instead of restoring the backup.
+    const edited = json(sb.userSettings);
+    edited.model = "sonnet";
+    writeFileSync(sb.userSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(json(sb.userSettings)).toEqual({
+      model: "sonnet",
+      hooks: { PermissionRequest: [{ matcher: "Bash", hooks: theirs }] },
+    });
+  });
+
+  it("uninstall alone leaves hand-written bridge-URL hooks in place when Taskville never installed", async () => {
+    sb = sandbox();
+    seed();
+    const before = read(sb.userSettings);
+    await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"]);
+    expect(read(sb.userSettings)).toBe(before);
+  });
+
+  it("still recognizes Taskville's hook after its timeout was edited and a matcher added: reinstall replaces it, no duplicate", async () => {
+    sb = sandbox();
+    expect((await install()).code).toBe(0);
+    const edited = json(sb.userSettings);
+    const group = (edited.hooks as Hooks).PermissionRequest?.[0];
+    if (group === undefined) throw new Error("no PermissionRequest group");
+    group.matcher = "Bash";
+    group.hooks[0] = { ...group.hooks[0], timeout: 7 };
+    writeFileSync(sb.userSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await install();
+    expect(r.code, r.stderr).toBe(0);
+    const entries = hooksOf(sb.userSettings).PermissionRequest ?? [];
+    expect(entries).toEqual([{ hooks: [bridgeHook()] }]);
+    expect(JSON.stringify(entries).split("/v1/bridge/claude-code/permission").length - 1).toBe(1);
+  });
+
+  it("still recognizes Taskville's hook after its timeout was edited and a matcher added: uninstall removes it", async () => {
+    sb = sandbox();
+    write(sb.userSettings, `${JSON.stringify({ model: "sonnet" }, null, 2)}\n`);
+    expect((await install()).code).toBe(0);
+    const edited = json(sb.userSettings);
+    const group = (edited.hooks as Hooks).PermissionRequest?.[0];
+    if (group === undefined) throw new Error("no PermissionRequest group");
+    group.matcher = "Bash";
+    group.hooks[0] = { ...group.hooks[0], timeout: 7 };
+    writeFileSync(sb.userSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await tv(sb, ["uninstall", "claude-code", "--scope", "user", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(json(sb.userSettings)).toEqual({ model: "sonnet" });
+  });
+});
