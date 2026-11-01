@@ -3,6 +3,7 @@ import {
   type FamilyAgent,
   familyOrder,
   familyPath,
+  hasChildren,
   stepFamily,
 } from "../../../../src/overlays/agent-panel/shell/family.ts";
 
@@ -137,5 +138,125 @@ describe("stepFamily", () => {
     expect(stepFamily("S", [S], 1)).toBeNull();
     expect(stepFamily("S", [S], -1)).toBeNull();
     expect(stepFamily("ghost", world, 1)).toBeNull();
+  });
+});
+
+// M5.05 review fixes. The recorded teams (`state.teams`) are passed as an optional LAST parameter
+// of each function: `teams?: Readonly<Record<string, { leadAgentId: string }>>`
+//   familyPath(id, agents, teams?)  familyOrder(id, agents, teams?)  hasChildren(id, agents, teams?)
+//   stepFamily(id, agents, direction, teams?)
+// A teammate's parent is `teams[teamId].leadAgentId` when that team is recorded; only when the team
+// has no record does it fall back to the lowest-registration `lead` agent with that teamId.
+
+describe("familyOrder is depth first", () => {
+  // t2 (registered 2) comes before t1 (registered 3), and t2's child c (registered 9) was
+  // registered after t1's child s1 (registered 4). Breadth first or flat-by-seq would put c last.
+  const c = agent("c", { kind: "subagent", parentAgentId: "t2", registeredSeq: 9 });
+  const deep = [s1, t1, c, t2, L];
+
+  it("finishes an earlier sibling's subtree before the next sibling", () => {
+    expect(familyOrder("L", deep)).toEqual(["L", "t2", "c", "t1", "s1"]);
+  });
+
+  it("is the same list from every member", () => {
+    for (const id of ["L", "t1", "t2", "s1", "c"]) {
+      expect(familyOrder(id, deep)).toEqual(["L", "t2", "c", "t1", "s1"]);
+    }
+  });
+
+  it("steps through that order and wraps", () => {
+    const walked: (string | null)[] = [];
+    let at = "L";
+    for (let i = 0; i < 5; i++) {
+      const next = stepFamily(at, deep, 1);
+      walked.push(next);
+      at = next ?? at;
+    }
+    expect(walked).toEqual(["t2", "c", "t1", "s1", "L"]);
+    expect(stepFamily("t1", deep, -1)).toBe("c");
+  });
+});
+
+describe("a self-parent is ignored", () => {
+  const self = agent("x", { kind: "subagent", parentAgentId: "x", registeredSeq: 1 });
+
+  it("is its own root, with no family but itself", () => {
+    expect(familyPath("x", [self])).toEqual(["x"]);
+    expect(familyOrder("x", [self])).toEqual(["x"]);
+    expect(stepFamily("x", [self], 1)).toBeNull();
+  });
+
+  it("is not counted as having a child (no Crew tab)", () => {
+    expect(hasChildren("x", [self])).toBe(false);
+  });
+
+  it("does not disturb a real family beside it", () => {
+    expect(familyOrder("L", [...world, self])).toEqual(["L", "t2", "t1", "s1"]);
+    expect(hasChildren("t1", [...world, self])).toBe(true);
+  });
+});
+
+describe("a parent cycle is rooted at its lowest registration", () => {
+  // a <-> b, with c hanging off a. b registered first, so b is the root.
+  const a = agent("a", { kind: "subagent", parentAgentId: "b", registeredSeq: 5 });
+  const b = agent("b", { kind: "subagent", parentAgentId: "a", registeredSeq: 3 });
+  const c = agent("c", { kind: "subagent", parentAgentId: "a", registeredSeq: 7 });
+
+  it("gives the same exact order from every member, in either array order", () => {
+    for (const list of [
+      [a, b, c],
+      [c, b, a],
+    ]) {
+      for (const id of ["a", "b", "c"]) {
+        expect(familyOrder(id, list)).toEqual(["b", "a", "c"]);
+      }
+    }
+  });
+
+  it("runs the path down from that root", () => {
+    expect(familyPath("b", [a, b, c])).toEqual(["b"]);
+    expect(familyPath("a", [a, b, c])).toEqual(["b", "a"]);
+    expect(familyPath("c", [a, b, c])).toEqual(["b", "a", "c"]);
+  });
+
+  it("breaks a registration tie by id", () => {
+    const x = agent("x", { kind: "subagent", parentAgentId: "y" });
+    const y = agent("y", { kind: "subagent", parentAgentId: "x" });
+    for (const list of [
+      [x, y],
+      [y, x],
+    ]) {
+      expect(familyOrder("y", list)).toEqual(["x", "y"]);
+      expect(familyPath("y", list)).toEqual(["x", "y"]);
+      expect(familyPath("x", list)).toEqual(["x"]);
+    }
+  });
+});
+
+describe("the recorded team decides a teammate's lead", () => {
+  // Two lead agents on team T; the earlier-registered one is NOT the recorded lead.
+  const first = agent("first", { kind: "lead", teamId: "T", registeredSeq: 2 });
+  const second = agent("second", { kind: "lead", teamId: "T", registeredSeq: 5 });
+  const mate = agent("mate", { kind: "teammate", teamId: "T", registeredSeq: 6 });
+  const both = [mate, second, first];
+  const recorded = { T: { leadAgentId: "second" } };
+
+  it("uses the recorded lead, not the lowest registration", () => {
+    expect(familyPath("mate", both, recorded)).toEqual(["second", "mate"]);
+    expect(familyOrder("mate", both, recorded)).toEqual(["second", "mate"]);
+    expect(familyOrder("second", both, recorded)).toEqual(["second", "mate"]);
+    expect(familyOrder("first", both, recorded)).toEqual(["first"]);
+    expect(stepFamily("second", both, 1, recorded)).toBe("mate");
+    expect(hasChildren("second", both, recorded)).toBe(true);
+    expect(hasChildren("first", both, recorded)).toBe(false);
+  });
+
+  it("falls back to the lowest-registration lead only when no team is recorded", () => {
+    expect(familyPath("mate", both)).toEqual(["first", "mate"]);
+    expect(familyPath("mate", both, {})).toEqual(["first", "mate"]);
+    expect(familyPath("mate", both, { Other: { leadAgentId: "second" } })).toEqual([
+      "first",
+      "mate",
+    ]);
   });
 });

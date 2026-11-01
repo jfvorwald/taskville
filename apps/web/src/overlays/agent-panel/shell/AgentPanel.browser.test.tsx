@@ -95,6 +95,7 @@ interface World {
   activity?: Record<string, unknown>;
   toolCalls?: Record<string, unknown>;
   attention?: Attention[];
+  teams?: Record<string, unknown>;
 }
 
 function makeStore(world: World = {}): DataStore {
@@ -105,7 +106,7 @@ function makeStore(world: World = {}): DataStore {
     attention: world.attention ?? [],
     state: {
       agents: world.agents ?? agents,
-      teams: {},
+      teams: world.teams ?? {},
       activity: world.activity ?? { s1: activity("s1", "testing"), L: activity("L", "idle") },
       toolCalls: world.toolCalls ?? {},
     } as unknown as NonNullable<ReturnType<typeof store.getState>["state"]>,
@@ -135,9 +136,9 @@ function recorder() {
   return { picked, select: (id: string | null) => void picked.push(id) };
 }
 
-function press(key: string) {
-  document.body.dispatchEvent(
-    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+function press(key: string, init: KeyboardEventInit = {}, target: EventTarget = document.body) {
+  target.dispatchEvent(
+    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }),
   );
 }
 
@@ -501,6 +502,241 @@ describe("AgentPanel keys", () => {
     press("]");
     press("Escape");
     expect(picked).toEqual([]);
+  });
+});
+
+// M5.05 review fixes.
+//   - the [ and ] walk is depth first: an earlier sibling's whole subtree before the next sibling;
+//   - [ and ] do nothing with Cmd, Ctrl or Alt held, or on a key repeat (CTO decision);
+//   - [ and ] do nothing when already handled, inside a dialog, or inside contenteditable;
+//   - a self-parent is ignored (no Crew tab, its own root); a parent cycle is rooted at its lowest
+//     registeredSeq, then id;
+//   - a teammate's lead is `state.teams[teamId].leadAgentId` when recorded (CTO decision): the panel
+//     passes `state.teams` to the family functions;
+//   - an empty displayName falls back to the first 8 characters of the id, in the header and the
+//     crumb, so every crumb button has an accessible name (CTO decision).
+
+describe("AgentPanel keys, depth first", () => {
+  // L; t2 (2) with child c (9); t1 (3) with child s1 (4). The walk is L, t2, c, t1, s1.
+  const deep = {
+    L: agents.L,
+    t2: agents.t2,
+    t1: agents.t1,
+    s1: agents.s1,
+    c: mk("c", { kind: "subagent", parentAgentId: "t2", displayName: "Kid", registeredSeq: 9 }),
+  };
+
+  it("] walks each subtree before the next sibling, and wraps", async () => {
+    const { picked, select } = recorder();
+    const store = makeStore({ agents: deep });
+    const view = await render(<AgentPanel {...props("L", select)} store={store} />);
+    for (const id of ["L", "t2", "c", "t1", "s1"]) {
+      await view.rerender(<AgentPanel {...props(id, select)} store={store} />);
+      press("]");
+    }
+    expect(picked).toEqual(["t2", "c", "t1", "s1", "L"]);
+  });
+
+  it("[ walks the same order backward", async () => {
+    const { picked, select } = recorder();
+    const store = makeStore({ agents: deep });
+    const view = await render(<AgentPanel {...props("L", select)} store={store} />);
+    for (const id of ["L", "s1", "t1", "c", "t2"]) {
+      await view.rerender(<AgentPanel {...props(id, select)} store={store} />);
+      press("[");
+    }
+    expect(picked).toEqual(["s1", "t1", "c", "t2", "L"]);
+  });
+});
+
+describe("AgentPanel keys, modifiers and repeat", () => {
+  it("does nothing for [ or ] with Cmd, Ctrl or Alt held", async () => {
+    const { picked, select } = recorder();
+    await render(<AgentPanel {...props("t1", select)} store={makeStore()} />);
+    for (const key of ["[", "]"]) {
+      press(key, { metaKey: true });
+      press(key, { ctrlKey: true });
+      press(key, { altKey: true });
+    }
+    expect(picked).toEqual([]);
+    press("]"); // the handler is live: a plain key still steps
+    expect(picked).toEqual(["s1"]);
+  });
+
+  it("does nothing for an auto-repeated [ or ]", async () => {
+    const { picked, select } = recorder();
+    await render(<AgentPanel {...props("t1", select)} store={makeStore()} />);
+    press("]", { repeat: true });
+    press("[", { repeat: true });
+    expect(picked).toEqual([]);
+    press("]");
+    expect(picked).toEqual(["s1"]);
+  });
+});
+
+describe("AgentPanel keys, events the panel does not own", () => {
+  it("does nothing when the key event was already handled", async () => {
+    const { picked, select } = recorder();
+    await render(<AgentPanel {...props("t1", select)} store={makeStore()} />);
+    const handled = (event: Event) => event.preventDefault();
+    document.body.addEventListener("keydown", handled);
+    press("]");
+    press("[");
+    document.body.removeEventListener("keydown", handled);
+    expect(picked).toEqual([]);
+    press("]");
+    expect(picked).toEqual(["s1"]);
+  });
+
+  it("does nothing when the target is inside a dialog", async () => {
+    const { picked, select } = recorder();
+    const view = await render(
+      <div>
+        <AgentPanel {...props("t1", select)} store={makeStore()} />
+        <div role="dialog" aria-label="Settings">
+          <button type="button">Inside</button>
+        </div>
+      </div>,
+    );
+    const inside = view.container.querySelector('[role="dialog"] button') as HTMLElement;
+    press("]", {}, inside);
+    press("[", {}, inside);
+    expect(picked).toEqual([]);
+    press("]");
+    expect(picked).toEqual(["s1"]);
+  });
+
+  it("does nothing when the target is inside a contenteditable element", async () => {
+    const { picked, select } = recorder();
+    const view = await render(
+      <div>
+        <AgentPanel {...props("t1", select)} store={makeStore()} />
+        <div contentEditable="true" suppressContentEditableWarning>
+          <span data-testid="typed">notes</span>
+        </div>
+      </div>,
+    );
+    const typed = view.container.querySelector('[data-testid="typed"]') as HTMLElement;
+    expect(typed.isContentEditable).toBe(true);
+    press("]", {}, typed);
+    press("[", {}, typed);
+    expect(picked).toEqual([]);
+    press("]");
+    expect(picked).toEqual(["s1"]);
+  });
+});
+
+describe("AgentPanel with a malformed family", () => {
+  it("ignores a self-parent: no Crew tab, a single crumb, and the keys go nowhere", async () => {
+    const { picked, select } = recorder();
+    const store = makeStore({
+      agents: {
+        x: mk("x", { kind: "subagent", parentAgentId: "x", displayName: "Loop", registeredSeq: 1 }),
+      },
+      activity: {},
+    });
+    await render(<AgentPanel {...props("x", select)} store={store} />);
+    expect(
+      page
+        .getByRole("tab")
+        .elements()
+        .map((e) => e.textContent),
+    ).toEqual(["Live", "Files"]);
+    const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
+    expect(crumbs.elements()).toHaveLength(1);
+    press("]");
+    expect(picked).toEqual([]);
+  });
+
+  it("roots a parent cycle at its lowest registration, whichever member is open", async () => {
+    const store = makeStore({
+      agents: {
+        a: mk("a", { kind: "subagent", parentAgentId: "b", displayName: "Ann", registeredSeq: 5 }),
+        b: mk("b", { kind: "subagent", parentAgentId: "a", displayName: "Bob", registeredSeq: 3 }),
+      },
+      activity: {},
+    });
+    const view = await render(<AgentPanel {...props("a")} store={store} />);
+    const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
+    expect(crumbs.elements().map((e) => e.textContent)).toEqual(["Bob", "Ann"]);
+    await view.rerender(<AgentPanel {...props("b")} store={store} />);
+    expect(crumbs.elements().map((e) => e.textContent)).toEqual(["Bob"]);
+  });
+});
+
+describe("AgentPanel with a recorded team lead", () => {
+  // Two lead agents on team T. The earlier one is not the recorded lead.
+  const twoLeads = {
+    first: mk("first", { kind: "lead", teamId: "T", displayName: "First", registeredSeq: 2 }),
+    second: mk("second", { kind: "lead", teamId: "T", displayName: "Second", registeredSeq: 5 }),
+    mate: mk("mate", { kind: "teammate", teamId: "T", displayName: "Mate", registeredSeq: 6 }),
+  };
+
+  it("puts the recorded lead, not the first registered, above a teammate", async () => {
+    const store = makeStore({
+      agents: twoLeads,
+      activity: {},
+      teams: { T: { id: "T", leadAgentId: "second" } },
+    });
+    await render(<AgentPanel {...props("mate")} store={store} />);
+    const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
+    expect(crumbs.elements().map((e) => e.textContent)).toEqual(["Second", "Mate"]);
+  });
+
+  it("steps from the recorded lead to its teammate, and not from the other lead", async () => {
+    const { picked, select } = recorder();
+    const store = makeStore({
+      agents: twoLeads,
+      activity: {},
+      teams: { T: { id: "T", leadAgentId: "second" } },
+    });
+    const view = await render(<AgentPanel {...props("first", select)} store={store} />);
+    press("]");
+    press("[");
+    expect(picked).toEqual([]);
+    await view.rerender(<AgentPanel {...props("second", select)} store={store} />);
+    press("]");
+    expect(picked).toEqual(["mate"]);
+  });
+
+  it("falls back to the first registered lead when the team has no record", async () => {
+    const store = makeStore({ agents: twoLeads, activity: {} });
+    await render(<AgentPanel {...props("mate")} store={store} />);
+    const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
+    expect(crumbs.elements().map((e) => e.textContent)).toEqual(["First", "Mate"]);
+  });
+});
+
+describe("AgentPanel with an empty display name", () => {
+  const unnamed = {
+    leadlead01: mk("leadlead01", { kind: "lead", teamId: "T", displayName: "", registeredSeq: 1 }),
+    matemate01: mk("matemate01", {
+      kind: "teammate",
+      teamId: "T",
+      displayName: "",
+      registeredSeq: 2,
+    }),
+  };
+
+  it("falls back to the first 8 characters of the id in the header", async () => {
+    await render(<AgentPanel {...props("matemate01")} store={makeStore({ agents: unnamed })} />);
+    expect(text("agent-panel-name").element().textContent).toBe("matemate");
+  });
+
+  it("gives every crumb button an accessible name", async () => {
+    const { picked, select } = recorder();
+    await render(
+      <AgentPanel {...props("matemate01", select)} store={makeStore({ agents: unnamed })} />,
+    );
+    const nav = page.getByRole("navigation", { name: "Family" });
+    expect(
+      nav
+        .getByRole("button")
+        .elements()
+        .map((e) => e.textContent),
+    ).toEqual(["leadlead", "matemate"]);
+    await nav.getByRole("button", { name: "leadlead" }).click();
+    expect(picked).toEqual(["leadlead01"]);
   });
 });
 
