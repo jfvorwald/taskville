@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type JsonValue, redactJson } from "../../../../../packages/adapters/src/redact/json.ts";
 import { inputText } from "../../../src/overlays/action-card/input.ts";
-import { inputMaskSpans, maskSpans } from "../../../src/overlays/action-card/mask.ts";
+import { inputMaskSpans, markControls, maskSpans } from "../../../src/overlays/action-card/mask.ts";
 
 // M4.07: which parts of an exact tool input the action card hides behind click-to-reveal.
 //
@@ -373,5 +373,31 @@ describe("inputMaskSpans: every secret redactJson finds in a multi-line string i
   it("does not mask the whole input when the layout cannot be mapped but redactJson found nothing", () => {
     const toolInput = { file_path: "a", flags: ["-a", "-b"] };
     expect(inputMaskSpans(toolInput, JSON.stringify(toolInput))).toEqual([]);
+  });
+});
+
+describe("markControls: M4.15 code-point markers preserve mask offsets", () => {
+  it("keeps UTF-16 spans around secrets after and containing expanded invisibles", () => {
+    const raw = "😀\u{e0061}\tA=one\u00adtwo\nB=three\u{e007f}four!";
+    const first = raw.indexOf("one");
+    const second = raw.indexOf("three");
+    const spans = [
+      { kind: "sensitive-value", start: first, end: raw.indexOf("\n") },
+      { kind: "sensitive-value", start: second, end: raw.length - 1 },
+    ];
+    const shown = markControls(raw, spans);
+    expect(shown.text).toBe("😀<U+E0061>\tA=one<U+00AD>two\nB=three<U+E007F>four!");
+    expect(shown.spans).toEqual([
+      { kind: "sensitive-value", start: 14, end: 28 },
+      { kind: "sensitive-value", start: 31, end: 49 },
+    ]);
+    expect(shown.spans.map((span) => shown.text.slice(span.start, span.end))).toEqual([
+      "one<U+00AD>two",
+      "three<U+E007F>four",
+    ]);
+    expect(spans).toEqual([
+      { kind: "sensitive-value", start: first, end: raw.indexOf("\n") },
+      { kind: "sensitive-value", start: second, end: raw.length - 1 },
+    ]);
   });
 });

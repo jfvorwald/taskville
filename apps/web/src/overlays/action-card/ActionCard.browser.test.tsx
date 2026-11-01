@@ -1414,6 +1414,145 @@ describe("ActionCard: the exact input must be for this request, and Allow settle
   });
 });
 
+// --- M4.15 L-B: new loads within the same mounted request --------------------------------------
+
+describe("ActionCard: same-request reload (M4.15 L-B)", () => {
+  // Hold only the settle timer. Fetch timeouts, React and assertion polling still run normally.
+  function holdSettleTimers() {
+    const realSet = window.setTimeout.bind(window);
+    const pending = new Map<number, () => void>();
+    const set = vi.spyOn(window, "setTimeout").mockImplementation(((
+      fn: TimerHandler,
+      ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof fn === "function" && ms === 500) {
+        const id = realSet(() => {}, 60_000);
+        pending.set(id, () => fn(...args));
+        return id;
+      }
+      return realSet(fn, ms, ...args);
+    }) as unknown as typeof setTimeout);
+    return {
+      count: () => pending.size,
+      fire: () => {
+        for (const [id, run] of pending) {
+          window.clearTimeout(id);
+          run();
+        }
+        pending.clear();
+      },
+      restore: () => {
+        set.mockRestore();
+        for (const id of pending.keys()) window.clearTimeout(id);
+      },
+    };
+  }
+
+  const triggers = ["fetch", "projectId", "answerable"] as const;
+
+  async function reload(
+    trigger: (typeof triggers)[number],
+    mounted: Awaited<ReturnType<typeof mount>>,
+  ) {
+    const { store, engine, view } = mounted;
+    if (trigger === "fetch") {
+      const previous = engine.fetch;
+      engine.fetch = (url, init) => previous(url, init);
+      await view.rerender(tree(store, engine, "a1", "live"));
+    } else if (trigger === "projectId") {
+      store.setState({ projectId: "proj-2" });
+    } else {
+      const current = store.getState().state;
+      store.setState({
+        state: { ...current, requests: { "req-1": request({ answerable: false }) } } as never,
+      });
+      await vi.waitFor(() => expect(cardEl()?.getAttribute("data-variant")).toBe("open-only"));
+      store.setState({ state: { ...current, requests: { "req-1": request() } } as never });
+    }
+    await vi.waitFor(() => expect(gets(engine)).toHaveLength(2));
+    expect(gets(engine).map((call) => call.path)).toEqual([
+      "/v1/requests/req-1/input",
+      "/v1/requests/req-1/input",
+    ]);
+    expect(gets(engine)[1]?.search).toBe(
+      trigger === "projectId" ? "?projectId=proj-2" : "?projectId=proj-1",
+    );
+  }
+
+  it.each(triggers)(
+    "%s change locks Allow at load start and requires a fresh settle delay",
+    async (trigger) => {
+      const mounted = await mount();
+      await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+      const card = cardEl();
+      const pending = deferred<Response>();
+      mounted.engine.input = () => pending.promise;
+      const timers = holdSettleTimers();
+      try {
+        await reload(trigger, mounted);
+        expect(cardEl()).toBe(card);
+        expect
+          .soft((allow().element() as HTMLButtonElement).disabled, "new load starts locked")
+          .toBe(true);
+        pending.resolve(
+          json(200, { ...held("echo replacement"), projectId: mounted.store.getState().projectId }),
+        );
+        await vi.waitFor(() => expect(inputEl()?.textContent).toBe("echo replacement"));
+        await vi.waitFor(() => expect(timers.count()).toBe(1));
+        expect
+          .soft(
+            (allow().element() as HTMLButtonElement).disabled,
+            "replacement waits for its own settle timer",
+          )
+          .toBe(true);
+        timers.fire();
+        await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+      } finally {
+        timers.restore();
+      }
+    },
+  );
+
+  it.each(triggers)(
+    "%s change hides new masks after two prior reveals and retains the scroll gate",
+    async (trigger) => {
+      const engine = createEngine();
+      engine.input = () => json(200, held(`export GH=${GITHUB} && echo ${SLACK}`));
+      const mounted = await mount({ engine });
+      await expect.poll(() => reveals().elements().length).toBe(2);
+      await reveals().first().click();
+      await reveals().first().click();
+      await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+      const card = cardEl();
+      const lines = Array.from({ length: 200 }, (_, i) => `replacement-secret-line-${i}`);
+      const pending = deferred<Response>();
+      engine.input = () => pending.promise;
+      await reload(trigger, mounted);
+      pending.resolve(
+        json(200, {
+          ...held({ command: "echo replacement", password: lines }),
+          projectId: mounted.store.getState().projectId,
+        }),
+      );
+      await vi.waitFor(() => expect(inputEl()?.textContent).toContain("echo replacement"));
+      expect(cardEl()).toBe(card);
+      // Two stale reveal indices must not expose the single current mask or make its count negative.
+      expect(reveals().elements()).toHaveLength(1);
+      expect(cardEl()?.innerHTML).not.toContain("replacement-secret-line-");
+      await sleep(800);
+      await expect.element(allow()).toBeDisabled();
+      await reveals().first().click();
+      const box = inputEl() as HTMLElement;
+      expect(box.textContent).toContain("replacement-secret-line-199");
+      expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
+      await expect.element(allow()).toBeDisabled();
+      box.scrollTop = box.scrollHeight;
+      await expect.element(allow(), { timeout: SETTLE }).toBeEnabled();
+    },
+  );
+});
+
 // --- L2, L3: the clipboard text and the note --------------------------------------------------
 
 describe("ActionCard: copy-only text and the deny note (L2, L3)", () => {
