@@ -9,7 +9,7 @@ const tokens: ThemeTokens = {
   "--tv-scene-bg": "#0d1530",
   "--tv-surface": "#151d3a",
   "--tv-text": "#d8e6ff",
-  "--tv-text-muted": "#8a9bc4",
+  "--tv-text-muted": "#b8c2db",
   "--tv-accent": "#35d6ff",
   "--tv-focus": "#ffb84d",
   "--tv-neon": "#35d6ff",
