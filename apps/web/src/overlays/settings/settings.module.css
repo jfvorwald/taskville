@@ -155,3 +155,15 @@
   right: 16px;
   z-index: 6;
 }
+
+/* Narrow screens: the centered counts line reaches the right edge, so drop to the row below it. */
+@media (max-width: 480px) {
+  .floatingToggle {
+    top: 50px;
+  }
+
+  .floatingToggle .toggle {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+  }
+}
