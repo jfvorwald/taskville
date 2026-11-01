@@ -246,6 +246,80 @@ describe("history state", () => {
     expect(history.getState().time).toBe(START + 31_000);
   });
 
+  it.each(["pause", "setRate"] as const)(
+    "preserves an explicit pending seek through %s",
+    async (control) => {
+      const { history, engine, advance } = await setup();
+      await history.getState().seek(START);
+      history.getState().play();
+      engine.defer();
+      const requestedTime = START + 30_000;
+      const pending = history.getState().seek(requestedTime);
+      const request = required(engine.requests[1]);
+      advance(250);
+      if (control === "pause") history.getState().pause();
+      else history.getState().setRate(10);
+      const playing = control !== "pause";
+      const rate = control === "pause" ? 1 : 10;
+      expect(history.getState()).toMatchObject({ time: START, playing, rate });
+      advance(750);
+      request.resolve();
+      await pending;
+      // Publication must survive both abort and generation fences, even if fetch ignores abort.
+      expect.soft(history.getState()).toMatchObject({
+        mode: "history",
+        time: requestedTime,
+        playing,
+        rate,
+      });
+      expect.soft(history.getState().state).toEqual(stateAt(requestedTime));
+      expect.soft(request.signal?.aborted).toBe(false);
+      expect(engine.requests).toHaveLength(2);
+      advance(500);
+      const next = history.getState().tick();
+      for (const read of engine.requests.slice(2)) read.resolve();
+      await next;
+      // Completion anchors the new speed at the requested time; pause remains stationary.
+      const nextTime = control === "pause" ? requestedTime : START + 35_000;
+      expect(history.getState()).toMatchObject({ time: nextTime, playing, rate });
+      expect(history.getState().state).toEqual(stateAt(nextTime));
+      expect(engine.requests).toHaveLength(control === "pause" ? 2 : 3);
+    },
+  );
+
+  it.each(["pause", "setRate"] as const)(
+    "cancels a pending playback read on %s and fences its late response",
+    async (control) => {
+      const { history, engine, advance } = await setup();
+      await history.getState().seek(START);
+      history.getState().play();
+      engine.defer();
+      advance(1_000);
+      const pending = history.getState().tick();
+      const request = required(engine.requests[1]);
+      advance(250);
+      if (control === "pause") history.getState().pause();
+      else history.getState().setRate(10);
+      const playing = control !== "pause";
+      const rate = control === "pause" ? 1 : 10;
+      const controlled = history.getState();
+      expect(controlled).toMatchObject({ time: START, playing, rate });
+      expect(request.signal?.aborted).toBe(true);
+      request.resolve(); // The fake deliberately delivers a successful response after abort.
+      await pending;
+      expect(history.getState()).toBe(controlled);
+      expect(history.getState().state).toEqual(stateAt(START));
+      advance(500);
+      const next = history.getState().tick();
+      for (const read of engine.requests.slice(2)) read.resolve();
+      await next;
+      const nextTime = control === "pause" ? START : START + 5_000;
+      expect(history.getState()).toMatchObject({ time: nextTime, playing, rate });
+      expect(history.getState().state).toEqual(stateAt(nextTime));
+      expect(engine.requests).toHaveLength(control === "pause" ? 2 : 3);
+    },
+  );
+
   it("publishes a pending playback read despite repeated overlapping ticks", async () => {
     const { history, engine, advance } = await setup();
     await history.getState().seek(START);
