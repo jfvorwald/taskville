@@ -286,17 +286,26 @@ describe("resource caps on held responses (roborev M1)", () => {
     expect(MAX_HELD_INPUT_BYTES).toBe(INPUT_CAP);
   });
 
-  /** A Bash input whose `JSON.stringify` is exactly `bytes` long (ASCII only). */
+  /** A Bash input whose `JSON.stringify` is exactly `bytes` UTF-8 bytes (and characters: ASCII only). */
   const inputOfBytes = (bytes: number) => ({
     command: "x".repeat(bytes - JSON.stringify({ command: "" }).length),
   });
+
+  /**
+   * A Bash input whose `JSON.stringify` is exactly `bytes` UTF-8 bytes but about half as many
+   * UTF-16 code units: the command is mostly two-byte "\u00e9" (one code unit each).
+   */
+  const multibyteInputOfBytes = (bytes: number) => {
+    const free = bytes - Buffer.byteLength(JSON.stringify({ command: "" }), "utf8");
+    return { command: "\u00e9".repeat(Math.floor(free / 2)) + "x".repeat(free % 2) };
+  };
 
   it("holds an input of exactly INPUT_CAP serialized", async () => {
     const h = bootBridge(dbPath());
     harness = h;
     h.connectViewer();
     const toolInput = inputOfBytes(INPUT_CAP);
-    expect(JSON.stringify(toolInput).length).toBe(INPUT_CAP);
+    expect(Buffer.byteLength(JSON.stringify(toolInput), "utf8")).toBe(INPUT_CAP);
 
     const pending = h.bridge.handle(
       permissionHook({ tool_input: toolInput }),
@@ -317,6 +326,47 @@ describe("resource caps on held responses (roborev M1)", () => {
     const res = await within(
       postPermission(h.app, permissionHook({ tool_input: inputOfBytes(INPUT_CAP + 1) })),
     );
+
+    await expectEmpty2xx(res);
+    const opened = eventsOf(h.engine, "request.opened");
+    expect(opened).toHaveLength(1);
+    expect(opened[0]?.sourceId).toBe("taskville:bridge-unheld");
+    const [request] = requestsOf(h.engine);
+    expect(request).toMatchObject({ answerable: false, state: "open" });
+    expect(h.scheduler.pending).toBe(0);
+    expect(h.bridge.lookup(request?.id ?? "missing")).toBeUndefined();
+  });
+
+  it("counts UTF-8 bytes, not characters (roborev 5808 #5): holds a multibyte input of exactly INPUT_CAP bytes", async () => {
+    const h = bootBridge(dbPath());
+    harness = h;
+    h.connectViewer();
+    const toolInput = multibyteInputOfBytes(INPUT_CAP);
+    const serialized = JSON.stringify(toolInput);
+    expect(Buffer.byteLength(serialized, "utf8")).toBe(INPUT_CAP);
+    expect(serialized.length).toBeLessThan(INPUT_CAP);
+
+    const pending = h.bridge.handle(
+      permissionHook({ tool_input: toolInput }),
+      new AbortController().signal,
+    );
+    const requestId = await heldRequestId(h.engine);
+
+    expect(h.bridge.lookup(requestId)?.toolInput).toEqual(toolInput);
+    h.bridge.close();
+    await pending;
+  });
+
+  it("counts UTF-8 bytes, not characters (roborev 5808 #5): records a multibyte input under INPUT_CAP characters but over it in bytes as unheld", async () => {
+    const h = bootBridge(dbPath());
+    harness = h;
+    h.connectViewer();
+    const toolInput = multibyteInputOfBytes(INPUT_CAP + 1);
+    const serialized = JSON.stringify(toolInput);
+    expect(Buffer.byteLength(serialized, "utf8")).toBe(INPUT_CAP + 1);
+    expect(serialized.length).toBeLessThan(INPUT_CAP);
+
+    const res = await within(postPermission(h.app, permissionHook({ tool_input: toolInput })));
 
     await expectEmpty2xx(res);
     const opened = eventsOf(h.engine, "request.opened");
