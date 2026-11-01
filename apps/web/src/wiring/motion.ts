@@ -53,12 +53,3 @@ export function reducedMotionSelector(
     },
   };
 }
-
-/** Pushes the resolved value into `target` now and on every change. Returns the disposer. */
-export function connectReducedMotion(
-  reduced: Selector<boolean>,
-  target: { setReducedMotion(on: boolean): void },
-) {
-  target.setReducedMotion(reduced.getSnapshot());
-  return reduced.subscribe(() => target.setReducedMotion(reduced.getSnapshot()));
-}
