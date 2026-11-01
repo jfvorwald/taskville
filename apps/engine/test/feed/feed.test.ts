@@ -136,7 +136,7 @@ describe("GET /v1/agents/:id/feed: order and pairing", () => {
   it("keeps a ToolCall whose PostToolUse has not arrived yet running, with no end invented", async () => {
     const h = await start();
     h.addProject("spike", SPIKE_CWD);
-    await h.play(UNMATCHED.file, { stopBefore: endsUnmatchedSession });
+    await h.play(UNMATCHED.file, { stopBefore: leadTurnEndsAfterHelperCall() });
     const reader = await h.openFeed(UNMATCHED.agent);
     const [frame] = await toolCallFrames(reader, 1);
     expect(frame?.data.toolCallId).toBe(UNMATCHED.toolCallId);
@@ -149,10 +149,12 @@ describe("GET /v1/agents/:id/feed: order and pairing", () => {
     await reader.cancel();
   });
 
-  // Constitution IV: the reducer closes a call that never got a PostToolUse as `unfinished` when
-  // its session ends (a recorded fact: it never reported a result). The feed says so too, and
-  // still invents no outcome: no duration, no output evidence.
-  it("shows a ToolCall the session ended on as unfinished, in a backlog read after the end", async () => {
+  // Constitution IV: the reducer closes an unregistered helper's call that never got a PostToolUse
+  // as `unfinished` when the lead's turn ends (a recorded fact: it never reported a result). The
+  // feed mirrors exactly what the reducer recorded, and still invents no outcome: no duration, no
+  // output evidence. In this recording the lead's turn end is the Stop at hook 50, well before
+  // the SessionEnd at hook 84.
+  it("shows a ToolCall the lead's turn ended on as unfinished, in a backlog read after the turn end", async () => {
     const h = await start();
     h.addProject("spike", SPIKE_CWD);
     await h.play(UNMATCHED.file);
@@ -168,31 +170,60 @@ describe("GET /v1/agents/:id/feed: order and pairing", () => {
     expect(unfinished).not.toHaveProperty("durationMs");
     expect(unfinished?.evidence.output).toBeNull();
     expect(frames[1]?.id).toBeGreaterThan(frames[0]?.id ?? Number.POSITIVE_INFINITY);
+    // The close is the lead's turn end: finishedAt is that event's time, not the SessionEnd's.
+    const closing = h.events("spike").find((e) => e.ingestSequence === frames[1]?.id);
+    expect(closing?.type).toBe("session.turn_ended");
+    expect(unfinished?.finishedAt).toBe(closing?.occurredAt);
     await expectQuiet(reader);
     await reader.cancel();
   });
 
-  it("sends the unfinished frame live when the session ends under an open feed", async () => {
+  it("sends the unfinished frame live when the lead's turn ends under an open feed", async () => {
     const h = await start();
     h.addProject("spike", SPIKE_CWD);
-    const next = await h.play(UNMATCHED.file, { stopBefore: endsUnmatchedSession });
+    const next = await h.play(UNMATCHED.file, { stopBefore: leadTurnEndsAfterHelperCall() });
     const reader = await h.openFeed(UNMATCHED.agent);
     const [running] = await toolCallFrames(reader, 1);
     expect(running?.data.phase).toBe("running");
     await expectQuiet(reader);
 
-    await h.play(UNMATCHED.file, { from: next });
+    // Play on through the lead's turn end only (not to the SessionEnd): that alone closes the call.
+    await h.play(UNMATCHED.file, { from: next, stopBefore: hookAfterLeadTurnEnd() });
     const [closed] = await toolCallFrames(reader, 1);
     await reader.cancel();
     expect(closed?.data.toolCallId).toBe(UNMATCHED.toolCallId);
     expect(closed?.data.phase).toBe("unfinished");
+    expect(closed?.data).not.toHaveProperty("durationMs");
+    expect(closed?.data.evidence.output).toBeNull();
     expect(closed?.id).toBeGreaterThan(running?.id ?? Number.POSITIVE_INFINITY);
   });
 });
 
-/** The SessionEnd of the session that holds the unmatched helper call (the last hook of the recording). */
-const endsUnmatchedSession = (hook: Record<string, unknown>): boolean =>
-  hook.hook_event_name === "SessionEnd" && String(hook.session_id).startsWith("a127629f");
+const isLeadTurnEnd = (hook: Record<string, unknown>): boolean =>
+  hook.hook_event_name === "Stop" && String(hook.session_id).startsWith("a127629f");
+
+/**
+ * Stops before the first Stop of the lead's session (a127629f) that follows the unmatched helper
+ * call opening (hook 30): the turn end at which the reducer closes that call (hook 50).
+ * Stateful: make one per `play`.
+ */
+function leadTurnEndsAfterHelperCall(): (hook: Record<string, unknown>) => boolean {
+  let opened = false;
+  return (hook) => {
+    if (hook.tool_use_id === UNMATCHED.toolCallId) opened = true;
+    return opened && isLeadTurnEnd(hook);
+  };
+}
+
+/** Stops before the hook that follows the lead's turn end (so the turn end itself is played). */
+function hookAfterLeadTurnEnd(): (hook: Record<string, unknown>) => boolean {
+  let ended = false;
+  return (hook) => {
+    if (ended) return true;
+    ended = isLeadTurnEnd(hook);
+    return false;
+  };
+}
 
 describe("GET /v1/agents/:id/feed: backlog, then live", () => {
   it("sends the backlog first and then each new frame as it is recorded, with no gap or duplicate", async () => {
