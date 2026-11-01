@@ -48,7 +48,8 @@ async function position(head: number, mode = "history") {
 }
 // "answered": the agent is selected in live, its request is denied here and the card shows
 // "Sent, unconfirmed" before history is entered. "unanswered": selected and left open.
-type LiveCard = "answered" | "unanswered";
+// "pending": the request is denied here but the engine's reply is held until released.
+type LiveCard = "answered" | "unanswered" | "pending";
 async function mount(
   resolution?: "expired" | "answered_elsewhere",
   heuristic = false,
@@ -74,6 +75,10 @@ async function mount(
   selectProject(PROJECT);
   selectionStore.select(null);
   const posts: string[] = [];
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   // Only the live decision POST is answered here, and only when a live card is exercised; any
   // other write still reaches the engine fixture, which refuses it and records it.
   const fetcher: typeof fetch =
@@ -83,6 +88,7 @@ async function mount(
           const url = new URL(String(input), location.origin);
           if (url.pathname === "/v1/commands" && init?.method === "POST") {
             posts.push(String(init.body));
+            if (liveCard === "pending") await gate;
             return Response.json({
               command: { id: "c1", type: "permission.decide", status: "delivered" },
             });
@@ -104,6 +110,11 @@ async function mount(
     act(() => selectionStore.select(AGENT));
     await expect.element(card()).toMatchTextContent("Current Ada");
     await expect.element(card()).toMatchTextContent(EXACT);
+    if (liveCard === "pending") {
+      await page.getByRole("button", { name: "Deny", exact: true }).click();
+      await expect.poll(() => posts.length).toBe(1);
+      await expect.element(card()).not.toHaveAttribute("data-state", "sent");
+    }
     if (liveCard === "answered") {
       await page.getByRole("button", { name: "Deny", exact: true }).click();
       await expect.element(card()).toHaveAttribute("data-state", "sent");
@@ -135,7 +146,7 @@ async function mount(
   const historyStart = engine.calls.length;
   if (liveCard === undefined) act(() => selectionStore.select(AGENT));
   expect(selectionStore.getSnapshot()).toBe(AGENT);
-  return { ...engine, historyStart, posts };
+  return { ...engine, historyStart, posts, release };
 }
 const card = () => page.getByTestId("action-card");
 async function recordedCard() {
@@ -309,6 +320,24 @@ describe("historical sidebar composition through real provider, controls and Ove
     await expect.poll(() => card().elements().length).toBe(1);
     await expect.element(card()).toHaveAttribute("data-state", "sent");
     await expect.element(card()).toMatchTextContent(/sent, unconfirmed/i);
+  });
+
+  it("an answer that lands during a recording is kept: the live card says 'Sent, unconfirmed' and no second POST is sent", async () => {
+    const engine = await mount(undefined, false, "pending");
+    // The decision is in flight and the user is now in history, where the live card is gone.
+    await recordedCard();
+    expect(engine.posts).toHaveLength(1);
+    // The engine's delivered reply arrives only now, while the recording replaces the card.
+    engine.release();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await recordedCard();
+    expect(card().element().textContent).not.toMatch(/sent, unconfirmed/i);
+    await userEvent.keyboard("l");
+    await position(6, "live");
+    await expect.poll(() => card().elements().length).toBe(1);
+    await expect.element(card()).toHaveAttribute("data-state", "sent");
+    await expect.element(card()).toMatchTextContent(/sent, unconfirmed/i);
+    expect(engine.posts).toHaveLength(1);
   });
 
   it("captions the read-only input box 'Recorded preview' so it is not mistaken for the exact input", async () => {
