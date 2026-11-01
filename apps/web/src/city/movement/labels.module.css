@@ -1,0 +1,29 @@
+.label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.label[data-urgent="true"] {
+  box-shadow: inset 0 0 0 1px var(--tv-needs-you, #e5484d);
+}
+
+.name {
+  font-weight: 600;
+}
+
+.status {
+  color: var(--tv-text-muted);
+}
+
+.onTheWay {
+  color: var(--tv-accent);
+  font-size: 0.6875rem;
+}
