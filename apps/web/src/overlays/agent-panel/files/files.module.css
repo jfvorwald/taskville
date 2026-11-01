@@ -1,0 +1,46 @@
+.files {
+  min-width: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--tv-radius);
+  background: transparent;
+  color: var(--tv-text);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.row[data-hovered],
+.row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--tv-accent) 25%, transparent);
+}
+
+.row[data-focus-visible] {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
+
+.path {
+  overflow-wrap: anywhere;
+}
+
+.body {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

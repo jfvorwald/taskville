@@ -1,0 +1,150 @@
+/*
+ * The card sits in the single sidebar slot. No animation anywhere, so reduced motion holds by
+ * construction.
+ */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font-size: 0.875rem;
+  box-shadow: inset 0 0 0 1px var(--tv-needs-you, #e5484d);
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--tv-text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cwd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  color: var(--tv-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.status {
+  margin: 0;
+  font-weight: 600;
+}
+
+.input {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 8px;
+  border-radius: calc(var(--tv-radius) - 2px);
+  background: color-mix(in srgb, var(--tv-text) 8%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.input:focus-visible,
+.card button:focus-visible,
+.noteBox:focus-visible {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
+
+.reveal {
+  padding: 0 6px;
+  border: 1px solid var(--tv-text-muted);
+  border-radius: calc(var(--tv-radius) - 2px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.revealed {
+  background: color-mix(in srgb, var(--tv-needs-you, #e5484d) 25%, transparent);
+}
+
+.reason,
+.hint,
+.error {
+  margin: 0;
+}
+
+.hint {
+  color: var(--tv-text-muted);
+}
+
+.error {
+  color: var(--tv-needs-you, #e5484d);
+}
+
+.note {
+  color: var(--tv-text-muted);
+}
+
+.noteBox {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--tv-text-muted);
+  border-radius: calc(var(--tv-radius) - 2px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: var(--tv-radius);
+  background: color-mix(in srgb, var(--tv-text) 14%, transparent);
+  color: var(--tv-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.actions .allow {
+  background: var(--tv-accent);
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card * {
+    animation: none;
+    transition: none;
+  }
+}
