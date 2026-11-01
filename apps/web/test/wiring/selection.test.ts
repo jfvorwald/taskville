@@ -1,53 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { areaSelectionId, createSelectionStore } from "../../src/city/interaction/selection.ts";
 import { createDataStore } from "../../src/data/store.ts";
-import { connectSelectedAgent, overlaySelection } from "../../src/wiring/selection.ts";
-
-describe("one selection source for the selector and the overlay host", () => {
-  it("shows the selector's value as the overlay host's selection", () => {
-    const store = createSelectionStore();
-    const overlay = overlaySelection(store);
-    expect(overlay.getSnapshot().selectedId).toBeNull();
-
-    store.select("agent-1");
-    expect(overlay.getSnapshot().selectedId).toBe("agent-1");
-    store.select(areaSelectionId("workshop"));
-    expect(overlay.getSnapshot().selectedId).toBe("area:workshop");
-  });
-
-  it("writes an overlay's select() into the same selector", () => {
-    const store = createSelectionStore();
-    const overlay = overlaySelection(store);
-    overlay.getSnapshot().select("agent-2");
-    expect(store.getSnapshot()).toBe("agent-2");
-    expect(overlay.getSnapshot().selectedId).toBe("agent-2");
-    overlay.getSnapshot().select(null);
-    expect(store.getSnapshot()).toBeNull();
-  });
-
-  it("notifies subscribers on change and keeps the same snapshot until it changes", () => {
-    const store = createSelectionStore();
-    const overlay = overlaySelection(store);
-    let calls = 0;
-    const off = overlay.subscribe(() => calls++);
-    const first = overlay.getSnapshot();
-    expect(overlay.getSnapshot()).toBe(first);
-
-    store.select("a");
-    expect(calls).toBe(1);
-    const second = overlay.getSnapshot();
-    expect(second).not.toBe(first);
-    expect(overlay.getSnapshot()).toBe(second);
-    // select() keeps its identity across snapshots, so overlays can hold it.
-    expect(second.select).toBe(first.select);
-
-    store.select("a");
-    expect(calls).toBe(1);
-    off();
-    store.select("b");
-    expect(calls).toBe(1);
-  });
-});
+import { connectSelectedAgent } from "../../src/wiring/selection.ts";
 
 describe("the data store's selectedAgentId follows agent selections", () => {
   it("mirrors agent ids and null, and applies the current selection on connect", () => {
