@@ -1,5 +1,6 @@
 import { ThemedCity } from "../themes/core/index.ts";
 import { useReducedMotion } from "../wiring/index.ts";
+import { SubagentCrew } from "./crew/subagents/index.ts";
 import { Celebrations } from "./effects/index.ts";
 import { InteractionLayer } from "./interaction/index.ts";
 import { DayNightLighting } from "./lighting/index.ts";
@@ -17,6 +18,7 @@ export function CityRoot() {
       <ThemedCity />
       <DayNightLighting />
       <CityAgents reducedMotion={reducedMotion} />
+      <SubagentCrew reducedMotion={reducedMotion} />
       <Celebrations reducedMotion={reducedMotion} />
       <InteractionLayer reducedMotion={reducedMotion} />
     </>
