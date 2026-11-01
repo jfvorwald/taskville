@@ -1,6 +1,6 @@
 import { useFrame } from "@react-three/fiber";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Group, Mesh, Sprite } from "three";
+import { type Group, type Mesh, type Object3D, type Sprite, Vector3 } from "three";
 import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
@@ -117,6 +117,8 @@ interface Place {
   z: number;
   /** Behind a "+N crew" marker: the bots that walked out of it are out of sight too. */
   hidden?: boolean;
+  /** The actually visible marker representing this hidden branch. */
+  representative?: Object3D | null;
 }
 
 interface BotHandle {
@@ -184,10 +186,36 @@ function CrewFamilyView({
   const lastDoor = useRef<Place | undefined>(undefined);
   const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
   const settled = useRef(false);
+  const markerPosition = useMemo(() => new Vector3(), []);
+
+  // Private presentation metadata, read by InteractionLayer without changing actual agent IDs.
+  const representHidden = (id: string, bot: BotHandle, representative: Object3D | null) => {
+    if (byId.get(id)?.finishedAt !== undefined) representative = null;
+    for (let object = representative; object !== null; object = object.parent) {
+      if (!object.visible) {
+        representative = null;
+        break;
+      }
+    }
+    if (representative?.parent === null) representative = null;
+    bot.root.userData.crewRepresentative = representative;
+    if (representative === null) anchors.removeAnchor(agentAnchorId(id));
+    else {
+      representative.getWorldPosition(markerPosition);
+      const point = anchorPoint.current;
+      point[0] = markerPosition.x;
+      point[1] = markerPosition.y;
+      point[2] = markerPosition.z;
+      anchors.setAnchor(agentAnchorId(id), point);
+    }
+    return representative;
+  };
 
   const register = useCallback(
     (id: string, handle: BotHandle | null) => {
       if (handle === null) {
+        const bot = bots.current.get(id);
+        if (bot !== undefined) bot.root.userData.crewRepresentative = null;
         bots.current.delete(id);
         anchors.removeAnchor(agentAnchorId(id));
       } else bots.current.set(id, handle);
@@ -247,11 +275,21 @@ function CrewFamilyView({
       // The parent bot is behind a "+N crew" marker: its crew goes out of sight with it, all the
       // way down.
       g.visible = false;
-      for (const m of family.members) {
-        anchors.removeAnchor(agentAnchorId(m.id));
-        const place = places.get(m.id);
-        if (place !== undefined) place.hidden = true;
-        else places.set(m.id, { x: 0, z: 0, hidden: true });
+      for (const [id, bot] of bots.current) {
+        bot.root.visible = false;
+        const frame = tracker.frame(id, nowMs);
+        const representative = representHidden(
+          id,
+          bot,
+          frame === undefined || frame.phase === "gone" || frame.phase === "absent"
+            ? null
+            : (parentPlace.representative ?? null),
+        );
+        const place = places.get(id);
+        if (place !== undefined) {
+          place.hidden = true;
+          place.representative = representative;
+        } else places.set(id, { x: 0, z: 0, hidden: true, representative });
       }
       return;
     }
@@ -300,19 +338,28 @@ function CrewFamilyView({
       slots.current.set(id, i);
     });
     const shown = new Set(view.individual);
+    if (marker.current !== null) marker.current.visible = (view.marker?.count ?? 0) > 0;
 
     for (const [id, bot] of bots.current) {
       const found = tracker.frame(id, nowMs);
       const index = slots.current.get(id);
       if (found === undefined || index === undefined || !shown.has(id)) {
         bot.root.visible = false;
-        anchors.removeAnchor(agentAnchorId(id));
+        const representative = representHidden(
+          id,
+          bot,
+          found === undefined || index === undefined ? null : marker.current,
+        );
         // Gone: its running crew stays where it last stood. Behind the marker: its crew goes with it.
         if (found === undefined || index === undefined) places.delete(id);
         else {
           const hiddenPlace = places.get(id);
-          if (hiddenPlace === undefined) places.set(id, { x: doorX, z: doorZ, hidden: true });
-          else hiddenPlace.hidden = true;
+          if (hiddenPlace === undefined)
+            places.set(id, { x: doorX, z: doorZ, hidden: true, representative });
+          else {
+            hiddenPlace.hidden = true;
+            hiddenPlace.representative = representative;
+          }
         }
         continue;
       }
@@ -325,6 +372,7 @@ function CrewFamilyView({
       const walking = f.phase === "walking_out" || f.phase === "returning";
       const hop = walking && !reducedMotion ? Math.abs(Math.sin(nowMs * HOP_RATE)) * HOP_HEIGHT : 0;
       bot.root.visible = f.opacity > 0;
+      bot.root.userData.crewRepresentative = bot.root.visible ? bot.root : null;
       const x = Math.sin(spot.angle) * radius;
       const z = Math.cos(spot.angle) * radius;
       bot.root.position.set(x, hop, z);
@@ -341,6 +389,7 @@ function CrewFamilyView({
         place.x = doorX + x;
         place.z = doorZ + z;
         place.hidden = false;
+        place.representative = null;
       }
       bot.root.rotation.y = homeward ? spot.angle + Math.PI : spot.angle;
       const tint = tintsRef.current.get(id);

@@ -414,9 +414,19 @@ function Interaction({
           if (rescan.clear) store.select(null);
         }
       }
-      if (obj !== null) {
-        obj.getWorldPosition(tmpPosition);
-        obj.getWorldScale(tmpScale);
+      // Crew bots retain their real identity while their presentation can move to a +N marker.
+      let representative = obj?.userData.crewRepresentative as Object3D | null | undefined;
+      if (representative === undefined) representative = obj;
+      if (representative?.parent === null) representative = null;
+      for (let ancestor = representative; ancestor !== null; ancestor = ancestor.parent) {
+        if (!ancestor.visible) {
+          representative = null;
+          break;
+        }
+      }
+      if (representative !== null) {
+        representative.getWorldPosition(tmpPosition);
+        representative.getWorldScale(tmpScale);
         circle.position.set(tmpPosition.x, tmpPosition.y + MARKER_LIFT, tmpPosition.z);
         const r = 0.55 * tmpScale.x + 0.15;
         circle.scale.set(r, r, r);
