@@ -46,7 +46,14 @@ async function position(head: number, mode = "history") {
     .element(page.getByRole("status", { name: "Selected recording" }))
     .toHaveTextContent(`${mode}:${head}`);
 }
-async function mount(resolution?: "expired" | "answered_elsewhere", heuristic = false) {
+// "answered": the agent is selected in live, its request is denied here and the card shows
+// "Sent, unconfirmed" before history is entered. "unanswered": selected and left open.
+type LiveCard = "answered" | "unanswered";
+async function mount(
+  resolution?: "expired" | "answered_elsewhere",
+  heuristic = false,
+  liveCard?: LiveCard,
+) {
   const engine = cardsEngine(resolution, heuristic);
   // Validate prerequisites before interpreting a missing DOM card as red.
   expect(engine.stateAt(2).requests["recorded-request"]).toBeUndefined();
@@ -66,7 +73,23 @@ async function mount(resolution?: "expired" | "answered_elsewhere", heuristic = 
   });
   selectProject(PROJECT);
   selectionStore.select(null);
-  vi.stubGlobal("fetch", engine.fetcher);
+  const posts: string[] = [];
+  // Only the live decision POST is answered here, and only when a live card is exercised; any
+  // other write still reaches the engine fixture, which refuses it and records it.
+  const fetcher: typeof fetch =
+    liveCard === undefined
+      ? engine.fetcher
+      : async (input, init) => {
+          const url = new URL(String(input), location.origin);
+          if (url.pathname === "/v1/commands" && init?.method === "POST") {
+            posts.push(String(init.body));
+            return Response.json({
+              command: { id: "c1", type: "permission.decide", status: "delivered" },
+            });
+          }
+          return engine.fetcher(input, init);
+        };
+  vi.stubGlobal("fetch", fetcher);
   const view = await render(
     <SessionProvider value={SECRET}>
       <HistoryProvider>
@@ -77,13 +100,42 @@ async function mount(resolution?: "expired" | "answered_elsewhere", heuristic = 
   cleanups.push(() => view.unmount());
   await position(6, "live");
   await expect.poll(() => dataStore.getState().connection).toBe("live");
+  if (liveCard !== undefined) {
+    act(() => selectionStore.select(AGENT));
+    await expect.element(card()).toMatchTextContent("Current Ada");
+    await expect.element(card()).toMatchTextContent(EXACT);
+    if (liveCard === "answered") {
+      await page.getByRole("button", { name: "Deny", exact: true }).click();
+      await expect.element(card()).toHaveAttribute("data-state", "sent");
+      await expect.element(card()).toMatchTextContent(/sent, unconfirmed/i);
+      expect(posts).toHaveLength(1);
+      // The engine then records the request as answered here and it leaves attention; the card
+      // is kept (final state) until the selection changes.
+      const current = dataStore.getState().state as unknown as {
+        requests: Record<string, Record<string, unknown>>;
+      };
+      act(() =>
+        dataStore.setState({
+          attention: [],
+          state: {
+            ...current,
+            requests: {
+              ...current.requests,
+              "current-request": { ...current.requests["current-request"], state: "answered_here" },
+            },
+          } as never,
+        }),
+      );
+      await expect.element(card()).toMatchTextContent(/sent, unconfirmed/i);
+    }
+  }
   // Use the real H shortcut: this canvas-free harness has no scene layout.
   await userEvent.keyboard("h");
   await position(4);
   const historyStart = engine.calls.length;
-  act(() => selectionStore.select(AGENT));
+  if (liveCard === undefined) act(() => selectionStore.select(AGENT));
   expect(selectionStore.getSnapshot()).toBe(AGENT);
-  return { ...engine, historyStart };
+  return { ...engine, historyStart, posts };
 }
 const card = () => page.getByTestId("action-card");
 async function recordedCard() {
@@ -218,4 +270,74 @@ describe("historical sidebar composition through real provider, controls and Ove
     expect(page.getByTestId("overlay-root").element().textContent).not.toContain(PREVIEW);
     noLiveReads(engine, since);
   });
+
+  it("a live card answered here is back for the same selection after a trip through history, offering no decision", async () => {
+    const engine = await mount(undefined, false, "answered");
+    const since = engine.historyStart;
+    // In history only the recorded facts for the replay head show, never the kept live target.
+    await recordedCard();
+    expect(card().element().textContent).not.toMatch(/sent, unconfirmed/i);
+    expect(card().element().getAttribute("data-state")).not.toBe("sent");
+    await previous(3);
+    await recordedCard();
+    expect(card().element().textContent).not.toMatch(/sent, unconfirmed/i);
+    noLiveReads(engine, since);
+    // Back to live: a card for the same selection and request is shown again, not answerable.
+    await userEvent.keyboard("l");
+    await position(6, "live");
+    expect(selectionStore.getSnapshot()).toBe(AGENT);
+    await expect.poll(() => card().elements().length).toBe(1);
+    await expect.element(card()).toMatchTextContent("Current Ada");
+    await expect.element(card()).toMatchTextContent("current-session");
+    expect(card().element().getAttribute("data-readonly")).not.toBe("true");
+    const enabled = [...card().element().querySelectorAll("button")]
+      .filter((button) => !button.disabled)
+      .map((button) => button.textContent?.trim());
+    expect(enabled).not.toContain("Allow once");
+    expect(enabled).not.toContain("Deny");
+    // The one decision was sent in live before history; none was sent or repeated since.
+    expect(engine.posts).toHaveLength(1);
+    expect(engine.calls.filter(({ method }) => method !== "GET")).toEqual([]);
+  });
+
+  it("a live card answered here still says 'Sent, unconfirmed' after a trip through history (#116 D4)", async () => {
+    await mount(undefined, false, "answered");
+    await previous(3);
+    await recordedCard();
+    await userEvent.keyboard("l");
+    await position(6, "live");
+    await expect.poll(() => card().elements().length).toBe(1);
+    await expect.element(card()).toHaveAttribute("data-state", "sent");
+    await expect.element(card()).toMatchTextContent(/sent, unconfirmed/i);
+  });
+
+  it.each(["answered", "unanswered"] as const)(
+    "the kept live target (%s) never renders decision buttons or asks for the exact input in history",
+    async (liveCard) => {
+      const engine = await mount(undefined, false, liveCard);
+      const since = engine.historyStart;
+      const root = () => page.getByTestId("overlay-root").element();
+      const decisions = () =>
+        [...root().querySelectorAll("button")]
+          .map((button) => button.textContent?.trim())
+          .filter((name) => name === "Allow once" || name === "Deny");
+      // At the final head, at the recorded open request, and before it was ever opened (no
+      // recorded card at all, where a kept live target could most easily leak through).
+      for (const head of [4, 3, 2]) {
+        if (head < 4) await previous(head);
+        expect(decisions()).toEqual([]);
+        expect(root().textContent).not.toMatch(/sent, unconfirmed/i);
+        expect(root().textContent).not.toContain(EXACT);
+        expect(root().textContent).not.toContain("current-session");
+        expect(card().elements().length).toBe(head === 2 ? 0 : 1);
+      }
+      await expect.poll(() => page.getByTestId("agent-panel").elements().length).toBe(1);
+      expect(decisions()).toEqual([]);
+      const reads = engine.calls
+        .slice(since)
+        .filter(({ url }) => /\/requests\/[^/]+\/input/.test(url.pathname));
+      expect(reads).toEqual([]);
+      noLiveReads(engine, since);
+    },
+  );
 });
