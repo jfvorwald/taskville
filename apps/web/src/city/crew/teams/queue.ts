@@ -30,6 +30,9 @@ export function dispatchQueue(state: Pick<ProjectState, "teams" | "tasks">, team
             ? "pending"
             : "unknown") as QueueState,
       claimedBy: task.assignedAgentIds,
+      ...(task.completedByAgentId === undefined
+        ? {}
+        : { completedByAgentId: task.completedByAgentId }),
     }));
 }
 export function teamProgress(state: Pick<ProjectState, "teams" | "tasks">, teamId: string) {

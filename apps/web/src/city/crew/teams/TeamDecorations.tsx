@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BoxGeometry, type Group } from "three";
 import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
@@ -124,60 +124,125 @@ export function TeamDecorations({
           const progress = teamProgress(state, team.id);
           const mates = views.filter((v) => v.teamId === team.id && v.kind === "teammate");
           return (
-            <group
+            <TeamQueue
               key={team.id}
+              teamId={team.id}
+              name={team.name ?? "Team tasks"}
+              queue={queue}
+              progress={progress}
+              mates={mates}
+              geometry={geometry}
               position={[
                 dispatch.footprint.cx + i * 1.6,
                 dispatch.height + 0.6,
                 dispatch.footprint.cz,
               ]}
-            >
-              <LabelSprite
-                name={team.name ?? "Team tasks"}
-                status={`${progress.completed}/${progress.total} completed`}
-                y={0.5}
-                inverseScale={1}
-              />
-              {mates.map((mate, n) => {
-                const tasks = queue.filter((t) => t.claimedBy.includes(mate.id));
-                const status = tasks.some((t) => t.state === "claimed")
-                  ? "claimed"
-                  : tasks.some((t) => t.state === "completed")
-                    ? "completed"
-                    : "unknown";
-                return (
-                  <mesh
-                    key={mate.id}
-                    geometry={geometry}
-                    material={colorMaterial(STATUS_COLOR[status])}
-                    scale={[0.12, 0.12, 0.12]}
-                    position={[n * 0.22, 0, 0]}
-                    userData={{ teamId: team.id, teammateId: mate.id, state: status }}
-                  />
-                );
-              })}
-              {queue.map((task, n) => (
-                <group
-                  key={task.taskId}
-                  position={[0, 0.9 + n * 0.4, dispatch.footprint.halfZ + 0.15]}
-                  userData={{ teamId: team.id, taskId: task.taskId, state: task.state }}
-                >
-                  <mesh
-                    geometry={geometry}
-                    material={colorMaterial(teamScarfColor(team.id))}
-                    scale={[0.12, 0.12, 0.12]}
-                  />
-                  <LabelSprite
-                    name={task.title ?? task.taskId}
-                    status={task.state}
-                    y={0.12}
-                    inverseScale={1}
-                  />
-                </group>
-              ))}
-            </group>
+              rowZ={dispatch.footprint.halfZ + 0.15}
+            />
           );
         })}
     </>
+  );
+}
+
+const PAGE_SIZE = 6;
+
+function TeamQueue({
+  teamId,
+  name,
+  queue,
+  progress,
+  mates,
+  geometry,
+  position,
+  rowZ,
+}: {
+  teamId: string;
+  name: string;
+  queue: ReturnType<typeof dispatchQueue>;
+  progress: ReturnType<typeof teamProgress>;
+  mates: readonly AgentView[];
+  geometry: BoxGeometry;
+  position: [number, number, number];
+  rowZ: number;
+}) {
+  const [page, setPage] = useState(0);
+  const lastPage = Math.max(0, Math.ceil(queue.length / PAGE_SIZE) - 1);
+  // Adjust during render so a shrinking snapshot cannot leave a blank page or
+  // restore an obsolete offset when the queue grows again. The team key resets it.
+  if (page > lastPage) setPage(lastPage);
+  return (
+    <group position={position}>
+      <LabelSprite
+        name={name}
+        status={`${progress.completed}/${progress.total} completed`}
+        y={0.5}
+        inverseScale={1}
+      />
+      {mates.map((mate, n) => {
+        const tasks = queue.filter((t) =>
+          t.state === "completed" && t.completedByAgentId !== undefined
+            ? t.completedByAgentId === mate.id
+            : t.claimedBy.includes(mate.id),
+        );
+        const status = tasks.some((t) => t.state === "claimed")
+          ? "claimed"
+          : tasks.some((t) => t.state === "completed")
+            ? "completed"
+            : "unknown";
+        return (
+          <mesh
+            key={mate.id}
+            geometry={geometry}
+            material={colorMaterial(STATUS_COLOR[status])}
+            scale={[0.12, 0.12, 0.12]}
+            position={[n * 0.22, 0, 0]}
+            userData={{ teamId, teammateId: mate.id, state: status }}
+          />
+        );
+      })}
+      {queue.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((task, n) => (
+        <group
+          key={task.taskId}
+          position={[0, 0.9 + n * 0.4, rowZ]}
+          userData={{ teamId, taskId: task.taskId, state: task.state }}
+        >
+          <mesh
+            geometry={geometry}
+            material={colorMaterial(teamScarfColor(teamId))}
+            scale={[0.12, 0.12, 0.12]}
+          />
+          <LabelSprite
+            name={task.title ?? task.taskId}
+            status={task.state}
+            y={0.12}
+            inverseScale={1}
+          />
+        </group>
+      ))}
+      {(["previous", "next"] as const).map((direction) => {
+        const next = direction === "next";
+        if (next ? page === lastPage : page === 0) return null;
+        return (
+          // biome-ignore lint/a11y/noStaticElementInteractions: R3F scene group receives raycast clicks, not DOM events.
+          <group
+            key={direction}
+            position={[next ? 0.65 : -0.65, 0.25, rowZ]}
+            userData={{ teamId, queuePageDirection: direction }}
+            onClick={(event) => {
+              event.stopPropagation();
+              setPage((current) => Math.max(0, Math.min(lastPage, current + (next ? 1 : -1))));
+            }}
+          >
+            <mesh
+              geometry={geometry}
+              material={colorMaterial("#46535e")}
+              scale={[1.15, 0.38, 0.16]}
+            />
+            <LabelSprite name={next ? "Next" : "Previous"} status="" y={0} inverseScale={1} />
+          </group>
+        );
+      })}
+    </group>
   );
 }
