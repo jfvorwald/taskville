@@ -12,6 +12,8 @@ export interface RecordedMoment {
   readonly time: number;
   readonly agentId: string | undefined;
   readonly marker: "Needs you" | "Task completed" | "Commit" | undefined;
+  /** The request a non-late `request.opened` at this sequence opened. */
+  readonly requestId?: string | undefined;
 }
 
 interface Presentation {
@@ -243,7 +245,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
                   : event.type === "git.commit"
                     ? "Commit"
                     : undefined;
-            moments.push({ sequence: expected++, time, agentId: event.agentId, marker });
+            moments.push({
+              sequence: expected++,
+              time,
+              agentId: event.agentId,
+              marker,
+              requestId:
+                event.type === "request.opened" && !event.late
+                  ? event.payload.requestId
+                  : undefined,
+            });
           }
           cursor = page.nextCursor;
           if (cursor !== null) {

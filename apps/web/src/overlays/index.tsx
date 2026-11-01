@@ -6,8 +6,16 @@ import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
 import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
 import { type DataStore, dataStore } from "../data/store.ts";
+import {
+  PresentedSidebar,
+  presentedActionCardOverlay,
+  presentedAgentPanelOverlay,
+  useRecordedTarget,
+} from "../history/ui/PresentedSidebar.tsx";
 import { themedSettingsOverlay } from "../wiring/index.ts";
+import { ACTION_CARD_ID, useCardTarget } from "./action-card/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
+import { AGENT_PANEL_ID } from "./agent-panel/shell/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
 import {
   countsHeaderOverlay,
@@ -22,6 +30,7 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
+import { SETTINGS_OVERLAY_ID } from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
@@ -34,6 +43,8 @@ const registry = createOverlayRegistry([
   themedSettingsOverlay,
   agentListOverlay,
   bubblesOverlay,
+  presentedAgentPanelOverlay,
+  presentedActionCardOverlay,
 ]);
 const ENABLED = [
   "counts-header",
@@ -42,6 +53,8 @@ const ENABLED = [
   "settings-panel",
   "agent-list",
   "bubbles",
+  AGENT_PANEL_ID,
+  ACTION_CARD_ID,
 ];
 
 const noIntent = () => {};
@@ -81,19 +94,34 @@ export function OverlayRoot({
   useSoundscape();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
+  const agents = useData((s) => s.state?.agents, store);
+  const selectedAgent =
+    selection.selectedId !== null &&
+    agents !== undefined &&
+    Object.hasOwn(agents, selection.selectedId);
+  // The live card is the app's own store; it is not asked while a recording is shown, so replay
+  // facts never become the remembered target.
+  const liveCard = useCardTarget(dataStore, mode === "live" ? selection.selectedId : null) !== null;
+  const recordedTarget = useRecordedTarget(store, mode, selection.selectedId);
+  // Needs-you takes the single sidebar ahead of the selected agent and settings.
+  const cardOpen = mode === "history" ? (recordedTarget ?? null) !== null : liveCard;
+  const sidebar = cardOpen ? ACTION_CARD_ID : selectedAgent ? AGENT_PANEL_ID : SETTINGS_OVERLAY_ID;
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
-      <OverlayHost
-        registry={registry}
-        enabled={ENABLED}
-        mode={mode}
-        selectors={selectors}
-        selection={selection}
-        anchors={worldAnchors}
-        runIntent={noIntent}
-        storage={storage}
-      />
+      <PresentedSidebar store={store} recordedTarget={recordedTarget}>
+        <OverlayHost
+          registry={registry}
+          enabled={ENABLED}
+          sidebar={sidebar}
+          mode={mode}
+          selectors={selectors}
+          selection={selection}
+          anchors={worldAnchors}
+          runIntent={noIntent}
+          storage={storage}
+        />
+      </PresentedSidebar>
       <p className={styles.badge}>
         {connection === "stale" ? "Taskville · stale" : "Taskville · paired"}
       </p>

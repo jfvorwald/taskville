@@ -51,6 +51,11 @@ export type ActionCardProps = OverlayProps & {
   store?: DataStore;
   /** The fetch used for engine calls. Default: the global fetch. */
   fetch?: Fetch;
+  /**
+   * The request the recording shows, consulted only in history mode: `undefined` keeps the live
+   * path, `null` shows no card, a target shows that request read-only.
+   */
+  recordedTarget?: CardTarget | null | undefined;
 };
 
 type Fetch = typeof fetch;
@@ -165,13 +170,17 @@ export function ActionCard({
   selection,
   store = dataStore,
   fetch = defaultFetch,
+  recordedTarget,
 }: ActionCardProps) {
   const secret = useSession();
-  const target = useCardTarget(store, selection.selectedId);
+  // A recorded card never feeds the live kept target, and a live one never shows in its place.
+  const recorded = mode === "history" && recordedTarget !== undefined;
+  const live = useCardTarget(store, recorded ? null : selection.selectedId);
+  const target = recorded ? recordedTarget : live;
   if (target === null) return null;
   return (
     <CardBody
-      key={`${target.agentId}:${target.requestId}`}
+      key={`${mode}:${storeId(store)}:${target.agentId}:${target.requestId}`}
       target={target}
       mode={mode}
       store={store}
@@ -179,6 +188,20 @@ export function ActionCard({
       secret={secret}
     />
   );
+}
+
+let nextStoreId = 0;
+const storeIds = new WeakMap<DataStore, number>();
+
+/** A store's identity as a key part, so a card read from another store starts afresh. */
+function storeId(store: DataStore): number {
+  let id = storeIds.get(store);
+  if (id === undefined) {
+    id = nextStoreId;
+    nextStoreId += 1;
+    storeIds.set(store, id);
+  }
+  return id;
 }
 
 function CardBody({
