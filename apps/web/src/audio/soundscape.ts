@@ -68,9 +68,19 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
   let failed: string | null = null;
   /** The context is suspended: nothing could sound, so it was parked until a loop is wanted. */
   let parked = false;
-  let repark: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The park deadline: pending while a cue may still be sounding, restarted by every cue so it
+   * always covers the latest one. park() waits for it; mute and disable cut the cues and clear it.
+   */
+  let ringing: ReturnType<typeof setTimeout> | undefined;
 
   const silenced = () => !enabled || history || settings.getSnapshot().muted;
+
+  /** The theme whose loop should play now, or null when nothing may loop. */
+  function wantedLoop() {
+    const s = settings.getSnapshot();
+    return enabled && !s.muted && !s.chimeOnly ? theme : null;
+  }
 
   function applyVolume() {
     const next = clamp01(settings.getSnapshot().volume);
@@ -79,27 +89,33 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     backend.setVolume(next);
   }
 
+  /** The only way the context is suspended. While a cue still sounds, the ring-out parks instead. */
   function park() {
-    if (parked) return;
+    if (parked || ringing !== undefined) return;
     parked = true;
     backend.suspend?.();
   }
 
-  /** A cue wakes a parked context; once it has rung out and no loop is wanted, park it again. */
+  /** Mute and disable cut every cue, so nothing is left ringing and the park may happen at once. */
+  function cutCues() {
+    backend.silence?.();
+    clearTimeout(ringing);
+    ringing = undefined;
+  }
+
+  /** A cue wakes a parked context; once the last cue has rung out and no loop is wanted, park it. */
   function sound(cue: "chime" | "tick" | "pop") {
     backend.playCue(cue);
-    if (!parked) return;
     parked = false;
-    clearTimeout(repark);
-    repark = setTimeout(() => {
-      const s = settings.getSnapshot();
-      if (enabled && (s.muted || s.chimeOnly)) park();
+    clearTimeout(ringing);
+    ringing = setTimeout(() => {
+      ringing = undefined;
+      if (enabled && wantedLoop() === null) park();
     }, CUE_TAIL_MS);
   }
 
   function syncLoop() {
-    const s = settings.getSnapshot();
-    const wanted = enabled && !s.muted && !s.chimeOnly ? theme : null;
+    const wanted = wantedLoop();
     if (wanted === null) {
       loadToken += 1;
       loading = null;
@@ -149,7 +165,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     applyVolume();
     const { muted } = settings.getSnapshot();
     // Muting also cuts a cue that is still ringing.
-    if (muted && !wasMuted) backend.silence?.();
+    if (muted && !wasMuted) cutCues();
     wasMuted = muted;
     syncLoop();
   }
@@ -192,7 +208,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       unsubscribe = null;
       syncLoop();
       if (wasEnabled) {
-        backend.silence?.();
+        cutCues();
         park();
       }
     },
