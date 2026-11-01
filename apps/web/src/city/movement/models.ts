@@ -119,6 +119,7 @@ export function buildModels(
           ? "dispatch"
           : agent.kind === "teammate" &&
               agent.teamId !== undefined &&
+              areaFor(table, { activity, agentType, kind: agent.kind }) === null &&
               input.tasks !== undefined &&
               !Object.values(input.tasks).some((t) => t.assignedAgentIds.includes(agent.id))
             ? "dispatch"

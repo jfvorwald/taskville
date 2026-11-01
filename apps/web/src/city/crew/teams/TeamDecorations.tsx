@@ -35,30 +35,29 @@ function AgentDecoration({
   const sleeping = useRef<Group>(null);
   const guessed = useRef<Group>(null);
   const pose = useRef(createPose());
+  const state = useData((s) => s.state, store);
+  const idleInput = useMemo(() => {
+    const agent = state?.agents[view.id];
+    return {
+      activity: view.activity,
+      openToolCalls: Object.values(state?.toolCalls ?? {}).filter(
+        (t) => t.agentId === view.id && t.phase === "running",
+      ).length,
+      claimedTasks: Object.values(state?.tasks ?? {}).filter(
+        (t) =>
+          t.assignedAgentIds.includes(view.id) &&
+          (t.status === "assigned" || t.status === "running"),
+      ).length,
+      ...(agent === undefined ? {} : { lastEventAtMs: Date.parse(agent.lastSeenAt) }),
+    };
+  }, [state, view.id, view.activity]);
   useFrame((frame) => {
     if (root.current === null) return;
     const p = view.placement;
     const bob = workPose(areaFor(view.activity), frame.clock.elapsedTime, pose.current).bob;
     root.current.position.set(p.x, p.y + bob, p.z);
     root.current.rotation.y = p.heading;
-    const state = store.getState().state;
-    if (state === null) return;
-    const agent = state.agents[view.id];
-    const idle = teammateIdle(
-      {
-        activity: view.activity,
-        openToolCalls: Object.values(state.toolCalls).filter(
-          (t) => t.agentId === view.id && t.phase === "running",
-        ).length,
-        claimedTasks: Object.values(state.tasks).filter(
-          (t) =>
-            t.assignedAgentIds.includes(view.id) &&
-            (t.status === "assigned" || t.status === "running"),
-        ).length,
-        ...(agent === undefined ? {} : { lastEventAtMs: Date.parse(agent.lastSeenAt) }),
-      },
-      store.now(),
-    );
+    const idle = teammateIdle(idleInput, store.now());
     const show = view.kind === "teammate" && view.attention === undefined;
     if (sleeping.current) sleeping.current.visible = show && idle.idle && !idle.heuristic;
     if (guessed.current) guessed.current.visible = show && idle.idle && idle.heuristic;
