@@ -38,7 +38,7 @@
   outline-offset: -2px;
 }
 
-.row[data-current="true"] {
+.row[data-selected] {
   box-shadow: inset 3px 0 0 var(--tv-accent);
 }
 

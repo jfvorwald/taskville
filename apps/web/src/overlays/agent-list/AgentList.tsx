@@ -8,7 +8,7 @@ import { agentListRows } from "./rows.ts";
 
 /**
  * The scene's agents as a list for keyboard and screen reader users. One tab stop, arrows move
- * between rows, Enter selects the agent in the city. It reads the same rows as the world labels.
+ * between rows, Enter selects the agent in the city, and the selected row is aria-selected. It reads the same rows as the world labels.
  */
 export function AgentList({ selection }: OverlayProps) {
   const labels = useSyncExternalStore(
@@ -17,15 +17,24 @@ export function AgentList({ selection }: OverlayProps) {
     movementLabels.getSnapshot,
   );
   const rows = useMemo(() => agentListRows(labels), [labels]);
+  const selectedId = selection.selectedId;
+  const selectedKeys = useMemo(() => (selectedId === null ? [] : [selectedId]), [selectedId]);
   return (
     <InteractiveRegion className={styles.panel}>
       <GridList
         aria-label="Agents"
         data-testid="agent-list"
         className={styles.list}
-        selectionMode="none"
-        items={rows}
+        selectionMode="single"
+        selectionBehavior="replace"
+        selectedKeys={selectedKeys}
+        onSelectionChange={(keys) => {
+          // Emptying the set (clicking the selected row again) must not clear the city selection.
+          const [key] = keys === "all" ? [] : keys;
+          if (key !== undefined) selection.select(String(key));
+        }}
         onAction={(key) => selection.select(String(key))}
+        items={rows}
         renderEmptyState={() => <p className={styles.empty}>No agents yet</p>}
       >
         {(row) => (
@@ -35,8 +44,6 @@ export function AgentList({ selection }: OverlayProps) {
             className={styles.row}
             data-agent-id={row.id}
             data-urgent={row.urgent ? "true" : undefined}
-            data-current={selection.selectedId === row.id ? "true" : undefined}
-            aria-current={selection.selectedId === row.id ? "true" : undefined}
           >
             <span className={styles.name}>{row.name}</span>
             <span className={styles.status}>{row.detail}</span>
