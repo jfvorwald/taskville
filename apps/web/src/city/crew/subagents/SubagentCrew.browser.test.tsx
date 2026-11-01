@@ -7,7 +7,7 @@ import { type Agent, initialState, type ProjectState } from "../../../data/domai
 import { createDataStore } from "../../../data/store.ts";
 import { createAnchorSource } from "../../../overlays/host/index.ts";
 import { agentAnchorId } from "../../movement/AgentLabels.tsx";
-import { crewMarkerLabel } from "./crew.ts";
+import { crewMarkerLabel, FAN_OUT_MS } from "./crew.ts";
 import { FADE_MS, HAND_OVER_MS, RETURN_MS } from "./lifecycle.ts";
 import { pillMaterial } from "./resources.ts";
 import { SubagentCrew } from "./SubagentCrew.tsx";
@@ -284,6 +284,78 @@ describe("SubagentCrew in a scene", () => {
       await scene.frames(3);
       expect(scene.shown("s1")).toBe(true);
       expect(scene.shown("kid")).toBe(true);
+    } finally {
+      await scene.unmount();
+    }
+  }, 30_000);
+
+  // s4 stands behind the lead's "+1 crew" marker once a fan-out ends; c4 is its running child.
+  // Fanning out at the start gets both placed and drawn first, so the hiding is what is tested
+  // (a bot that was never placed is hidden anyway). The lead's marker is the clickable sprite
+  // beside the lead's bots.
+  const MARKED_CREW = [
+    LEAD,
+    sub("s1", "lead"),
+    sub("s2", "lead"),
+    sub("s3", "lead"),
+    sub("s4", "lead"),
+    sub("c4", "s4"),
+  ];
+  const fanOut = (scene: Scene): void => {
+    const marker = scene.bot("s1")?.parent?.children.find((o) => typeof clickOf(o) === "function");
+    expect(marker).toBeDefined();
+    (clickOf(marker as Object3D) as () => void)();
+  };
+
+  it("takes the running crew of a bot out of sight when it goes behind the marker, and back with it on fan-out", async () => {
+    const scene = await mount(MARKED_CREW);
+    try {
+      await scene.frames(2);
+      fanOut(scene);
+      // Fanned out and past the walk: the fourth bot and its child are both drawn.
+      scene.clock.now = 3000;
+      await vi.waitFor(() => expect(scene.shown("s4")).toBe(true), FRAME_WAIT);
+      await vi.waitFor(() => expect(scene.shown("c4")).toBe(true), FRAME_WAIT);
+
+      // The fan-out ends: s4 is behind the marker, and so is the child that walked out of it.
+      scene.clock.now = FAN_OUT_MS + 1000;
+      await vi.waitFor(() => expect(scene.shown("s4")).toBe(false), FRAME_WAIT);
+      await vi.waitFor(() => expect(scene.shown("c4")).toBe(false), FRAME_WAIT);
+      await scene.frames(3);
+      expect(scene.shown("c4")).toBe(false);
+      // The bots in front of the marker are untouched.
+      expect(scene.shown("s3")).toBe(true);
+
+      // Fan-out again: the bot comes back, and its crew with it.
+      fanOut(scene);
+      await vi.waitFor(() => expect(scene.shown("s4")).toBe(true), FRAME_WAIT);
+      await vi.waitFor(() => expect(scene.shown("c4")).toBe(true), FRAME_WAIT);
+    } finally {
+      await scene.unmount();
+    }
+  }, 30_000);
+
+  it("keeps the crew of a bot behind the marker out of sight across a store update that keeps the bot", async () => {
+    const scene = await mount([...MARKED_CREW, agent("other")]);
+    try {
+      await scene.frames(2);
+      fanOut(scene);
+      scene.clock.now = 3000;
+      await vi.waitFor(() => expect(scene.shown("c4")).toBe(true), FRAME_WAIT);
+      scene.clock.now = FAN_OUT_MS + 1000;
+      await vi.waitFor(() => expect(scene.shown("c4")).toBe(false), FRAME_WAIT);
+
+      // An unrelated agent changes status. Every subagent is still in the store, so s4 keeps its
+      // place (and with it the fact that it is hidden); its child must not walk back into view.
+      scene.set([...MARKED_CREW, agent("other", { connection: "disconnected" })]);
+      await scene.frames(5);
+      expect(scene.shown("s4")).toBe(false);
+      expect(scene.shown("c4")).toBe(false);
+      // A second update, and more time, change nothing.
+      scene.set([...MARKED_CREW, agent("other", { connection: "connected", toolCallCount: 1 })]);
+      scene.clock.now = FAN_OUT_MS + 5000;
+      await scene.frames(5);
+      expect(scene.shown("c4")).toBe(false);
     } finally {
       await scene.unmount();
     }
