@@ -17,7 +17,7 @@ import {
 } from "./api.ts";
 import { formatWaiting } from "./format.ts";
 import { inputText } from "./input.ts";
-import { type MaskSpan, maskSpans } from "./mask.ts";
+import { inputMaskSpans, type MaskSpan } from "./mask.ts";
 import { type CardTarget, useCardTarget } from "./target.ts";
 
 export const ACTION_CARD_ID = "action-card";
@@ -193,8 +193,12 @@ function CardBody({
     : (forced ?? (load.kind === "expired" ? "expired" : recordedState(target.requestState)));
   const variant = target.answerable && !openOnly ? "decision" : "open-only";
 
-  const text = load.kind === "ok" ? inputText(load.input.toolInput) : null;
-  const spans = useMemo(() => (text === null ? [] : maskSpans(text)), [text]);
+  const toolInput = load.kind === "ok" ? load.input.toolInput : null;
+  const text = load.kind === "ok" ? inputText(toolInput) : null;
+  const spans = useMemo(
+    () => (text === null ? [] : inputMaskSpans(toolInput, text)),
+    [toolInput, text],
+  );
   const unrevealed = spans.length - revealed.size;
   const cwd = load.kind === "ok" ? load.input.cwd : undefined;
 
