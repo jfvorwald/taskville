@@ -413,6 +413,7 @@ function CardBody({
   const submit = async (
     make: (idempotencyKey: string) => CommandBody,
     done: (command: CommandRecord) => Promise<void> | void,
+    decision = false,
   ) => {
     if (inFlight.current || state !== "open") return;
     inFlight.current = true;
@@ -430,22 +431,26 @@ function CardBody({
     const result = await sendCommand({ fetch, secret, body: make(key), signal: controller.signal });
     clearTimeout(commandTimer.current);
     inFlight.current = false;
+    const code = result.ok ? null : timedOut ? "timeout" : result.code;
+    // The first command may still be running (or have run), so its retry must stay a replay.
+    const unreadableSuccess =
+      !result.ok && code === "unknown" && result.status >= 200 && result.status < 300;
+    const unresolved =
+      code === "network" || code === "timeout" || code === "command_in_flight" || unreadableSuccess;
+    // What the engine answered is kept even when a recording has replaced this card meanwhile.
+    if (draft) {
+      draft.retry = result.ok || !unresolved ? null : { signature, key };
+      if (result.ok && decision && result.command.status === "delivered") draft.sent = true;
+    }
     if (!mounted.current) return;
     setBusy(false);
     if (result.ok) {
       retry.current = null;
-      if (draft) draft.retry = null;
       await done(result.command);
       return;
     }
-    const code = timedOut ? "timeout" : result.code;
-    // The first command may still be running (or have run), so its retry must stay a replay.
-    const unreadableSuccess = code === "unknown" && result.status >= 200 && result.status < 300;
-    const unresolved =
-      code === "network" || code === "timeout" || code === "command_in_flight" || unreadableSuccess;
     retry.current = unresolved ? { signature, key } : null;
-    if (draft) draft.retry = retry.current;
-    fail(code);
+    fail(timedOut ? "timeout" : result.code);
   };
 
   const decide = (behavior: "allow" | "deny") => {
@@ -453,11 +458,10 @@ function CardBody({
     void submit(
       (idempotencyKey) => buildDecideBody({ projectId, requestId, idempotencyKey, behavior, note }),
       ({ status }) => {
-        if (status === "delivered") {
-          if (draft) draft.sent = true;
-          setSent(true);
-        } else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
+        if (status === "delivered") setSent(true);
+        else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
       },
+      true,
     );
   };
 
