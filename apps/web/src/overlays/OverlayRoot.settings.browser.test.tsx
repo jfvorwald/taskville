@@ -1,3 +1,4 @@
+import "../styles/tokens.css";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -5,6 +6,7 @@ import { selectionStore } from "../city/interaction/selection.ts";
 import { DEFAULT_PROJECT_ID, selectProject } from "../data/project.ts";
 import { dataStore } from "../data/store.ts";
 import { SessionProvider } from "../pairing/session.tsx";
+import { themeController } from "../themes/core/index.ts";
 import { OverlayRoot } from "./index.tsx";
 
 // M5.19 (issue #315): the Settings toggle is always available. The web smoke "a theme switch
@@ -230,7 +232,13 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     expect(selectionStore.getSnapshot()).toBe("a2");
   });
 
-  it("keeps the floating Settings toggle reachable without overlapping counts at 320px", async () => {
+  it("keeps the floating Settings toggle reachable without overlapping counts or camera controls at 320px", async () => {
+    // Match main.tsx's global CSS and ThemedCity's token publication without mounting WebGL.
+    const root = document.documentElement;
+    const rootAttributes = ["style", "data-theme", "data-mode", "data-history"].map(
+      (name) => [name, root.getAttribute(name)] as const,
+    );
+    const detach = themeController.attach(document.documentElement);
     const restore = { width: window.innerWidth, height: window.innerHeight };
     try {
       await page.viewport(320, 640);
@@ -258,6 +266,32 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
         buttonBox.top < countsBox.bottom &&
         buttonBox.bottom > countsBox.top;
       expect(overlaps).toBe(false);
+      // Counts and camera controls share the centered header. At 320px the camera buttons,
+      // rather than the counts, occupy the floating toggle's old position.
+      const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true }).element();
+      const zoomBox = zoomIn.getBoundingClientRect();
+      const zoomHit = document.elementFromPoint(
+        zoomBox.left + zoomBox.width / 2,
+        zoomBox.top + zoomBox.height / 2,
+      );
+      expect(zoomIn.contains(zoomHit), zoomHit?.outerHTML).toBe(true);
+      for (const control of page
+        .getByRole("group", { name: "Camera", exact: true })
+        .element()
+        .querySelectorAll("button")) {
+        const box = control.getBoundingClientRect();
+        expect(
+          buttonBox.left < box.right &&
+            buttonBox.right > box.left &&
+            buttonBox.top < box.bottom &&
+            buttonBox.bottom > box.top,
+          JSON.stringify({
+            control: control.getAttribute("aria-label") ?? control.textContent,
+            button: buttonBox.toJSON(),
+            camera: box.toJSON(),
+          }),
+        ).toBe(false);
+      }
       expect(
         button.contains(
           document.elementFromPoint(
@@ -269,6 +303,11 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
       await toggle().click();
       await vi.waitFor(() => expect(settingsShown()).toBe(true));
     } finally {
+      detach();
+      for (const [name, value] of rootAttributes) {
+        if (value === null) root.removeAttribute(name);
+        else root.setAttribute(name, value);
+      }
       await page.viewport(restore.width, restore.height);
     }
   });
