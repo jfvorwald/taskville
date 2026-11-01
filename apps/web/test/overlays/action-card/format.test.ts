@@ -177,7 +177,9 @@ describe("copyOnlyText (M4.17 M1)", () => {
 // they can be real characters of the path and the copied text is quoted anyway.
 describe("copyOnlyText keeps non-ASCII spaces (M4.17 roborev 6355)", () => {
   it("keeps a no-break space inside the single quotes", () => {
-    expect(copyOnlyText({ sessionId: "s", cwd: "/p/a\u00a0b" })).toBe("session 's'\ncwd '/p/a\u00a0b'");
+    expect(copyOnlyText({ sessionId: "s", cwd: "/p/a\u00a0b" })).toBe(
+      "session 's'\ncwd '/p/a\u00a0b'",
+    );
   });
 
   it("shows the same no-break space as a marker on the card", () => {
