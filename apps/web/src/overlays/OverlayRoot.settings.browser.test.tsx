@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { selectionStore } from "../city/interaction/selection.ts";
-import { DEFAULT_PROJECT_ID, selectProject } from "../data/project.ts";
+import { DEFAULT_PROJECT_ID, projectSelection, selectProject } from "../data/project.ts";
 import { dataStore } from "../data/store.ts";
 import { SessionProvider } from "../pairing/session.tsx";
 import { themeController } from "../themes/core/index.ts";
+import { EMPTY_ATTENTION_FEED } from "./header/attention.ts";
+import { attentionStore } from "./header/attentionSync.ts";
 import { OverlayRoot } from "./index.tsx";
 
 // M5.19 (issue #315): the Settings toggle is always available. The web smoke "a theme switch
@@ -49,6 +51,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  attentionStore.setState({ feed: EMPTY_ATTENTION_FEED, ready: false });
   vi.unstubAllGlobals();
   selectProject(DEFAULT_PROJECT_ID);
   selectionStore.select(null);
@@ -314,6 +317,72 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
       }
     },
   );
+
+  it.each([320, 500])("keeps wrapped attention project chips clickable at %dpx", async (width) => {
+    const root = document.documentElement;
+    const attributes = ["style", "data-theme", "data-mode", "data-history"].map(
+      (name) => [name, root.getAttribute(name)] as const,
+    );
+    const detach = themeController.attach(root);
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await page.viewport(width, 640);
+      await mountSeeded();
+      selectionStore.select("a2");
+      await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+      attentionStore.setState({
+        ready: true,
+        feed: Object.fromEntries(
+          ["Beta", "Gamma"].map((name) => [
+            name.toLowerCase(),
+            { projectId: name.toLowerCase(), name, attention: [needsYou(name, `request-${name}`)] },
+          ]),
+        ),
+      });
+      const chip = page.getByRole("button", { name: "Gamma: 1 needs you", exact: true });
+      await expect.element(chip).toBeVisible();
+      const projectChips = page
+        .getByRole("button", { name: /^(Beta|Gamma): 1 needs you$/ })
+        .elements();
+      expect(projectChips).toHaveLength(2);
+      expect(
+        projectChips.some(
+          (control) =>
+            control.getBoundingClientRect().top >=
+            counts().element().getBoundingClientRect().bottom,
+        ),
+      ).toBe(true);
+      const toggleBox = toggle().element().getBoundingClientRect();
+      for (const chipElement of projectChips) {
+        const chipBox = chipElement.getBoundingClientRect();
+        expect(
+          chipBox.left < toggleBox.right &&
+            chipBox.right > toggleBox.left &&
+            chipBox.top < toggleBox.bottom &&
+            chipBox.bottom > toggleBox.top,
+          JSON.stringify({
+            chip: chipElement.textContent,
+            rect: chipBox.toJSON(),
+            settings: toggleBox.toJSON(),
+          }),
+        ).toBe(false);
+        const hit = document.elementFromPoint(
+          chipBox.left + chipBox.width / 2,
+          chipBox.top + chipBox.height / 2,
+        );
+        expect(chipElement.contains(hit), hit?.outerHTML).toBe(true);
+      }
+      await chip.click();
+      expect(projectSelection.getState().projectId).toBe("gamma");
+    } finally {
+      detach();
+      for (const [name, value] of attributes) {
+        if (value === null) root.removeAttribute(name);
+        else root.setAttribute(name, value);
+      }
+      await page.viewport(viewport.width, viewport.height);
+    }
+  });
 
   it("is unchanged with nothing selected: the toggle is there, closed, and opens Settings in the sidebar", async () => {
     await mountSeeded();
