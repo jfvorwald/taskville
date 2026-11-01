@@ -176,7 +176,10 @@ describe("session.open: a command left requested by an engine stop", () => {
     expect(got.command).toMatchObject({ id: STALE_ID, status: "failed" });
     expect(commandTypes(after.engine)).toEqual(["command.requested", "command.failed"]);
     const failed = commandEvents(after.engine).find((e) => e.type === "command.failed");
-    expect(failed?.payload).toMatchObject({ commandId: STALE_ID });
+    expect(failed?.payload).toMatchObject({
+      commandId: STALE_ID,
+      reason: "The engine stopped before the outcome was recorded; the session may have opened",
+    });
     expect(after.execFile).not.toHaveBeenCalled();
   });
 

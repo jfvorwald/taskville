@@ -48,6 +48,12 @@ afterEach(() => {
 
 const POISON = "disk-secret-detail-4711";
 
+// Constitution IV: a command cut short by an engine stop is not presented as a known failure.
+const DECIDE_UNKNOWN_REASON =
+  "The engine stopped before the outcome was recorded; the decision may have reached Claude Code";
+const OPEN_UNKNOWN_REASON =
+  "The engine stopped before the outcome was recorded; the session may have opened";
+
 describe("permission.decide: an append failure after the hook was answered", () => {
   for (const eventType of ["request.resolved", "command.delivered"]) {
     it(`still answers 200 delivered when ${eventType} cannot be appended, and logs the error name only`, async () => {
@@ -147,7 +153,10 @@ describe("service start: commands an engine stop left half done", () => {
     expect(await status(after, "stale-decide")).toBe("failed");
     const events = commandEvents(after.engine).filter((e) => e.type.startsWith("command."));
     expect(types(events)).toEqual(["command.requested", "command.failed"]);
-    expect(events[1]?.payload).toMatchObject({ commandId: "stale-decide" });
+    expect(events[1]?.payload).toMatchObject({
+      commandId: "stale-decide",
+      reason: DECIDE_UNKNOWN_REASON,
+    });
     expect(after.decide).not.toHaveBeenCalled();
   });
 
@@ -163,6 +172,10 @@ describe("service start: commands an engine stop left half done", () => {
     expect(await status(after, "stuck-open")).toBe("failed");
     const events = commandEvents(after.engine).filter((e) => e.type.startsWith("command."));
     expect(types(events)).toEqual(["command.requested", "command.delivered", "command.failed"]);
+    expect(events[2]?.payload).toMatchObject({
+      commandId: "stuck-open",
+      reason: OPEN_UNKNOWN_REASON,
+    });
     expect(after.execFile).not.toHaveBeenCalled();
   });
 
