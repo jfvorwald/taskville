@@ -134,8 +134,9 @@ describe("identity colors avoid the attention hues", () => {
   it("keeps the fallback trim (session without a team, subagent without a parent) out of the reserved hues", () => {
     const bad: string[] = [];
     for (let i = 0; i < 2000; i++) {
-      const sessionTrim = agentColors(view({ id: `s${i}`, sourceId: "cc", sourceAgentId: `s-${i}` }))
-        .trim;
+      const sessionTrim = agentColors(
+        view({ id: `s${i}`, sourceId: "cc", sourceAgentId: `s-${i}` }),
+      ).trim;
       const sessionNoSource = agentColors(view({ id: `plain-${i}` })).trim;
       const subagentTrim = agentColors(
         view({ id: `u${i}`, kind: "subagent", agentType: `type-${i}` }),

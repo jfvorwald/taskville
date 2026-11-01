@@ -75,8 +75,9 @@ describe("agentLabel", () => {
       agentLabel(view({ attention: { level: "trouble", detail: "build failed" } })).status,
     ).toBe("Trouble: build failed");
     expect(
-      agentLabel(view({ attention: { level: "trouble", detail: "build failed", heuristic: false } }))
-        .status,
+      agentLabel(
+        view({ attention: { level: "trouble", detail: "build failed", heuristic: false } }),
+      ).status,
     ).toBe("Trouble: build failed");
   });
 
