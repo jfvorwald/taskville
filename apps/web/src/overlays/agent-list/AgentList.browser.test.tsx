@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { movementLabels } from "../../city/movement/labels.ts";
 import { createAnchorSource } from "../host/anchors.ts";
@@ -66,5 +66,30 @@ describe("AgentList selection state", () => {
     await expect
       .element(page.getByRole("row", { name: /Brook/ }))
       .not.toHaveAttribute("aria-selected", "true");
+  });
+
+  it("does not change the city selection when arrow keys only move focus between rows", async () => {
+    // React Aria's selectionBehavior="replace" selects on focus, which would make browsing the
+    // list select every row it passes. Only Enter (or a click) should select.
+    movementLabels.set(rows);
+    const picked: string[] = [];
+    const p = props(null);
+    p.selection = {
+      selectedId: null,
+      select: (id) => {
+        if (id !== null) picked.push(id);
+      },
+    };
+    await render(<AgentList {...p} />);
+    (page.getByRole("row", { name: /Ada/ }).element() as HTMLElement).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect.element(page.getByRole("row", { name: /Brook/ })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    await expect.element(page.getByRole("row", { name: /Ada/ })).toHaveFocus();
+    expect(picked).toEqual([]);
+
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.keyboard("{Enter}");
+    expect(picked).toEqual(["b2"]);
   });
 });

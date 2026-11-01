@@ -104,15 +104,23 @@ test("the agent list mirrors the scene, works by keyboard, and has no serious ax
 
   // Keyboard: the list is one tab stop, arrows move between rows, Enter selects the agent in
   // the scene (the camera controls report the selection), Tab leaves the list.
+  const controls = page.getByTestId("camera-controls");
+  const selectedBefore = await controls.getAttribute("data-selected-id");
   const first = items.first();
   await first.focus();
   await expect(first).toBeFocused();
   await page.keyboard.press("ArrowDown");
   const second = items.nth(1);
   await expect(second).toBeFocused();
+  // Browsing is not selecting: arrows move focus only (React Aria's selectionBehavior "replace"
+  // would select every row focus passes).
+  await expect(controls).toHaveAttribute("data-selected-id", selectedBefore ?? "");
   await page.keyboard.press("ArrowUp");
   await expect(first).toBeFocused();
+  await expect(controls).toHaveAttribute("data-selected-id", selectedBefore ?? "");
   await page.keyboard.press("ArrowDown");
+  await expect(second).toBeFocused();
+  await expect(controls).toHaveAttribute("data-selected-id", selectedBefore ?? "");
   const pickedId = await second.getAttribute("data-agent-id");
   expect(pickedId).toBeTruthy();
   await page.keyboard.press("Enter");
@@ -150,4 +158,83 @@ test("with reduced motion the list has no animation or transition", async () => 
       .map((s) => `${s.animationName} / ${s.transitionDuration}`);
   });
   expect(motion).toEqual([]);
+});
+
+test("a tab hidden for over two seconds comes back with its walkers rebuilt at their destinations", async () => {
+  test.setTimeout(120_000);
+  // Reduced motion snaps walkers on its own, which would hide a missing rebuild.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/?debug=movement");
+  await expect(page.getByTestId("scene-root")).toBeVisible({ timeout: 20_000 });
+  await page.waitForFunction(
+    () =>
+      typeof (window as unknown as { __taskvilleMovement?: unknown }).__taskvilleMovement ===
+      "function",
+    undefined,
+    { timeout: 20_000 },
+  );
+
+  // A fresh demo run keeps new agents walking to their areas.
+  const { home } = codes();
+  const out: string[] = [];
+  const io = {
+    stdout: (t: string) => out.push(t),
+    stderr: (t: string) => out.push(t),
+    env: {},
+    cwd: home,
+  };
+  // `demo start` runs until the simulated duration has played out, so it is not awaited here.
+  const demo = run(
+    [
+      "demo",
+      "start",
+      "--project",
+      "unsorted",
+      "--seed",
+      "11",
+      "--speed",
+      "120",
+      "--duration",
+      "60m",
+      "--home",
+      home,
+      "--url",
+      `http://127.0.0.1:${port}`,
+    ],
+    io,
+  );
+
+  // Hide the tab the moment someone is mid-walk.
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        __taskvilleMovement: () => { onTheWay: boolean; gone: boolean }[];
+      };
+      return w.__taskvilleMovement().some((a) => !a.gone && a.onTheWay);
+    },
+    undefined,
+    { timeout: 60_000, polling: 50 },
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(2_600);
+
+  // Return, then look at the walkers after two frames.
+  const walkingAfterReturn = await page.evaluate(async () => {
+    Reflect.deleteProperty(document, "visibilityState");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    return (
+      window as unknown as { __taskvilleMovement: () => { onTheWay: boolean; gone: boolean }[] }
+    )
+      .__taskvilleMovement()
+      .filter((w) => !w.gone && w.onTheWay).length;
+  });
+  expect(walkingAfterReturn, "agents still walking right after the tab returned").toBe(0);
+  expect(await demo, out.join("")).toBe(0);
 });
