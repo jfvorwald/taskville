@@ -1,4 +1,5 @@
 import { ThemedCity } from "../themes/core/index.ts";
+import { Celebrations } from "./effects/index.ts";
 import { InteractionLayer } from "./interaction/index.ts";
 import { DayNightLighting } from "./lighting/index.ts";
 import { CityAgents } from "./movement/index.ts";
@@ -14,6 +15,7 @@ export function CityRoot() {
       <ThemedCity />
       <DayNightLighting />
       <CityAgents />
+      <Celebrations />
       <InteractionLayer />
     </>
   );
