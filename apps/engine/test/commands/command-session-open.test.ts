@@ -86,7 +86,8 @@ describe("session.open: success", () => {
     const h = boot({ sessionOpener: TEMPLATE });
     const res = await h.post(openBody());
     expect(res.status).toBe(200);
-    expect((await json(res)).command).toMatchObject({
+    const posted = (await json(res)).command;
+    expect(posted).toMatchObject({
       status: "succeeded",
       result: { outcome: "opened", sessionId: SESSION_ID, cwd },
     });
@@ -100,7 +101,7 @@ describe("session.open: success", () => {
       "command.delivered",
       "command.succeeded",
     ]);
-    const got = await json(await h.get((await json(res)).command?.id ?? ""));
+    const got = await json(await h.get(posted?.id ?? ""));
     expect(got.command?.status).toBe("succeeded");
   });
 

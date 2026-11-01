@@ -184,6 +184,31 @@ describe("permission.decide: delivery", () => {
     });
   });
 
+  it("sends the hook message 'Denied in Taskville' for a deny without a note", async () => {
+    const h = boot();
+    const res = await h.post(decideBody({ decision: { behavior: "deny" } }));
+    expect(res.status).toBe(200);
+    expect(h.bridge.decide).toHaveBeenCalledTimes(1);
+    expect(h.bridge.decide).toHaveBeenCalledWith(REQUEST_ID, {
+      behavior: "deny",
+      message: "Denied in Taskville",
+    });
+  });
+
+  it("never stores the deny note text in the event log (only a digest identifies it)", async () => {
+    const h = boot();
+    // Plain words: the log's secret masking would hide a high-entropy token and prove nothing.
+    const note = "please leave the staging database alone";
+    const res = await h.post(decideBody({ decision: { behavior: "deny", message: note } }));
+    expect(res.status).toBe(200);
+    expect(h.bridge.decide).toHaveBeenCalledWith(REQUEST_ID, { behavior: "deny", message: note });
+    expect(JSON.stringify([...h.engine.storage.events(PROJECT)])).not.toContain(note);
+    const snapshot = await h.app.request(`${BASE}/v1/projects/${PROJECT}/snapshot`, {
+      headers: sessionHeaders(h.session),
+    });
+    expect(await snapshot.text()).not.toContain(note);
+  });
+
   it("projects the command and the answered request into the snapshot", async () => {
     const h = boot();
     const body = await json(await h.post(decideBody()));
@@ -270,6 +295,48 @@ describe("permission.decide: idempotency", () => {
     const res = await h.post(decideBody({ decision: { behavior: "deny" } }));
     expect(res.status).toBe(409);
     expect((await json(res)).error?.code).toBe("idempotency_conflict");
+    expect(h.bridge.decide).toHaveBeenCalledTimes(1);
+    expect(types(commandEvents(h.engine))).toEqual([
+      "command.requested",
+      "request.resolved",
+      "command.delivered",
+    ]);
+  });
+
+  it("answers 409 idempotency_conflict for the same key and decision with a different deny note, and sends nothing more", async () => {
+    const h = boot();
+    const first = await json(
+      await h.post(decideBody({ decision: { behavior: "deny", message: "note A" } })),
+    );
+    const res = await h.post(decideBody({ decision: { behavior: "deny", message: "note B" } }));
+    expect(res.status).toBe(409);
+    expect((await json(res)).error?.code).toBe("idempotency_conflict");
+    // A deny with no note is a different command from one with a note, too.
+    const bare = await h.post(decideBody({ decision: { behavior: "deny" } }));
+    expect(bare.status).toBe(409);
+    expect((await json(bare)).error?.code).toBe("idempotency_conflict");
+    expect(h.bridge.decide).toHaveBeenCalledTimes(1);
+    expect(h.bridge.decide).toHaveBeenCalledWith(REQUEST_ID, {
+      behavior: "deny",
+      message: "note A",
+    });
+    expect(types(commandEvents(h.engine))).toEqual([
+      "command.requested",
+      "request.resolved",
+      "command.delivered",
+    ]);
+    expect(first.command?.status).toBe("delivered");
+  });
+
+  it("returns the same command for the same key, decision and deny note, with one bridge decision", async () => {
+    const h = boot();
+    const decision = { behavior: "deny", message: "note A" };
+    const a = await json(await h.post(decideBody({ decision })));
+    const repeat = await h.post(decideBody({ decision: { ...decision } }));
+    expect(repeat.status).toBe(200);
+    const b = await json(repeat);
+    expect(b.command?.id).toBe(a.command?.id);
+    expect(b.command?.status).toBe("delivered");
     expect(h.bridge.decide).toHaveBeenCalledTimes(1);
     expect(types(commandEvents(h.engine))).toEqual([
       "command.requested",
