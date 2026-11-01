@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
 import { useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
@@ -15,8 +16,12 @@ import styles from "./overlays.module.css";
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
  * and, to show it, its id to `ENABLED` until presets (Ambient, Operations, History) own that.
  */
-const registry = createOverlayRegistry([countsHeaderOverlay, agentLabelsOverlay]);
-const ENABLED = ["counts-header", "agent-labels"];
+const registry = createOverlayRegistry([
+  countsHeaderOverlay,
+  agentLabelsOverlay,
+  cameraControlsOverlay,
+]);
+const ENABLED = ["counts-header", "agent-labels", "camera-controls"];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
 
@@ -39,8 +44,7 @@ function localStorageOrNull(): Storage | null {
  */
 export function OverlayRoot() {
   useDataSync(PROJECT_ID);
-  const [selectedId, select] = useState<string | null>(null);
-  const selection = useMemo(() => ({ selectedId, select }), [selectedId]);
+  const selection = useSelection();
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
