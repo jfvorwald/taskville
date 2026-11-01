@@ -1753,6 +1753,69 @@ describe("ActionCard: sent means the engine delivered it", () => {
     expect(second).toBe(first);
   });
 
+  it("retries an unreadable successful session.open response with the original key and opens once", async () => {
+    const engine = createEngine();
+    const executions = new Map<string, Record<string, unknown>>();
+    let responses = 0;
+    engine.command = (body) => {
+      expect(body.type).toBe("session.open");
+      const key = body.idempotencyKey;
+      expect(key).toEqual(expect.any(String));
+      const idempotencyKey = String(key);
+      let command = executions.get(idempotencyKey);
+      if (command === undefined) {
+        // The server executes the opener once per key before serializing its response.
+        command = {
+          id: `c-open-${executions.size + 1}`,
+          type: "session.open",
+          projectId: body.projectId,
+          requestId: body.requestId,
+          sessionId: body.sessionId,
+          status: "succeeded",
+          result: { outcome: "opened", sessionId: body.sessionId, cwd: "/work/app" },
+        };
+        executions.set(idempotencyKey, command);
+      }
+      const response = json(200, { command });
+      if (++responses === 1) {
+        // Corrupt only delivery of the first successful body, after the side effect.
+        return new Response(JSON.stringify({ command }).slice(0, -1), {
+          status: response.status,
+          headers: response.headers,
+        });
+      }
+      return response;
+    };
+    await mount({ engine });
+    await loaded();
+    await openSession().click();
+    await expect.element(page.getByRole("alert")).toBeVisible();
+    await expect.element(openSession()).toBeEnabled();
+    expect(posts(engine)).toHaveLength(1);
+    expect(executions.size).toBe(1);
+    expect([...executions.values()][0]).toMatchObject({
+      status: "succeeded",
+      result: { outcome: "opened" },
+    });
+    // An unreadable response cannot confirm success to the user.
+    expect(stateOf()).toBe("open");
+    await expect.element(page.getByRole("status")).toHaveTextContent("");
+
+    await openSession().click();
+    await expect.element(page.getByRole("status")).toMatchTextContent("Session opened.");
+    expect(posts(engine)).toHaveLength(2);
+    const [first, second] = posts(engine).map((call) => call.body);
+    expect(first).toStrictEqual({
+      type: "session.open",
+      projectId: "proj-1",
+      requestId: "req-1",
+      sessionId: "sess-1",
+      idempotencyKey: expect.any(String),
+    });
+    expect.soft(second).toStrictEqual(first);
+    expect.soft(executions.size).toBe(1);
+  });
+
   it("after command_in_flight the retry of the same action reuses the key", async () => {
     const engine = createEngine();
     const answer = engine.command;
