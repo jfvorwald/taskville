@@ -5,6 +5,7 @@ import { render } from "vitest-browser-react";
 import { PROJECT, SECRET } from "../../../test/data/fake-engine.ts";
 import {
   LOG,
+  retiredAgentRecording,
   stateAt,
   TIMELINE,
   timelineEngine,
@@ -33,7 +34,7 @@ afterEach(async () => {
   dataStore.getState().reset(DEFAULT_PROJECT_ID);
   selectProject(DEFAULT_PROJECT_ID);
 });
-async function presented(sequence: number) {
+async function presented(sequence: number, log = LOG) {
   await expect
     .poll(() =>
       JSON.parse(
@@ -41,14 +42,14 @@ async function presented(sequence: number) {
           "null",
       ),
     )
-    .toEqual({ mode: "history", state: stateAt(sequence) });
+    .toEqual({ mode: "history", state: stateAt(sequence, log) });
 }
-async function mount() {
-  const transport = timelineEngine();
+async function mount(log = LOG) {
+  const transport = timelineEngine(log);
   vi.stubGlobal("fetch", transport.fetcher);
   selectProject(PROJECT);
   dataStore.getState().reset(PROJECT);
-  dataStore.getState().applySnapshotState(stateAt(LOG.length));
+  dataStore.getState().applySnapshotState(stateAt(log.length, log));
   const view = await render(
     <SessionProvider value={SECRET}>
       <HistoryProvider>
@@ -59,7 +60,7 @@ async function mount() {
   );
   cleanups.push(() => view.unmount());
   await page.getByRole("button", { name: "History", exact: true }).click();
-  await presented(LOG.length); // UI red must follow successful real replay, never transport failure.
+  await presented(log.length, log); // UI red must follow successful real replay, never transport failure.
   return transport;
 }
 const escapePattern = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -208,4 +209,41 @@ describe("recorded timeline strip through real provider and controls", () => {
     await presented(7);
     expect(transport.requests.every((url) => !url.searchParams.has("agentId"))).toBe(true);
   });
+});
+
+it("retains a finished agent pruned from head for recorded markers and navigation", async () => {
+  const log = retiredAgentRecording();
+  const head = stateAt(log.length, log);
+  expect(head.retired.agents).toBe(1);
+  expect(Object.hasOwn(head.agents, "retired")).toBe(false);
+  expect(stateAt(5, log).agents.retired.finishedAt).toBe(log[4].occurredAt);
+  await mount(log);
+  expect(
+    page.getByRole("option", { name: "Retired reviewer", exact: true }).elements(),
+  ).toHaveLength(1);
+  await chooseAgent("Retired reviewer");
+  await density(5);
+  expect(markers().elements()).toHaveLength(2);
+  const complete = page.getByRole("button", { name: /Task completed.*Retired reviewer/i });
+  const commit = page.getByRole("button", { name: /Commit.*Retired reviewer/i });
+  await complete.click();
+  await presented(3, log);
+  await commit.click();
+  await presented(4, log);
+  await endpoint("End");
+  await presented(log.length, log);
+  for (const sequence of [5, 4, 3, 2, 1]) {
+    await page.getByRole("button", { name: "Previous moment" }).click();
+    await presented(sequence, log);
+  }
+  await expect.element(page.getByRole("button", { name: "Previous moment" })).toBeDisabled();
+  for (const sequence of [2, 3, 4, 5]) {
+    await page.getByRole("button", { name: "Next moment" }).click();
+    await presented(sequence, log);
+  }
+  await expect.element(page.getByRole("button", { name: "Next moment" })).toBeDisabled();
+  expect(
+    (page.getByRole("combobox", { name: /agent/i }).element() as HTMLSelectElement)
+      .selectedOptions[0]?.textContent,
+  ).toBe("Retired reviewer");
 });
