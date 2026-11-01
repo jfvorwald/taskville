@@ -72,7 +72,10 @@ async function run(options: SyncOptions, signal: AbortSignal): Promise<void> {
   while (!signal.aborted) {
     try {
       if (needSnapshot) {
-        actions().applySnapshotState(await fetchSnapshot(doFetch, base, headers, signal));
+        const state = await fetchSnapshot(doFetch, base, headers, signal);
+        // A stopped loop must not touch the store: a newer loop may own it by now.
+        if (signal.aborted) return;
+        actions().applySnapshotState(state);
         needSnapshot = false;
       }
       const after = actions().cursor;
@@ -80,11 +83,15 @@ async function run(options: SyncOptions, signal: AbortSignal): Promise<void> {
         headers: { ...headers, Accept: "text/event-stream" },
         signal,
       });
+      if (signal.aborted) {
+        await response.body?.cancel().catch(() => {});
+        return;
+      }
       checkStatus(response);
       if (response.body === null) throw new Error("event stream has no body");
       actions().setConnection("live");
       // A stream that opens proves nothing; only an applied event shows the connection is healthy.
-      await consume(store, response.body, () => {
+      await consume(store, response.body, signal, () => {
         attempt = 0;
       });
       // The server closed the stream cleanly: same as a drop, resume from the cursor.
@@ -115,6 +122,7 @@ async function fetchSnapshot(
   signal: AbortSignal,
 ): Promise<ProjectState> {
   const response = await doFetch(`${base}/snapshot`, { headers, signal });
+  if (signal.aborted) throw signal.reason;
   checkStatus(response);
   // Malformed JSON is the server's fault (fatal); a body that fails to download is transport
   // trouble, so it propagates to the retry loop.
@@ -122,6 +130,7 @@ async function fetchSnapshot(
     if (error instanceof SyntaxError) return undefined;
     throw error;
   });
+  if (signal.aborted) throw signal.reason;
   const parsed = snapshotResponseSchema.safeParse(body);
   if (!parsed.success) throw new Fatal("bad_response");
   const snapshot = parsed.data;
@@ -137,13 +146,16 @@ function checkStatus(response: Response): void {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 }
 
-/** Applies stream frames until the stream ends; throws Resnapshot when the cursor is untrustworthy. */
+/** Applies stream frames until the stream ends or the loop is stopped; throws Resnapshot when the cursor is untrustworthy. */
 async function consume(
   store: DataStore,
   body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
   onApplied: () => void,
 ): Promise<void> {
-  for await (const raw of readSseFrames(body)) {
+  for await (const raw of readSseFrames(body, signal)) {
+    // A stopped loop applies nothing more, even if the body still delivers bytes.
+    if (signal.aborted) return;
     let data: unknown;
     try {
       data = raw.data === undefined ? undefined : JSON.parse(raw.data);

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
-import { useDataSync } from "../data/react.ts";
+import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
@@ -54,6 +54,7 @@ function localStorageOrNull(): Storage | null {
  */
 export function OverlayRoot() {
   useDataSync(PROJECT_ID);
+  const connection = useData((s) => s.connection);
   const selection = useSelection();
   const storage = useMemo(localStorageOrNull, []);
   return (
@@ -68,7 +69,9 @@ export function OverlayRoot() {
         runIntent={noIntent}
         storage={storage}
       />
-      <p className={styles.badge}>Taskville · paired</p>
+      <p className={styles.badge}>
+        {connection === "stale" ? "Taskville · stale" : "Taskville · paired"}
+      </p>
     </div>
   );
 }
