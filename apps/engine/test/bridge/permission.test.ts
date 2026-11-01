@@ -164,6 +164,24 @@ describe("timeout and no viewer", () => {
     expect(bridge.decide(requestId, { behavior: "allow" })).toBe(false);
   });
 
+  it("drops the exact input and stays unanswerable after the fall-through (decision #271 D2)", async () => {
+    const { app, engine, bridge, connectViewer, scheduler } = boot();
+    connectViewer();
+
+    const pending = postPermission(app, permissionHook());
+    const requestId = await heldRequestId(engine);
+    expect(bridge.lookup(requestId)).toBeDefined();
+    scheduler.advance(HOLD_MS);
+    await expectEmpty2xx(await pending);
+
+    expect(bridge.lookup(requestId)).toBeUndefined();
+    expect(bridge.decide(requestId, { behavior: "allow" })).toBe(false);
+    expect(bridge.decide(requestId, { behavior: "deny", message: "too late" })).toBe(false);
+    // D1 default: the request stays open (it expires at the next engine start), unresolved.
+    expect(projectState(engine).requests[requestId]?.state).toBe("open");
+    expect(eventsOf(engine, "request.resolved")).toEqual([]);
+  });
+
   it("returns an empty 2xx at once when no viewer is connected", async () => {
     const { app, engine, bridge, scheduler } = boot();
 

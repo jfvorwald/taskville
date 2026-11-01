@@ -41,7 +41,9 @@ function expectNothingHeld(h: BridgeHarness): void {
 describe("credentials on the permission route", () => {
   it("rejects a missing token", async () => {
     const h = boot();
-    const res = await postPermission(h.app, permissionHook(), { Host: HOST });
+    // A valid Host and Origin but no credential: the shared middleware checks Origin first
+    // (M1.10 order, as for ingest), so only with both present does the credential check run.
+    const res = await postPermission(h.app, permissionHook(), { Host: HOST, Origin: ORIGIN });
     expect(res.status).toBe(401);
     expectNothingHeld(h);
   });
