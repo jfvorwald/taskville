@@ -1,0 +1,20 @@
+{
+  "needs_you": [
+    "Access denied. Need your override.",
+    "Authorization required, choom",
+    "Waiting on your green light",
+    "Need a sign-off to jack in"
+  ],
+  "trouble": [
+    "System fault. Rebooting my nerve",
+    "Signal lost in the static",
+    "ICE hit me hard. Need backup",
+    "Stack trace is screaming"
+  ],
+  "waiting": [
+    "Idling in the neon",
+    "Standing by, netrunner",
+    "Link open, awaiting orders",
+    "Buffer empty. Feed me a task"
+  ]
+}
