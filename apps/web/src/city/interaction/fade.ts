@@ -106,9 +106,12 @@ export function createBuildingFader(options: BuildingFaderOptions): BuildingFade
   // A theme change assigns new shared materials to the meshes. Compare what each mesh holds with
   // what the fader last put there (the clone while swapped, the shared material otherwise) and
   // adopt the new one: a swapped mesh gets a fresh clone at the current opacity, the old clone is
-  // disposed, and the shared material is only ever remembered, never disposed.
+  // disposed, and the shared material is only ever remembered, never disposed. A solid building
+  // keeps its clones for reuse, so when a shared material changed they are stale: they are
+  // disposed and dropped, and the next fade-out clones the new materials.
   const adoptReplacedMaterials = (state: BuildingState) => {
     const { meshes, originals, clones } = state;
+    let stale = false;
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
       if (mesh === undefined) continue;
@@ -116,12 +119,20 @@ export function createBuildingFader(options: BuildingFaderOptions): BuildingFade
       const held = state.swapped ? clones?.[i] : originals[i];
       if (current === held) continue;
       originals[i] = current;
-      if (clones === null || !state.swapped) continue;
+      if (clones === null) continue;
+      if (!state.swapped) {
+        stale = true;
+        continue;
+      }
       clones[i]?.dispose();
       const c = cloneForFade(current);
       c.opacity = state.opacity;
       clones[i] = c;
       mesh.material = c;
+    }
+    if (stale && clones !== null) {
+      for (const c of clones) c.dispose();
+      state.clones = null;
     }
   };
 
