@@ -119,12 +119,52 @@ above that the route answers `503 too_many_streams`. Revoking pairings
 (`POST /v1/pairing/revoke`) ends every stream opened with a browser session
 (security review #17, F1 and F5).
 
-### `POST /v1/commands`, `GET /v1/commands/:id` (stub in this feature)
+### `POST /v1/commands`, `GET /v1/commands/:id` (M4.03)
 
-Registered with the full security middleware so the credential rules are tested
-now. A request with any token gets `403 credential_not_allowed`. A paired browser
-session with a matching `Origin` gets `501 not_implemented` until the command
-service lands in M4. No side effects.
+Registered with the full security middleware. A request with any token gets `403
+credential_not_allowed`; a paired browser session needs a matching `Origin`. Until the command
+service registers its routes (`registerCommandRoutes`; `taskville serve` wires it in M4.04) the
+paths answer `501 not_implemented` with no side effects.
+
+Request bodies are strict: an unknown key at any level is `400 bad_request`, and a body over 16 KiB
+is `413 payload_too_large`. Every body carries `projectId`, `requestId`, and `idempotencyKey`, and
+an optional `context: { "mode": "live" | "history" }`. A `history` context is
+`400 history_context_rejected`, checked before anything else happens (a repeated key cannot bypass
+it).
+
+- `{ "type": "permission.decide", ..., "decision": { "behavior": "allow" } | { "behavior": "deny",
+  "message"? } }`. `message` is passed to the agent (a default note when absent) and is not
+  recorded in the log; the audit payload keeps the behavior only.
+- `{ "type": "session.open", ..., "sessionId" }`. The working directory is read from the recorded
+  session (`session.started` `workingDirectory`), never from the body, and the opener template
+  comes only from the engine config. A body with `cwd`, `template`, or `sessionOpener` is
+  `400 bad_request`.
+
+Success is `200 { "command": { "id", "type", "requestId", "status", "result"? } }`.
+`permission.decide` ends `delivered` ("sent, unconfirmed", decision #116 D4): the engine records
+`command.requested`, `request.resolved` (`answered_here`, with `decision`), and `command.delivered`,
+and never `command.succeeded` (M4.04 owns confirmation from telemetry). `session.open` ends
+`succeeded` with `result: { "outcome": "opened" | "copy-only", "sessionId", "cwd"? }` (events:
+`command.requested`, `command.delivered`, `command.succeeded`).
+
+Errors are `{ "error": { "code", "message" }, "command"?: { "id", "type", "requestId", "status" } }`.
+A `command` is present when the command was recorded.
+
+| Status | Code | When | Recorded |
+| --- | --- | --- | --- |
+| 400 | `bad_request` | invalid body or JSON | nothing |
+| 400 | `history_context_rejected` | `context.mode` is `history` | nothing |
+| 404 | `unknown_project`, `unknown_request`, `unknown_session` | the target does not exist | nothing |
+| 409 | `request_not_open` | the recorded request is already closed (checked without asking the bridge) | requested, failed |
+| 422 | `not_answerable` | the request was not bridge-held | requested, unsupported |
+| 410 | `request_expired` | the bridge no longer holds the request, or the decision reached no open hook response | requested, expired |
+| 409 | `idempotency_conflict` | the key was used for a different command | nothing |
+| 409 | `command_in_flight` | an opener is already running for the session (any key) | nothing |
+| 502 | `opener_failed` | the opener could not be started or its directory is not a directory; the message is non-secret | requested, failed |
+
+The same `idempotencyKey` with the same command returns the same command and status and does not
+ask the bridge or run the opener again. A `GET /v1/commands/:id` for a paired session returns
+`200 { "command" }` or `404 unknown_command`.
 
 ### `POST /v1/bridge/claude-code/permission` (M4.02)
 
