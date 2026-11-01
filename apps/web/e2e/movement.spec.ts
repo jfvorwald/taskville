@@ -35,12 +35,12 @@ const port = Number(process.env.E2E_PORT ?? 4817);
 
 test("six demo agents walk to their areas without overlapping", async ({ page }) => {
   test.setTimeout(120_000);
-  const { paired, home } = JSON.parse(readFileSync(CODES_FILE, "utf8")) as {
-    paired: string;
+  const { movement, home } = JSON.parse(readFileSync(CODES_FILE, "utf8")) as {
+    movement: string;
     home: string;
   };
   // Pair first (the pairing code is single use), then open the debug view in the same session.
-  await page.goto(`/#pair=${paired}`);
+  await page.goto(`/#pair=${movement}`);
   await expect(page.getByTestId("scene-root")).toBeVisible();
   await page.goto("/?debug=movement");
   await expect(page.getByTestId("scene-root")).toBeVisible();

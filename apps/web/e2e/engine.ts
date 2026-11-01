@@ -31,6 +31,8 @@ writeFileSync(
     fresh: parts.pairing.issueCode(),
     interaction: parts.pairing.issueCode(),
     celebrations: parts.pairing.issueCode(),
+    movement: parts.pairing.issueCode(),
+    lighting: parts.pairing.issueCode(),
     home,
   }),
 );
