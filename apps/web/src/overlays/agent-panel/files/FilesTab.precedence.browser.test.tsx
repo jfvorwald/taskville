@@ -210,8 +210,34 @@ describe("M5.07 production sidebar precedence", () => {
     dataStore.getState().applySnapshotState(baseline);
     expect(dataStore.getState().attention).toEqual([]);
     expect(selectionStore.getSnapshot()).toBe(AGENT);
+    // M4 retains the final card until selection changes, even after a resnapshot drops the request.
+    await expect.element(page.getByTestId("action-card")).toHaveAttribute("data-state", "closed");
+    await expect.element(page.getByTestId("action-card")).toBeVisible();
+    await expect
+      .element(page.getByTestId("action-card"))
+      .toMatchTextContent("This request is no longer open.");
+    expect(sidebar()?.contains(page.getByTestId("action-card").element())).toBe(true);
+    await expect
+      .element(page.getByRole("button", { name: "Allow once", exact: true }))
+      .toBeDisabled();
+    await expect.element(page.getByRole("button", { name: "Deny", exact: true })).toBeDisabled();
+    await expect
+      .element(page.getByRole("button", { name: "Open session", exact: true }))
+      .toBeDisabled();
+    expect(page.getByTestId("agent-panel").elements()).toHaveLength(0);
+    expect(page.getByRole("tab", { name: "Files", exact: true }).elements()).toHaveLength(0);
+    expect(row().elements()).toHaveLength(0);
+    expect(settings().elements()).toHaveLength(0);
+
+    selectionStore.select(null);
     await expect.element(page.getByTestId("action-card")).not.toBeInTheDocument();
+    await expect.element(page.getByTestId("agent-panel")).not.toBeInTheDocument();
+    await expect.element(settings()).toBeVisible();
+    expect(sidebar()?.contains(settings().element())).toBe(true);
+
+    selectionStore.select(AGENT);
     await expect.element(page.getByTestId("agent-panel")).toHaveAttribute("data-agent-id", AGENT);
+    expect(page.getByTestId("action-card").elements()).toHaveLength(0);
     expect(settings().elements()).toHaveLength(0);
     // Default tab persistence across a remount is not contracted. Select Files again.
     await page.getByRole("tab", { name: "Files", exact: true }).click();
