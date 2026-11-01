@@ -3,6 +3,7 @@ import type { AgentCounts } from "../../overlays/host/types.ts";
 import { identityKey } from "../agents/identity.ts";
 import type { AgentView, AttentionView, Placement } from "../agents/types.ts";
 import { troubleDetail } from "../attention/detail.ts";
+import { crewLineage } from "../crew/subagents/generation.ts";
 import { type ActivityAreaTable, areaFor } from "./areas.ts";
 import type { NavIntent, RestState } from "./navigator.ts";
 
@@ -115,7 +116,8 @@ export function buildModels(
       ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
       ...(attention === undefined ? {} : { attention }),
     };
-    if (agent.kind !== "subagent" || parent === undefined) views.push(view);
+    if (agent.kind !== "subagent" || parent === undefined || crewLineage(agent, byId) === undefined)
+      views.push(view);
     else crew.push(view);
     const rest: RestState =
       record?.level === "waiting" || activity === "waiting"

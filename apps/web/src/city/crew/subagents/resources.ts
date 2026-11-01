@@ -3,6 +3,7 @@ import {
   type BufferGeometry,
   CanvasTexture,
   MeshStandardMaterial,
+  SphereGeometry,
   SpriteMaterial,
   SRGBColorSpace,
 } from "three";
@@ -23,6 +24,7 @@ interface CrewGeometries {
   trim: BufferGeometry;
   /** The result cube a returning bot carries. */
   cube: BufferGeometry;
+  dot: BufferGeometry;
 }
 
 let geometries: CrewGeometries | undefined;
@@ -50,6 +52,7 @@ export function crewGeometries(): CrewGeometries {
       body,
       trim: placed(geo.scarf, 0, 0.78, 0),
       cube: new BoxGeometry(0.18, 0.18, 0.18),
+      dot: new SphereGeometry(0.06, 8, 6),
     };
   }
   return geometries;

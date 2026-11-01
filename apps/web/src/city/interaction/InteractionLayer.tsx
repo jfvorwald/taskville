@@ -205,6 +205,7 @@ function Interaction({
     seen: false,
     retry: 0,
     hoverId: null as string | null,
+    hoverControl: false,
     hoverDirty: false,
     inside: false,
     ndcX: 0,
@@ -310,12 +311,15 @@ function Interaction({
         s.hoverDirty = true;
       }
       if (shouldSelectOnRelease({ type: e.type, moved: s.moved })) {
-        store.select(pickAt(e.clientX, e.clientY));
+        const id = pickAt(e.clientX, e.clientY);
+        if (picker.control === null) store.select(id);
       }
     };
     const onLeave = () => {
       s.inside = false;
       s.hoverDirty = false;
+      s.hoverControl = false;
+      dom.style.cursor = "";
       if (s.hoverId !== null) {
         s.hoverId = null;
         glow.detach();
@@ -350,7 +354,7 @@ function Interaction({
       dom.style.cursor = "";
       dom.style.touchAction = "";
     };
-  }, [gl, rig, store, glow, pickAt]);
+  }, [gl, rig, store, glow, pickAt, picker]);
 
   const wanted = useRef<(id: string) => boolean>(() => false);
   wanted.current = (id: string) => {
@@ -367,8 +371,10 @@ function Interaction({
       collectPickables(scene, pickables);
       camera.updateMatrixWorld();
       const id = picker.pick(s.ndcX, s.ndcY, camera, pickables, isFaded.current);
-      if (id !== s.hoverId) {
+      const control = picker.control !== null;
+      if (id !== s.hoverId || control !== s.hoverControl) {
         s.hoverId = id;
+        s.hoverControl = control;
         glow.detach();
         if (id !== null) {
           for (const p of pickables) {
@@ -378,7 +384,7 @@ function Interaction({
             }
           }
         }
-        gl.domElement.style.cursor = id === null ? "" : "pointer";
+        gl.domElement.style.cursor = id === null && !control ? "" : "pointer";
       }
     }
 

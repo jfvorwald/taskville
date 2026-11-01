@@ -1,4 +1,21 @@
+import type { Agent } from "../../../data/domain.ts";
 import { agentScale } from "../../agents/scale.ts";
+
+/** Known ancestors up to the block agent that anchors the crew, or undefined for a cycle. */
+export function crewLineage(agent: Agent, byId: ReadonlyMap<string, Agent>): string[] | undefined {
+  const lineage: string[] = [];
+  const seen = new Set([agent.id]);
+  let current = agent;
+  while (current.kind === "subagent" && current.parentAgentId !== undefined) {
+    const parent = byId.get(current.parentAgentId);
+    if (parent === undefined) break;
+    if (seen.has(parent.id)) return undefined;
+    seen.add(parent.id);
+    lineage.push(parent.id);
+    current = parent;
+  }
+  return lineage;
+}
 
 // How deep a family of subagents is drawn (ARCHITECTURE 2.9). Two generations get a bot each;
 // everything below is shown as a count on the parent instead.

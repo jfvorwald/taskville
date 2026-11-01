@@ -1,16 +1,17 @@
 import { useFrame } from "@react-three/fiber";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Group, Mesh, Sprite } from "three";
+import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { type AnchorSource, worldAnchors } from "../../../overlays/host/index.ts";
 import { agentColors } from "../../agents/identity.ts";
 import { LABEL_HEIGHT } from "../../agents/labelEntries.ts";
 import { colorMaterial } from "../../agents/resources.ts";
-import { emoteMaterial } from "../../attention/resources.ts";
+import { CITY_LAYOUT } from "../../layout/index.ts";
 import { agentAnchorId } from "../../movement/AgentLabels.tsx";
 import { collapseCrew, crewMarkerLabel } from "./crew.ts";
-import { subagentScale } from "./generation.ts";
+import { crewLineage, subagentScale } from "./generation.ts";
 import { parentIsWaiting, type SubagentPhase, stillFrame } from "./lifecycle.ts";
 import { crewGeometries, crewMaterial, PILL_SIZE, pillMaterial } from "./resources.ts";
 import { doorRadius, markerSpot, reachOf, workSpot } from "./spots.ts";
@@ -49,6 +50,25 @@ export function SubagentCrew({
   reducedMotion = false,
 }: SubagentCrewProps) {
   const agents = useData((s) => s.agents, store);
+  const attention = useData((s) => s.attention, store);
+  const byId = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const lineages = useMemo(
+    () => new Map(agents.map((a) => [a.id, crewLineage(a, byId)])),
+    [agents, byId],
+  );
+  // Hidden members carry the urgency of their whole subtree, including counted descendants.
+  const subtreeTints = useMemo(() => {
+    const result = new Map<string, CrewBotTint>();
+    for (const agent of agents) {
+      if (agent.finishedAt !== undefined) continue;
+      const tint = crewBotTint(agent, attention);
+      if (tint === undefined) continue;
+      for (const id of [agent.id, ...(lineages.get(agent.id) ?? [])]) {
+        if (result.get(id)?.hue !== "red") result.set(id, tint);
+      }
+    }
+    return result;
+  }, [agents, attention, lineages]);
   const tracker = useRef<CrewTracker | null>(null);
   tracker.current ??= createCrewTracker();
   const crew = tracker.current;
@@ -67,8 +87,20 @@ export function SubagentCrew({
           store={store}
           anchors={anchors}
           reducedMotion={reducedMotion}
+          byId={byId}
+          subtreeTints={subtreeTints}
         />
       ))}
+      {attention
+        .filter((a) => a.level === "needs_you")
+        .map((a) => (
+          <NeedsYouDot
+            key={a.agentId}
+            lineage={lineages.get(a.agentId)}
+            places={places.current}
+            anchors={anchors}
+          />
+        ))}
     </>
   );
 }
@@ -96,6 +128,8 @@ interface CrewFamilyViewProps {
   store: DataStore;
   anchors: AnchorSource;
   reducedMotion: boolean;
+  byId: ReadonlyMap<string, Agent>;
+  subtreeTints: ReadonlyMap<string, CrewBotTint>;
 }
 
 function CrewFamilyView({
@@ -105,6 +139,8 @@ function CrewFamilyView({
   store,
   anchors,
   reducedMotion,
+  byId,
+  subtreeTints,
 }: CrewFamilyViewProps) {
   const attention = useData((s) => s.attention, store);
   // A subagent that needs you is still red, though it is no longer a block agent with a ring.
@@ -115,6 +151,14 @@ function CrewFamilyView({
   const tintsRef = useRef<ReadonlyMap<string, CrewBotTint | undefined>>(tints);
   tintsRef.current = tints;
   const reach = reachOf(family.parentGeneration);
+  const ancestorIds = useMemo(() => {
+    const parent = byId.get(family.parentId);
+    return [family.parentId, ...(parent === undefined ? [] : (crewLineage(parent, byId) ?? []))];
+  }, [family.parentId, byId]);
+  const deepTint = family.deepIds.reduce<CrewBotTint | undefined>((tint, id) => {
+    const next = crewBotTint({ id }, attention);
+    return tint?.hue === "red" ? tint : (next ?? tint);
+  }, undefined);
   const marked = markerSpot(reach);
   const emoteY = EMOTE_Y * reach + (1 - reach) * 0.4;
   const root = useRef<Group>(null);
@@ -168,6 +212,7 @@ function CrewFamilyView({
       for (const m of family.members) {
         const place = places.get(m.id);
         if (place !== undefined) place.hidden = true;
+        else places.set(m.id, { x: 0, z: 0, hidden: true });
       }
       return;
     }
@@ -183,14 +228,28 @@ function CrewFamilyView({
       }
     }
     const stood = lastDoor.current;
-    g.visible = stood !== undefined;
     if (stood === undefined) {
-      // Never placed: the crews of this family's bots have nowhere to stand yet.
-      for (const m of family.members) places.delete(m.id);
-      return;
+      // A reload may miss a finished parent's place. Use the nearest drawn ancestor, then plaza.
+      for (const id of ancestorIds) {
+        const place = places.get(id);
+        const point =
+          id === ancestorIds[ancestorIds.length - 1]
+            ? anchors.getAnchor(agentAnchorId(id))
+            : undefined;
+        if (place !== undefined && !place.hidden) {
+          lastDoor.current = { x: place.x, z: place.z };
+          break;
+        }
+        if (point !== undefined) {
+          lastDoor.current = { x: point[0], z: point[2] };
+          break;
+        }
+      }
+      lastDoor.current ??= { x: CITY_LAYOUT.plaza.cx, z: CITY_LAYOUT.plaza.cz };
     }
-    const doorX = stood.x;
-    const doorZ = stood.z;
+    g.visible = true;
+    const doorX = (lastDoor.current as Place).x;
+    const doorZ = (lastDoor.current as Place).z;
     g.position.set(doorX, 0, doorZ);
 
     const nowMs = store.now();
@@ -218,9 +277,12 @@ function CrewFamilyView({
       if (found === undefined || index === undefined || !shown.has(id)) {
         bot.root.visible = false;
         // Gone: its running crew stays where it last stood. Behind the marker: its crew goes with it.
-        const hiddenPlace = found === undefined || index === undefined ? undefined : places.get(id);
-        if (hiddenPlace === undefined) places.delete(id);
-        else hiddenPlace.hidden = true;
+        if (found === undefined || index === undefined) places.delete(id);
+        else {
+          const hiddenPlace = places.get(id);
+          if (hiddenPlace === undefined) places.set(id, { x: doorX, z: doorZ, hidden: true });
+          else hiddenPlace.hidden = true;
+        }
         continue;
       }
       const f = reducedMotion ? stillFrame(found) : found;
@@ -259,7 +321,7 @@ function CrewFamilyView({
       // A hidden bot that needs you must still show: the marker takes the most urgent hue.
       let urgent: CrewBotTint["hue"] | undefined;
       for (const id of view.marker?.hiddenIds ?? []) {
-        const hue = tintsRef.current.get(id)?.hue;
+        const hue = subtreeTints.get(id)?.hue;
         if (hue === "red") urgent = "red";
         else if (hue !== undefined && urgent === undefined) urgent = hue;
       }
@@ -285,14 +347,17 @@ function CrewFamilyView({
       <sprite
         ref={waiting}
         visible={false}
-        material={emoteMaterial("...")}
+        material={pillMaterial("... crew")}
         position={[0, emoteY, 0]}
         scale={[EMOTE_SIZE, EMOTE_SIZE, 1]}
         renderOrder={10}
       />
       {family.deepCount > 0 && (
         <sprite
-          material={pillMaterial(`${family.deepCount} deeper`)}
+          material={pillMaterial(
+            `${family.deepCount} deeper`,
+            deepTint === undefined ? undefined : TINT_HEX[deepTint.hue],
+          )}
           position={[0.4, emoteY, 0]}
           scale={[PILL_SIZE[0], PILL_SIZE[1], 1]}
           renderOrder={10}
@@ -310,8 +375,47 @@ function CrewFamilyView({
         scale={[PILL_SIZE[0], PILL_SIZE[1], 1]}
         renderOrder={10}
         onClick={onMarkerClick}
+        userData={{ crewControl: true }}
       />
     </group>
+  );
+}
+
+/** Each request points at its nearest currently drawn ancestor, including after fan-out. */
+function NeedsYouDot({
+  lineage,
+  places,
+  anchors,
+}: {
+  lineage: readonly string[] | undefined;
+  places: ReadonlyMap<string, Place>;
+  anchors: AnchorSource;
+}) {
+  const dot = useRef<Mesh>(null);
+  useFrame(() => {
+    const mesh = dot.current;
+    if (mesh === null) return;
+    mesh.visible = false;
+    if (lineage === undefined) return;
+    for (const id of lineage) {
+      const place = places.get(id);
+      const anchor =
+        id === lineage[lineage.length - 1] ? anchors.getAnchor(agentAnchorId(id)) : undefined;
+      if (place !== undefined && !place.hidden) mesh.position.set(place.x + 0.2, 1, place.z);
+      else if (anchor !== undefined) mesh.position.set(anchor[0] + 0.2, 1.3, anchor[2]);
+      else continue;
+      mesh.userData.needsYouDot = id;
+      mesh.visible = true;
+      break;
+    }
+  });
+  return (
+    <mesh
+      ref={dot}
+      visible={false}
+      geometry={crewGeometries().dot}
+      material={colorMaterial(TINT_HEX.red)}
+    />
   );
 }
 
