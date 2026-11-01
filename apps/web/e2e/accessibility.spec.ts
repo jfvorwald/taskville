@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { type BrowserContext, expect, type Locator, type Page, test } from "@playwright/test";
 import { run } from "../../cli/src/main.ts";
 import { CODES_FILE } from "./codes.ts";
 
@@ -23,6 +23,7 @@ const codes = (): Codes => JSON.parse(readFileSync(CODES_FILE, "utf8"));
 
 test.describe.configure({ mode: "serial" });
 
+let context: BrowserContext;
 let page: Page;
 let list: Locator;
 let items: Locator;
@@ -33,7 +34,9 @@ test.beforeAll(async ({ browser }) => {
   if (!accessibility) {
     throw new Error("e2e/engine.ts must issue a pairing code named `accessibility`");
   }
-  page = await browser.newPage({ baseURL: `http://127.0.0.1:${port}` });
+  // AxeBuilder requires a page from browser.newContext(), not browser.newPage().
+  context = await browser.newContext({ baseURL: `http://127.0.0.1:${port}` });
+  page = await context.newPage();
   await page.goto(`/#pair=${accessibility}`);
   await expect(page.getByTestId("scene-root")).toBeVisible({ timeout: 20_000 });
 
@@ -75,7 +78,7 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  await page?.close();
+  await context?.close();
 });
 
 test("the agent list mirrors the scene, works by keyboard, and has no serious axe violations", async () => {
