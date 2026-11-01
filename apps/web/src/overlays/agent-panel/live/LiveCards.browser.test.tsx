@@ -363,6 +363,53 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
     expect(cards().element().textContent).not.toMatch(/new file|0 lines|0 ms|@@/i);
   });
 
+  // ARCHITECTURE 2.10: the call happened but its body was evicted, so say "details no longer stored".
+  // "Not reported" stays for a field the hook never sent (here the output, which has no reference).
+  it.each([
+    ["Write", "route"],
+    ["Write", "frame"],
+    ["Edit", "route"],
+    ["Edit", "frame"],
+  ] as const)(
+    "shows an evicted %s input (%s says evicted) as details no longer stored, not as not reported",
+    async (tool, channel) => {
+      const frame = synthetic(
+        tool,
+        `evicted-${tool}-${channel}`,
+        tool === "Write"
+          ? { file_path: NOTES, content: "BODY THAT WAS EVICTED" }
+          : { file_path: NOTES, old_string: "EVICTED OLD", new_string: "EVICTED NEW" },
+        undefined,
+        [NOTES],
+      );
+      frame.data.durationMs = 12;
+      const input = frame.data.evidence.input;
+      if (!input) throw new Error("synthetic input absent");
+      delete bodies[input.id];
+      if (channel === "frame") input.status = "evicted";
+      const original = globalThis.fetch;
+      let asked = 0;
+      vi.stubGlobal("fetch", async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).endsWith(`/v1/evidence/${input.id}`)) {
+          asked++;
+          return Response.json(
+            { error: { code: "evidence_evicted", message: "details no longer stored" } },
+            { status: 410 },
+          );
+        }
+        return original(url, init);
+      });
+      await mount();
+      await expect.element(card(NOTES), { timeout: 800 }).toBeVisible();
+      if (channel === "route") await expect.poll(() => asked).toBeGreaterThan(0);
+      await expect.element(card(NOTES)).toMatchTextContent("details no longer stored");
+      const text = card(NOTES).element().textContent ?? "";
+      // Only the never-sent output may still read "not reported".
+      expect(text.match(/not reported/g) ?? []).toHaveLength(1);
+      expect(text).toContain("Output: not reported");
+    },
+  );
+
   it("identifies the synthetic pending request and offers the existing request/session flow", async () => {
     const store = createDataStore({ now: () => Date.parse(SINCE) });
     seed(store);

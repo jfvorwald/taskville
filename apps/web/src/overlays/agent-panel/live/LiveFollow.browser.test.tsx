@@ -502,3 +502,106 @@ it("preserves the paused reading anchor across variable-height expansion and an 
   expect(Math.abs(card(10).element().getBoundingClientRect().top - anchor)).toBeLessThanOrEqual(5);
   expect(visible(39, viewport)).toBe(false);
 });
+
+describe("follow is judged by distance from the bottom, not by the direction of a scroll change", () => {
+  const stdout = (lines: number, tag: string) =>
+    JSON.stringify({ stdout: Array.from({ length: lines }, (_, n) => `${tag}-${n}`).join("\n") });
+  const bodyId = (n: number) => `synthetic-shrink-${n}`;
+  function outputBody(n: number, text: string): EvidenceResponse {
+    return {
+      id: bodyId(n),
+      projectId: PROJECT,
+      toolCallId: `synthetic-call-${n}`,
+      part: "output",
+      text,
+      bytes: new TextEncoder().encode(text).length,
+      masks: [],
+      truncated: false,
+    };
+  }
+  const bashCall = (n: number): ToolCallFrame => ({
+    ...call(n),
+    toolName: "Bash",
+    phase: "succeeded",
+    evidence: { input: null, output: { id: bodyId(n), status: "stored" } },
+  });
+  type Bodies = Record<string, EvidenceResponse>;
+  // Every card starts tall (ten captured lines each) so rows above the fold are mounted and measured.
+  async function mountTall() {
+    const store = createDataStore();
+    seed(store);
+    const frames = Array.from({ length: 40 }, (_, i) => bashCall(i));
+    const bodies: Bodies = Object.fromEntries(
+      frames.map((_, i) => [bodyId(i), outputBody(i, stdout(10, `tall-${i}`))]),
+    );
+    const tree = (list: readonly ToolCallFrame[], evidence: Bodies) => (
+      <div
+        data-testid="agent-panel-tab-slot"
+        style={{ height: 420, width: 320, overflowY: "auto" }}
+      >
+        <LiveTab agentId={A} store={store} select={vi.fn()} calls={list} evidence={evidence} />
+      </div>
+    );
+    const view = await render(tree(frames, bodies));
+    await paint();
+    const viewport = scroller();
+    await scroll(viewport, viewport.scrollHeight);
+    await expect.poll(() => visible(39, viewport)).toBe(true);
+    return { frames, bodies, tree, view, viewport };
+  }
+  const gap = (viewport: HTMLElement) =>
+    viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+  /** Indices of mounted cards that lie wholly above the visible area. */
+  function aboveFold(viewport: HTMLElement) {
+    const clip = viewport.getBoundingClientRect();
+    return articles()
+      .elements()
+      .filter((el) => el.getBoundingClientRect().bottom <= clip.top)
+      .map((el) => Number(el.textContent?.match(/call-(\d+)\.txt/)?.[1]));
+  }
+  /** The bodies after the given rows shrink from ten captured lines to one. */
+  function shrunk(bodies: Bodies, indices: readonly number[]): Bodies {
+    const next = { ...bodies };
+    for (const i of indices) next[bodyId(i)] = outputBody(i, stdout(1, `short-${i}`));
+    return next;
+  }
+
+  it("keeps following when an already-measured row above the view shrinks in the commit that appends", async () => {
+    const { frames, bodies, tree, view, viewport } = await mountTall();
+    const above = aboveFold(viewport);
+    // Precondition: there are mounted, measured rows above the visible area to shrink.
+    expect(above.length).toBeGreaterThan(0);
+    expect(gap(viewport)).toBeLessThanOrEqual(4);
+    const evidence = { ...shrunk(bodies, above), [bodyId(40)]: outputBody(40, stdout(10, "t40")) };
+    await view.rerender(tree([...frames, bashCall(40)], evidence));
+    await paint();
+    await expect.poll(() => visible(40, viewport)).toBe(true);
+    expect(gap(viewport)).toBeLessThanOrEqual(4);
+    expect(jump().elements()).toHaveLength(0);
+    // Still following: the next append is visible too.
+    await view.rerender(
+      tree([...frames, bashCall(40), bashCall(41)], {
+        ...evidence,
+        [bodyId(41)]: outputBody(41, stdout(10, "t41")),
+      }),
+    );
+    await paint();
+    await expect.poll(() => visible(41, viewport)).toBe(true);
+  });
+
+  it("still pauses on a real scroll up, with the same shrink above and an append", async () => {
+    const { frames, bodies, tree, view, viewport } = await mountTall();
+    const above = aboveFold(viewport);
+    expect(above.length).toBeGreaterThan(0);
+    await scroll(viewport, viewport.scrollTop - viewport.clientHeight);
+    expect(gap(viewport)).toBeGreaterThan(viewport.clientHeight / 2);
+    await expect.element(jump(), { timeout: 800 }).toBeVisible();
+    const evidence = { ...shrunk(bodies, above), [bodyId(40)]: outputBody(40, stdout(10, "t40")) };
+    await view.rerender(tree([...frames, bashCall(40)], evidence));
+    await paint();
+    expect(visible(40, viewport)).toBe(false);
+    // Rows above shrank, so the gap may shrink with them; it must stay well beyond a small threshold.
+    expect(gap(viewport)).toBeGreaterThan(60);
+    await expect.element(jump(), { timeout: 800 }).toBeVisible();
+  });
+});
