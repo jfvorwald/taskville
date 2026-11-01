@@ -108,15 +108,15 @@ describe("M5.07 Files tab", () => {
     await expect.element(row(NOTES)).toBeVisible();
     expect(rows()).toEqual([[NOTES, "1"]]);
     await row(NOTES).click();
-    await expect.element(detail()).toHaveTextContent("beta");
-    await expect.element(detail()).toHaveTextContent("BETA");
+    await expect.element(detail()).toMatchTextContent("beta");
+    await expect.element(detail()).toMatchTextContent("BETA");
     expect(ids()).toEqual([EDIT]);
     await view.rerender(<AgentPanel {...shellProps(B)} store={store} renderTab={tab} />);
     await expect.element(row(HELLO)).toBeVisible();
     expect(rows()).toEqual([[HELLO, "1"]]);
     expect(detail().elements()).toHaveLength(0);
     await row(HELLO).click();
-    await expect.element(detail()).toHaveTextContent("hello from B");
+    await expect.element(detail()).toMatchTextContent("hello from B");
     expect(ids()).toEqual([WRITE]);
   });
 
