@@ -20,6 +20,8 @@ export interface BuildingPart {
 
 const ROOF_THICKNESS = 0.25;
 const DOOR = { w: 0.9, h: 1.4, d: 0.1 };
+/** Pushes a front part's face past the body's south wall so the two never share a plane. */
+const FRONT_OFFSET = 0.02;
 
 /**
  * The boxes that make one building: a body filling the footprint, a roof slab, a door on the
@@ -50,7 +52,7 @@ export function buildingParts(area: WorkAreaLayout): BuildingPart[] {
   const parts: BuildingPart[] = [
     box("body", area.id === "security" ? "dark" : "wall", 0, h / 2, 0, halfX * 2, h, halfZ * 2),
     box("roof", "roof", 0, roofY, 0, halfX * 2, ROOF_THICKNESS, halfZ * 2),
-    box("door", "door", 0, DOOR.h / 2, halfZ - DOOR.d / 2, DOOR.w, DOOR.h, DOOR.d),
+    box("door", "door", 0, DOOR.h / 2, halfZ - DOOR.d / 2 + FRONT_OFFSET, DOOR.w, DOOR.h, DOOR.d),
     ...features(area.id, halfX, halfZ, top, box),
   ];
   return parts;
@@ -102,10 +104,10 @@ function features(id: AreaId, halfX: number, halfZ: number, top: number, box: Bo
     case "archives":
       // Front columns under a low pediment.
       return [
-        box("feature", "accent", -halfX + 0.5, 1.1, halfZ - 0.15, 0.3, 2.2, 0.3),
-        box("feature", "accent", -halfX + 1.7, 1.1, halfZ - 0.15, 0.3, 2.2, 0.3),
-        box("feature", "accent", halfX - 1.7, 1.1, halfZ - 0.15, 0.3, 2.2, 0.3),
-        box("feature", "accent", halfX - 0.5, 1.1, halfZ - 0.15, 0.3, 2.2, 0.3),
+        box("feature", "accent", -halfX + 0.5, 1.1, halfZ - 0.15 + FRONT_OFFSET, 0.3, 2.2, 0.3),
+        box("feature", "accent", -halfX + 1.7, 1.1, halfZ - 0.15 + FRONT_OFFSET, 0.3, 2.2, 0.3),
+        box("feature", "accent", halfX - 1.7, 1.1, halfZ - 0.15 + FRONT_OFFSET, 0.3, 2.2, 0.3),
+        box("feature", "accent", halfX - 0.5, 1.1, halfZ - 0.15 + FRONT_OFFSET, 0.3, 2.2, 0.3),
         box("feature", "wall", 0, top + 0.2, 0, halfX * 1.2, 0.4, halfZ * 1.2),
       ];
   }
