@@ -49,6 +49,7 @@ function SelectedLive({
 }: Omit<LiveTabProps, "calls" | "evidence"> & { projectId: string; secret: string }) {
   const [calls, setCalls] = useState<ToolCallFrame[]>([]);
   const [evidence, setEvidence] = useState<Record<string, EvidenceResponse>>({});
+  const [evicted, setEvicted] = useState<ReadonlySet<string>>(() => new Set());
   const [unavailable, setUnavailable] = useState(false);
   const { agentId } = props;
   useEffect(() => {
@@ -61,6 +62,27 @@ function SelectedLive({
     let cursor = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     const requested = new Set<string>();
+    // A backlog can be thousands of calls. Accumulate in place, indexed by toolCallId, and publish
+    // one copy per flush instead of copying the whole list for every frame and every body.
+    let list: ToolCallFrame[] = [];
+    let index = new Map<string, number>();
+    let bodies: Record<string, EvidenceResponse> = {};
+    let gone = new Set<string>();
+    let dirty = { calls: false, bodies: false, gone: false };
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    function flush() {
+      flushTimer = undefined;
+      if (signal.aborted) return;
+      const { calls, bodies: changedBodies, gone: changedGone } = dirty;
+      dirty = { calls: false, bodies: false, gone: false };
+      if (calls) setCalls(list.slice());
+      if (changedBodies) setEvidence({ ...bodies });
+      if (changedGone) setEvicted(new Set(gone));
+    }
+    function publish(part: keyof typeof dirty) {
+      dirty[part] = true;
+      flushTimer ??= setTimeout(flush, 16);
+    }
     const evidenceRetries = new Set<ReturnType<typeof setTimeout>>();
     const queue: (() => Promise<void>)[] = [];
     function drain() {
@@ -92,6 +114,11 @@ function SelectedLive({
               signal: bodySignal,
             });
             if (obsolete()) return;
+            if (response.status === 410) {
+              gone.add(ref.id);
+              publish("gone");
+              return;
+            }
             if (!response.ok) {
               if (response.status === 429 || response.status >= 500)
                 throw new Error("Evidence unavailable");
@@ -107,7 +134,8 @@ function SelectedLive({
               typeof body.text !== "string"
             )
               return;
-            setEvidence((old) => ({ ...old, [ref.id]: body }));
+            bodies[ref.id] = body;
+            publish("bodies");
           } catch {
             if (obsolete()) return;
             if (attempt < 2) {
@@ -159,8 +187,16 @@ function SelectedLive({
             for (const timer of evidenceRetries) clearTimeout(timer);
             evidenceRetries.clear();
             cursor = 0;
+            clearTimeout(flushTimer);
+            flushTimer = undefined;
+            list = [];
+            index = new Map();
+            bodies = {};
+            gone = new Set();
+            dirty = { calls: false, bodies: false, gone: false };
             setCalls([]);
             setEvidence({});
+            setEvicted(new Set());
             break;
           }
           if (raw.event !== "toolcall") continue;
@@ -181,11 +217,12 @@ function SelectedLive({
           )
             continue;
           cursor = id;
-          setCalls((old) => {
-            const index = old.findIndex((call) => call.toolCallId === data.toolCallId);
-            if (index < 0) return [...old, data];
-            return old.map((call, i) => (i === index ? data : call));
-          });
+          const at = index.get(data.toolCallId);
+          if (at === undefined) {
+            index.set(data.toolCallId, list.length);
+            list.push(data);
+          } else list[at] = data;
+          publish("calls");
           readEvidence(data);
         }
       } catch {
@@ -199,6 +236,7 @@ function SelectedLive({
       bodyController.abort();
       queue.length = 0;
       clearTimeout(retry);
+      clearTimeout(flushTimer);
       for (const timer of evidenceRetries) clearTimeout(timer);
       evidenceRetries.clear();
     };
@@ -206,7 +244,7 @@ function SelectedLive({
   return (
     <>
       {unavailable ? <p role="status">Live feed unavailable.</p> : null}
-      <LiveTab {...props} calls={calls} evidence={evidence} />
+      <LiveTab {...props} calls={calls} evidence={evidence} evicted={evicted} />
     </>
   );
 }
