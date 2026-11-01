@@ -311,6 +311,26 @@ describe("historical sidebar composition through real provider, controls and Ove
     await expect.element(card()).toMatchTextContent(/sent, unconfirmed/i);
   });
 
+  it("captions the read-only input box 'Recorded preview' so it is not mistaken for the exact input", async () => {
+    await mount();
+    await previous(3);
+    await recordedCard();
+    // A visible caption on the card, outside the preview itself.
+    await expect.element(card()).toMatchTextContent("Recorded preview");
+    const box = page.getByTestId("action-card-input").element();
+    expect(box.textContent).toBe(PREVIEW);
+    expect(box.textContent).not.toContain("Recorded preview");
+  });
+
+  it("keeps the live card's input caption: no 'Recorded preview' on the live card", async () => {
+    await mount(undefined, false, "unanswered");
+    await userEvent.keyboard("l");
+    await position(6, "live");
+    await expect.element(card()).toMatchTextContent("Current Ada");
+    await expect.element(card()).toMatchTextContent(EXACT);
+    expect(card().element().textContent).not.toMatch(/recorded preview/i);
+  });
+
   it.each(["answered", "unanswered"] as const)(
     "the kept live target (%s) never renders decision buttons or asks for the exact input in history",
     async (liveCard) => {
