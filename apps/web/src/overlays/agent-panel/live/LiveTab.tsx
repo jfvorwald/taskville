@@ -842,8 +842,10 @@ function LiveFeed({
         {virtualizer.getVirtualItems().map((virtual) => {
           const item = items[virtual.index];
           const [call] = item.calls;
-          const inputBody = bodyOfCall(call, "input", evidence);
-          const outputBody = bodyOfCall(call, "output", evidence);
+          // GroupCard reads only its presented page. Unused gets would keep its first member hot.
+          const inputBody = item.kind === "call" ? bodyOfCall(call, "input", evidence) : undefined;
+          const outputBody =
+            item.kind === "call" ? bodyOfCall(call, "output", evidence) : undefined;
           const common = {
             expanded: expanded.has(item.key),
             toggleExpanded,
