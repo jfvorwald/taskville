@@ -8,7 +8,7 @@ export type ReplayRate = 1 | 10 | 60 | 600;
 export interface HistoryState {
   mode: "live" | "history";
   state: ProjectState | null;
-  /** The requested replay timestamp, independent of the server's computedAt. */
+  /** Replay clock, advancing between recorded positions independently of computedAt. */
   time: number | null;
   playing: boolean;
   rate: ReplayRate;
@@ -185,8 +185,11 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
           if (candidate.elapsed > target) break;
           moment = candidate;
         }
-        if (moment && moment.sequence !== get().state?.head)
-          await seek(moment.time, true, moment.sequence);
+        if (moment) {
+          const time = moment.time + target - moment.elapsed;
+          if (moment.sequence !== get().state?.head) await seek(time, true, moment.sequence);
+          else if (time !== get().time) set({ time });
+        }
         if (get().state?.head === end.sequence) get().pause();
       } else {
         await seek(target, true);

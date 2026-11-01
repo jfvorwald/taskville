@@ -15,7 +15,6 @@ import { CityAgents } from "./movement/index.ts";
 export function CityRoot({
   store = dataStore,
   mode = "live",
-  historyTime = null,
 }: {
   store?: DataStore;
   mode?: "live" | "history";
@@ -31,7 +30,7 @@ export function CityRoot({
       <ThemedCity />
       <DayNightLighting />
       <CityAgents
-        key={mode === "history" ? `history:${historySequence}:${historyTime}` : "live"}
+        key={mode === "history" ? `history:${historySequence}` : "live"}
         store={store}
         reducedMotion={reducedMotion}
       />
