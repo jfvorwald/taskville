@@ -41,6 +41,17 @@ test.afterAll(async () => {
   await context?.close();
 });
 
+/** Elements of `scope` that show exactly `name` (hasText would also match "Eli" in "Delivering"). */
+const named = (scope: Locator, name: string) =>
+  scope.filter({ has: page.getByText(name, { exact: true }) });
+
+/** Clears the city selection with Escape. A focused list row would swallow the key, so blur first. */
+const clearSelection = async () => {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Escape");
+  await expect(controls).toHaveAttribute("data-selected-id", "");
+};
+
 /** The ids, in the scene's own label order, of the agents the city shows. */
 const sceneAgentIds = () =>
   page
@@ -58,17 +69,20 @@ test("the demo city renders with its six agents", async () => {
   // Each demo agent has exactly one world label and one row in the agent list.
   const labels = page.getByTestId("agent-label");
   for (const name of CORE) {
-    await expect(labels.filter({ hasText: name })).toHaveCount(1, { timeout: 30_000 });
-    await expect(items.filter({ hasText: name })).toHaveCount(1);
+    await expect(named(labels, name)).toHaveCount(1, { timeout: 30_000 });
+    await expect(named(items, name)).toHaveCount(1);
   }
   expect((await sceneAgentIds()).length).toBeGreaterThanOrEqual(CORE.length);
   expect(pageErrors).toEqual([]);
 });
 
-test("selecting an agent in the list selects it in the city", async () => {
+test("the list selection reaches the city controls", async () => {
+  // The 3D scene's selection marker (a ring on the ground) has no DOM or attribute outside the
+  // test-hook build, and this suite uses no URL hooks, so the observable city side is the camera
+  // controls' selection and the label of the same agent.
   await expect(controls).toHaveAttribute("data-selected-id", "");
   for (const name of ["Cyd", "Fay"]) {
-    const row = items.filter({ hasText: name });
+    const row = named(items, name);
     const id = await row.getAttribute("data-agent-id");
     expect(id, `an id on the ${name} row`).toBeTruthy();
     await row.click();
@@ -80,9 +94,38 @@ test("selecting an agent in the list selects it in the city", async () => {
   }
 });
 
+test("clicking an agent in the city selects it, and the list follows", async () => {
+  // No URL hooks: an agent stands just below its label (the label is anchored at its head and is
+  // pointer-events: none, so the click goes through to the canvas). Wait until it is not travelling (stuck is a standing state).
+  await clearSelection();
+  const stillStates = /^(working|waiting|idle|stuck)$/;
+  // Ada and Brook stand in the open; Dee and Eli sit behind buildings in the default view.
+  for (const name of ["Ada", "Brook"]) {
+    const label = named(page.getByTestId("agent-label"), name);
+    await expect(label).toHaveAttribute("data-state", stillStates, { timeout: 30_000 });
+    const id = (await label.getAttribute("data-agent-id")) ?? "";
+    expect(id, `an id on the ${name} label`).not.toBe("");
+
+    // Try a few points below the label until one hits the agent; a miss leaves it unselected.
+    let hit = false;
+    for (const below of [14, 22, 32, 44]) {
+      const box = await label.boundingBox();
+      if (!box) throw new Error(`no label box for ${name}`);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height + below);
+      if ((await controls.getAttribute("data-selected-id")) === id) {
+        hit = true;
+        break;
+      }
+    }
+    expect(hit, `a click below ${name}'s label selects ${name}`).toBe(true);
+    await expect(named(items, name)).toHaveAttribute("aria-selected", "true");
+    await clearSelection();
+  }
+});
+
 test("a theme switch changes the theme and keeps agents, selection and camera", async () => {
   // A known state to preserve: Cyd selected, the camera turned and zoomed.
-  const cyd = items.filter({ hasText: "Cyd" });
+  const cyd = named(items, "Cyd");
   const cydId = (await cyd.getAttribute("data-agent-id")) ?? "";
   await cyd.click();
   await expect(controls).toHaveAttribute("data-selected-id", cydId);
