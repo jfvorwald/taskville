@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Command, PendingRequest, ProjectState, Session } from "@taskville/domain/reducer";
 import type { CommandStatus, CommandType } from "@taskville/protocol";
 import type { Logger } from "pino";
@@ -224,6 +224,22 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     );
     if (existing === undefined) return undefined;
     if (!isSameCommand(existing, body)) return error(409, "idempotency_conflict");
+    // An opener this process is not running was cut short by an engine stop: end the command
+    // instead of answering "in flight" forever.
+    if (
+      existing.status === "requested" &&
+      body.type === "session.open" &&
+      !opening.has(`${body.projectId}\0${body.sessionId}`)
+    ) {
+      return endWithout(
+        body,
+        existing.id,
+        "failed",
+        "opener_failed",
+        502,
+        "The session opener was interrupted by an engine stop",
+      );
+    }
     return replay(existing);
   };
 
@@ -267,7 +283,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     if (request === undefined) return error(404, "unknown_request");
 
     const commandId = newId();
-    requested(body, commandId, { decision: { behavior: body.decision.behavior } });
+    requested(body, commandId, { decision: decisionIdentity(body.decision) });
     // The recorded state decides first, so a stale bridge entry cannot reopen a closed request.
     if (request.state !== "open") {
       return endWithout(body, commandId, "failed", "request_not_open", 409);
@@ -421,9 +437,25 @@ function isSameCommand(command: Command, body: CommandBody): boolean {
   if (command.type !== body.type || command.requestId !== body.requestId) return false;
   if (body.type === "session.open") return command.payload.sessionId === body.sessionId;
   const decision = command.payload.decision;
-  return (
-    typeof decision === "object" &&
-    decision !== null &&
-    (decision as { behavior?: unknown }).behavior === body.decision.behavior
-  );
+  if (typeof decision !== "object" || decision === null) return false;
+  const stored = decision as { behavior?: unknown; noteDigest?: unknown };
+  const wanted = decisionIdentity(body.decision);
+  return stored.behavior === wanted.behavior && stored.noteDigest === wanted.noteDigest;
+}
+
+/**
+ * What the log keeps of a decision: the behavior, and for a deny with a note only a digest of it,
+ * so a retry that changes the note is a different command without the note being recorded.
+ */
+function decisionIdentity(decision: PermissionDecideBody["decision"]): {
+  behavior: "allow" | "deny";
+  noteDigest?: string;
+} {
+  if (decision.behavior === "allow" || decision.message === undefined) {
+    return { behavior: decision.behavior };
+  }
+  return {
+    behavior: "deny",
+    noteDigest: createHash("sha256").update(decision.message).digest("hex"),
+  };
 }
