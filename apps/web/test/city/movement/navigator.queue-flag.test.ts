@@ -78,10 +78,7 @@ describe("a held, queued walker that leaves and re-enters an area's line", () =>
 
     // An A slot frees (a goes to Dispatch). releaseSlot skips e (its area is no longer A) and
     // drops it from the line.
-    const afterA = [
-      work("a", "dispatch"),
-      ...["b", "c", "d"].map((id) => work(id, "test_lab")),
-    ];
+    const afterA = [work("a", "dispatch"), ...["b", "c", "d"].map((id) => work(id, "test_lab"))];
     nav.sync([...afterA, work("e", "review", { hold: true })]);
     run(nav, clock, 1_000);
 
