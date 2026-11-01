@@ -17,6 +17,7 @@ import { type CameraRig, cameraRig } from "./cameraRig.ts";
 import { shouldClearOnEscape } from "./escape.ts";
 import { createBuildingFader } from "./fade.ts";
 import { fixtureAgents, fixtureRequested, installFixtureProbe } from "./fixture.ts";
+import { markHoverDirtyOnCameraChange, repickOnCameraChange } from "./hover.ts";
 import { createHullGlow } from "./hull.ts";
 import { markOccluders, viewDirection } from "./occlusion.ts";
 import { collectPickables, createPicker, ownerOf } from "./pick.ts";
@@ -205,6 +206,7 @@ function Interaction({
     retry: 0,
     hoverId: null as string | null,
     hoverDirty: false,
+    inside: false,
     ndcX: 0,
     ndcY: 0,
     down: false,
@@ -230,6 +232,22 @@ function Interaction({
       st.current.retry = 0;
     });
   }, [store]);
+
+  useEffect(
+    () =>
+      markHoverDirtyOnCameraChange(
+        rig,
+        () => {
+          st.current.hoverDirty = true;
+        },
+        () =>
+          repickOnCameraChange({
+            inside: st.current.inside,
+            dragging: st.current.down && st.current.moved,
+          }),
+      ),
+    [rig],
+  );
 
   const isFaded = useRef<(id: string) => boolean>(() => false);
   isFaded.current = (id: string) =>
@@ -261,7 +279,11 @@ function Interaction({
       s.downY = s.lastY = e.clientY;
       dom.setPointerCapture?.(e.pointerId);
     };
+    const onEnter = () => {
+      s.inside = true;
+    };
     const onMove = (e: PointerEvent) => {
+      s.inside = true;
       if (s.down) {
         if (!s.moved && Math.hypot(e.clientX - s.downX, e.clientY - s.downY) > CLICK_SLOP_PX) {
           s.moved = true;
@@ -292,6 +314,7 @@ function Interaction({
       }
     };
     const onLeave = () => {
+      s.inside = false;
       s.hoverDirty = false;
       if (s.hoverId !== null) {
         s.hoverId = null;
@@ -308,6 +331,7 @@ function Interaction({
     };
 
     dom.addEventListener("pointerdown", onDown);
+    dom.addEventListener("pointerenter", onEnter);
     dom.addEventListener("pointermove", onMove);
     dom.addEventListener("pointerup", onUp);
     dom.addEventListener("pointercancel", onUp);
@@ -316,6 +340,7 @@ function Interaction({
     window.addEventListener("keydown", onKey);
     return () => {
       dom.removeEventListener("pointerdown", onDown);
+      dom.removeEventListener("pointerenter", onEnter);
       dom.removeEventListener("pointermove", onMove);
       dom.removeEventListener("pointerup", onUp);
       dom.removeEventListener("pointercancel", onUp);

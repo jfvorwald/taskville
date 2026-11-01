@@ -18,6 +18,16 @@ export function ownerOf(object: Object3D): string | null {
   return null;
 }
 
+/** Raycasting ignores `visible`, so a hit on a hidden object, or one under a hidden parent, is skipped. */
+function isShown(object: Object3D): boolean {
+  let o: Object3D | null = object;
+  while (o !== null) {
+    if (!o.visible) return false;
+    o = o.parent;
+  }
+  return true;
+}
+
 function isPickableRoot(o: Object3D): boolean {
   return typeof o.userData.agentId === "string" || o.name.startsWith(BUILDING_PREFIX);
 }
@@ -69,6 +79,7 @@ export function createPicker(): Picker {
       raycaster.intersectObjects(pickables as Object3D[], true, hits);
       let found: string | null = null;
       for (const hit of hits) {
+        if (!isShown(hit.object)) continue;
         const id = ownerOf(hit.object);
         if (id === null) continue;
         if (hidden?.(id)) continue;
