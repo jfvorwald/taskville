@@ -222,3 +222,201 @@ describe("lifecycle", () => {
     expect(second.frames.map((x) => x.event)).toEqual(["attention"]);
   });
 });
+
+// M4.01 pins for behavior that had no test: the snapshot fallback (roborev 5865), a project that
+// leaves storage (nit 8), and what a storage failure puts in the log. These use their own storage
+// so a test can add, remove and break individual projects.
+
+class SqliteError extends Error {
+  override name = "SqliteError";
+}
+
+const SECRET = "SECRET-PAYLOAD /home/someone/vault.db token=abc123";
+
+interface Harness {
+  projects: { id: string; name: string }[];
+  /** Project IDs whose projection read throws. */
+  broken: Set<string>;
+  /** Makes `projects()` throw. */
+  projectsFail: boolean;
+}
+
+function harness(...ids: string[]): { h: Harness; storage: Storage } {
+  const h: Harness = {
+    projects: ids.map((id) => ({ id, name: id.toUpperCase() })),
+    broken: new Set(),
+    projectsFail: false,
+  };
+  const s = {
+    projects: () => {
+      if (h.projectsFail) throw new SqliteError(SECRET);
+      return h.projects;
+    },
+    projection: (id: string) => {
+      if (h.broken.has(id)) throw new SqliteError(SECRET);
+      return { reducerVersion: domainReducer.version, head: 1, state: {} };
+    },
+    head: () => 1,
+    events: () => [],
+  } as unknown as Storage;
+  return { h, storage: s };
+}
+
+const names = (frame: AttentionFrame | undefined) =>
+  frame?.event === "snapshot" ? frame.data.projects.map((p) => p.projectId) : [];
+
+describe("a new client's snapshot when a project cannot be read (roborev 5865)", () => {
+  it("falls back to that project's last announced records instead of leaving it out", () => {
+    const { h, storage: s } = harness("alpha", "beta");
+    const needs = rec("agent-1", "r1");
+    set(needs);
+    feed = new AttentionFeed({ storage: s, now: () => NOW, tickMs: 1_000_000 });
+    const first = listener();
+    feed.subscribe(first.l);
+    expect(names(first.frames[0])).toEqual(["alpha", "beta"]);
+
+    h.broken.add("alpha");
+    const second = listener();
+    feed.subscribe(second.l);
+
+    expect(second.frames).toHaveLength(1);
+    expect(second.frames[0]).toMatchObject({
+      event: "snapshot",
+      data: {
+        projects: [
+          { projectId: "alpha", name: "ALPHA", attention: [needs] },
+          { projectId: "beta", name: "BETA", attention: [needs] },
+        ],
+      },
+    });
+  });
+
+  it("keeps announcing later changes, to the old and the new listener alike", () => {
+    const { h, storage: s } = harness("alpha");
+    set(rec("agent-1", "r1"));
+    feed = new AttentionFeed({ storage: s, now: () => NOW, tickMs: 1_000_000 });
+    const first = listener();
+    feed.subscribe(first.l);
+    h.broken.add("alpha");
+    const second = listener();
+    feed.subscribe(second.l);
+    expect(names(second.frames[0])).toEqual(["alpha"]);
+    first.frames.length = 0;
+    second.frames.length = 0;
+
+    h.broken.delete("alpha");
+    const changed = rec("agent-2", "r2");
+    set(changed);
+    feed.publish(batch("alpha"));
+
+    for (const { frames } of [first, second]) {
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({
+        event: "attention",
+        data: { projectId: "alpha", attention: [changed] },
+      });
+    }
+  });
+});
+
+describe("a project that disappears from storage (nit 8)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  });
+
+  it.each(["tick", "publish"] as const)(
+    "gets one cleared frame on the %s and is never announced again",
+    (via) => {
+      const { h, storage: s } = harness("alpha", "beta");
+      // The selector would still report a record for it; a removed project must not be asked.
+      set(rec("agent-1", "r1"));
+      feed = new AttentionFeed({ storage: s, now: () => NOW, tickMs: 1000 });
+      const { frames, l } = listener();
+      feed.subscribe(l);
+      frames.length = 0;
+
+      h.projects = h.projects.filter((p) => p.id !== "alpha");
+      const sweep = () => {
+        if (via === "tick") vi.advanceTimersByTime(1000);
+        else feed?.publish(batch("alpha"));
+      };
+      sweep();
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({
+        event: "attention",
+        data: { projectId: "alpha", name: "ALPHA", attention: [] },
+      });
+
+      frames.length = 0;
+      sweep();
+      sweep();
+      expect(frames).toHaveLength(0);
+
+      // A client arriving afterwards does not see it either.
+      const late = listener();
+      feed.subscribe(late.l);
+      expect(names(late.frames[0])).toEqual(["beta"]);
+    },
+  );
+});
+
+describe("what a storage failure puts in the log", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  });
+
+  const logged = () => {
+    const error = vi.fn();
+    return { error, logger: { error } as unknown as import("pino").Logger };
+  };
+
+  /** Everything every call carried, flattened, to search for text that must not be there. */
+  const everything = (error: ReturnType<typeof vi.fn>) => JSON.stringify(error.mock.calls);
+
+  it.each([
+    ["projects", "publish"],
+    ["projects", "tick"],
+    ["projection", "publish"],
+    ["projection", "tick"],
+  ] as const)("logs only the error name when %s fails on %s", (what, via) => {
+    const { h, storage: s } = harness("alpha");
+    set(rec("agent-1", "r1"));
+    const { error, logger } = logged();
+    feed = new AttentionFeed({ storage: s, now: () => NOW, tickMs: 1000, logger });
+    const { l } = listener();
+    feed.subscribe(l);
+    expect(error).not.toHaveBeenCalled();
+
+    if (what === "projects") h.projectsFail = true;
+    else h.broken.add("alpha");
+    if (via === "tick") vi.advanceTimersByTime(1000);
+    else feed.publish(batch("alpha"));
+
+    expect(error).toHaveBeenCalledTimes(1);
+    const [fields, message, ...rest] = error.mock.calls[0] as unknown[];
+    expect(fields).toStrictEqual({ errName: "SqliteError" });
+    expect(rest).toHaveLength(0);
+    expect(typeof message).toBe("string");
+    const text = everything(error);
+    for (const leaked of ["SECRET", "PAYLOAD", "vault.db", "abc123", "stack"]) {
+      expect(text).not.toContain(leaked);
+    }
+  });
+
+  it("logs the error name when the snapshot read for a new client fails", () => {
+    const { h, storage: s } = harness("alpha");
+    set(rec("agent-1", "r1"));
+    const { error, logger } = logged();
+    feed = new AttentionFeed({ storage: s, now: () => NOW, tickMs: 1_000_000, logger });
+    feed.subscribe(listener().l);
+    h.broken.add("alpha");
+    feed.subscribe(listener().l);
+
+    expect(error).toHaveBeenCalled();
+    for (const call of error.mock.calls) {
+      expect(call[0]).toStrictEqual({ errName: "SqliteError" });
+    }
+    expect(everything(error)).not.toContain("SECRET");
+  });
+});
