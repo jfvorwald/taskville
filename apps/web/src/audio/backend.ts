@@ -57,6 +57,33 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
   const decoded = new Map<string, Promise<AudioBuffer>>();
   let voice: Voice | null = null;
   let loopToken = 0;
+  /**
+   * resume() and suspend() run one after another, never overlapping: start() must not see a context
+   * that is about to be suspended and conclude it is running.
+   */
+  let queue: Promise<void> = Promise.resolve();
+  let inflight = 0;
+  /** Bumped by every start(), cue wake-up and suspend(), so a suspend still waiting is dropped. */
+  let parkToken = 0;
+  /** When the loop fade-out in progress ends, on the context clock. */
+  let fadingUntil = 0;
+
+  function enqueue(step: () => Promise<void>): Promise<void> {
+    // With nothing ahead of it the step starts at once: resume() must be asked for inside the
+    // click that called start().
+    const run = async () => step();
+    const done = inflight === 0 ? run() : queue.then(run);
+    inflight += 1;
+    const release = () => {
+      inflight -= 1;
+    };
+    queue = done.then(release, release);
+    return done;
+  }
+
+  async function wake() {
+    if (ctx?.state === "suspended") await ctx.resume();
+  }
 
   /** One enveloped oscillator note into the master gain. */
   function note(
@@ -126,6 +153,7 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
     old.gain.gain.setValueAtTime(old.gain.gain.value, now);
     old.gain.gain.linearRampToValueAtTime(0, now + LOOP_FADE_OUT_S);
     old.source.stop(now + LOOP_FADE_OUT_S + 0.05);
+    fadingUntil = Math.max(fadingUntil, now + LOOP_FADE_OUT_S + 0.05);
   }
 
   return {
@@ -138,7 +166,8 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
         cueBus = ctx.createGain();
         cueBus.connect(master);
       }
-      if (ctx.state === "suspended") await ctx.resume();
+      parkToken += 1;
+      await enqueue(wake);
     },
 
     setVolume(next) {
@@ -158,9 +187,10 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
 
     playCue(cue) {
       if (!ctx || !cueBus) return;
-      if (ctx.state === "suspended") {
-        // Parked: wake the context first and sound the cue once its clock runs again.
-        ctx.resume().then(
+      if (inflight > 0 || ctx.state === "suspended") {
+        // Parked or parking: wake the context first and sound the cue once its clock runs again.
+        parkToken += 1;
+        enqueue(wake).then(
           () => sound(cue),
           () => {},
         );
@@ -173,11 +203,16 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
       if (!ctx) return;
       // A suspended clock is frozen, so the rate-limit times taken from it mean nothing after.
       lastCueAt.clear();
-      try {
-        await ctx.suspend();
-      } catch {
+      parkToken += 1;
+      const mine = parkToken;
+      const context = ctx;
+      // A loop still fading out would freeze mid-fade and come back on the next resume.
+      const fading = fadingUntil - context.currentTime;
+      if (fading > 0) await new Promise((done) => setTimeout(done, fading * 1000));
+      if (mine !== parkToken) return;
+      await enqueue(() => context.suspend()).catch(() => {
         // Already closed or not suspendable: nothing to park.
-      }
+      });
     },
 
     startLoop(themeId, asset) {
@@ -186,8 +221,9 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
       const token = loopToken;
       const buffer = decode(themeId, asset);
       if (!buffer) return;
-      buffer.then(
-        (decodedBuffer) => {
+      // Start only once the context has finished resuming or suspending.
+      Promise.all([buffer, queue]).then(
+        ([decodedBuffer]) => {
           if (token !== loopToken || !ctx || !master) return;
           const now = ctx.currentTime;
           if (voice) fadeOut(voice, ctx);
