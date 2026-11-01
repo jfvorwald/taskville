@@ -142,7 +142,11 @@ function CrewFamilyView({
     const doorX = anchor === undefined ? parentPlace?.x : anchor[0];
     const doorZ = anchor === undefined ? parentPlace?.z : anchor[2];
     g.visible = doorX !== undefined && doorZ !== undefined;
-    if (doorX === undefined || doorZ === undefined) return;
+    if (doorX === undefined || doorZ === undefined) {
+      // Out of sight all the way down: the crews of this family's bots have nowhere to stand.
+      for (const m of family.members) places.delete(m.id);
+      return;
+    }
     g.position.set(doorX, 0, doorZ);
 
     const nowMs = store.now();
