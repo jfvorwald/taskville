@@ -86,6 +86,8 @@ interface World {
   requests?: Record<string, ReturnType<typeof request>>;
   agents?: Record<string, { id: string; displayName?: string }>;
   attention?: Attention[];
+  /** The domain `Session` entities, by id: `workingDirectory` is what the session reported. */
+  sessions?: Record<string, { id: string; workingDirectory?: string }>;
 }
 
 function makeStore(world: World = {}): DataStore {
@@ -97,6 +99,7 @@ function makeStore(world: World = {}): DataStore {
     state: {
       agents: world.agents ?? { a1: { id: "a1", displayName: "Ada" } },
       requests: world.requests ?? { "req-1": request() },
+      sessions: world.sessions ?? {},
     } as unknown as NonNullable<ReturnType<typeof store.getState>["state"]>,
   });
   return store;
@@ -503,6 +506,146 @@ describe("ActionCard: masked secrets", () => {
     await loaded();
     expect(reveals().elements()).toHaveLength(0);
     await expect.element(allow()).toBeEnabled();
+  });
+});
+
+// --- structured inputs: values sealed whole (M4.07 pin round) ---------------------------------
+//
+// A structured input is shown as pretty JSON. A value the engine's JSON redactor would seal whole
+// (an object, array or number under a sensitive key, or the `value` of a separated name/value
+// pair) is one masked span: its text is nowhere in the card until revealed, and Allow stays off
+// until every mask is revealed. The text of each secret below is checked against the card's whole
+// markup, not only the input box.
+
+describe("ActionCard: masked values sealed whole", () => {
+  const cases: Array<{
+    name: string;
+    toolInput: unknown;
+    /** Fragments that must not appear in the markup while masked. */
+    hidden: string[];
+    /** What the input box holds once the single mask is revealed. */
+    shownAfterReveal: string;
+  }> = [
+    {
+      name: "a nested object under a sensitive key",
+      toolInput: { tool: "deploy", password: { value: "hunter2-nested", extra: "zz-inner-key" } },
+      hidden: ["hunter2-nested", "zz-inner-key"],
+      shownAfterReveal: "hunter2-nested",
+    },
+    {
+      name: "an array under a sensitive key",
+      toolInput: { tool: "deploy", apiToken: ["alpha-secret-one", "beta-secret-two"] },
+      hidden: ["alpha-secret-one", "beta-secret-two"],
+      shownAfterReveal: "beta-secret-two",
+    },
+    {
+      name: "a number under a sensitive key",
+      toolInput: { tool: "deploy", token: 918273645 },
+      hidden: ["918273645"],
+      shownAfterReveal: "918273645",
+    },
+    {
+      name: "a separated name/value pair",
+      toolInput: { tool: "deploy", name: "DB_PASSWORD", other: true, value: "hunter2" },
+      hidden: ["hunter2"],
+      shownAfterReveal: "hunter2",
+    },
+    {
+      name: "a string with JSON escapes (quote, backslash, newline, \\u0001)",
+      toolInput: {
+        'we"ird': "x",
+        name: "DB_PASSWORD",
+        other: true,
+        value: 'pa"ss\\w\nord\u0001end',
+      },
+      hidden: ["ss\\\\w", "ord\\u0001end", "u0001"],
+      shownAfterReveal: 'pa\\"ss\\\\w\\nord\\u0001end',
+    },
+  ];
+
+  it.each(cases)("$name: hidden until revealed, Allow off until then", async (c) => {
+    const engine = createEngine();
+    engine.input = () => json(200, held(c.toolInput));
+    await mount({ engine });
+    await loaded();
+    await expect.poll(() => reveals().elements().length).toBe(1);
+
+    for (const fragment of c.hidden) {
+      expect(inputEl()?.textContent).not.toContain(fragment);
+      expect(cardEl()?.innerHTML).not.toContain(fragment);
+    }
+    await expect.element(allow()).toBeDisabled();
+
+    await reveals().first().click();
+    expect(inputEl()?.textContent).toContain(c.shownAfterReveal);
+    expect(reveals().elements()).toHaveLength(0);
+    await expect.element(allow()).toBeEnabled();
+  });
+
+  it("keeps Allow off until a sealed value and a text-pass secret are both revealed", async () => {
+    const engine = createEngine();
+    engine.input = () => json(200, held({ password: { v: "hunter2-nested" }, env: `A=${GITHUB}` }));
+    await mount({ engine });
+    await expect.poll(() => reveals().elements().length).toBe(2);
+    expect(cardEl()?.innerHTML).not.toContain("hunter2-nested");
+    expect(cardEl()?.innerHTML).not.toContain(GITHUB);
+    await reveals().first().click();
+    await expect.element(allow()).toBeDisabled();
+    await reveals().first().click();
+    await expect.element(allow()).toBeEnabled();
+  });
+});
+
+// --- working directory: the session's, when the exact input has none -------------------------
+//
+// Observe-only (CTO decision): when the exact-input route omits `cwd`, the card shows the
+// `workingDirectory` the store recorded for the request's session (`state.sessions[sessionId]`);
+// when there is none either, `action-card-cwd` holds a neutral "unknown" label. A path is never
+// made up, and one session's directory is never shown for another's request.
+
+describe("ActionCard: working directory fallback", () => {
+  const withoutCwd = () => {
+    const engine = createEngine();
+    engine.input = () => json(200, { ...held(), cwd: undefined });
+    return engine;
+  };
+  const cwdText = () =>
+    document.querySelector('[data-testid="action-card-cwd"]')?.textContent ?? "";
+
+  it("shows the session's recorded working directory when the exact input omits cwd", async () => {
+    const store = makeStore({
+      sessions: { "sess-1": { id: "sess-1", workingDirectory: "/work/from-session" } },
+    });
+    await mount({ engine: withoutCwd(), store });
+    await loaded();
+    await vi.waitFor(() => expect(cwdText()).toContain("/work/from-session"));
+  });
+
+  it("prefers the exact input's cwd over the session's", async () => {
+    const store = makeStore({
+      sessions: { "sess-1": { id: "sess-1", workingDirectory: "/work/from-session" } },
+    });
+    await mount({ store });
+    await loaded();
+    await vi.waitFor(() => expect(cwdText()).toContain("/work/app"));
+    expect(cwdText()).not.toContain("/work/from-session");
+  });
+
+  it("shows a neutral unknown label, and no path, when neither source has one", async () => {
+    await mount({ engine: withoutCwd() });
+    await loaded();
+    await vi.waitFor(() => expect(cwdText()).toMatch(/unknown/i));
+    expect(cwdText()).not.toContain("/");
+  });
+
+  it("does not borrow another session's working directory", async () => {
+    const store = makeStore({
+      sessions: { "sess-2": { id: "sess-2", workingDirectory: "/work/other" } },
+    });
+    await mount({ engine: withoutCwd(), store });
+    await loaded();
+    await vi.waitFor(() => expect(cwdText()).toMatch(/unknown/i));
+    expect(cardText()).not.toContain("/work/other");
   });
 });
 

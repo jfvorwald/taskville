@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { maskSpans } from "../../../src/overlays/action-card/mask.ts";
+import { inputText } from "../../../src/overlays/action-card/input.ts";
+import { inputMaskSpans, maskSpans } from "../../../src/overlays/action-card/mask.ts";
 
 // M4.07: which parts of an exact tool input the action card hides behind click-to-reveal.
 //
@@ -112,5 +113,164 @@ describe("maskSpans: shape of the result", () => {
     const spans = maskSpans(text);
     expect(spans).toHaveLength(1);
     expect(text.slice(spans[0].start, spans[0].end)).toBe(GITHUB);
+  });
+});
+
+// --- structured inputs: values the JSON redactor seals whole (M4.07 pin round) ----------------
+//
+// `redactText` reads text; it cannot see that a value sits under a sensitive property name. The
+// card therefore asks `inputMaskSpans(toolInput, text)` for a structured input shown as pretty
+// JSON: each value `redactJson` seals whole becomes one span over that value as displayed (an
+// object, array or number in full, a string without its quotes). Whatever is left once every span
+// is cut out of the text must hold no secret, and the offsets must land on the displayed text
+// even where JSON escapes (backslash-quote, double backslash, \n, \u0001) make it longer than
+// the raw string.
+
+const shown = (toolInput: unknown) => {
+  const text = inputText(toolInput);
+  return { text, spans: inputMaskSpans(toolInput, text) };
+};
+
+/** The text with every masked span cut out: what the card shows before anything is revealed. */
+const unrevealed = (toolInput: unknown) => {
+  const { text, spans } = shown(toolInput);
+  let out = "";
+  let cursor = 0;
+  for (const span of spans) {
+    out += `${text.slice(cursor, span.start)}[MASK]`;
+    cursor = span.end;
+  }
+  return out + text.slice(cursor);
+};
+
+/** A value of a top-level property as it is laid out in the card's two-space pretty JSON. */
+const prettyAtDepthOne = (value: unknown) => JSON.stringify(value, null, 2).replace(/\n/g, "\n  ");
+
+describe("inputMaskSpans: a value sealed whole under a sensitive key", () => {
+  it("masks a nested object, keys inside it included, as one span over the whole object", () => {
+    const input = { tool: "deploy", password: { value: "hunter2-secret", hunter3: true } };
+    const { text, spans } = shown(input);
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe(prettyAtDepthOne(input.password));
+    const left = unrevealed(input);
+    expect(left).not.toContain("hunter2-secret");
+    expect(left).not.toContain("hunter3");
+    expect(left).toContain('"tool": "deploy"');
+    expect(left).toContain('"password": [MASK]');
+  });
+
+  it("masks an array under a sensitive key as one span over the whole array", () => {
+    const input = { label: "keys", apiToken: ["alpha-secret-one", "beta-secret-two"] };
+    const { spans } = shown(input);
+    expect(spans).toHaveLength(1);
+    const left = unrevealed(input);
+    expect(left).not.toContain("alpha-secret-one");
+    expect(left).not.toContain("beta-secret-two");
+    expect(left).toContain('"label": "keys"');
+    expect(left).toContain('"apiToken": [MASK]');
+  });
+
+  it("masks a number under a sensitive key", () => {
+    const input = { user: "ada", token: 918273645, retries: 3 };
+    const { text, spans } = shown(input);
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe("918273645");
+    const left = unrevealed(input);
+    expect(left).not.toContain("918273645");
+    expect(left).toContain('"retries": 3');
+  });
+
+  it("masks a sensitive key deep inside readable structure", () => {
+    const input = { steps: [{ run: "build" }, { env: { DB_PASSWORD: { v: "deep-secret-99" } } }] };
+    const left = unrevealed(input);
+    expect(left).not.toContain("deep-secret-99");
+    expect(left).toContain('"run": "build"');
+  });
+});
+
+describe("inputMaskSpans: a string the JSON redactor seals whole", () => {
+  it("masks the value of a name/value pair whose properties are not side by side", () => {
+    const input = { name: "DB_PASSWORD", other: true, value: "hunter2" };
+    const { text, spans } = shown(input);
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe("hunter2");
+    const left = unrevealed(input);
+    expect(left).not.toContain("hunter2");
+    expect(left).toContain('"name": "DB_PASSWORD"');
+    expect(left).toContain('"other": true');
+  });
+
+  it("does not mask the value of a pair whose name is not sensitive", () => {
+    const input = { name: "REGION", other: true, value: "eu-west-1" };
+    expect(shown(input).spans).toEqual([]);
+  });
+
+  it("masks an ordinary string under a sensitive key without its quotes", () => {
+    const { text, spans } = shown({ password: "hunter2" });
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe("hunter2");
+  });
+});
+
+describe("inputMaskSpans: offsets stay right when JSON escapes lengthen the text", () => {
+  it("lands on a sealed string with quote, backslash, newline and control-character escapes", () => {
+    const secret = 'pa"ss\\w\nord\u0001end';
+    const input = { name: "DB_PASSWORD", other: true, value: secret };
+    const { text, spans } = shown(input);
+    expect(text).toContain("\\u0001");
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe(JSON.stringify(secret).slice(1, -1));
+    const left = unrevealed(input);
+    expect(left).not.toContain("ss\\\\w");
+    expect(left).not.toContain("u0001");
+    expect(left).toContain('"other": true');
+  });
+
+  it("lands on a sealed value that follows keys and strings full of escapes", () => {
+    const input = {
+      'we"ird\\key': 'say "hi"\n\\ done',
+      note: "tab\there \u0007",
+      password: { inner: 'x"y\\z', n: 1 },
+      after: "visible",
+    };
+    const { text, spans } = shown(input);
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe(prettyAtDepthOne(input.password));
+    const left = unrevealed(input);
+    expect(left).not.toContain("inner");
+    expect(left).toContain('"after": "visible"');
+    expect(left).toContain("tab\\there");
+  });
+
+  it("lands a text-pass secret inside an escaped string on the secret alone", () => {
+    const bearer = "abcdefghijklmnop1234";
+    const input = { log: `said "hi"\n\\ then Authorization: Bearer ${bearer}\nend` };
+    const { text, spans } = shown(input);
+    expect(spans).toHaveLength(1);
+    expect(text.slice(spans[0].start, spans[0].end)).toBe(bearer);
+    expect(unrevealed(input)).not.toContain(bearer);
+  });
+});
+
+describe("inputMaskSpans: shape and non-secrets", () => {
+  it("returns sorted, non-overlapping spans when text and structure both find secrets", () => {
+    const input = { password: { v: 1 }, env: `A=${GITHUB}`, token: 5551234 };
+    const { spans } = shown(input);
+    expect(spans).toHaveLength(3);
+    for (let i = 1; i < spans.length; i++) {
+      expect(spans[i].start).toBeGreaterThanOrEqual(spans[i - 1].end);
+    }
+    expect(unrevealed(input)).not.toContain(GITHUB);
+  });
+
+  it("finds nothing in a plain structured input or a primitive one", () => {
+    expect(shown({ path: "/tmp/x", count: 2, flags: ["-a", "-b"] }).spans).toEqual([]);
+    expect(inputMaskSpans(null, "null")).toEqual([]);
+    expect(inputMaskSpans(42, "42")).toEqual([]);
+  });
+
+  it("falls back to the text pass for a Bash command input", () => {
+    const { text, spans } = shown({ command: `export GH=${GITHUB}` });
+    expect(spans.map((s) => text.slice(s.start, s.end))).toEqual([GITHUB]);
   });
 });
