@@ -1,4 +1,5 @@
 import {
+  elementScroll,
   observeWindowOffset,
   observeWindowRect,
   useVirtualizer,
@@ -24,6 +25,8 @@ export interface LiveTabProps {
   select: (id: string | null) => void;
   calls: readonly ToolCallFrame[];
   evidence: Readonly<Record<string, EvidenceResponse>>;
+  /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
+  evicted?: ReadonlySet<string>;
 }
 const safe = (text: string) => redactText(text).text;
 // TanStack's window mode, for a feed with no scrolling ancestor. useVirtualizer types its scroll
@@ -38,6 +41,11 @@ const pageScroll = {
 >;
 /** The page's own scroller: scrollTop and sizes live on it, scroll events and the view on window. */
 const isPage = (node: HTMLElement) => node === node.ownerDocument.scrollingElement;
+/** Follow means within this many px of the bottom after layout. A pause needs a real scroll up. */
+const FOLLOW_THRESHOLD = 8;
+const distanceFromBottom = (node: HTMLElement) =>
+  node.scrollHeight - node.clientHeight - node.scrollTop;
+const EVICTED = "details no longer stored";
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -111,6 +119,7 @@ function targetAgent(
 function ToolCard({
   call,
   evidence,
+  evicted,
   agents,
   select,
   expanded,
@@ -118,6 +127,7 @@ function ToolCard({
 }: {
   call: ToolCallFrame;
   evidence: LiveTabProps["evidence"];
+  evicted: ReadonlySet<string>;
   agents: readonly Agent[];
   select: LiveTabProps["select"];
   expanded: boolean;
@@ -125,6 +135,11 @@ function ToolCard({
 }) {
   const inputBody = call.evidence.input ? evidence[call.evidence.input.id] : undefined;
   const outputBody = call.evidence.output ? evidence[call.evidence.output.id] : undefined;
+  // A reference the hook never sent stays "not reported"; one that was stored then evicted does not.
+  const gone = (ref: ToolCallFrame["evidence"]["input"]) =>
+    ref !== null && (ref.status === "evicted" || evicted.has(ref.id));
+  const missingInput = !inputBody && gone(call.evidence.input) ? EVICTED : "not reported";
+  const missingOutput = !outputBody && gone(call.evidence.output) ? EVICTED : "not reported";
   const inputValue = bodyValue(inputBody);
   const outputValue = bodyValue(outputBody);
   const input = object(inputValue);
@@ -145,7 +160,7 @@ function ToolCard({
   const stderr = string(output.stderr);
   const fallback =
     outputValue === undefined
-      ? "not reported"
+      ? missingOutput
       : typeof outputValue === "string"
         ? outputValue
         : JSON.stringify(outputValue, null, 2);
@@ -198,16 +213,16 @@ function ToolCard({
               )
             )
           ) : (
-            <p>Input: not reported</p>
+            <p>Input: {missingInput}</p>
           )}
         </div>
       ) : tool === "Write" ? (
         <pre>
-          {string(input.content) ?? (typeof inputValue === "string" ? inputValue : "not reported")}
+          {string(input.content) ?? (typeof inputValue === "string" ? inputValue : missingInput)}
         </pre>
       ) : tool === "Bash" ? (
         <>
-          <p>{string(input.command) ?? "not reported"}</p>
+          <p>{string(input.command) ?? missingInput}</p>
           <Button onPress={toggleExpanded} aria-expanded={expanded}>
             {expanded ? "Collapse output" : "Expand output"}
           </Button>
@@ -224,7 +239,7 @@ function ToolCard({
         <>
           <p>
             {tool === "Read" ? "Read" : "Search"}:{" "}
-            {string(input.pattern) ?? string(input.query) ?? "not reported"}
+            {string(input.pattern) ?? string(input.query) ?? missingInput}
           </p>
           <pre>{fallback}</pre>
         </>
@@ -240,19 +255,17 @@ function ToolCard({
               "not reported"
             )}
           </p>
-          <pre>
-            {inputValue === undefined ? "not reported" : JSON.stringify(inputValue, null, 2)}
-          </pre>
+          <pre>{inputValue === undefined ? missingInput : JSON.stringify(inputValue, null, 2)}</pre>
         </>
       ) : (
-        <pre>{inputValue === undefined ? "not reported" : JSON.stringify(inputValue, null, 2)}</pre>
+        <pre>{inputValue === undefined ? missingInput : JSON.stringify(inputValue, null, 2)}</pre>
       )}
       {tool !== "Bash" &&
       tool !== "Read" &&
       tool !== "Grep" &&
       tool !== "Search" &&
       tool !== "Glob" ? (
-        <p>Output: {outputValue === undefined ? "not reported" : "recorded"}</p>
+        <p>Output: {outputValue === undefined ? missingOutput : "recorded"}</p>
       ) : null}
       {inputBody?.truncated || outputBody?.truncated ? <p>Recorded excerpt truncated</p> : null}
     </article>
@@ -264,18 +277,25 @@ export function LiveTab(props: LiveTabProps) {
   return <LiveFeed key={JSON.stringify([projectId, props.agentId])} {...props} />;
 }
 
-function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
+const NONE: ReadonlySet<string> = new Set();
+
+function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<HTMLElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [following, setFollowing] = useState(true);
   const followingRef = useRef(true);
-  const lastTop = useRef(0);
+  // The offset the virtualizer last wrote, so its measurement corrections are not read as a reader.
+  const written = useRef<number | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     ...(page ? pageScroll : {}),
+    scrollToFn: (offset, options, instance) => {
+      (page ? pageScroll.scrollToFn : elementScroll)(offset, options, instance);
+      written.current = viewport?.scrollTop ?? null;
+    },
     count: calls.length,
     getScrollElement: () => (page as unknown as HTMLElement | null) ?? viewport,
     getItemKey: (index) => calls[index].toolCallId,
@@ -325,7 +345,6 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
       followingRef.current = value;
       if (value && viewport) {
         viewport.scrollTop = viewport.scrollHeight;
-        lastTop.current = viewport.scrollTop;
       }
       setFollowing(value);
     },
@@ -333,13 +352,16 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
   );
   useEffect(() => {
     if (!viewport) return;
-    lastTop.current = viewport.scrollTop;
+    // Following is judged by the distance from the bottom, not by the direction of a change: a
+    // measurement correction can move scrollTop up while the view is still at the bottom.
     const onScroll = () => {
-      if (viewport.scrollTop < lastTop.current - 1) {
+      if (
+        distanceFromBottom(viewport) > FOLLOW_THRESHOLD &&
+        !(written.current !== null && Math.abs(viewport.scrollTop - written.current) <= 1)
+      ) {
         followingRef.current = false;
         setFollowing(false);
       }
-      lastTop.current = viewport.scrollTop;
     };
     // The page scroller's scroll events are dispatched to its document, not to the element.
     const events = isPage(viewport) ? viewport.ownerDocument : viewport;
@@ -368,14 +390,9 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [changeFollow]);
-  // Reconcile after each measured layout, including streaming output and expansion. Recording
-  // our own scroll offset keeps measurement corrections from looking like an upward gesture.
+  // Reconcile after each measured layout, including streaming output and expansion.
   useLayoutEffect(() => {
     if (!viewport) return;
-    // Native scroll events can arrive after a measurement-driven React commit. Read an upward
-    // move before measuring below, whose own correction also moves scrollTop.
-    const bottom = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-    const movedUp = viewport.scrollTop < Math.min(lastTop.current, bottom) - 1;
     // TanStack measures rows mounted during a scroll only on the next ResizeObserver frame,
     // then corrects the estimate above the fold by writing scrollTop from its last reported
     // offset. That late write moves a paused reader, overwrites a newer scroll and looks like
@@ -393,12 +410,7 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
         );
     }
     if (!following || !followingRef.current) return;
-    if (movedUp) {
-      changeFollow(false);
-      return;
-    }
     viewport.scrollTop = viewport.scrollHeight;
-    lastTop.current = viewport.scrollTop;
   });
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
@@ -434,7 +446,7 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
               style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
             >
               <ToolCard
-                {...{ call, evidence, agents, select }}
+                {...{ call, evidence, evicted, agents, select }}
                 expanded={expanded.has(call.toolCallId)}
                 toggleExpanded={() =>
                   setExpanded((old) => {
