@@ -65,12 +65,14 @@ const permission = (agentId: string, requestId: string, agoMs = 100): Attention 
   heuristic: false,
 });
 
+// Silent trouble is scheduled from its onset (last seen + threshold), so this uses a trouble kind
+// whose quip clock is its own `since`.
 const silent = (agentId: string, agoMs = 100): Attention => ({
   agentId,
   level: "trouble",
-  kind: "silent",
+  kind: "tool_failures",
   since: since(agoMs),
-  heuristic: true,
+  heuristic: false,
 });
 
 type Requests = Record<string, { toolName?: string }>;
@@ -109,6 +111,81 @@ describe("Bubbles overlay cap", () => {
     // Give the 500 ms tick a chance to add more; it must not.
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(bubbleEls()).toHaveLength(3);
+  });
+});
+
+// roborev 5873 #1: an agent whose anchor the layer would hide (projected outside the viewport and
+// its margin, or no anchor published at all: `anchors.project(...)` is null or not `visible`) must
+// not use up one of the three bubbles. The seam is the anchor source's own `project` visibility.
+describe("Bubbles overlay cap and offscreen agents", () => {
+  const at = (x: number) => [x, 0, 0] as const;
+  const ON = at(0);
+  const OFF = at(-5); // identity projection: x = -1800 px, far outside the margin
+
+  function anchorsAt(positions: Record<string, readonly [number, number, number] | null>) {
+    const source = createAnchorSource();
+    for (const [id, position] of Object.entries(positions)) {
+      if (position) source.setAnchor(`agent:${id}`, [position[0], position[1], position[2]]);
+    }
+    source.setProjection(IDENTITY, SIZE);
+    return source;
+  }
+
+  const visibleBubble = (agentId: string) => {
+    const el = bubbleOf(agentId);
+    return el !== undefined && getComputedStyle(el).visibility === "visible";
+  };
+
+  it("shows the onscreen agent's bubble when the three older needs-you agents are offscreen", async () => {
+    const ids = ["a1", "a2", "a3", "a4"];
+    // a1 to a3 waited longest, so they outrank a4; none of them can be seen.
+    seed(ids.map((id, i) => permission(id, `req-${id}`, 400 - i * 100)));
+    const anchors = anchorsAt({ a1: OFF, a2: null, a3: OFF, a4: ON });
+    await render(
+      <Frame>
+        <Bubbles {...props(anchors)} />
+      </Frame>,
+    );
+    await expect.poll(() => visibleBubble("a4")).toBe(true);
+    for (const id of ["a1", "a2", "a3"]) expect(visibleBubble(id)).toBe(false);
+  });
+
+  it("still caps at three among the agents that can be seen", async () => {
+    const ids = ["a1", "a2", "a3", "a4", "a5", "a6"];
+    seed(ids.map((id, i) => permission(id, `req-${id}`, 500 - i * 50)));
+    const anchors = anchorsAt({
+      a1: OFF,
+      a2: at(-0.8),
+      a3: at(-0.4),
+      a4: at(0),
+      a5: at(0.4),
+      a6: at(0.8),
+    });
+    await render(
+      <Frame>
+        <Bubbles {...props(anchors)} />
+      </Frame>,
+    );
+    await expect.poll(() => ["a2", "a3", "a4"].every(visibleBubble)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(bubbleEls().filter((el) => getComputedStyle(el).visibility === "visible")).toHaveLength(
+      3,
+    );
+    expect(visibleBubble("a1")).toBe(false);
+  });
+
+  it("shows an agent's bubble once its anchor comes onscreen", async () => {
+    seed([permission("a1", "req-a1", 300)]);
+    const anchors = anchorsAt({ a1: OFF });
+    await render(
+      <Frame>
+        <Bubbles {...props(anchors)} />
+      </Frame>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(visibleBubble("a1")).toBe(false);
+    anchors.setAnchor("agent:a1", [0, 0, 0]);
+    await expect.poll(() => visibleBubble("a1")).toBe(true);
   });
 });
 

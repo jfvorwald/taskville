@@ -92,6 +92,62 @@ describe("quipSchedule", () => {
   });
 });
 
+// roborev 5873 #3 and code review: the overlay asks every 500 ms, so the answer must cost bounded
+// work however old the state is. CTO decision: quips stop after 24 h unhandled (the red ring
+// stays), so a state older than that shows no bubble. Within 24 h the answer is the unbounded
+// definition: the seeded run of gaps from `quipSchedule`.
+describe("quipVisibleAt bounded cost", () => {
+  const HOUR = 3_600_000;
+  const NOW = Date.parse("2026-11-01T10:00:00.000Z");
+
+  it("answers a months-old state quickly (no scan from the start of time)", () => {
+    // Warm the code path with another key so JIT and module setup are not counted.
+    quipVisibleAt({ agentId: "warm", eventId: "warm", sinceMs: NOW - HOUR }, NOW);
+    const t0 = performance.now();
+    for (let i = 0; i < 5; i++) {
+      quipVisibleAt({ agentId: `agent-${i}`, eventId: `old-${i}`, sinceMs: 0 }, NOW);
+    }
+    const perCall = (performance.now() - t0) / 5;
+    // Unbounded, since 0 is ~26 million gap draws per call (hundreds of ms).
+    expect(perCall).toBeLessThan(5);
+  });
+
+  it("shows no bubble for a state more than 24 h old, whatever the seed", () => {
+    const sinceMs = NOW - 25 * HOUR;
+    const shown: string[] = [];
+    for (let i = 0; i < 300; i++) {
+      const key = { agentId: `agent-${i}`, eventId: `evt-${i}`, sinceMs };
+      if (quipVisibleAt(key, NOW)) shown.push(key.agentId);
+    }
+    expect(shown).toEqual([]);
+    expect(quipVisibleAt({ agentId: "a", eventId: "e", sinceMs: 0 }, NOW)).toBe(false);
+  });
+
+  it("matches the unbounded schedule for a state under 24 h old", () => {
+    for (let i = 0; i < 20; i++) {
+      const key = { agentId: `agent-${i}`, eventId: `evt-${i}`, sinceMs: NOW };
+      // The shortest gap is 45 s, so 1000 windows span at least 12.5 h and at most 25 h.
+      const windows = quipSchedule({ ...key, count: 1000 });
+      // Probe only windows that start well inside the first 23 h of the state.
+      const inRange = windows.filter((w) => w.endMs - NOW < 23 * HOUR);
+      expect(inRange.length).toBeGreaterThan(500);
+      for (const w of [
+        inRange[0],
+        inRange[1],
+        inRange[7],
+        inRange[100],
+        inRange[inRange.length - 1],
+      ]) {
+        const win = w as { startMs: number; endMs: number };
+        expect(quipVisibleAt(key, win.startMs)).toBe(true);
+        expect(quipVisibleAt(key, win.endMs - 1)).toBe(true);
+        expect(quipVisibleAt(key, win.endMs)).toBe(false);
+        expect(quipVisibleAt(key, win.startMs - 1)).toBe(false);
+      }
+    }
+  });
+});
+
 describe("quipVisibleAt", () => {
   const windows = quipSchedule({ ...input, count: 4 });
 
