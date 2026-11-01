@@ -1,5 +1,5 @@
-import { execFile as nodeExecFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
 import { OpenerValueError, renderOpener } from "../config/opener.ts";
 
 // "Open session" (ARCHITECTURE.md): copy-only unless the owner configured an opener template.
@@ -29,6 +29,12 @@ export type OpenSessionExecFile = (
 export interface OpenSessionDeps {
   config: OpenSessionConfig;
   execFile: OpenSessionExecFile;
+  /**
+   * Directory check for the request cwd. Optional so callers with a fake `execFile` need no real
+   * path, but the production wiring (the M4.03 command service) must pass `defaultIsDirectory`:
+   * without it a cwd that is a file (such as an `x.command` script) reaches the opener.
+   */
+  isDirectory?: (path: string) => Promise<boolean>;
 }
 
 export type OpenSessionResult =
@@ -41,8 +47,64 @@ export type OpenSessionResult =
       cwd: string;
     };
 
-/** The real `execFile` for `OpenSessionDeps`: promisified, with no shell. */
-export const defaultExecFile: OpenSessionExecFile = promisify(nodeExecFile);
+const DEFAULT_GRACE_MS = 2000;
+
+/**
+ * An `OpenSessionExecFile` with launch semantics: the opener is spawned detached with ignored
+ * stdio (nothing is buffered, so a chatty opener is never killed). It resolves once the child
+ * survives `graceMs` (the child is left running) or exits 0 inside that window, and rejects with
+ * an error whose `code` is the non-zero exit code or the spawn error code (such as ENOENT).
+ */
+export function createDefaultExecFile({
+  graceMs = DEFAULT_GRACE_MS,
+}: {
+  graceMs?: number;
+} = {}): OpenSessionExecFile {
+  return (file, args, options) =>
+    new Promise<void>((resolve, reject) => {
+      const child = spawn(file, args, {
+        ...options,
+        stdio: "ignore",
+        detached: true,
+      });
+      let settled = false;
+      const settle = (error?: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        child.off("exit", onExit);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+        if (code === 0) {
+          settle();
+          return;
+        }
+        const exitCode = code ?? signal ?? "unknown";
+        settle(Object.assign(new Error(`The opener exited with ${exitCode}`), { code: exitCode }));
+      };
+      const timer = setTimeout(() => {
+        child.unref();
+        settle();
+      }, graceMs);
+      // Stays attached after settling, so a late error cannot crash the engine.
+      child.on("error", (error) => settle(error));
+      child.on("exit", onExit);
+    });
+}
+
+/** The real `execFile` for `OpenSessionDeps`. */
+export const defaultExecFile: OpenSessionExecFile = createDefaultExecFile();
+
+/** The real directory check for `OpenSessionDeps.isDirectory`: false for files and missing paths. */
+export async function defaultIsDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 export async function openSession(
   request: OpenSessionRequest,
@@ -51,6 +113,16 @@ export async function openSession(
   const { sessionId, cwd } = request;
   const template = deps.config.sessionOpener;
   if (template === null) return { status: "copy-only", sessionId, cwd };
+
+  if (deps.isDirectory && !(await deps.isDirectory(cwd))) {
+    return {
+      status: "failed",
+      reason: "invalid-value",
+      message: "The session directory does not exist or is not a directory",
+      sessionId,
+      cwd,
+    };
+  }
 
   let command: { file: string; args: string[] };
   try {
