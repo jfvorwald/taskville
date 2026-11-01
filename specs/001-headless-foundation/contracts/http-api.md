@@ -35,7 +35,7 @@ Route access:
 
 | Route | CLI token | Browser session | Bridge token |
 | --- | --- | --- | --- |
-| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events` | yes | yes | no |
+| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/projects/:id/timelines`, `GET /v1/timelines/:id/state`, `GET /v1/timelines/:id/events` | yes | yes | no |
 | `POST /v1/events/batch`, `POST /v1/projects`, `POST /v1/pairing/revoke` | yes | no | no |
 | `POST /v1/commands`, `GET /v1/commands/:id` | **never** | yes | **never** |
 | `POST /v1/pairing` | no credential; pairing code in body | | |
@@ -119,6 +119,50 @@ above that the route answers `503 too_many_streams`. Revoking pairings
 (`POST /v1/pairing/revoke`) ends every stream opened with a browser session
 (security review #17, F1 and F5).
 
+### Timelines (M6.01)
+
+History mode reads a project's recorded past. Today a project has one timeline, its live
+recording, with ID `live:<projectId>`. Archive timelines arrive with imports (M8). The routes are
+read routes: the CLI token and a paired browser session may use them, the bridge token gets `403
+credential_not_allowed`, and they send no CORS headers. They offer no write method, never write
+to the event log or the projections, and have no path to the command service. A timeline ID that is
+not `live:<projectId>` is `404 not_found`; `live:<unknown project>` is `404 unknown_project`.
+
+A **position** (`at`, `from`, `to`) is either a decimal ingest sequence (digits only: no sign,
+fraction, exponent or hex) or a full ISO 8601 timestamp with a zone (`2026-01-01T12:00:00Z`,
+`...+02:00`). The live timeline's clock is each event's `receivedAt`. Date-only, unzoned, or any
+other form is `400 bad_request`.
+
+#### `GET /v1/projects/:id/timelines`
+
+`200 { "projectId", "timelines": [{ "id": "live:<projectId>", "kind": "live", "projectId",
+"firstSequence", "lastSequence", "firstAt", "lastAt", "eventCount" }] }`. `firstSequence` and
+`lastSequence` are 1 and the head; `firstAt` and `lastAt` are those events' `receivedAt`;
+`eventCount` equals `lastSequence`. `404 unknown_project`.
+
+#### `GET /v1/timelines/:id/state?at=<position>`
+
+`200 { "timelineId", "at", "cursor", "reducerVersion", "stateHash", "state", "attention",
+"computedAt" }`. A sequence is that sequence; a timestamp is the greatest sequence received at or
+before it. `at` in the response is the resolved sequence and `cursor` equals it. `state` and
+`stateHash` equal a full replay of events 1 to `at`. `attention` is evaluated at the `receivedAt`
+of event `at` (the engine clock for position 0), not at the engine clock, so history never calls
+an agent silent because time has passed since; `computedAt` is the engine clock. Sequence 0 or a
+timestamp before the first event is the empty state at 0; a position past the head resolves to the
+head. A missing or malformed `at` is `400 bad_request`.
+
+#### `GET /v1/timelines/:id/events?from=&to=&limit=&cursor=`
+
+`200 { "timelineId", "events": StoredEnvelope[], "nextCursor": string | null }`: stored envelopes
+in ascending ingest order. `from` and `to` are inclusive positions, defaulting to 1 and the head
+when the request is served. A sequence `from` of 0 means 1; a sequence `to` past the head means
+the head; a timestamp `from` is the first event received at or after it and a timestamp `to` the
+last received at or before it. An empty range is `200` with no events. `limit` is an integer from
+1 to 1000 (default 200), else `400 bad_request`. `nextCursor` is opaque and `null` on the last
+page. Sending it back, with the same `from`, `to` and `limit`, returns the next page with no gap
+and no duplicate; it supersedes `from`. With an explicit `to`, pages do not change as events are
+ingested. A malformed cursor, or one issued for another timeline, is `400 bad_request`.
+
 ### `POST /v1/commands`, `GET /v1/commands/:id` (stub in this feature)
 
 Registered with the full security middleware so the credential rules are tested
@@ -171,5 +215,5 @@ The exact tool input stays in memory for the decision card; events carry the mas
 
 `GET /v1/attention/events` (M4.01), `POST /v1/sources/claude-code/hooks` (M2),
 `GET /v1/agents/:id/feed` and
-`GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06), timelines (M6),
+`GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06),
 imports (M8), OTLP (M5.12). Each inherits the security checks above.
