@@ -56,14 +56,16 @@ export function registerFeedRoutes(app: Hono<AppEnv>, options: FeedRouteOptions)
     if (after === undefined) {
       return apiError(c, 400, "bad_request", "Cursor must be a non-negative integer");
     }
-    const agentId = c.req.param("id");
-    const projectId = resolveAgentProject(c, storage, agentId);
-    if (projectId instanceof Response) return projectId;
-    // Checked and tracked in the same tick (streamSSE runs the callback up to its first await
-    // synchronously), so concurrent requests cannot overshoot the cap.
+    // The cap comes before agent resolution, which can read every project's log: a full cap
+    // must not leave an unknown agent costing a scan (security review M1). Checked and tracked in
+    // the same tick (streamSSE runs the callback up to its first await synchronously), so
+    // concurrent requests cannot overshoot the cap.
     if (hub.openStreams() >= maxStreams) {
       return apiError(c, 503, "too_many_streams", "Too many open event streams");
     }
+    const agentId = c.req.param("id");
+    const projectId = resolveAgentProject(c, storage, agentId);
+    if (projectId instanceof Response) return projectId;
     const bySession = c.get("credential") === "session";
 
     return streamSSE(c, async (stream) => {

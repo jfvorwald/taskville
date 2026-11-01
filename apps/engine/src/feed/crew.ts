@@ -1,4 +1,10 @@
-import { type Agent, type ProjectState, replay, type Team } from "@taskville/domain/reducer";
+import {
+  type Agent,
+  compareTimestamps,
+  type ProjectState,
+  replay,
+  type Team,
+} from "@taskville/domain/reducer";
 import { domainReducer } from "../ingest/index.ts";
 import type { Storage } from "../storage/index.ts";
 
@@ -72,6 +78,14 @@ function loadCrewInput(storage: Storage, projectId: string): CrewInput {
 const byRegistration = (a: Agent, b: Agent): number =>
   (a.registeredSeq ?? 0) - (b.registeredSeq ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
+/** The team that started last (the later one in the record on a tie), or undefined for none. */
+const latestStarted = (teams: readonly Team[]): Team | undefined =>
+  teams.reduce<Team | undefined>(
+    (best, t) =>
+      best === undefined || compareTimestamps(t.startedAt, best.startedAt) >= 0 ? t : best,
+    undefined,
+  );
+
 /** The crew of one agent: its subagents (recursively), and its team's teammates if it leads one. */
 export function buildCrew(
   storage: Storage,
@@ -83,10 +97,17 @@ export function buildCrew(
   const agents = Object.values(state.agents);
   const self = Object.hasOwn(state.agents, agentId) ? state.agents[agentId] : undefined;
   const teams = Object.values(state.teams);
-  const team: Team | undefined =
-    (self?.teamId !== undefined && Object.hasOwn(state.teams, self.teamId)
+  const memberOf: Team | undefined =
+    self?.teamId !== undefined && Object.hasOwn(state.teams, self.teamId)
       ? state.teams[self.teamId]
-      : undefined) ?? teams.find((t) => t.leadAgentId === agentId);
+      : undefined;
+  // A lead that ran teams in sequence shows the one running (else the latest), not the first.
+  const led = teams.filter((t) => t.leadAgentId === agentId);
+  const running = led.filter((t) => t.endedAt === undefined);
+  const team: Team | undefined =
+    memberOf !== undefined && memberOf.leadAgentId !== agentId
+      ? memberOf
+      : (latestStarted(running.length > 0 ? running : led) ?? memberOf);
 
   const member = (
     agent: Agent,

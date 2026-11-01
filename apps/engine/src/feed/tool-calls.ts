@@ -62,10 +62,28 @@ export class ToolCallTracker {
   apply(event: StoredEnvelope): FeedToolCall | undefined {
     this.#state = reduce(this.#state, event);
     const call = this.#fold(event) ?? this.#closedByBoundary(event);
-    if (call === undefined) return undefined;
-    if (call.phase === "running") this.#open.add(call.toolCallId);
-    else this.#open.delete(call.toolCallId);
+    if (call !== undefined) {
+      if (call.phase === "running") this.#open.add(call.toolCallId);
+      else this.#open.delete(call.toolCallId);
+    }
+    this.#forgetDropped();
     return call;
+  }
+
+  /** How many of this agent's calls are tracked as open: never more than the reducer keeps. */
+  openCallCount(): number {
+    return this.#open.size;
+  }
+
+  /**
+   * Stops tracking an open call the reducer no longer holds (dropped beyond its per-agent cap, or
+   * dropped when a boundary kept only another), so the set stays as small as the reducer's. The
+   * frame already sent for it stays as sent.
+   */
+  #forgetDropped(): void {
+    for (const id of this.#open) {
+      if (!Object.hasOwn(this.#state.toolCalls, id)) this.#open.delete(id);
+    }
   }
 
   /** The reducer closed an open call of this agent as `unfinished` at this event. */

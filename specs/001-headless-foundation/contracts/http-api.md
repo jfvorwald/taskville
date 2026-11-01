@@ -198,7 +198,7 @@ boundary event's sequence. A `PostToolUse` that arrives later replaces `unfinish
 reducer.
 
 ```text
-{ "toolCallId", "agentId", "toolName", "phase": "running" | "succeeded" | "failed" | "unfinished",
+{ "toolCallId", "agentId", "toolName"?, "phase": "running" | "succeeded" | "failed" | "unfinished",
   "startedAt"?, "finishedAt"?, "durationMs"?, "summary"?, "filePaths": string[],
   "evidence": { "input": EvidenceRef | null, "output": EvidenceRef | null } }
 EvidenceRef = { "id", "status": "stored" | "evicted" }
@@ -209,7 +209,10 @@ a body was stored for the call, `evidence.output` only once the call finished (n
 evidence store's state when the frame is written, so an evicted body still shows that the call
 happened (`GET /v1/evidence/:id` then answers `410`). The heartbeat after the backlog
 (carrying the head) marks the client as caught up; the engine sends it after the backlog frames and
-a turn of the event loop, and not at all if the stream already ended.
+a turn of the event loop, and not at all if the stream already ended. The `head` is the last
+project event folded, so it may count frames still queued for the client and not yet written.
+The stream cap is checked before the agent is looked up: with the cap full, an unknown agent or
+project is `503 too_many_streams`, not `404`.
 
 #### `GET /v1/agents/:id/crew?projectId=P`
 
@@ -217,7 +220,7 @@ a turn of the event loop, and not at all if the stream already ended.
 `subagents` are the agent's direct children and each carries its own `children`, recursively.
 `teammates` are the members of the team the agent leads, in order of first registration (empty for
 anyone else); `team` is `{ "id", "name"?, "leadAgentId", "startedAt", "endedAt"? }` for a lead or a
-member. A member is
+member. A lead that ran several teams gets the one still running, else the latest started. A member is
 `{ "agentId", "kind": "subagent" | "teammate", "displayName"?, "agentType"?, "parentAgentId"?,
 "status": "running" | "finished", "currentActivity"?: { "activity", "since", "heuristic" },
 "startedAt", "finishedAt"?, "elapsedMs", "resultSummary"?, "heuristic", "children" }`.
@@ -237,7 +240,9 @@ agents beyond the reducer's retention are not listed.
 [{ "start", "end", "kind" }], "truncated", "bytes" }`. `text` is the stored, already redacted body as
 plain text, never HTML and never HTML-escaped (the client escapes at render time, ARCHITECTURE.md
 12). `masks` locate each `[REDACTED:kind]` marker in `text` by UTF-16 offsets, `[start, end)`,
-sorted; a body the redactor did not change has none. An evidence ID carries its project, so it
+sorted; a body the redactor did not change has none. `masks` is a rendering hint, not proof of
+redaction: text the tool itself printed can contain a literal `[REDACTED:kind]` that looks like a
+mask, so a client treats the marker text and the spans as display help only. An evidence ID carries its project, so it
 resolves in one project only. `404 unknown_evidence` for an ID that was never handed out or whose
 body was never stored; `410 evidence_evicted` ("details no longer stored") when the cap evicted it.
 
