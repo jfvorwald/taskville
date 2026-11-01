@@ -118,6 +118,8 @@ export function CityAgents({
       live.add(v.id);
       lastViews.current.set(v.id, v);
     }
+    // A subagent that gained a known parent is the crew layer's now: its old block view goes.
+    for (const v of models.crew) lastViews.current.delete(v.id);
     const leaving = [...lastViews.current.values()].filter((v) => !live.has(v.id));
     return [...models.views, ...leaving];
   }, [models, pruned]);
