@@ -158,6 +158,11 @@ export class PermissionBridge {
   readonly #tracked = new Map<string, Tracked>();
   /** Sessions with a forgotten request: their PostToolUse closes nothing. */
   readonly #lossySessions = new Set<string>();
+  /**
+   * Set once a session fell off `#lossySessions`: from then on a forgotten request may belong to
+   * any session, so no PostToolUse closes anything until the engine restarts (fail closed).
+   */
+  #lossyOverflow = false;
   #closed = false;
 
   constructor(options: PermissionBridgeOptions) {
@@ -308,7 +313,7 @@ export class PermissionBridge {
     const sessionId = idText(own(raw, "session_id"));
     const toolName = idText(own(raw, "tool_name"));
     if (sessionId === undefined || toolName === undefined) return;
-    if (this.#lossySessions.has(sessionId)) return;
+    if (this.#lossyOverflow || this.#lossySessions.has(sessionId)) return;
     const key = correlationKey(
       sessionId,
       idText(own(raw, "prompt_id")),
@@ -409,6 +414,7 @@ export class PermissionBridge {
     if (this.#lossySessions.size > MAX_LOSSY_SESSIONS) {
       const [oldest] = this.#lossySessions;
       if (oldest !== undefined) this.#lossySessions.delete(oldest);
+      this.#lossyOverflow = true;
     }
   }
 
