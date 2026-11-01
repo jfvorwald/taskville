@@ -2,7 +2,24 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-01, 00:05 EDT. **Main:** 4490436. **State:** M3 complete; stopped at gate G3 [#48](https://github.com/jfvorwald/taskville/issues/48) for the owner.
+**Updated:** 2026-11-01, 11:45 EST. **Main:** 75ad020. **State:** G3 closed by the owner. M4 in progress under the owner's M4 to M6 authorization (T3 Code with Claude subagents, experiment #231 run B); M5 and M6 overlap where M4 waits. Gate issues stay open for owner review.
+
+## In progress: M4 Stuck and interaction (with early M5 and M6 work)
+
+Merged so far (merge-commit PRs, roborev panels and reviews recorded in each report):
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M4.08 #49 session opener | #273 | [report](tasks/M4.08.md) |
+| M4.05 #53 overlay polish | #274 | draw calls unmeasured (#268 open); clip pending for the wave run; [report](tasks/M4.05.md) |
+| M4.02 #51 permission bridge | #275 | decision #271 defaults in force; [report](tasks/M4.02.md) |
+| M4.12 #272 flaky shim test | #276 | harness port filter; [report](tasks/M4.12.md) |
+| M4.06 #54 speech bubbles | #277 | anchor-layer collision noted; [report](tasks/M4.06.md) |
+| M4.01 #50 attention feed and needs-you | #278 | interim Back to Unsorted; [report](tasks/M4.01.md) |
+| M4.03 #52 command service | #280 | known limitations listed in the report and PR; [report](tasks/M4.03.md) |
+| M6.01 #60 timeline API | #282 | calm-day seek MET; lively-day seek MISSED, checkpoints in #279; [report](tasks/M6.01.md) |
+
+Open: M4.09 #55 soundscape (review fixes in green), M4.07 #62 action card (green), M4.04 #61 bridge wiring, input route and installer hook (green), then M4.10 e2e, M4.11 security review, the wave run and M4.RT. M5.01 #56 agent feed APIs (review fixes in green). New follow-ups: #279 (M6.08 replay checkpoints), #281 (M5.14 agent index). The M3 web performance shortfall (#268) stays open and unmet.
 
 ## Done in wave 2 (M3 Live city)
 
@@ -111,7 +128,7 @@ SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16'
 
 Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskville/issues?q=is%3Aopen+label%3Awaiting%3Auser).
 
-- G3 [#48](https://github.com/jfvorwald/taskville/issues/48): the M3 gate review.
+- [#271](https://github.com/jfvorwald/taskville/issues/271): permission request fall-through stays open and unanswerable (default in force).
 - [#236](https://github.com/jfvorwald/taskville/issues/236): theme mockup fidelity (defaults block nothing).
 - [#178](https://github.com/jfvorwald/taskville/issues/178), [#190](https://github.com/jfvorwald/taskville/issues/190), [#198](https://github.com/jfvorwald/taskville/issues/198): engine, protocol and installer decisions on their defaults.
 
@@ -197,4 +214,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-Stopped at G3 (#48). After the owner closes it: M4 and M5 per the roadmap; schedule #268 (web performance), #236 (theme fidelity), and the post-G3 follow-ups #214, #215, #222 and the browser-test follow-ups in the M3.26 report. The next milestone runs in T3 Code with Claude subagents as the orchestration experiment's comparison run (#231); M3's baseline snapshot is linked from the G3 summary.
+M4 to its wave run, retro and the G4 summary on #75 (left open for owner review), then M5 and M6 under the same authorization. Still to schedule: #268 (web performance), #236 (theme fidelity), and the post-G3 follow-ups #214, #215, #222 and the browser-test follow-ups in the M3.26 report. The next milestone runs in T3 Code with Claude subagents as the orchestration experiment's comparison run (#231); M3's baseline snapshot is linked from the G3 summary.

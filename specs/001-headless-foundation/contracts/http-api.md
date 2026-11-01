@@ -23,7 +23,7 @@ Credentials:
 | Kind | Sent as | Source | Notes |
 | --- | --- | --- | --- |
 | CLI token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/token` (mode 0600, 256-bit, created on first `serve`) | Used by the CLI, the demo producer, and the telemetry shim (M2) |
-| Bridge token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/bridge-token` (mode 0600) | Accepted only on `POST /v1/bridge/claude-code/permission` (M4). Not used in this feature |
+| Bridge token | `Authorization: Bearer <token>` | `$TASKVILLE_HOME/bridge-token` (mode 0600) | Accepted only on `POST /v1/bridge/claude-code/permission` (M4.02). The installed hook reads it from the `TASKVILLE_BRIDGE_TOKEN` variable (`allowedEnvVars`); it is never written to settings or printed |
 | Browser session | `X-Taskville-Session: <secret>` | Returned by `POST /v1/pairing` | Kept by the page in `localStorage`; stored by the engine only as a hash |
 
 No cookies: the engine never sends `Set-Cookie` and ignores any `Cookie` header.
@@ -35,9 +35,9 @@ Route access:
 
 | Route | CLI token | Browser session | Bridge token |
 | --- | --- | --- | --- |
-| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/attention/events`, `GET /v1/agents/:id/feed`, `GET /v1/agents/:id/crew`, `GET /v1/evidence/:id` | yes | yes | no |
+| `GET /health`, `GET /v1/projects`, `GET /v1/projects/:id/snapshot`, `GET /v1/projects/:id/events`, `GET /v1/projects/:id/timelines`, `GET /v1/timelines/:id/state`, `GET /v1/timelines/:id/events`, `GET /v1/attention/events`, `GET /v1/agents/:id/feed`, `GET /v1/agents/:id/crew`, `GET /v1/evidence/:id` | yes | yes | no |
 | `POST /v1/events/batch`, `POST /v1/projects`, `POST /v1/pairing/revoke` | yes | no | no |
-| `POST /v1/commands`, `GET /v1/commands/:id` | **never** | yes | **never** |
+| `POST /v1/commands`, `GET /v1/commands/:id`, `GET /v1/requests/:requestId/input` | **never** | yes | **never** |
 | `POST /v1/pairing` | no credential; pairing code in body | | |
 
 The CLI, shim, and bridge tokens can never authorize a command (ARCHITECTURE.md
@@ -118,6 +118,58 @@ Other subscribers are unaffected. A cut-off client that has not read the final
 above that the route answers `503 too_many_streams`. Revoking pairings
 (`POST /v1/pairing/revoke`) ends every stream opened with a browser session
 (security review #17, F1 and F5).
+
+### Timelines (M6.01)
+
+History mode reads a project's recorded past. Today a project has one timeline, its live
+recording, with ID `live:<projectId>`. Archive timelines arrive with imports (M8). The routes are
+read routes: the CLI token and a paired browser session may use them, the bridge token gets `403
+credential_not_allowed`, and they send no CORS headers. They offer no write method, never write
+to the event log or the projections, and have no path to the command service. A timeline ID that is
+not `live:<projectId>` is `404 not_found`; `live:<unknown project>` is `404 unknown_project`.
+
+A **position** (`at`, `from`, `to`) is either a decimal ingest sequence (digits only: no sign,
+fraction, exponent or hex) or a full ISO 8601 timestamp with a zone (`2026-01-01T12:00:00Z`,
+`...+02:00`). The grammar is strict: `YYYY-MM-DDTHH:MM[:SS[.fraction]]` then `Z` or `+HH:MM` or
+`-HH:MM`, upper-case `T` and `Z`, every field in range. Hour 24 (`T24:00`), minute or second 60,
+an offset past 23:59, a space for the `T` and lower-case `t` or `z` are `400 bad_request`, as are
+date-only, unzoned and any other form. A fraction finer than a millisecond is honored: a lower
+bound (`from`) rounds up to the next whole millisecond, an upper bound (`at`, `to`) down. The live
+timeline's clock is each event's `receivedAt`.
+
+#### `GET /v1/projects/:id/timelines`
+
+`200 { "projectId", "timelines": [{ "id": "live:<projectId>", "kind": "live", "projectId",
+"firstSequence", "lastSequence", "firstAt", "lastAt", "eventCount" }] }`. `firstSequence` and
+`lastSequence` are 1 and the head; `firstAt` and `lastAt` are those events' `receivedAt`;
+`eventCount` equals `lastSequence`. `404 unknown_project`.
+
+#### `GET /v1/timelines/:id/state?at=<position>`
+
+`200 { "timelineId", "at", "cursor", "reducerVersion", "stateHash", "state", "attention",
+"computedAt" }`. A sequence is that sequence; a timestamp is the greatest sequence received at or
+before it. `at` in the response is the resolved sequence and `cursor` equals it. `state` and
+`stateHash` equal a full replay of events 1 to `at`. `attention` is evaluated at the `receivedAt`
+of event `at` (the engine clock for position 0), not at the engine clock, so history never calls
+an agent silent because time has passed since; `computedAt` is the engine clock. Sequence 0 or a
+timestamp before the first event is the empty state at 0; a position past the head resolves to the
+head. A missing or malformed `at` is `400 bad_request`.
+
+#### `GET /v1/timelines/:id/events?from=&to=&limit=&cursor=`
+
+`200 { "timelineId", "events": StoredEnvelope[], "nextCursor": string | null }`: stored envelopes
+in ascending ingest order. `from` and `to` are inclusive positions, defaulting to 1 and the head
+when the request is served. A sequence `from` of 0 means 1; a sequence `to` past the head means
+the head; a timestamp `from` is the first event received at or after it and a timestamp `to` the
+last received at or before it. An empty range is `200` with no events. `limit` is an integer from
+1 to 1000 (default 200), else `400 bad_request`. `nextCursor` is opaque and `null` on the last
+page. Sending it back, with the same `from`, `to` and `limit`, returns the next page with no gap
+and no duplicate; it supersedes `from`. The cursor always pins the end of the walk as resolved on
+the first request (the explicit `to`, else the head at that moment), so pages stay within it and
+do not change as events are ingested; a fresh request without a cursor sees the new head. An end
+above the head (a forged cursor) is clamped to the head, and the page that reaches the head has
+`nextCursor: null`, never an extra empty page. A malformed cursor, one whose content has the wrong
+shape, or one issued for another timeline is `400 bad_request`.
 
 ### `GET /v1/attention/events` (SSE, M4.01)
 
@@ -250,12 +302,71 @@ mask, so a client treats the marker text and the spans as display help only. An 
 resolves in one project only. `404 unknown_evidence` for an ID that was never handed out or whose
 body was never stored; `410 evidence_evicted` ("details no longer stored") when the cap evicted it.
 
-### `POST /v1/commands`, `GET /v1/commands/:id` (stub in this feature)
+### `POST /v1/commands`, `GET /v1/commands/:id` (M4.03)
 
-Registered with the full security middleware so the credential rules are tested
-now. A request with any token gets `403 credential_not_allowed`. A paired browser
-session with a matching `Origin` gets `501 not_implemented` until the command
-service lands in M4. No side effects.
+Registered with the full security middleware. A request with any token gets `403
+credential_not_allowed`; a paired browser session needs a matching `Origin`. Until the command
+service registers its routes (`registerCommandRoutes`) the paths answer `501 not_implemented` with
+no side effects. `taskville serve` registers them (M4.04) through `wirePermissionBridge`, which
+also wires the bridge and the input route below.
+
+Request bodies are strict: an unknown key at any level is `400 bad_request`, and a body over 16 KiB
+is `413 payload_too_large`. Every body carries `projectId`, `requestId`, and `idempotencyKey`, and
+an optional `context: { "mode": "live" | "history" }`. A `history` context is
+`400 history_context_rejected`, checked before anything else happens (a repeated key cannot bypass
+it).
+
+- `{ "type": "permission.decide", ..., "decision": { "behavior": "allow" } | { "behavior": "deny",
+  "message"? } }`. `message` is passed to the agent and is not recorded in the log; the audit
+  payload keeps the behavior and, for a note, only a SHA-256 digest of it. A blank `message`
+  (empty, whitespace, or control characters only) counts as absent and the agent gets the default
+  note "Denied in Taskville". C0 and C1 control characters and DEL are stripped from a note
+  before it reaches the agent, except newline and tab. The bridge must hold the request under the
+  command's project and the recorded request's session, or the command is `request_expired` and
+  the decision is never sent.
+- `{ "type": "session.open", ..., "sessionId" }`. `requestId` must be an open request of the same
+  project and session (answerable or not). The working directory is read from the recorded
+  session (`session.started` `workingDirectory`), never from the body, and the opener template
+  comes only from the engine config. When the template uses `{cwd}`, the directory is resolved
+  with `realpath` and must lie inside one of the project's configured roots (the root itself is
+  allowed; roots are resolved too); a resolved name ending in `.app`, `.command`, `.workflow`,
+  `.terminal`, or `.tool` is refused. The opener gets the resolved path. A body with `cwd`,
+  `template`, or `sessionOpener` is `400 bad_request`.
+
+Success is `200 { "command": { "id", "type", "requestId", "status", "result"? } }`.
+`permission.decide` ends `delivered` ("sent, unconfirmed", decision #116 D4): the engine records
+`command.requested`, `request.resolved` (`answered_here`, with `decision`), and `command.delivered`,
+and never `command.succeeded`: a decision is "sent, unconfirmed" and no later telemetry, M4.04's wiring included, upgrades it (decision #116 D4). `session.open` ends
+`succeeded` with `result: { "outcome": "opened" | "copy-only", "sessionId", "cwd"? }` (events:
+`command.requested`, `command.delivered`, `command.succeeded`). The `result` is held in memory
+only (the newest 500 by default; `maxRememberedResults`), so after a restart or once forgotten a
+replay or `GET` returns `succeeded` without `result`.
+
+If recording `request.resolved` or `command.delivered` fails after the decision reached the hook
+response, the response is still `200 delivered`, the error name is logged, and a retry with the same
+key returns that command. When the command service starts, a `permission.decide` left `requested`
+and a `session.open` left `requested` or `delivered` by an engine stop are ended as `failed`; a
+`delivered` `permission.decide` is left as it is.
+
+Errors are `{ "error": { "code", "message" }, "command"?: { "id", "type", "requestId", "status" } }`.
+A `command` is present when the command was recorded.
+
+| Status | Code | When | Recorded |
+| --- | --- | --- | --- |
+| 400 | `bad_request` | invalid body or JSON | nothing |
+| 400 | `history_context_rejected` | `context.mode` is `history` | nothing |
+| 404 | `unknown_project`, `unknown_request`, `unknown_session` | the target does not exist | nothing |
+| 409 | `request_not_open` | the recorded request is already closed (checked without asking the bridge); also for `session.open` | requested, failed |
+| 409 | `request_session_mismatch` | `session.open` names a request that belongs to another session | requested, failed |
+| 422 | `not_answerable` | the request was not bridge-held | requested, unsupported |
+| 410 | `request_expired` | the bridge no longer holds the request, or the decision reached no open hook response | requested, expired |
+| 409 | `idempotency_conflict` | the key was used for a different command | nothing |
+| 409 | `command_in_flight` | an opener is already running for the session (any key) | nothing |
+| 502 | `opener_failed` | the opener could not be started, or its directory is not a directory or is outside the project's roots; the message is non-secret and never carries the path | requested, failed |
+
+The same `idempotencyKey` with the same command returns the same command and status and does not
+ask the bridge or run the opener again, also after its request has closed. A `GET /v1/commands/:id` for a paired session returns
+`200 { "command" }` or `404 unknown_command`.
 
 ### `POST /v1/bridge/claude-code/permission` (M4.02)
 
@@ -293,6 +404,47 @@ A matching `PostToolUse` (exactly one request with the same session, prompt, age
 input) closes the request as `answered_elsewhere` with `decision: "allow"` (decision #116 D3).
 The exact tool input stays in memory for the decision card; events carry the masked copy.
 
+### `GET /v1/requests/:requestId/input?projectId=<id>` (M4.04)
+
+The exact, unmasked tool input of a request whose hook response the bridge still holds, for the
+decision card. A paired browser session only (`command` scope): the CLI, shim, and bridge tokens
+get `403 credential_not_allowed`. The response carries `Cache-Control: no-store` and, like every
+route, no CORS header. The input is never logged and never appears in an error.
+
+`200 { "requestId", "projectId", "sessionId", "toolName", "toolInput"?, "cwd"? }`. `toolInput` is
+the hook's `tool_input` as sent, so it is absent when the hook sent none; `cwd` is the hook's
+working directory, when it sent one. Errors:
+
+| Status | Code | When |
+| --- | --- | --- |
+| 400 | `bad_request` | no `projectId` query parameter |
+| 404 | `unknown_request` | no such request, or the request belongs to another project |
+| 410 | `request_expired` | the request is recorded but no longer held: decided, hold window over, closed by a matching `PostToolUse`, or never held |
+
+### Hold window and the installed hook (M4.04)
+
+`bridge.holdWindowSeconds` in `config.json` is a whole number of seconds from 1 to 300 (default
+90); anything else is refused by `taskville serve` and `taskville install claude-code` with
+`bridge.holdWindowSeconds: must be a whole number of seconds from 1 to 300`. The hook's own
+timeout is the hold window plus 5 seconds, so the engine always answers first.
+
+`taskville install claude-code` now loads `config.json` on every run, also when `--url` or
+`$TASKVILLE_URL` gives the engine URL (the timeout and the range check need it). An unreadable or
+invalid config file, or a `--url` / `$TASKVILLE_URL` that is not `http://127.0.0.1:<port>` or
+`http://localhost:<port>`, fails the install with exit code 1 and writes nothing.
+
+`taskville install claude-code` writes, besides the 15 telemetry command hooks,
+`hooks.PermissionRequest = [{ "hooks": [{ "type": "http", "url":
+"<engine url>/v1/bridge/claude-code/permission", "timeout": <holdWindowSeconds + 5>, "headers": {
+"Authorization": "Bearer $TASKVILLE_BRIDGE_TOKEN" }, "allowedEnvVars": ["TASKVILLE_BRIDGE_TOKEN"]
+}] }]` with no matcher. The port follows the telemetry hooks (`--url`, `$TASKVILLE_URL`, the
+config port), but the hook URL always uses the loopback IP `127.0.0.1`, never `localhost`, which
+can resolve to `::1` (decision #284 default); the timeout is read from `config.json` even when
+`--url` is given. The install output suggests setting `TASKVILLE_BRIDGE_TOKEN` for the Claude Code
+launch only (`env TASKVILLE_BRIDGE_TOKEN="$(cat <home>/bridge-token)" claude`) and names the token
+file; the token is never written to the settings file or printed. Uninstall removes only an `http` hook whose URL is exactly
+a loopback origin plus the bridge route.
+
 ### `GET /health`
 
 `200 { "status": "ok", "db": "ok", "walMode": true, "uptimeSeconds", "version" }`;
@@ -301,5 +453,5 @@ The exact tool input stays in memory for the decision card; events carry the mas
 ## Later routes (ARCHITECTURE.md section 10, not in this feature)
 
 `POST /v1/sources/claude-code/hooks` (M2), `GET /v1/agents/:id/feed` and
-`GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06), timelines (M6),
+`GET /v1/agents/:id/crew` (M5), `GET /v1/evidence/:id` (M2.06),
 imports (M8), OTLP (M5.12). Each inherits the security checks above.

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { requireScope } from "../../src/http/app.ts";
+import { bootInProcess, type Engine, useDbPath } from "../stream/helpers.ts";
 import {
   BRIDGE_TOKEN,
   bearer,
@@ -16,6 +17,32 @@ async function pair(app: ReturnType<typeof makeApp>["app"], code: string): Promi
   expect(res.status).toBe(200);
   const body = (await res.json()) as { session: string };
   return body.session;
+}
+
+// The command routes come from the command service (M4.03), not from createApp, so the tests that
+// exercise /v1/commands build the app the way test/commands/helpers.ts does: bootInProcess plus
+// registerCommandRoutes. The commands modules are imported inside the helper, so that while the
+// service is missing only the command-route tests fail and the rest of this file still runs.
+const dbPath = useDbPath();
+const engines: Engine[] = [];
+afterEach(() => {
+  for (const engine of engines.splice(0)) engine.close();
+});
+
+async function makeCommandApp() {
+  const { createCommandService, registerCommandRoutes } = await import(
+    "../../src/commands/index.ts"
+  );
+  const { fakeBridge } = await import("../commands/helpers.ts");
+  const { app, pairing, engine } = bootInProcess(dbPath());
+  engines.push(engine);
+  const service = createCommandService({
+    engine,
+    bridge: fakeBridge(),
+    opener: { config: { sessionOpener: null }, execFile: async () => undefined },
+  });
+  registerCommandRoutes(app, service);
+  return { app, pairing };
 }
 
 describe("credentials on reads", () => {
@@ -204,9 +231,9 @@ describe("browser pairing", () => {
   });
 });
 
-describe("command route stub", () => {
+describe("command routes", () => {
   it("refuses the CLI token", async () => {
-    const { app } = makeApp();
+    const { app } = await makeCommandApp();
     const res = await app.request("/v1/commands", postJson({}, bearer(CLI_TOKEN)));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({
@@ -215,7 +242,7 @@ describe("command route stub", () => {
   });
 
   it("refuses the CLI token even with a matching Origin", async () => {
-    const { app } = makeApp();
+    const { app } = await makeCommandApp();
     const res = await app.request(
       "/v1/commands",
       postJson({}, { ...bearer(CLI_TOKEN), Origin: ORIGIN }),
@@ -224,13 +251,13 @@ describe("command route stub", () => {
   });
 
   it("refuses the bridge token", async () => {
-    const { app } = makeApp();
+    const { app } = await makeCommandApp();
     const res = await app.request("/v1/commands", postJson({}, bearer(BRIDGE_TOKEN)));
     expect(res.status).toBe(403);
   });
 
   it("refuses tokens on GET /v1/commands/:id too", async () => {
-    const { app } = makeApp();
+    const { app } = await makeCommandApp();
     for (const token of [CLI_TOKEN, BRIDGE_TOKEN]) {
       const res = await app.request("/v1/commands/cmd-1", { headers: bearer(token) });
       expect(res.status).toBe(403);
@@ -238,12 +265,36 @@ describe("command route stub", () => {
   });
 
   it("refuses a request with no credentials", async () => {
-    const { app } = makeApp();
+    const { app } = await makeCommandApp();
     const res = await app.request("/v1/commands", postJson({}, { Host: HOST, Origin: ORIGIN }));
     expect(res.status).toBe(401);
   });
 
-  it("answers a paired session with a matching Origin with 501 until M4", async () => {
+  it("hands a paired session with a matching Origin to the command service (400 on a malformed body)", async () => {
+    const { app, pairing } = await makeCommandApp();
+    const session = await pair(app, pairing.issueCode());
+    const post = await app.request(
+      "/v1/commands",
+      postJson({}, { ...sessionHeaders(session), Origin: ORIGIN }),
+    );
+    expect(post.status).toBe(400);
+    expect(await post.json()).toEqual({
+      error: { code: "bad_request", message: expect.any(String) },
+    });
+  });
+
+  it("answers GET /v1/commands/:id for a paired session with 404 unknown_command", async () => {
+    const { app, pairing } = await makeCommandApp();
+    const session = await pair(app, pairing.issueCode());
+    const get = await app.request("/v1/commands/cmd-1", { headers: sessionHeaders(session) });
+    expect(get.status).toBe(404);
+    expect(await get.json()).toEqual({
+      error: { code: "unknown_command", message: expect.any(String) },
+    });
+  });
+
+  it("answers 501 not_implemented on both routes for a paired session when no command service is registered", async () => {
+    // createApp alone carries the stub; registerCommandRoutes retires it.
     const { app, pairing } = makeApp();
     const session = await pair(app, pairing.issueCode());
     const post = await app.request(
@@ -256,10 +307,13 @@ describe("command route stub", () => {
     });
     const get = await app.request("/v1/commands/cmd-1", { headers: sessionHeaders(session) });
     expect(get.status).toBe(501);
+    expect(await get.json()).toEqual({
+      error: { code: "not_implemented", message: expect.any(String) },
+    });
   });
 
   it("refuses a paired session with no Origin or a foreign Origin", async () => {
-    const { app, pairing } = makeApp();
+    const { app, pairing } = await makeCommandApp();
     const session = await pair(app, pairing.issueCode());
     const none = await app.request("/v1/commands", postJson({}, sessionHeaders(session)));
     expect(none.status).toBe(403);
@@ -271,7 +325,7 @@ describe("command route stub", () => {
   });
 
   it("refuses a revoked session", async () => {
-    const { app, pairing } = makeApp();
+    const { app, pairing } = await makeCommandApp();
     const session = await pair(app, pairing.issueCode());
     pairing.unpairAll();
     const res = await app.request(
@@ -327,7 +381,7 @@ describe("Origin on reads", () => {
   });
 
   it("does not answer a CORS preflight with allow headers", async () => {
-    const { app } = makeApp();
+    const { app } = await makeCommandApp();
     const res = await app.request("/v1/commands", {
       method: "OPTIONS",
       headers: {
