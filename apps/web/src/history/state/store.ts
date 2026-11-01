@@ -141,7 +141,10 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
   }));
 
   const unsubscribe = liveStore.subscribe((next, previous) => {
-    if (next.projectId !== previous.projectId || (next.state === null && previous.state !== null)) {
+    if (
+      next.projectId !== previous.projectId ||
+      next.resetGeneration !== previous.resetGeneration
+    ) {
       store.getState().returnLive();
     } else if (store.getState().mode === "live") {
       store.setState({ state: next.state });
