@@ -1,0 +1,7 @@
+.feed { min-width: 0; }
+.card { padding: 8px; margin-block: 8px; border: 1px solid var(--tv-accent); border-radius: var(--tv-radius); overflow-wrap: anywhere; }
+.card h3 { font-size: inherit; }
+.card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; }
+.card a { color: var(--tv-accent); }
+.card ins { background: color-mix(in srgb, green 20%, transparent); }
+.card del { background: color-mix(in srgb, red 20%, transparent); }

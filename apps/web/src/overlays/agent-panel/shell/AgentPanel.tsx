@@ -7,6 +7,7 @@ import { type DataStore, dataStore } from "../../../data/store.ts";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
+import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
 import styles from "./agent-panel.module.css";
 import { currentFile, elapsedMs, formatElapsed } from "./facts.ts";
 import { familyPath, stepFamily } from "./family.ts";
@@ -192,6 +193,10 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
         >
           {renderTab !== undefined ? (
             renderTab(active, agent.id)
+          ) : active === "live" && mode === "live" ? (
+            <ConnectedLiveTab agentId={agent.id} store={store} select={select} />
+          ) : active === "live" ? (
+            <p>Live cards are not available for this history view.</p>
           ) : active === "files" && mode === "live" ? (
             <ConnectedFilesTab agentId={agent.id} />
           ) : active === "files" ? (
