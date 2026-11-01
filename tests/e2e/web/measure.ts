@@ -131,7 +131,9 @@ try {
     // 5728, 5733).
     const elapsedSeconds = (endedAt - startedAt) / 1000;
     const rate = (ts: number[]) => (elapsedSeconds > 0 ? ts.length / elapsedSeconds : 0);
-    const sorted = gapsOf(times).sort((a, b) => a - b);
+    // The window's edges count as frame boundaries, so a stall before the first or after the last
+    // drawn frame shows in the frame times (roborev 5738).
+    const sorted = gapsOf([startedAt, ...times, endedAt]).sort((a, b) => a - b);
     const rafGaps = gapsOf(raf).sort((a, b) => a - b);
     const fastGap = rafGaps[Math.floor(rafGaps.length * 0.1)] ?? 0;
     return {
@@ -177,7 +179,9 @@ try {
   const stop = new AbortController();
   let demoEnded: { code: number; output: string } | null = null;
   const demo = runDemo(home, {
-    duration: "120m",
+    // At 120x one real second is two simulated minutes, so size the demo to
+    // the window plus start-up and settle margin, whatever --moving is (roborev 5738).
+    duration: `${Math.ceil(((movingSeconds + 30) * 120) / 60)}m`,
     speed: 120,
     port: Number(port),
     signal: stop.signal,
