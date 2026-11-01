@@ -7,7 +7,16 @@ import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
 
+export interface RecordedMoment {
+  readonly sequence: number;
+  readonly time: number;
+  readonly agentId: string | undefined;
+  readonly marker: "Needs you" | "Task completed" | "Commit" | undefined;
+}
+
 interface Presentation {
+  moments: readonly RecordedMoment[];
+  agents: readonly { id: string; name: string }[];
   mode: "live" | "history";
   store: DataStore;
   time: number | null;
@@ -25,7 +34,14 @@ interface Presentation {
   exit(): void;
 }
 
-const live = { mode: "live" as const, store: dataStore, time: null, range: null };
+const live = {
+  mode: "live" as const,
+  store: dataStore,
+  time: null,
+  range: null,
+  moments: [] as readonly RecordedMoment[],
+  agents: [] as readonly { id: string; name: string }[],
+};
 const fallback: Presentation = {
   ...live,
   sequence: null,
@@ -63,7 +79,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     let unsubscribeHistory: (() => void) | undefined;
     let replayTime = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
-    let moments: { sequence: number; time: number }[] = [];
+    let moments: RecordedMoment[] = [];
+    let identitiesLoaded = false;
     const snapshot = createDataStore({ now: () => replayTime });
     snapshot.getState().reset(projectId);
     let value: Presentation;
@@ -77,6 +94,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
       timer = undefined;
       moments = [];
+      identitiesLoaded = false;
       metadata?.abort();
       metadata = undefined;
       unsubscribeHistory?.();
@@ -190,7 +208,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             )
               throw new Error("events");
             eventIds.add(event.eventId);
-            moments.push({ sequence: expected++, time });
+            // Only recorded event facts become markers. Late prompts cannot open needs-you.
+            const marker =
+              event.type === "request.opened" && !event.late
+                ? "Needs you"
+                : event.type === "task.status_changed" && event.payload.status === "completed"
+                  ? "Task completed"
+                  : event.type === "git.commit"
+                    ? "Commit"
+                    : undefined;
+            moments.push({ sequence: expected++, time, agentId: event.agentId, marker });
           }
           cursor = page.nextCursor;
           if (cursor !== null) {
@@ -238,6 +265,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           // Live notifications during the initial seek must not clear its range or pending flag.
           // The live subscription below owns project/reset cancellation.
           if (state.mode === "history" && state.state && state.time !== null) {
+            // Capture recorded identities at the pinned head once, retaining names across rewinds.
+            if (!identitiesLoaded) {
+              identitiesLoaded = true;
+              publish({
+                agents: Object.values(state.state.agents).map((agent) => ({
+                  id: agent.id,
+                  name: agent.displayName ?? agent.id,
+                })),
+              });
+            }
             replayTime = state.time;
             snapshot.getState().applySnapshotState(state.state);
             snapshot.getState().refreshAttention();
@@ -254,7 +291,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             });
           }
         });
-        publish({ range: { first: firstSequence, last: lastSequence } });
+        publish({ range: { first: firstSequence, last: lastSequence }, moments });
         await controller.getState().seekSequence(lastSequence, last);
       } catch {
         if (active && requestGeneration === generation) {

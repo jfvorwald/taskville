@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { ReplayRate } from "../state/store.ts";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
+import { HistoryTimeline } from "./HistoryTimeline.tsx";
 import styles from "./history.module.css";
 
 function editing(target: EventTarget | null): boolean {
@@ -70,20 +71,7 @@ export function HistoryControls() {
             aria-valuetext={new Date(history.time).toLocaleString()}
             onChange={(event) => history.seek(Number(event.currentTarget.value))}
           />
-          <button
-            type="button"
-            disabled={history.sequence === range.first}
-            onClick={() => history.seek((history.sequence ?? range.first) - 1)}
-          >
-            Previous moment
-          </button>
-          <button
-            type="button"
-            disabled={history.sequence === range.last}
-            onClick={() => history.seek((history.sequence ?? range.last) + 1)}
-          >
-            Next moment
-          </button>
+          <HistoryTimeline />
           <button type="button" onClick={history.playing ? history.pause : history.play}>
             {history.playing ? "Pause" : "Play"}
           </button>
