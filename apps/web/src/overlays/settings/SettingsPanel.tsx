@@ -5,6 +5,7 @@ import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
 import styles from "./settings.module.css";
 import {
   type DayNight,
+  DEFAULT_SETTINGS,
   getSettingsStore,
   type ReducedMotionSetting,
   SETTINGS_OVERLAY_ID,
@@ -35,6 +36,8 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const values = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [open, setOpen] = useState(false);
+  // The theme system falls back to the default for an unknown id, so the panel shows that.
+  const theme = themes.some((t) => t.id === values.theme) ? values.theme : DEFAULT_SETTINGS.theme;
 
   return (
     <InteractiveRegion className={styles.panel}>
@@ -50,7 +53,7 @@ export function SettingsPanel({
         <div id="settings-panel-body" className={styles.body}>
           <RadioGroup
             className={styles.group}
-            value={values.theme}
+            value={theme}
             onChange={(v) => store.set("theme", v)}
           >
             <Label className={styles.legend}>Theme</Label>
@@ -95,13 +98,27 @@ export function SettingsPanel({
             </Radio>
           </RadioGroup>
 
-          <Switch className={styles.switch} isDisabled aria-label="Sound">
+          <Switch
+            className={styles.switch}
+            isDisabled
+            aria-label="Sound"
+            aria-describedby="settings-sound-note"
+          >
             Sound
-            <span className={styles.note}>Coming later</span>
+            <span id="settings-sound-note" className={styles.note}>
+              Coming later
+            </span>
           </Switch>
-          <Switch className={styles.switch} isDisabled aria-label="Hide code in the city">
+          <Switch
+            className={styles.switch}
+            isDisabled
+            aria-label="Hide code in the city"
+            aria-describedby="settings-hide-code-note"
+          >
             Hide code in the city
-            <span className={styles.note}>Coming later</span>
+            <span id="settings-hide-code-note" className={styles.note}>
+              Coming later
+            </span>
           </Switch>
         </div>
       ) : null}

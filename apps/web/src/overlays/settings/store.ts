@@ -40,8 +40,11 @@ const oneOf =
   (value: unknown): value is T =>
     typeof value === "string" && (choices as readonly string[]).includes(value);
 
+/** A theme id is later used by the theme system, so only short, plain ids are accepted. */
+const THEME_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
 const VALID: Validators = {
-  theme: (value): value is string => typeof value === "string" && value.length > 0,
+  theme: (value): value is string => typeof value === "string" && THEME_ID.test(value),
   dayNight: oneOf(DAY_NIGHT_CHOICES),
   reducedMotion: oneOf(REDUCED_MOTION_CHOICES),
 };
@@ -73,6 +76,27 @@ export function createSettingsStore(storage: StorageLike | null): SettingsStore 
   let snapshot = { ...DEFAULT_SETTINGS };
   for (const key of KEYS) (snapshot as Record<string, unknown>)[key] = read(storage, key);
   const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+
+  /** Re-reads one key from storage into the snapshot; true when the value changed. */
+  const refresh = (key: keyof SettingsValues) => {
+    const next = read(storage, key);
+    if (snapshot[key] === next) return false;
+    snapshot = { ...snapshot, [key]: next };
+    return true;
+  };
+
+  // Another tab changed storage: follow it. A null key means storage was cleared.
+  if (storage && typeof window !== "undefined") {
+    window.addEventListener("storage", (event) => {
+      const { key, storageArea } = event as StorageEvent;
+      if (storageArea && storageArea !== storage) return;
+      const changed = KEYS.filter((k) => key === null || storageKey(k) === key).map(refresh);
+      if (changed.includes(true)) notify();
+    });
+  }
 
   return {
     subscribe(listener) {
@@ -83,14 +107,19 @@ export function createSettingsStore(storage: StorageLike | null): SettingsStore 
     },
     getSnapshot: () => snapshot,
     set(key, value) {
-      if (!VALID[key](value) || snapshot[key] === value) return;
-      snapshot = { ...snapshot, [key]: value };
+      if (!VALID[key](value)) return;
+      const raw = JSON.stringify(value);
       try {
-        storage?.setItem(storageKey(key), JSON.stringify(value));
+        // Compare with storage, not memory: this tab may have missed another tab's change.
+        if (storage && storage.getItem(storageKey(key)) !== raw) {
+          storage.setItem(storageKey(key), raw);
+        }
       } catch {
         // A setting that does not stick across reloads is not worth a crash.
       }
-      for (const listener of listeners) listener();
+      if (snapshot[key] === value) return;
+      snapshot = { ...snapshot, [key]: value };
+      notify();
     },
   };
 }
