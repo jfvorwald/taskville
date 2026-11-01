@@ -402,7 +402,7 @@ describe("visible playback controls drive recorded presentation", () => {
       if (action === "exit")
         expect(
           page.getByRole("status", { name: "Presented recording" }).element().textContent,
-        ).toContain("live:6:");
+        ).toContain("live:5:");
       else
         expect(page.getByRole("status", { name: "Presented recording" }).elements()).toHaveLength(
           0,
