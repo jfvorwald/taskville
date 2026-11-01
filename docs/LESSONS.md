@@ -20,6 +20,390 @@ Entry format:
 
 ## Entries
 
+### L-181: A brew upgrade of claude-code deletes the binary path that teammate spawns use
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** After a brew upgrade, four M3 workers died at launch (status 127) while the Agent tool reported success.
+- **Lesson:** Restart the lead after a Claude upgrade (`claude --continue`), and check pane liveness after each spawn.
+- **Action:** memory note (restart-lead-after-claude-upgrade).
+
+### L-180: The auto-mode classifier blocks gh pr merge --admin without an owner instruction
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** The classifier blocked `gh pr merge --admin` and ruleset edits (26292100, 26292102), and merges stalled for about three hours.
+- **Lesson:** Get an explicit owner standing order for merging reviewed, green PRs before the merge step.
+- **Action:** Owner standing order to merge own reviewed PRs with --admin (2026-10-31).
+
+### L-179: Chained merge-commit PRs on integration bases work without force pushes
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** Tickets were built on integration bases (87691b5, 81f7258, 6ea33b3) and merged as a chain. Cross-ticket conflicts were only mount lines, but other tickets' interface changes broke tests: LabelSprite props, OverlayRoot needing a SessionProvider, and the settings store listener against a stubbed window.
+- **Lesson:** Expect interface changes from earlier chain steps to break later tests, and fix them inside the chain.
+- **Action:** PRs #238 to #267.
+
+### L-178: The e2e suite shared one engine, so pairing codes ran out and demo agents leaked
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** Single-use pairing codes ran out (`taskville serve` keeps only five) and demo agents leaked across specs. CI web-smoke failed from M3.06 onward.
+- **Lesson:** Run one engine per spec file, and issue the running spec's codes last.
+- **Action:** #255 (one engine per spec file).
+
+### L-177: roborev pre_merge panels on each chain step found medium findings after ticket reviews passed
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** Panels on each chain step found 15 medium findings: a sync abort race, instanced meshes lost on theme switch, settings and theme wiring, and test robustness.
+- **Lesson:** Run a pre_merge panel on each chain step; ticket-level review does not catch cross-ticket interactions.
+- **Action:** #256, #257, #258, #237.
+
+### L-176: The M3.13 celebrations pixel check never verified particles
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #45 · **Recorded by:** lead (CTO session)
+- **What happened:** The screenshot landed after a 700 ms effect, and the tolerance matched scenery. A negative control found 229 false pixels.
+- **Lesson:** Give each e2e pixel assertion a negative control, and do not assert on a timing-dependent frame.
+- **Action:** Replaced by a deterministic burst.browser.test.tsx (M3.13 6d82536).
+
+### L-175: A minifier keeps code behind a function-wrapped import.meta.env check
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #233 · **Recorded by:** lead (CTO session)
+- **What happened:** A gate written as a function left test hooks in the production bundle. Only a literal comparison at the use site was dead-code eliminated.
+- **Lesson:** Write `import.meta.env.VITE_TV_TEST_HOOKS === "1"` literally at each guard, and grep the built bundle to confirm.
+- **Action:** #233 (M3.19).
+
+### L-174: Browser test flakes came from software WebGL stalls, not rAF throttling
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #263 · **Recorded by:** lead (CTO session)
+- **What happened:** SwiftShader, shared by parallel test pages, stalled for 4 to 4.5 s. The page stayed visible and rAF ran at 60 Hz until the stall.
+- **Lesson:** Do not cap waits at `vi.waitFor`'s 1 s default or count fixed frames; wait on a condition with a generous bound.
+- **Action:** #263.
+
+### L-173: Reviewer and debugger agents cannot run tests or create files under their guards
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** The lead ran the checks and wrote the reports for the reviewer and debugger.
+- **Lesson:** Brief reviewers with the lead's check results.
+- **Action:** none, awareness only (practice: the lead supplies check results in each review brief).
+
+### L-172: Worker handoffs over about 16,000 characters were truncated in delivery
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** Long handoffs were truncated in delivery several times.
+- **Lesson:** When a handoff arrives cut off, ask for a short resend.
+- **Action:** Briefs now cap handoff length (lead practice; no link).
+
+### L-171: The close-worker script's ls-remote pattern also matches m3/<KEY> chain branches
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
+- **What happened:** Once chain branches existed, the `ls-remote --heads` pattern matched them and the script refused to run.
+- **Lesson:** Check the script's match pattern before relying on it with chain branches.
+- **Action:** none, awareness only (owner's script).
+
+### L-170: Static file serving must be tested on a real socket
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** hono `serveStatic` followed symlinks out of the web directory and served dotfiles. `app.request("/../x")` normalizes `..` before the app sees it, so the traversal test passed vacuously.
+- **Lesson:** Test traversal with a real-socket request and a raw request line. Check the resolved path against hidden files too, since a public-looking symlink can point to a hidden file.
+- **Action:** PR #229 (own static handler in apps/engine/src/http/static.ts).
+
+### L-169: Mount catch-all static handlers with app.use, not app.get("*")
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** `app.get("*")` added a route-table entry that the CLI route-table test pins.
+- **Lesson:** Use `app.use` so the static handler stays out of the pinned route table.
+- **Action:** PR #229.
+
+### L-168: Do not clear a pairing code before the exchange can be retried
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** The code was cleared from the address bar before the exchange, so a network failure could not be retried. A link pasted into the same tab fires only `hashchange`.
+- **Lesson:** On failure, ask for a new link rather than offering a retry that cannot work, and listen for `hashchange`.
+- **Action:** PR #229.
+
+### L-167: An async check that can delete state must delete only what it checked
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** A 401 check on a stored session could delete a newer session. The second panel found it after a fix added a second way to start an attempt.
+- **Lesson:** Delete only the state the check read, and drop the result of a superseded attempt.
+- **Action:** PR #229.
+
+### L-166: Vite types CSS Module lookups as index signatures
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** With `noUncheckedIndexedAccess`, CSS Module class lookups become `string | undefined`.
+- **Lesson:** Turn that one flag off for the web package rather than guarding each lookup.
+- **Action:** none, awareness only.
+
+### L-165: Vitest Browser Mode needs the Chromium revision that matches the installed Playwright
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** The first browser run after an install failed one test with a React context error and passed on the next run. The cause was not found.
+- **Lesson:** After a Playwright bump, run `pnpm exec playwright install chromium`, and record any one-off browser failure with its text.
+- **Action:** none, awareness only.
+
+### L-164: A web workspace package must declare a dependency before it can import it
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #30 · **Recorded by:** M3.02 report (agent not named)
+- **What happened:** `apps/web/package.json` lacked `@taskville/domain` and `@taskville/protocol`, so `src/data/domain.ts` used relative paths.
+- **Lesson:** Keep one import seam file, so adding the dependency is a one-file change.
+- **Action:** none, awareness only (wiring left for the lead).
+
+### L-163: A fake engine that replays real reducer state can assert no gap or duplicate by hash
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #30 · **Recorded by:** M3.02 report (agent not named)
+- **What happened:** The data-layer test replayed a real event log through a fake engine and compared state hashes.
+- **Lesson:** Assert gap-free, duplicate-free sync against replayed reducer state, not hand-built expectations.
+- **Action:** none, awareness only.
+
+### L-162: Keep geometry in pure .ts modules so node tests can cover it
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #31 · **Recorded by:** M3.03 report (agent not named)
+- **What happened:** Projection, collision and registry logic lived in pure modules, testable in node without a browser. The React layer stayed thin.
+- **Lesson:** Put logic in pure modules, and leave browser tests for the React layer.
+- **Action:** none, awareness only.
+
+### L-161: elementFromPoint assertions need element identity, not textContent
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #31 · **Recorded by:** M3.03 report (agent not named)
+- **What happened:** A wrapper that contains the text matched a textContent assertion.
+- **Lesson:** Assert the element returned by `document.elementFromPoint` by identity.
+- **Action:** none, awareness only.
+
+### L-160: Biome's noComponentHookFactories flags fixtures built inside test helpers
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #31 · **Recorded by:** M3.03 report (agent not named)
+- **What happened:** Biome flagged fixture components built inside test helper functions.
+- **Lesson:** Use a targeted `biome-ignore` with a reason.
+- **Action:** none, awareness only.
+
+### L-159: Playwright alone serves a stale dist
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #32 · **Recorded by:** M3.04 report (agent not named)
+- **What happened:** The scaffold e2e script builds before it tests, but `playwright test` on its own serves the old dist, so the screenshot did not change.
+- **Lesson:** Rebuild after a visual change before running e2e.
+- **Action:** none, awareness only.
+
+### L-158: The fixed e2e port collides between parallel workers
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #32 · **Recorded by:** M3.04 report (agent not named)
+- **What happened:** Port 4817 in the scaffold Playwright config is shared by every worker running e2e.
+- **Lesson:** Set `E2E_PORT` to a free port for each run.
+- **Action:** none, awareness only.
+
+### L-157: Dark albedos render near-black under ACES tone mapping
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #32 · **Recorded by:** M3.04 report (agent not named)
+- **What happened:** With default ACES tone mapping and ambient light 1, albedos near #2b3340 rendered almost black.
+- **Lesson:** Use mid-grey albedos for ground that must read against a dark scene.
+- **Action:** none, awareness only.
+
+### L-156: drei Html labels lose the first label under StrictMode
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #33 · **Recorded by:** M3.05 report (agent not named)
+- **What happened:** drei `Html` labels lost their first label when React runs effects twice, and the app uses StrictMode.
+- **Lesson:** Use a canvas-texture sprite per agent instead; it needs no DOM.
+- **Action:** none, awareness only.
+
+### L-155: page.screenshot in a vitest browser test captures the whole page
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #33 · **Recorded by:** M3.05 report (agent not named)
+- **What happened:** `page.screenshot` saves relative to the test file and captures the whole page.
+- **Lesson:** Screenshot a `data-testid` element instead.
+- **Action:** none, awareness only.
+
+### L-154: A navigator that owns no clock is testable with a fake clock
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #36 · **Recorded by:** M3.06 report (agent not named)
+- **What happened:** `tick(nowMs)` with fixed substeps let every rule run in node, including a frame-by-frame determinism check.
+- **Lesson:** Give simulation logic an explicit clock input.
+- **Action:** none, awareness only.
+
+### L-153: Mutual-yield rules need a tie-break that also makes room
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #36 · **Recorded by:** M3.06 report (agent not named)
+- **What happened:** "The smaller id goes" let the winner walk through the loser.
+- **Lesson:** Back the loser off along its own street.
+- **Action:** none, awareness only.
+
+### L-152: Agents spawned at one point walk in lockstep and cannot be separated
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #36, #257 · **Recorded by:** M3.06 report (agent not named)
+- **What happened:** Agents spawned at one point in one sync shared a path, and no "ahead" check could separate them (M3.06). A subagent with no destination never walks, so spawn placement alone kept siblings apart (M3.24).
+- **Lesson:** Use distinct spawn points.
+- **Action:** none, awareness only.
+
+### L-151: Run the CLI in process from a Playwright spec
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #36 · **Recorded by:** M3.06 report (agent not named)
+- **What happened:** Calling the CLI's `run([...], io)` in process drove the real demo producer against the e2e engine.
+- **Lesson:** Use in-process `run()` for e2e setup, once the harness shares its home.
+- **Action:** none, awareness only.
+
+### L-150: Theme tokens need a color rule, not just key names
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #37 · **Recorded by:** M3.07 report (agent not named)
+- **What happened:** The 3D side (three.js `Color`) and CSS needed the same values.
+- **Lesson:** Test that every theme color is `#rrggbb`.
+- **Action:** none, awareness only.
+
+### L-149: Theme modules must not import core/index.ts
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #37 · **Recorded by:** M3.07 report (agent not named)
+- **What happened:** The registry imports the themes, so the reverse import would be a cycle.
+- **Lesson:** Import from `core/contract.ts` in theme modules.
+- **Action:** none, awareness only.
+
+### L-148: The accent height rule caps a chimney at about 2.9 m
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #41 · **Recorded by:** M3.08 report (agent not named)
+- **What happened:** The rule (building height + 3 m) caps a chimney at about 2.9 m above the roof.
+- **Lesson:** A taller stack needs a contract change, not a theme tweak.
+- **Action:** none, awareness only.
+
+### L-147: Theme screenshots need a theme hook; swapping the default is the workaround
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #41, #43, #235 · **Recorded by:** M3.08 report (agent not named)
+- **What happened:** Nothing let a screenshot run pick a theme (M3.08), so per-theme screenshots needed a temporary default swap (M3.10). After the theme moved to the settings store, reordering `THEMES` stopped selecting a theme, and four screenshots came out byte-identical (M3.21).
+- **Lesson:** For a screenshot run, swap `DEFAULT_SETTINGS.theme`. A `?theme=` hook or an exposed controller would make per-theme screenshots reproducible.
+- **Action:** none, awareness only.
+
+### L-146: Check each theme once in the real render
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #42 · **Recorded by:** M3.09 report (agent not named)
+- **What happened:** A near-white token still reads grey under the shared lights.
+- **Lesson:** Check each theme once in the real render, not by palette alone.
+- **Action:** none, awareness only.
+
+### L-145: sips -c silently ignores --cropOffset
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #42 · **Recorded by:** M3.09 report (agent not named)
+- **What happened:** `sips -c` with `--cropOffset` left the full image.
+- **Lesson:** Crop with a Playwright `clip` screenshot of the file.
+- **Action:** none, awareness only.
+
+### L-144: git commit -a skips untracked files
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #43 · **Recorded by:** M3.10 report (agent not named)
+- **What happened:** A new theme folder was left out of a commit that already registered it.
+- **Lesson:** Run `git status` before every commit.
+- **Action:** none, awareness only.
+
+### L-143: Raycaster needs matrixWorld current in unit tests
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #38 · **Recorded by:** M3.11 report (agent not named)
+- **What happened:** Without `updateMatrixWorld(true)`, every object tests at the origin, so a pick can pass by coincidence.
+- **Lesson:** Call `updateMatrixWorld(true)` in unit-test scenes.
+- **Action:** none, awareness only.
+
+### L-142: Read a point's screen position from the running scene
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #38 · **Recorded by:** M3.11 report (agent not named)
+- **What happened:** A test recomputed a screen position from camera math that disagreed with the drawn camera, so it passed against the wrong camera.
+- **Lesson:** Ask the scene for the anchor projection instead of recomputing it in the test.
+- **Action:** none, awareness only.
+
+### L-141: Fade a building by cloning its material, not changing the shared one
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #38 · **Recorded by:** M3.11 report (agent not named)
+- **What happened:** Buildings share per-tone materials. Instanced windows cannot be faded per building.
+- **Lesson:** Clone per building on first fade and swap. Scale a building's instances to zero instead of fading instanced windows.
+- **Action:** none, awareness only.
+
+### L-140: On macOS, sed -i needs an empty suffix argument
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #38 · **Recorded by:** M3.11 report (agent not named)
+- **What happened:** Without the empty suffix, the next path was read as the sed script.
+- **Lesson:** Use `sed -i ''`.
+- **Action:** none, awareness only.
+
+### L-139: First paint of the WebGL canvas can exceed Playwright's 5 s default under load
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #38 · **Recorded by:** M3.11 report (agent not named)
+- **What happened:** Other workers loading the machine pushed first paint past the default.
+- **Lesson:** Give the first `toBeVisible` on the canvas a longer timeout.
+- **Action:** none, awareness only.
+
+### L-138: A fixed-clock browser makes time-of-day visuals reproducible
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #44 · **Recorded by:** M3.12 report (agent not named)
+- **What happened:** `page.clock.setFixedTime` with `timezoneId` fixed the time of day in e2e, with no app test hook.
+- **Lesson:** Use the fixed clock for time-of-day visuals.
+- **Action:** none, awareness only.
+
+### L-137: A lighting ticket should own where its lights are declared
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #44 · **Recorded by:** M3.12 report (agent not named)
+- **What happened:** Ambient and sun lights declared in `SceneRoot` and `CityScene` could not be driven from the lighting folder.
+- **Lesson:** Give the lighting ticket ownership of the light declarations.
+- **Action:** none, awareness only.
+
+### L-136: Charge a rate limit for what was shown, not what was wanted
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #45 · **Recorded by:** M3.13 report (agent not named)
+- **What happened:** The trigger rules are pure, but the renderer knows whether something could be drawn. An undrawn celebration started the 2 s window.
+- **Lesson:** The renderer reports back through a callback, and the rate limit is charged only when it draws.
+- **Action:** none, awareness only.
+
+### L-135: Filter old facts before any state tracking
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #45 · **Recorded by:** M3.13 report (agent not named)
+- **What happened:** Imported and late events could arm or clear a shimmer.
+- **Lesson:** Filter them at the top of the rules, before state tracking.
+- **Action:** none, awareness only.
+
+### L-134: A component library can drop an ARIA attribute silently
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #46 · **Recorded by:** M3.14 report (agent not named)
+- **What happened:** A library component dropped an ARIA attribute passed to it.
+- **Lesson:** Assert the attribute on the rendered DOM, and prefer the library's own selection state.
+- **Action:** none, awareness only.
+
+### L-133: React Aria inputs are visually clipped inside their label
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #39 · **Recorded by:** M3.15 report (agent not named)
+- **What happened:** Radio and switch inputs render clipped inside their `<label>`.
+- **Lesson:** In component tests, click the label text, then assert on the role.
+- **Action:** none, awareness only.
+
+### L-132: Do not give a React Aria group both aria-label and a Label child
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #39 · **Recorded by:** M3.15 report (agent not named)
+- **What happened:** The name doubled ("Day and night Day and night"), and `getByRole` by name missed it. A Switch label with a note also ran the note into the name.
+- **Lesson:** Use `aria-label` for the name and `aria-describedby` for the note.
+- **Action:** none, awareness only.
+
+### L-131: Clear the queued flag when a walker leaves a line
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #232 · **Recorded by:** M3.18 report (agent not named)
+- **What happened:** A walker skipped at the head of a line kept a stale `queued` flag, and later "still in line" tests trusted it.
+- **Lesson:** Clear the flag at the point of removal.
+- **Action:** none, awareness only.
+
+### L-130: Share a value between sibling components through a small module store
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #234 · **Recorded by:** M3.20 report (agent not named)
+- **What happened:** `DayNightLighting` is a sibling of `ThemedCity` and could not reach materials created inside `CityScene`. A module store in `materials.ts` carries the emissive level.
+- **Lesson:** Keep the dependency one-way: lighting imports buildings, never the reverse, since themes imports buildings.
+- **Action:** none, awareness only.
+
+### L-129: The palette flip at nightness 0.5 is a visible step
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #234 · **Recorded by:** M3.20 report (agent not named)
+- **What happened:** The emissive level is continuous, but the theme palette flips day to night at nightness 0.5, so the glow color steps (cyberpunk lamp #5fe3ff to #9af5ff).
+- **Lesson:** Blend day and night palettes by nightness if the step matters. M3.20 did not fix it.
+- **Action:** none, awareness only (the report files no follow-up ticket).
+
+### L-128: E2E_SCREENSHOT is resolved against apps/web
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #235 · **Recorded by:** M3.21 report (agent not named)
+- **What happened:** A relative `E2E_SCREENSHOT` path resolves against `apps/web`, not the repo root.
+- **Lesson:** Pass an absolute path.
+- **Action:** none, awareness only.
+
+### L-127: A prop default that falls back hides missing wiring
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #237 · **Recorded by:** M3.22 report (agent not named)
+- **What happened:** Both components worked in isolation. Only a test on the mount point (`CityRoot`) caught that the settings value never arrived.
+- **Lesson:** Test wiring at the mount point.
+- **Action:** #237.
+
+### L-126: toHaveTextContent cannot match a regex in vitest-browser 5.0.5
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #256 · **Recorded by:** M3.23 report (agent not named)
+- **What happened:** `toHaveTextContent` compares `String(t)` for equality, so a regex argument can never pass and fails typecheck.
+- **Lesson:** Use `toMatchTextContent` for regex matches.
+- **Action:** none, awareness only.
+
+### L-125: Check the abort signal after every await in the sync loop
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #256 · **Recorded by:** M3.23 report (agent not named)
+- **What happened:** The sync loop did not check `signal.aborted` after awaits, which left an abort race.
+- **Lesson:** Check the signal after every await, and cancel the SSE reader on abort.
+- **Action:** #256.
+
+### L-124: Instanced meshes rebuild when their geometry or material changes
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #257 · **Recorded by:** M3.24 report (agent not named)
+- **What happened:** React Three Fiber rebuilds an instanced mesh when either constructor argument changes, so per-instance data written in an effect keyed on the data alone was lost on a theme switch.
+- **Lesson:** Write per-instance data in a ref callback, which runs with the new mesh.
+- **Action:** #257.
+
+### L-123: Raycasting ignores visible
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #257 · **Recorded by:** M3.24 report (agent not named)
+- **What happened:** Hidden objects still got picked.
+- **Lesson:** Picking has to check the object and its ancestors for visibility itself.
+- **Action:** #257.
+
+### L-122: Gate hover repicks on pointer presence and not dragging
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #257 · **Recorded by:** M3.24 report (agent not named)
+- **What happened:** A camera change from a drag, or with the pointer outside the canvas, repicked hover on every move.
+- **Lesson:** Repick only while the pointer is inside the canvas and not dragging.
+- **Action:** #257.
+
+### L-121: A panel in a clipped, absolutely sized slot needs its own scroll container
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #258 · **Recorded by:** M3.25 report (agent not named)
+- **What happened:** The expanded settings panel ran past the clipped sidebar slot at short viewports.
+- **Lesson:** Set max-height 100% and min-height 0 down the flex chain.
+- **Action:** #258.
+
+### L-120: A store that skips unchanged values cannot drive a system that can diverge
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #258 · **Recorded by:** M3.25 report (agent not named)
+- **What happened:** The theme picker showed the stored theme, not the one in use, and re-choosing the stored theme did nothing.
+- **Lesson:** Apply the choice to the controller directly, and store it as well.
+- **Action:** #258.
+
+### L-119: Drive frames by hand in animation tests
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #263 · **Recorded by:** M3.26 report (agent not named)
+- **What happened:** The work-loop test waited on wall time. Driving 20 ms frames with `advance()` made it deterministic.
+- **Lesson:** Use `frameloop="never"` and `advance()` for animation over time. Otherwise wait on a condition (root exists, a frame was drawn) with a generous bound.
+- **Action:** #263.
+
+### L-118: Unrelated tests time out when parallel workers load the machine
+- **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** #26, #30, #31, #234, #257 · **Recorded by:** M3.01 report (agent not named)
+- **What happened:** Tests unrelated to each ticket hit 5 s timeouts under parallel workers (load average reached 61 in M3.01) and passed when re-run alone. Each was logged as a load flake.
+- **Lesson:** Re-run a load timeout once, alone, and log it as a flake. A second failure is a finding.
+- **Action:** none, awareness only.
+
 ### L-117: A usage-limit cutoff mid-wave leaves state that only live GitHub can reconcile
 - **Date:** 2026-10-31 · **Milestone:** M2 · **Ticket:** none · **Recorded by:** lead (M2.RT)
 - **What happened:** The first M2 lead session hit its usage limit with M2.10 committed but unreported, M2.19 assigned but never started, M2.18's correction unpushed, and STATUS behind seventeen merges. Recovery and this resume reconciled from GitHub, refs and worktrees before assigning anything.
