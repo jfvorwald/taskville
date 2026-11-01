@@ -436,3 +436,93 @@ describe("after the lossy-session set overflowed, no PostToolUse is attributed (
     await pending;
   }, 120_000);
 });
+
+// Security confirm review of roborev 5808 (M4.02, #51): `prompt_id` becomes the request.opened
+// envelope's `correlationId`, which is stored and broadcast unmasked. Telemetry (core/map.ts
+// `promptId`) keeps it only when it is a valid hook ID (isHookId, max 100) and otherwise treats
+// it as absent. The bridge does the same: an invalid prompt_id is absent, the request is still
+// handled, and the PostToolUse path agrees so the correlation keys still match.
+describe("a prompt_id that is not a valid hook ID is treated as absent (security confirm)", () => {
+  const token = fakeGithubToken(21);
+
+  it("holds and records the request but stores and broadcasts the secret-shaped value nowhere", async () => {
+    harness = bootBridge(dbPath(), { newRequestId: () => "bridge:request:prompt-secret" });
+    const h = harness;
+    h.connectViewer();
+
+    const pending = postPermission(h.app, permissionHook({ prompt_id: token }));
+    const requestId = await heldRequestId(h.engine);
+
+    const [opened] = eventsOf(h.engine, "request.opened");
+    expect(opened?.payload).toMatchObject({ requestId, kind: "permission", toolName: "Bash" });
+    // Absent, as telemetry treats it: no correlationId on the envelope at all.
+    expect(opened?.correlationId).toBeUndefined();
+
+    expect(JSON.stringify([...h.engine.storage.events("demo")])).not.toContain(token);
+    expect(JSON.stringify(projectState(h.engine))).not.toContain(token);
+    expect(h.seen.length).toBeGreaterThan(0);
+    expect(JSON.stringify(h.seen)).not.toContain(token);
+
+    h.bridge.close();
+    await pending;
+  });
+
+  it.each([
+    ["a value over 100 characters", "p".repeat(101)],
+    ["a value with a colon", "prompt:id"],
+    ["a value that starts with a hyphen", "-prompt"],
+  ])("treats %s as absent and still holds the request", async (_label, bad) => {
+    harness = bootBridge(dbPath());
+    const h = harness;
+    h.connectViewer();
+
+    const pending = postPermission(h.app, permissionHook({ prompt_id: bad }));
+    await heldRequestId(h.engine);
+
+    const [opened] = eventsOf(h.engine, "request.opened");
+    expect(opened?.correlationId).toBeUndefined();
+
+    h.bridge.close();
+    await pending;
+  });
+
+  it("still correlates a PermissionRequest and its PostToolUse that carry the same invalid prompt_id", async () => {
+    harness = bootBridge(dbPath());
+    const h = harness;
+    h.connectViewer();
+
+    const pending = postPermission(h.app, permissionHook({ prompt_id: token }));
+    const requestId = await heldRequestId(h.engine);
+
+    // Both sides treat the invalid prompt_id as absent, so their correlation keys agree.
+    h.bridge.observeHook(postToolUseHook({ prompt_id: token }));
+
+    const [resolved] = await eventually(() => {
+      const events = resolvedEvents(h);
+      expect(events).toHaveLength(1);
+      return events;
+    });
+    expect(resolved?.payload).toMatchObject({
+      requestId,
+      resolution: "answered_elsewhere",
+      decision: "allow",
+    });
+    expect((await pending).status).toBe(200);
+  });
+
+  it("still stores a valid UUID prompt_id as the request's correlationId", async () => {
+    harness = bootBridge(dbPath());
+    const h = harness;
+    h.connectViewer();
+    const promptId = "03dc4896-8835-47f5-a515-94a1ad4c675c";
+
+    const pending = postPermission(h.app, permissionHook({ prompt_id: promptId }));
+    await heldRequestId(h.engine);
+
+    const [opened] = eventsOf(h.engine, "request.opened");
+    expect(opened?.correlationId).toBe(promptId);
+
+    h.bridge.close();
+    await pending;
+  });
+});
