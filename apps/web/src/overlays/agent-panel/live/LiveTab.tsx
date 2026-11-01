@@ -1,4 +1,10 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  observeWindowOffset,
+  observeWindowRect,
+  useVirtualizer,
+  type VirtualizerOptions,
+  windowScroll,
+} from "@tanstack/react-virtual";
 import { diffWordsWithSpace } from "diff";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
@@ -20,6 +26,18 @@ export interface LiveTabProps {
   evidence: Readonly<Record<string, EvidenceResponse>>;
 }
 const safe = (text: string) => redactText(text).text;
+// TanStack's window mode, for a feed with no scrolling ancestor. useVirtualizer types its scroll
+// element as an Element, so the window functions are cast once here.
+const pageScroll = {
+  observeElementRect: observeWindowRect,
+  observeElementOffset: observeWindowOffset,
+  scrollToFn: windowScroll,
+} as unknown as Pick<
+  VirtualizerOptions<HTMLElement, HTMLDivElement>,
+  "observeElementRect" | "observeElementOffset" | "scrollToFn"
+>;
+/** The page's own scroller: scrollTop and sizes live on it, scroll events and the view on window. */
+const isPage = (node: HTMLElement) => node === node.ownerDocument.scrollingElement;
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -255,9 +273,11 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
   const followingRef = useRef(true);
   const lastTop = useRef(0);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
+    ...(page ? pageScroll : {}),
     count: calls.length,
-    getScrollElement: () => viewport,
+    getScrollElement: () => (page as unknown as HTMLElement | null) ?? viewport,
     getItemKey: (index) => calls[index].toolCallId,
     estimateSize: () => 240,
     overscan: 5,
@@ -270,7 +290,8 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
     let node = feed.current?.parentElement;
     while (node && !/(auto|scroll)/.test(getComputedStyle(node).overflowY))
       node = node.parentElement;
-    setViewport(node ?? null);
+    // Never render zero rows: with no scrolling ancestor, the page itself scrolls the feed.
+    setViewport(node ?? (document.scrollingElement as HTMLElement | null));
   }, []);
   // The virtualizer and follow already hold the reading position. Browser scroll anchoring on
   // the same viewport would move it a second time when a row is added or measured.
@@ -286,10 +307,10 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
     if (!viewport || !rows.current) return;
     const measure = () => {
       if (!rows.current) return;
+      // The page scroller's client box is the window, whose top is 0.
       setScrollMargin(
         rows.current.getBoundingClientRect().top -
-          viewport.getBoundingClientRect().top -
-          viewport.clientTop +
+          (isPage(viewport) ? 0 : viewport.getBoundingClientRect().top + viewport.clientTop) +
           viewport.scrollTop,
       );
     };
@@ -320,8 +341,10 @@ function LiveFeed({ agentId, store, select, calls, evidence }: LiveTabProps) {
       }
       lastTop.current = viewport.scrollTop;
     };
-    viewport.addEventListener("scroll", onScroll, { passive: true, capture: true });
-    return () => viewport.removeEventListener("scroll", onScroll, true);
+    // The page scroller's scroll events are dispatched to its document, not to the element.
+    const events = isPage(viewport) ? viewport.ownerDocument : viewport;
+    events.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => events.removeEventListener("scroll", onScroll, true);
   }, [viewport]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
