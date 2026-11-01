@@ -197,6 +197,81 @@ describe("GET /v1/agents/:id/feed: order and pairing", () => {
     expect(closed?.data.evidence.output).toBeNull();
     expect(closed?.id).toBeGreaterThan(running?.id ?? Number.POSITIVE_INFINITY);
   });
+
+  // A late PostToolUse (the helper's result arriving after the lead's turn end already closed the
+  // call) is a recorded result and replaces `unfinished`, the same rule the reducer applies (M2.13).
+  // No recording has it, so the late event is the call's own PreToolUse hook turned into its
+  // PostToolUse. The feed sends it as a new frame for the same ToolCall, with duration and output.
+  describe("a finish after unfinished replaces it", () => {
+    const lateFinish = (): Record<string, unknown> => ({
+      session_id: "a127629f-0c4d-49ad-b316-3e9dc4eaa48c",
+      cwd: SPIKE_CWD,
+      permission_mode: "default",
+      agent_id: "a352b542cb1a1f4d5",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: {
+        command: 'echo "waiting for teammates"',
+        description: "No-op placeholder while teammates run",
+      },
+      tool_use_id: UNMATCHED.toolCallId,
+      tool_response: {
+        stdout: "waiting for teammates",
+        stderr: "",
+        interrupted: false,
+        isImage: false,
+        noOutputExpected: false,
+      },
+      duration_ms: 41,
+    });
+
+    // Plays up to and including the lead's turn end that closes the call, and not the SessionEnd.
+    async function playThroughLeadTurnEnd(h: Awaited<ReturnType<typeof start>>): Promise<void> {
+      const next = await h.play(UNMATCHED.file, { stopBefore: leadTurnEndsAfterHelperCall() });
+      await h.play(UNMATCHED.file, { from: next, stopBefore: hookAfterLeadTurnEnd() });
+    }
+
+    it("sends a succeeded frame for a call closed unfinished, in a backlog read", async () => {
+      const h = await start();
+      h.addProject("spike", SPIKE_CWD);
+      await playThroughLeadTurnEnd(h);
+      await h.hook(lateFinish(), "late#backlog");
+      const reader = await h.openFeed(UNMATCHED.agent);
+      const frames = await toolCallFrames(reader, 3);
+      expect(frames.map((f) => [f.data.toolCallId, f.data.phase])).toEqual([
+        [UNMATCHED.toolCallId, "running"],
+        [UNMATCHED.toolCallId, "unfinished"],
+        [UNMATCHED.toolCallId, "succeeded"],
+      ]);
+      const done = frames[2]?.data;
+      expect(done?.toolName).toBe("Bash");
+      expect(done?.startedAt).toBe(frames[0]?.data.startedAt);
+      expect(done?.durationMs).toBe(41);
+      expect(done?.evidence.output?.status).toBe("stored");
+      expect(frames[2]?.id).toBeGreaterThan(frames[1]?.id ?? Number.POSITIVE_INFINITY);
+      await expectQuiet(reader);
+      await reader.cancel();
+    });
+
+    it("sends the succeeded frame live when the late finish arrives under an open feed", async () => {
+      const h = await start();
+      h.addProject("spike", SPIKE_CWD);
+      await playThroughLeadTurnEnd(h);
+      const reader = await h.openFeed(UNMATCHED.agent);
+      const backlog = await toolCallFrames(reader, 2);
+      expect(backlog.map((f) => f.data.phase)).toEqual(["running", "unfinished"]);
+      await expectQuiet(reader);
+
+      await h.hook(lateFinish(), "late#live");
+      const [done] = await toolCallFrames(reader, 1);
+      await reader.cancel();
+      expect(done?.data.toolCallId).toBe(UNMATCHED.toolCallId);
+      expect(done?.data.phase).toBe("succeeded");
+      expect(done?.data.durationMs).toBe(41);
+      expect(done?.data.evidence.output?.status).toBe("stored");
+      expect(done?.id).toBeGreaterThan(backlog[1]?.id ?? Number.POSITIVE_INFINITY);
+    });
+  });
 });
 
 const isLeadTurnEnd = (hook: Record<string, unknown>): boolean =>
