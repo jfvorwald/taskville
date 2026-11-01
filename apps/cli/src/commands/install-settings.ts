@@ -104,11 +104,22 @@ export function isTaskvilleHook(handler: unknown): boolean {
   );
 }
 
-/** True for an `http` handler whose URL is exactly the bridge route on a loopback origin. */
+/**
+ * True for an `http` handler whose URL is exactly the bridge route on a loopback origin and that
+ * carries the token the way the installer writes it (the `Authorization` header and
+ * `allowedEnvVars`). The timeout and matcher are not checked, so an edited entry is still
+ * replaced; a hand-written hook at the same URL with other headers is the user's and is kept.
+ */
 export function isTaskvilleBridgeHook(handler: unknown): boolean {
-  return isObject(handler) && handler.type === "http" && typeof handler.url === "string"
-    ? BRIDGE_URL.test(handler.url)
-    : false;
+  if (!isObject(handler) || handler.type !== "http" || typeof handler.url !== "string") {
+    return false;
+  }
+  const written = bridgeHookHandler({ url: "", timeoutSeconds: 0 });
+  return (
+    BRIDGE_URL.test(handler.url) &&
+    JSON.stringify(handler.headers) === JSON.stringify(written.headers) &&
+    JSON.stringify(handler.allowedEnvVars) === JSON.stringify(written.allowedEnvVars)
+  );
 }
 
 const isTaskvilleEntry = (handler: unknown): boolean =>
