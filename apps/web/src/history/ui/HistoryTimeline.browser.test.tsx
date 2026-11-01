@@ -164,9 +164,9 @@ describe("recorded timeline strip through real provider and controls", () => {
     expect((filter.element() as HTMLSelectElement).selectedOptions[0]?.textContent).toBe(
       "All agents",
     );
-    await expect.element(filter).toHaveTextContent("All agents");
-    await expect.element(filter).toHaveTextContent("Ada");
-    await expect.element(filter).toHaveTextContent("Bea");
+    await expect.element(filter).toMatchTextContent("All agents");
+    await expect.element(filter).toMatchTextContent("Ada");
+    await expect.element(filter).toMatchTextContent("Bea");
     for (const [name, sequences, count] of [
       ["Ada", [1, 4, 6], 3],
       ["Bea", [2, 3, 5, 7], 4],
