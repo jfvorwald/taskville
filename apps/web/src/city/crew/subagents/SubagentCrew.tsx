@@ -76,6 +76,8 @@ export function SubagentCrew({
 interface Place {
   x: number;
   z: number;
+  /** Behind a "+N crew" marker: the bots that walked out of it are out of sight too. */
+  hidden?: boolean;
 }
 
 interface BotHandle {
@@ -151,6 +153,16 @@ function CrewFamilyView({
     // bot. When the parent is out of sight (finished and faded, left the city, behind the
     // marker) the family stays where it last stood: a running subagent never disappears.
     const parentPlace = places.get(family.parentId);
+    if (parentPlace?.hidden === true) {
+      // The parent bot is behind a "+N crew" marker: its crew goes out of sight with it, all the
+      // way down.
+      g.visible = false;
+      for (const m of family.members) {
+        const place = places.get(m.id);
+        if (place !== undefined) place.hidden = true;
+      }
+      return;
+    }
     const anchor =
       family.parentGeneration === 0 ? anchors.getAnchor(agentAnchorId(family.parentId)) : undefined;
     const liveX = anchor === undefined ? parentPlace?.x : anchor[0];
@@ -197,8 +209,10 @@ function CrewFamilyView({
       const index = slots.current.get(id);
       if (found === undefined || index === undefined || !shown.has(id)) {
         bot.root.visible = false;
-        // Its own crew has nowhere to stand while it is out of sight (behind the marker or gone).
-        places.delete(id);
+        // Gone: its running crew stays where it last stood. Behind the marker: its crew goes with it.
+        const hiddenPlace = found === undefined || index === undefined ? undefined : places.get(id);
+        if (hiddenPlace === undefined) places.delete(id);
+        else hiddenPlace.hidden = true;
         continue;
       }
       const f = reducedMotion ? stillFrame(found) : found;
@@ -218,6 +232,7 @@ function CrewFamilyView({
       else {
         place.x = doorX + x;
         place.z = doorZ + z;
+        place.hidden = false;
       }
       bot.root.rotation.y = homeward ? spot.angle + Math.PI : spot.angle;
       const tint = tintsRef.current.get(id);
