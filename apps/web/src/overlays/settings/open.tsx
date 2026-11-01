@@ -54,7 +54,7 @@ export function SettingsToggle() {
   const [open] = state;
   const toggle = useToggleSettings(state);
   return (
-    <InteractiveRegion className={styles.floatingToggle}>
+    <InteractiveRegion className={styles.floatingToggle} data-settings-floating="">
       <Button
         className={styles.toggle}
         aria-expanded={open}

@@ -148,10 +148,10 @@
   cursor: pointer;
 }
 
-/* Below the shared header so the floating toggle cannot cover camera controls at any width. */
+/* OverlayRoot measures the complete header, including wrapped project chips. */
 .floatingToggle {
   position: absolute;
-  top: 50px;
+  top: var(--tv-floating-settings-top, 50px);
   right: 16px;
   z-index: 6;
 }

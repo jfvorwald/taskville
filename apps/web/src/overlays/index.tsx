@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSoundscape } from "../audio/index.ts";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { selectionStore } from "../city/interaction/selection.ts";
@@ -17,6 +17,7 @@ import { themedSettingsOverlay } from "../wiring/index.ts";
 import { ACTION_CARD_ID, useCardTarget } from "./action-card/index.ts";
 import { AGENT_PANEL_ID } from "./agent-panel/shell/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
+import { useAttentionFeed, useAttentionReady } from "./header/attentionSync.ts";
 import {
   countsHeaderOverlay,
   useAttentionSync,
@@ -72,6 +73,20 @@ function localStorageOrNull(): Storage | null {
   }
 }
 
+/** Reserve space for the complete header and, when shown, the floating Settings row. */
+function placeSidebar(root: HTMLDivElement) {
+  const header = root.querySelector<HTMLElement>('[data-slot="header"]');
+  if (!header) return;
+  const floating = root.querySelector<HTMLElement>("[data-settings-floating]");
+  const toggleTop = header.getBoundingClientRect().bottom - root.getBoundingClientRect().top + 8;
+  const sidebarTop = Math.max(
+    64,
+    toggleTop + (floating ? floating.getBoundingClientRect().height + 8 : 0),
+  );
+  root.style.setProperty("--tv-floating-settings-top", `${toggleTop}px`);
+  root.style.setProperty("--tv-sidebar-top", `${sidebarTop}px`);
+}
+
 /**
  * The DOM layer over the canvas: the overlay host plus the paired badge. `pointer-events: none`
  * on the layer lets the canvas keep the pointer; an overlay that needs it uses InteractiveRegion.
@@ -94,6 +109,9 @@ export function OverlayRoot({
     [],
   );
   useAttentionSync();
+  // These subscriptions also invalidate geometry before paint when header content changes.
+  useAttentionFeed();
+  useAttentionReady();
   useAttentionTabTitle();
   useDesktopNotifications();
   useSoundscape();
@@ -123,9 +141,28 @@ export function OverlayRoot({
         ? AGENT_PANEL_ID
         : SETTINGS_OVERLAY_ID;
   useKeepToggleFocus(settingsOpen[0], sidebar);
+  const layer = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (layer.current) placeSidebar(layer.current);
+  });
+  useLayoutEffect(() => {
+    const root = layer.current;
+    const header = root?.querySelector<HTMLElement>('[data-slot="header"]');
+    if (!root || !header) return;
+    const floating =
+      sidebar === SETTINGS_OVERLAY_ID
+        ? null
+        : root.querySelector<HTMLElement>("[data-settings-floating]");
+    const observer = new ResizeObserver(() => placeSidebar(root));
+    observer.observe(header);
+    observer.observe(root);
+    if (floating) observer.observe(floating);
+    return () => observer.disconnect();
+  }, [sidebar]);
+
   const storage = useMemo(localStorageOrNull, []);
   return (
-    <div className={styles.layer} data-testid="overlay-root">
+    <div ref={layer} className={styles.layer} data-testid="overlay-root">
       <SettingsOpenContext.Provider value={settingsOpen}>
         <PresentedSidebar store={store} recordedTarget={recordedTarget} liveTarget={liveTarget}>
           <OverlayHost

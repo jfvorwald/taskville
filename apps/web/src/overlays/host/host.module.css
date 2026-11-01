@@ -36,7 +36,7 @@
 
 .sidebar {
   position: absolute;
-  top: 64px;
+  top: var(--tv-sidebar-top, 64px);
   right: 16px;
   bottom: 16px;
   width: min(360px, calc(100% - 32px));
