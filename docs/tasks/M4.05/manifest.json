@@ -1,0 +1,16 @@
+{
+  "ticket": "M4.05 #53",
+  "seed": 7,
+  "pace": "lively",
+  "speed": 3,
+  "project": "unsorted",
+  "needsYouObservedAtMs": 13671,
+  "screenshotAfterNeedsYouMs": 1200,
+  "holdAfterNeedsYouMs": 9200,
+  "header": "6 active \u00b7 1 needs you",
+  "pageErrors": [],
+  "demoOutput": "Demo seed 7 (lively) into unsorted at 3x; Ctrl+C to stop\nsteps 33 \u00b7 events 54 \u00b7 accepted 54 / duplicate 0\n",
+  "method": "Throwaway TASKVILLE_HOME; real taskville serve --headless; built web app; paired headless Chromium (SwiftShader) with Playwright video; taskville demo start drives demo events through POST /v1/events/batch. No events fabricated outside the demo producer.",
+  "sourceHead": "a7d2d01085789c6c0c2c212a969cf8bdca095737",
+  "capturedBy": "CTO (Claude Opus 5.5) at the M4 wave run"
+}
