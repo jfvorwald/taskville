@@ -62,11 +62,16 @@ pnpm --filter @taskville/web build
 node tests/e2e/permission/live.ts --out <scratch dir> [--model claude-haiku-5-5] [--only allow,deny,terminal]
 ```
 
-Needs `claude`, `tmux` and `git` on PATH and a logged-in Claude Code. Everything goes under `--out`:
-a throwaway git project, a `TASKVILLE_HOME`, `taskville serve` run from this checkout,
+Needs `claude`, `tmux` and `git` on PATH and a logged-in Claude Code. The script resolves `claude`
+to an absolute path first, so it may live outside the usual folders. Everything goes under a fresh
+`run-<timestamp>` folder in `--out`, so a reused `--out` never reports a stale result: a throwaway
+git project, a `TASKVILLE_HOME`, `taskville serve` run from this checkout,
 `taskville install claude-code --scope project` into the throwaway project only, and the pane
 captures (`pane-<scenario>.txt`) and `report.txt`. `claude` runs in a private tmux server
-(`tmux -L taskville-permission-e2e`) with `--setting-sources project,local` and a clean environment.
+(`tmux -L taskville-permission-e2e`) with `--setting-sources project,local` and a clean
+environment, plus `TASKVILLE_BRIDGE_TOKEN` for that launch only (decision #284), read from the
+run's `bridge-token` file so the secret is on no command line. The installed PermissionRequest hook
+needs it to authenticate.
 
 | Scenario | Viewer | Checks |
 | --- | --- | --- |

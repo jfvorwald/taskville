@@ -6,7 +6,8 @@
 //   pnpm --filter @taskville/web build
 //   node tests/e2e/permission/live.ts --out <scratch dir> [--model claude-haiku-5-5] [--only allow,deny,terminal]
 //
-// Everything lives under --out: a throwaway git project (`proj`, registered with no Taskville
+// Everything lives in a fresh `run-<timestamp>` folder under --out, so a reused --out can never
+// report a stale result from an earlier run: a throwaway git project (`proj`, registered with no Taskville
 // project, so the engine files the session under `unsorted`, the project the client shows), a
 // TASKVILLE_HOME (`home`), the pane captures, and the report. `taskville install claude-code
 // --scope project` writes into the throwaway project only; `claude` runs with
@@ -21,7 +22,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { cli } from "../claude-code-telemetry/harness.ts";
 import { eventsOfType, type PermissionEngine, startPermissionEngine } from "./harness.ts";
@@ -33,8 +34,11 @@ const { values } = parseArgs({
 if (values.out === undefined) throw new Error("--out <dir> is required");
 const OUT = resolve(values.out);
 const MODEL = values.model ?? "claude-haiku-5-5";
-const PROJ = join(OUT, "proj");
-const HOME = join(OUT, "home");
+// A fresh folder per run: the project, the Taskville home (so a fresh event log), the pane
+// captures and the report. Nothing from an earlier run under the same --out is reused.
+const RUN = join(OUT, `run-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`);
+const PROJ = join(RUN, "proj");
+const HOME = join(RUN, "home");
 const TMUX = "taskville-permission-e2e";
 const DENY_NOTE = "TASKVILLE-E2E-DENY-4K: the owner said no, do not retry";
 
@@ -69,33 +73,57 @@ function tmux(...args: string[]): string {
 }
 const pane = () => tmux("capture-pane", "-p", "-S", "-200");
 
+const quote = (w: string) => `'${w.replaceAll("'", "'\\''")}'`;
+
+/** The `claude` executable on the caller's PATH, as an absolute path. */
+function resolveClaude(): string {
+  const found = spawnSync("sh", ["-c", "command -v claude"], { encoding: "utf8" }).stdout.trim();
+  if (!found.startsWith("/")) {
+    throw new Error("`claude` was not found on PATH; put it on PATH and run again");
+  }
+  return found;
+}
+const CLAUDE = resolveClaude();
+
 function claudeEnv(): Record<string, string> {
   // Clean environment: nothing from the session that runs this script. HOME stays the real one,
-  // because that is where Claude Code finds its login.
+  // because that is where Claude Code finds its login. PATH starts with the folder `claude` was
+  // found in (it may live outside the usual places), then the usual places, then the caller's.
   return {
     HOME: process.env.HOME ?? "",
     USER: process.env.USER ?? "",
     LOGNAME: process.env.LOGNAME ?? "",
-    PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    PATH: [
+      dirname(CLAUDE),
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      process.env.PATH ?? "",
+    ]
+      .filter((p) => p !== "")
+      .join(":"),
     TERM: "xterm-256color",
   };
 }
 
 /** Starts an interactive `claude` in the private tmux server and gets past the trust dialog. */
-async function startClaude(): Promise<void> {
-  const env = Object.entries(claudeEnv()).map(([k, v]) => `${k}=${v}`);
+async function startClaude(engine: PermissionEngine): Promise<void> {
+  const env = Object.entries(claudeEnv()).map(([k, v]) => quote(`${k}=${v}`));
+  // The installed PermissionRequest hook authenticates with TASKVILLE_BRIDGE_TOKEN (decision
+  // #284: set for this launch only, never shell-wide). The shell tmux starts reads it from the
+  // token file, so the secret is on no command line.
+  const token = `TASKVILLE_BRIDGE_TOKEN="$(cat ${quote(join(engine.home, "bridge-token"))})"`;
   const command = [
-    "env",
-    "-i",
+    "env -i",
     ...env,
-    "claude",
+    token,
+    quote(CLAUDE),
     "--model",
-    MODEL,
+    quote(MODEL),
     "--setting-sources",
     "project,local",
-  ]
-    .map((w) => `'${w.replaceAll("'", "'\\''")}'`)
-    .join(" ");
+  ].join(" ");
   tmux("kill-server");
   tmux("new-session", "-d", "-x", "200", "-y", "50", "-c", PROJ, command);
   // The folder-trust dialog (the side effect decision #289 is about: an entry in ~/.claude.json).
@@ -123,7 +151,7 @@ function ask(command: string): void {
 }
 
 function stopClaude(label: string): void {
-  writeFileSync(join(OUT, `pane-${label}.txt`), pane());
+  writeFileSync(join(RUN, `pane-${label}.txt`), pane());
   tmux("send-keys", "/exit");
   tmux("send-keys", "Enter");
   tmux("kill-server");
@@ -157,7 +185,10 @@ async function openRedCard(page: Page) {
 async function allow(engine: PermissionEngine, page: Page): Promise<void> {
   say("scenario allow: Allow once from the card lets the tool run");
   const file = join(PROJ, "allowed.txt");
-  await startClaude();
+  // Baselines taken before the scenario, so only this scenario's effects count.
+  check(!existsSync(file), "allowed.txt does not exist before the scenario");
+  const deliveredBefore = eventsOfType(engine.home, "command.delivered").length;
+  await startClaude(engine);
   ask("touch allowed.txt");
   const card = await openRedCard(page);
   check(
@@ -171,16 +202,17 @@ async function allow(engine: PermissionEngine, page: Page): Promise<void> {
   );
   check(await waitFor(() => existsSync(file), 60_000), "the tool ran: allowed.txt exists");
   check(
-    eventsOfType(engine.home, "command.delivered").length >= 1,
-    "the engine recorded a delivered command",
+    eventsOfType(engine.home, "command.delivered").length === deliveredBefore + 1,
+    "the engine recorded exactly one new delivered command",
   );
   stopClaude("allow");
 }
 
-async function deny(page: Page): Promise<void> {
+async function deny(engine: PermissionEngine, page: Page): Promise<void> {
   say("scenario deny: Deny with a note blocks the tool and the note reaches Claude Code");
   const file = join(PROJ, "denied.txt");
-  await startClaude();
+  check(!existsSync(file), "denied.txt does not exist before the scenario");
+  await startClaude(engine);
   ask("touch denied.txt");
   const card = await openRedCard(page);
   await page.getByRole("textbox", { name: /note/i }).fill(DENY_NOTE);
@@ -197,12 +229,13 @@ async function deny(page: Page): Promise<void> {
   stopClaude("deny");
 }
 
-async function terminal(): Promise<void> {
+async function terminal(engine: PermissionEngine): Promise<void> {
   say(
     "scenario terminal: no viewer connected, so the terminal dialog appears and Yes runs the tool",
   );
   const file = join(PROJ, "terminal.txt");
-  await startClaude();
+  check(!existsSync(file), "terminal.txt does not exist before the scenario");
+  await startClaude(engine);
   ask("touch terminal.txt");
   check(
     await waitFor(() => /Do you want to proceed\?/.test(pane()), 60_000),
@@ -219,6 +252,7 @@ async function terminal(): Promise<void> {
 // --- main --------------------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  mkdirSync(RUN, { recursive: true });
   mkdirSync(PROJ, { recursive: true });
   mkdirSync(HOME, { recursive: true, mode: 0o700 });
   writeFileSync(join(PROJ, "README.md"), "# permission e2e\n");
@@ -227,10 +261,10 @@ async function main(): Promise<void> {
   git("add", "-A");
   git("-c", "user.email=e2e@example.invalid", "-c", "user.name=e2e", "commit", "-qm", "init");
 
-  const version = spawnSync("claude", ["--version"], { encoding: "utf8" }).stdout.trim();
+  const version = spawnSync(CLAUDE, ["--version"], { encoding: "utf8" }).stdout.trim();
   say(`Claude Code ${version}, model ${MODEL}, ${new Date().toISOString()}`);
 
-  const engine = await startPermissionEngine(90, { root: OUT, keepRoot: true });
+  const engine = await startPermissionEngine(90, { root: RUN, keepRoot: true });
   const install = await cli([
     "install",
     "claude-code",
@@ -250,14 +284,14 @@ async function main(): Promise<void> {
   const city = want("allow") || want("deny") ? await openCity(engine) : undefined;
   try {
     if (city && want("allow")) await allow(engine, city.page);
-    if (city && want("deny")) await deny(city.page);
+    if (city && want("deny")) await deny(engine, city.page);
     // The terminal scenario needs no viewer: close the browser first.
     await city?.close();
-    if (want("terminal")) await terminal();
+    if (want("terminal")) await terminal(engine);
   } finally {
     tmux("kill-server");
     await engine.stop();
-    writeFileSync(join(OUT, "report.txt"), `${report.join("\n")}\n`);
+    writeFileSync(join(RUN, "report.txt"), `${report.join("\n")}\n`);
   }
   if (failures.length > 0) {
     console.error(`${failures.length} check(s) failed`);
