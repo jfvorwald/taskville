@@ -30,6 +30,8 @@ export interface NavIntent {
   readonly id: string;
   /** Destination area; `null` keeps the current destination (or the plaza for a new agent). */
   readonly area: AreaId | null;
+  /** Fallback destination for a new agent only, when `area` is null. */
+  readonly initialArea?: AreaId;
   /** Needs you: stop at the nearest safe point (or stay at the workstation). */
   readonly hold?: boolean;
   readonly rest?: RestState;
@@ -469,7 +471,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       last: start,
       progressed: 0,
       goal: { kind: "stay" },
-      area: intent.area,
+      area: intent.area ?? intent.initialArea ?? null,
       safeNode: null,
       hold: false,
       rest: intent.rest ?? "working",

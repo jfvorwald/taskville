@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { GridList, GridListItem } from "react-aria-components";
+import { TeamTaskQueue } from "../../city/crew/teams/TeamTaskQueue.tsx";
 import { movementLabels } from "../../city/movement/labels.ts";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
@@ -50,6 +51,9 @@ export function AgentList({ selection }: OverlayProps) {
           </GridListItem>
         )}
       </GridList>
+      <div className={styles.queues}>
+        <TeamTaskQueue />
+      </div>
     </InteractiveRegion>
   );
 }
