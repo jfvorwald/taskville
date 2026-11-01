@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { redactJson } from "@taskville/adapters/redact";
 import { hashCanonical } from "@taskville/domain/hash";
+import type { ProjectState } from "@taskville/domain/reducer";
 import { BRIDGE_SOURCE_ID } from "@taskville/domain/reducer/attention";
 import {
   ID_MAX_LENGTH,
@@ -300,6 +301,11 @@ export class PermissionBridge {
   }
 
   #recordTerminal(requestId: string, tracked: Tracked, decision: "allow" | "deny"): void {
+    // A request the projection merged into another ("one prompt, one red state") has no record of
+    // its own; resolving its ID would close the record it was merged into, which may be a
+    // different request whose hook is still held.
+    const projection = this.#options.storage.projection<ProjectState>(tracked.projectId);
+    if (projection === undefined || !Object.hasOwn(projection.state.requests, requestId)) return;
     this.#commit({
       projectId: tracked.projectId,
       sourceId: BRIDGE_SOURCE_ID,
