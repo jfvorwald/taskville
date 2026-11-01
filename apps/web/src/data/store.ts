@@ -43,6 +43,8 @@ export type SyncError =
 
 export interface DataState {
   projectId: string | null;
+  /** Client reset identity, independent of whether a snapshot has loaded. */
+  resetGeneration: number;
   /** The reduced state; null until the first snapshot. */
   state: ProjectState | null;
   /** Ingest sequence of the last applied event (the snapshot cursor at first); 0 before any. */
@@ -119,12 +121,14 @@ export function createDataStore(options: DataStoreOptions = {}): DataStore {
 
   const store = createStore<DataState>()((set) => ({
     ...fresh(null),
+    resetGeneration: 0,
 
     select: (selectedAgentId) => set({ selectedAgentId }),
 
     refreshAttention: () => set((s) => (s.state === null ? s : derive(s, s.state, true))),
 
-    reset: (projectId) => set(fresh(projectId)),
+    reset: (projectId) =>
+      set((s) => ({ ...fresh(projectId), resetGeneration: s.resetGeneration + 1 })),
 
     applySnapshotState: (state) =>
       set((s) => ({ state, cursor: state.head, error: null, ...derive(s, state) })),
