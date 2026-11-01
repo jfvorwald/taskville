@@ -95,12 +95,17 @@ export function InteractionLayer({
 }: InteractionLayerProps) {
   const fixture = useMemo(
     () =>
-      typeof window !== "undefined" && fixtureRequested(window.location.search)
+      import.meta.env.VITE_TV_TEST_HOOKS === "1" &&
+      typeof window !== "undefined" &&
+      fixtureRequested(window.location.search)
         ? fixtureAgents()
         : null,
     [],
   );
-  useEffect(() => (fixture === null ? undefined : installFixtureProbe(fixture)), [fixture]);
+  useEffect(() => {
+    if (import.meta.env.VITE_TV_TEST_HOOKS !== "1") return;
+    return fixture === null ? undefined : installFixtureProbe(fixture);
+  }, [fixture]);
   return (
     <>
       <CameraDriver rig={rig} />
