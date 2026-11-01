@@ -7,7 +7,16 @@ import {
   windowScroll,
 } from "@tanstack/react-virtual";
 import { diffWordsWithSpace } from "diff";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "react-aria-components";
 import { type JsonValue, redactJson } from "../../../../../../packages/adapters/src/redact/json.ts";
 import { redactText } from "../../../../../../packages/adapters/src/redact/text.ts";
@@ -16,6 +25,7 @@ import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts
 import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
+import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
 import styles from "./live.module.css";
 
@@ -28,7 +38,21 @@ export interface LiveTabProps {
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
 }
-const safe = (text: string) => redactText(text).text;
+type Evicted = ReadonlySet<string>;
+/** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
+const safe = (text: string) => visibleControls(redactText(text).text);
+/** No rendered body is longer than this. A deep or huge body shows a note instead of the rest. */
+const CAP = 20_000;
+const TRUNCATED = "Display truncated at 20,000 characters";
+/** The first CAP characters of a body, for text that is diffed before hidden characters are shown. */
+const head = (text: string) => ({ text: text.slice(0, CAP), truncated: text.length > CAP });
+function bounded(text: string): { text: string; truncated: boolean } {
+  const head = text.slice(0, CAP);
+  const shown = visibleControls(head);
+  return shown.length > CAP || head.length < text.length
+    ? { text: shown.slice(0, CAP), truncated: true }
+    : { text: shown, truncated: false };
+}
 // TanStack's window mode, for a feed with no scrolling ancestor. useVirtualizer types its scroll
 // element as an Element, so the window functions are cast once here.
 const pageScroll = {
@@ -52,8 +76,17 @@ const object = (value: unknown): Record<string, unknown> =>
     : {};
 const string = (value: unknown) => (typeof value === "string" ? value : undefined);
 
+const parsed = new WeakMap<EvidenceResponse, unknown>();
+/** The redacted, parsed body. Parsed once per body object, not on every render. */
 function bodyValue(body: EvidenceResponse | undefined): unknown {
   if (!body) return undefined;
+  if (parsed.has(body)) return parsed.get(body);
+  const value = parseBody(body);
+  parsed.set(body, value);
+  return value;
+}
+
+function parseBody(body: EvidenceResponse): unknown {
   // Server mask ranges refer to the serialized text. Replace before parsing or splitting a diff.
   let text = body.text;
   for (const mask of [...(body.masks ?? [])].sort((a, b) => b.start - a.start)) {
@@ -75,6 +108,7 @@ function bodyValue(body: EvidenceResponse | undefined): unknown {
 
 function Path({ path }: { path: string }) {
   const shown = safe(path);
+  // A path with a hidden or reordering character is shown with markers, as text and not a link.
   return path.startsWith("/") &&
     shown === path &&
     !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ? (
@@ -136,30 +170,64 @@ function action(
     : `No result recorded for ${tool === "Agent" ? "spawn of" : "message to"}`;
 }
 
-function ToolCard({
+/** Rendered text: bounded, with hidden and reordering characters made visible. */
+function Bounded({ text, as: Tag = "pre" }: { text: string; as?: "pre" | "p" }) {
+  const shown = bounded(text);
+  return (
+    <>
+      <Tag>{shown.text}</Tag>
+      {shown.truncated ? <p>{TRUNCATED}</p> : null}
+    </>
+  );
+}
+
+type Ref = ToolCallFrame["evidence"]["input"];
+/** The body was stored and is now evicted, by the frame's own status or by the evidence route. */
+const isGone = (ref: Ref | undefined, body: EvidenceResponse | undefined, evicted: Evicted) =>
+  !body && !!ref && (ref.status === "evicted" || evicted.has(ref.id));
+const bodyOfCall = (
+  call: ToolCallFrame,
+  part: "input" | "output",
+  evidence: LiveTabProps["evidence"],
+) => {
+  const ref = call.evidence?.[part];
+  return ref ? evidence[ref.id] : undefined;
+};
+const oneLine = (text: string) => text.split("\n", 1)[0].slice(0, 120);
+/** The pretty printed body of a deep value is large. It is computed once per body, not per render. */
+const pretty = (value: unknown) =>
+  typeof value === "string" || value === undefined ? value : JSON.stringify(value, null, 2);
+
+const ToolCard = memo(function ToolCard({
   call,
-  evidence,
-  evicted,
+  inputBody,
+  outputBody,
+  inputGone,
+  outputGone,
   agents,
   select,
   expanded,
   toggleExpanded,
+  position,
+  size,
 }: {
   call: ToolCallFrame;
-  evidence: LiveTabProps["evidence"];
-  evicted: ReadonlySet<string>;
+  inputBody: EvidenceResponse | undefined;
+  outputBody: EvidenceResponse | undefined;
+  inputGone: boolean;
+  outputGone: boolean;
   agents: readonly Agent[];
   select: LiveTabProps["select"];
   expanded: boolean;
-  toggleExpanded: () => void;
+  toggleExpanded: (id: string) => void;
+  position: number;
+  size: number;
 }) {
-  const inputBody = call.evidence.input ? evidence[call.evidence.input.id] : undefined;
-  const outputBody = call.evidence.output ? evidence[call.evidence.output.id] : undefined;
+  const heading = useId();
+  const expand = useId();
   // A reference the hook never sent stays "not reported"; one that was stored then evicted does not.
-  const gone = (ref: ToolCallFrame["evidence"]["input"]) =>
-    ref !== null && (ref.status === "evicted" || evicted.has(ref.id));
-  const missingInput = !inputBody && gone(call.evidence.input) ? EVICTED : "not reported";
-  const missingOutput = !outputBody && gone(call.evidence.output) ? EVICTED : "not reported";
+  const missingInput = inputGone ? EVICTED : "not reported";
+  const missingOutput = outputGone ? EVICTED : "not reported";
   const inputValue = bodyValue(inputBody);
   const outputValue = bodyValue(outputBody);
   const input = object(inputValue);
@@ -178,90 +246,130 @@ function ToolCard({
   const next = string(input.new_string);
   const stdout = string(output.stdout);
   const stderr = string(output.stderr);
-  const fallback =
-    outputValue === undefined
-      ? missingOutput
-      : typeof outputValue === "string"
-        ? outputValue
-        : JSON.stringify(outputValue, null, 2);
   const tool = typeof call.toolName === "string" ? call.toolName : "not reported";
-  const fragment =
-    tool === "Edit" && old !== undefined && next !== undefined
-      ? diffWordsWithSpace(old, next, { timeout: 25, maxEditLength: 1000 })
-      : undefined;
+  const inputText = useMemo(() => pretty(inputValue), [inputValue]);
+  const outputText = useMemo(() => pretty(outputValue), [outputValue]);
+  const fallback = outputText ?? missingOutput;
+  const edit = useMemo(
+    () =>
+      tool === "Edit" && old !== undefined && next !== undefined
+        ? { before: head(old), after: head(next) }
+        : undefined,
+    [tool, old, next],
+  );
+  const fragment = useMemo(() => {
+    if (!edit) return undefined;
+    const parts = diffWordsWithSpace(edit.before.text, edit.after.text, {
+      timeout: 25,
+      maxEditLength: 1000,
+    });
+    // Equal tokens repeat ("a a"), so a part's own value is no key. Its offset in the diff is one.
+    let offset = 0;
+    return parts?.map((part) => {
+      const key = `${offset}:${part.added ? "+" : part.removed ? "-" : "="}`;
+      offset += part.value.length;
+      return { ...part, key, value: visibleControls(part.value) };
+    });
+  }, [edit]);
+  const command = string(input.command);
+  const isSearch = tool === "Grep" || tool === "Glob" || tool === "Search";
+  const subjectPath = tool === "Bash" || isSearch ? undefined : paths[0];
+  const subject =
+    tool === "Bash"
+      ? command
+      : isSearch
+        ? (string(input.pattern) ?? string(input.query) ?? paths[0])
+        : subjectPath;
+  // The subject path is in the heading, as the editor link. The rest are listed once, below.
+  const otherPaths = paths.filter((path) => path !== subjectPath);
+  const phase = string(call.phase) ?? "unknown";
   return (
-    <article className={styles.card}>
-      <h3>
-        {safe(tool)}: {safe(string(call.phase) ?? "unknown")}
+    <article
+      className={styles.card}
+      aria-labelledby={heading}
+      aria-posinset={position}
+      aria-setsize={size}
+      tabIndex={-1}
+    >
+      <h3 id={heading}>
+        {safe(tool)}:{" "}
+        {subjectPath === undefined ? safe(oneLine(subject ?? phase)) : <Path path={subjectPath} />}
       </h3>
       <p>
-        Timing:{" "}
+        Status: {safe(phase)}. Timing:{" "}
         {typeof call.durationMs === "number" && Number.isFinite(call.durationMs)
           ? `${call.durationMs} ms`
           : "not reported"}
       </p>
-      <p>
-        Path:{" "}
-        {paths.length
-          ? paths.map((path) => (
-              <span key={path}>
-                <Path path={path} />{" "}
-              </span>
-            ))
-          : "not reported"}
-      </p>
+      {otherPaths.length || !paths.length ? (
+        <p>
+          Path:{" "}
+          {otherPaths.length
+            ? otherPaths.map((path) => (
+                <span key={path}>
+                  <Path path={path} />{" "}
+                </span>
+              ))
+            : "not reported"}
+        </p>
+      ) : null}
       {tool === "Edit" ? (
         <div>
           <p>Edit fragment</p>
-          {old !== undefined && next !== undefined ? (
-            fragment === undefined ? (
-              <>
-                <p>Original fragment</p>
-                <pre>{old}</pre>
-                <p>Replacement fragment</p>
-                <pre>{next}</pre>
-              </>
-            ) : (
-              fragment.map((part) =>
-                part.added ? (
-                  <ins key={JSON.stringify(part)}>{part.value}</ins>
-                ) : part.removed ? (
-                  <del key={JSON.stringify(part)}>{part.value}</del>
-                ) : (
-                  <span key={JSON.stringify(part)}>{part.value}</span>
-                ),
-              )
-            )
+          {edit ? (
+            <>
+              {fragment ? (
+                fragment.map((part) =>
+                  part.added ? (
+                    <ins key={part.key}>{part.value}</ins>
+                  ) : part.removed ? (
+                    <del key={part.key}>{part.value}</del>
+                  ) : (
+                    <span key={part.key}>{part.value}</span>
+                  ),
+                )
+              ) : (
+                <>
+                  <p>Original fragment</p>
+                  <pre>{visibleControls(edit.before.text)}</pre>
+                  <p>Replacement fragment</p>
+                  <pre>{visibleControls(edit.after.text)}</pre>
+                </>
+              )}
+              {edit.before.truncated || edit.after.truncated ? <p>{TRUNCATED}</p> : null}
+            </>
           ) : (
             <p>Input: {missingInput}</p>
           )}
         </div>
       ) : tool === "Write" ? (
-        <pre>
-          {string(input.content) ?? (typeof inputValue === "string" ? inputValue : missingInput)}
-        </pre>
+        <Bounded text={string(input.content) ?? inputText ?? missingInput} />
       ) : tool === "Bash" ? (
         <>
-          <p>{string(input.command) ?? missingInput}</p>
-          <Button onPress={toggleExpanded} aria-expanded={expanded}>
+          <Bounded as="p" text={command ?? missingInput} />
+          <Button
+            id={expand}
+            {...(subject === undefined ? {} : { "aria-labelledby": `${expand} ${heading}` })}
+            aria-expanded={expanded}
+            onPress={() => toggleExpanded(call.toolCallId)}
+          >
             {expanded ? "Collapse output" : "Expand output"}
           </Button>
-          <pre>
-            {stdout === undefined
-              ? fallback
-              : expanded
-                ? stdout
-                : stdout.split("\n").slice(-10).join("\n")}
-          </pre>
-          {stderr ? <pre>{stderr}</pre> : null}
+          <Bounded
+            text={
+              stdout === undefined
+                ? fallback
+                : expanded
+                  ? stdout
+                  : stdout.replace(/\n$/, "").split("\n").slice(-10).join("\n")
+            }
+          />
+          {stderr ? <Bounded text={stderr} /> : null}
         </>
-      ) : tool === "Read" || tool === "Grep" || tool === "Search" || tool === "Glob" ? (
+      ) : tool === "Read" ? null : tool === "Grep" || tool === "Search" || tool === "Glob" ? (
         <>
-          <p>
-            {tool === "Read" ? "Read" : "Search"}:{" "}
-            {string(input.pattern) ?? string(input.query) ?? missingInput}
-          </p>
-          <pre>{fallback}</pre>
+          <p>Search: {safe(string(input.pattern) ?? string(input.query) ?? missingInput)}</p>
+          <Bounded text={fallback} />
         </>
       ) : tool === "Agent" || tool === "SendMessage" ? (
         <>
@@ -275,10 +383,10 @@ function ToolCard({
               "not reported"
             )}
           </p>
-          <pre>{inputValue === undefined ? missingInput : JSON.stringify(inputValue, null, 2)}</pre>
+          <Bounded text={inputText ?? missingInput} />
         </>
       ) : (
-        <pre>{inputValue === undefined ? missingInput : JSON.stringify(inputValue, null, 2)}</pre>
+        <Bounded text={inputText ?? missingInput} />
       )}
       {tool !== "Bash" &&
       tool !== "Read" &&
@@ -290,6 +398,111 @@ function ToolCard({
       {inputBody?.truncated || outputBody?.truncated ? <p>Recorded excerpt truncated</p> : null}
     </article>
   );
+});
+
+/** A run of Read calls or of Search calls: one card that expands to the files or the patterns. */
+function GroupCard({
+  kind,
+  calls,
+  evidence,
+  evicted,
+  expanded,
+  toggleExpanded,
+  position,
+  size,
+}: {
+  kind: "read" | "search";
+  calls: readonly ToolCallFrame[];
+  evidence: LiveTabProps["evidence"];
+  evicted: Evicted;
+  expanded: boolean;
+  toggleExpanded: (id: string) => void;
+  position: number;
+  size: number;
+}) {
+  const heading = useId();
+  const list = useId();
+  return (
+    <article
+      className={styles.card}
+      aria-labelledby={heading}
+      aria-posinset={position}
+      aria-setsize={size}
+      tabIndex={-1}
+    >
+      <h3 id={heading}>
+        {kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`}
+      </h3>
+      {/* The name stays "Expand ..." in both states; aria-expanded carries the state. */}
+      <Button
+        aria-expanded={expanded}
+        aria-controls={list}
+        onPress={() => toggleExpanded(calls[0].toolCallId)}
+      >
+        {kind === "read" ? "Expand paths" : "Expand patterns"}
+      </Button>
+      {expanded ? (
+        <ul id={list}>
+          {calls.map((call) => {
+            const body = bodyOfCall(call, "input", evidence);
+            const input = object(bodyValue(body));
+            const subject =
+              kind === "read"
+                ? (string(input.file_path) ?? call.filePaths[0])
+                : (string(input.pattern) ?? string(input.query));
+            return (
+              <li key={call.toolCallId}>
+                {subject === undefined ? (
+                  isGone(call.evidence?.input, body, evicted) ? (
+                    EVICTED
+                  ) : (
+                    "not reported"
+                  )
+                ) : kind === "read" ? (
+                  <Path path={subject} />
+                ) : (
+                  bounded(subject).text
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </article>
+  );
+}
+
+type Item = { key: string; kind: "call" | "read" | "search"; calls: readonly ToolCallFrame[] };
+
+const RUNS = new Map<string, "read" | "search">([
+  ["Read", "read"],
+  ["Grep", "search"],
+  ["Glob", "search"],
+  ["Search", "search"],
+]);
+
+/** Consecutive Read calls and consecutive Search calls become one item. Any other call ends a run. */
+function group(calls: readonly ToolCallFrame[]): Item[] {
+  const items: Item[] = [];
+  let run: ToolCallFrame[] = [];
+  let kind: "read" | "search" | undefined;
+  const close = () => {
+    if (run.length === 1) items.push({ key: run[0].toolCallId, kind: "call", calls: run });
+    else if (run.length && kind) items.push({ key: run[0].toolCallId, kind, calls: run });
+    run = [];
+    kind = undefined;
+  };
+  for (const call of calls) {
+    const next = RUNS.get(String(call.toolName));
+    if (next === undefined || next !== kind) close();
+    if (next === undefined) items.push({ key: call.toolCallId, kind: "call", calls: [call] });
+    else {
+      kind = next;
+      run.push(call);
+    }
+  }
+  close();
+  return items;
 }
 
 export function LiveTab(props: LiveTabProps) {
@@ -310,15 +523,17 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
   const written = useRef<number | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
+  const items = useMemo(() => group(calls), [calls]);
+  const focusNewest = useRef(false);
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     ...(page ? pageScroll : {}),
     scrollToFn: (offset, options, instance) => {
       (page ? pageScroll.scrollToFn : elementScroll)(offset, options, instance);
       written.current = viewport?.scrollTop ?? null;
     },
-    count: calls.length,
+    count: items.length,
     getScrollElement: () => (page as unknown as HTMLElement | null) ?? viewport,
-    getItemKey: (index) => calls[index].toolCallId,
+    getItemKey: (index) => items[index].key,
     estimateSize: () => 240,
     overscan: 5,
     scrollMargin,
@@ -380,6 +595,7 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
         !(written.current !== null && Math.abs(viewport.scrollTop - written.current) <= 1)
       ) {
         followingRef.current = false;
+        focusNewest.current = false;
         setFollowing(false);
       }
     };
@@ -419,11 +635,7 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
     // an upward gesture. Measure new rows in this commit instead, before paint.
     for (const node of Array.from(rows.current?.children ?? [])) {
       const index = virtualizer.indexFromElement(node as HTMLDivElement);
-      if (
-        index >= 0 &&
-        index < calls.length &&
-        !virtualizer.itemSizeCache.has(calls[index].toolCallId)
-      )
+      if (index >= 0 && index < items.length && !virtualizer.itemSizeCache.has(items[index].key))
         virtualizer.resizeItem(
           index,
           virtualizer.options.measureElement(node as HTMLDivElement, undefined, virtualizer),
@@ -431,7 +643,25 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
     }
     if (!following || !followingRef.current) return;
     viewport.scrollTop = viewport.scrollHeight;
+    // After Jump to latest the button is gone. Put focus on the newest card once it is mounted.
+    if (focusNewest.current) {
+      const newest = rows.current?.querySelector<HTMLElement>(
+        `[data-index="${items.length - 1}"] article`,
+      );
+      if (newest) {
+        newest.focus({ preventScroll: true });
+        focusNewest.current = false;
+      }
+    }
   });
+  const toggleExpanded = useCallback((id: string) => {
+    setExpanded((old) => {
+      const next = new Set(old);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
   const target = cardTarget({
@@ -440,7 +670,8 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
     requests: state?.requests ?? {},
     agents: state?.agents ?? {},
   });
-  const agents = Object.values(state?.agents ?? {});
+  const agentMap = state?.agents;
+  const agents = useMemo(() => Object.values(agentMap ?? {}), [agentMap]);
   return (
     <div ref={feed} className={styles.feed}>
       {target ? (
@@ -452,36 +683,63 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
         </article>
       ) : null}
       <div className={styles.follow}>
-        {!following ? <Button onPress={() => changeFollow(true)}>Jump to latest</Button> : null}
+        {!following ? (
+          <Button
+            onPress={() => {
+              focusNewest.current = true;
+              changeFollow(true);
+            }}
+          >
+            Jump to latest
+          </Button>
+        ) : null}
       </div>
-      <div ref={rows} className={styles.rows} style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const call = calls[item.index];
+      <div
+        ref={rows}
+        role="feed"
+        aria-label="Tool calls"
+        className={styles.rows}
+        style={{ height: virtualizer.getTotalSize() }}
+      >
+        {virtualizer.getVirtualItems().map((virtual) => {
+          const item = items[virtual.index];
+          const [call] = item.calls;
+          const inputBody = bodyOfCall(call, "input", evidence);
+          const outputBody = bodyOfCall(call, "output", evidence);
+          const common = {
+            expanded: expanded.has(item.key),
+            toggleExpanded,
+            position: virtual.index + 1,
+            size: items.length,
+          };
           return (
             <div
-              key={item.key}
+              key={virtual.key}
               ref={virtualizer.measureElement}
-              data-index={item.index}
+              data-index={virtual.index}
               className={styles.row}
-              style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
+              style={{ transform: `translateY(${virtual.start - scrollMargin}px)` }}
             >
-              <ToolCard
-                {...{ call, evidence, evicted, agents, select }}
-                expanded={expanded.has(call.toolCallId)}
-                toggleExpanded={() =>
-                  setExpanded((old) => {
-                    const next = new Set(old);
-                    if (next.has(call.toolCallId)) next.delete(call.toolCallId);
-                    else next.add(call.toolCallId);
-                    return next;
-                  })
-                }
-              />
+              {item.kind === "call" ? (
+                <ToolCard
+                  {...common}
+                  {...{ call, inputBody, outputBody, agents, select }}
+                  inputGone={isGone(call.evidence?.input, inputBody, evicted)}
+                  outputGone={isGone(call.evidence?.output, outputBody, evicted)}
+                />
+              ) : (
+                <GroupCard
+                  {...common}
+                  {...{ evidence, evicted }}
+                  kind={item.kind}
+                  calls={item.calls}
+                />
+              )}
             </div>
           );
         })}
       </div>
-      {!calls.length && !target ? <p>No tool calls reported.</p> : null}
+      {!items.length && !target ? <p>No tool calls reported.</p> : null}
     </div>
   );
 }

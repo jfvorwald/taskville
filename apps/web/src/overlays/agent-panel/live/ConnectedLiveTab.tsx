@@ -34,7 +34,7 @@ function PairedLive(props: Omit<LiveTabProps, "calls" | "evidence">) {
   const secret = useSession();
   return (
     <SelectedLive
-      key={JSON.stringify([projectId, props.agentId, secret])}
+      key={JSON.stringify([projectId, props.agentId])}
       {...props}
       projectId={projectId}
       secret={secret}
@@ -53,6 +53,11 @@ function SelectedLive({
   const [unavailable, setUnavailable] = useState(false);
   const { agentId } = props;
   useEffect(() => {
+    // The pairing secret is not part of the remount key. A new secret restarts the stream and
+    // drops what the old one showed.
+    setCalls((old) => (old.length ? [] : old));
+    setEvidence((old) => (Object.keys(old).length ? {} : old));
+    setEvicted((old) => (old.size ? new Set() : old));
     const controller = new AbortController();
     const { signal } = controller;
     const headers = { [SESSION_HEADER]: secret };
