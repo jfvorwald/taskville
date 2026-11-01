@@ -32,8 +32,12 @@ export interface CelebrationsOptions {
 }
 
 export interface Celebrations {
-  /** The celebrations to play for `event`: none, or exactly one. */
-  handle(event: StoredEnvelope): Celebration[];
+  /**
+   * The celebrations to play for `event`: none, or exactly one. `play` is called with the final
+   * celebration and returns whether it was drawn; only a drawn one starts the rate-limit window.
+   * Without `play`, the celebration is assumed drawn.
+   */
+  handle(event: StoredEnvelope, play?: (celebration: Celebration) => boolean): Celebration[];
   setReducedMotion(on: boolean): void;
   /** The replay speed multiplier (1 when live). Celebrations are suppressed above 10x. */
   setSpeed(multiplier: number): void;
@@ -93,13 +97,16 @@ export function createCelebrations(options: CelebrationsOptions): Celebrations {
   }
 
   return {
-    handle(event) {
+    handle(event, play) {
+      // No celebration for imported or late events: old facts are not presented as new.
+      if (event.provenance === "imported" || event.late === true) return [];
       const celebration = wanted(event);
       if (celebration === null || celebrationsAtSpeed(speed) === "suppress") return [];
       const now = options.now();
       if (lastBurstAt !== null && now - lastBurstAt < MIN_BURST_INTERVAL_MS) return [];
-      lastBurstAt = now;
-      return [reducedMotion ? sparkle(celebration) : celebration];
+      const final = reducedMotion ? sparkle(celebration) : celebration;
+      if (play?.(final) ?? true) lastBurstAt = now;
+      return [final];
     },
     setReducedMotion(on) {
       reducedMotion = on;

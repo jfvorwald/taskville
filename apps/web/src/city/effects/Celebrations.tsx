@@ -68,8 +68,11 @@ function starGeometry(): ShapeGeometry {
   return new ShapeGeometry(shape);
 }
 
-/** Everything the celebrations draw, allocated once. `play` starts one; `update` advances them. */
-function createRig(anchors: AnchorSource) {
+/**
+ * Everything the celebrations draw, allocated once. `play` starts one and returns whether it was
+ * drawn (false when a needed agent anchor is missing); `update` advances them.
+ */
+export function createRig(anchors: AnchorSource) {
   const group = new Group();
   const confetti = createBurst({
     capacity: CONFETTI_MAX_PARTICLES,
@@ -149,15 +152,16 @@ function createRig(anchors: AnchorSource) {
   return {
     group,
     history,
-    play(c: Celebration, event: StoredEnvelope, nowMs: number) {
+    play(c: Celebration, event: StoredEnvelope, nowMs: number): boolean {
       switch (c.kind) {
         case "confetti": {
           const p = head(c.agentId);
           if (p) {
             confetti.emit(p[0], p[1] + HEAD_LIFT, p[2], c.particles, nowMs);
             history.push({ kind: "confetti", at: nowMs });
+            return true;
           }
-          return;
+          return false;
         }
         case "high-five": {
           const a = head(c.fromAgentId);
@@ -171,8 +175,9 @@ function createRig(anchors: AnchorSource) {
               nowMs,
             );
             history.push({ kind: "high-five", at: nowMs });
+            return true;
           }
-          return;
+          return false;
         }
         case "merge-burst":
           history.push({ kind: "merge-burst", at: nowMs });
@@ -183,29 +188,40 @@ function createRig(anchors: AnchorSource) {
             MERGE_PARTICLES,
             nowMs,
           );
-          return;
+          return true;
         case "shimmer":
           shimmerAt = nowMs;
           history.push({ kind: "shimmer", at: nowMs });
-          return;
+          return true;
         case "sparkle": {
           // The reduced-motion icon sits where the full celebration would have played.
           if (c.source === "merge-burst") {
             const at = sparkleAnchor("archives");
             showSparkle(at.x, at.y, at.z, nowMs);
-          } else if (c.source === "shimmer") {
+            return true;
+          }
+          if (c.source === "shimmer") {
             const at = sparkleAnchor("test_lab");
             showSparkle(at.x, at.y, at.z, nowMs);
-          } else if (c.source === "high-five" && event.type === "task.handoff") {
+            return true;
+          }
+          if (c.source === "high-five" && event.type === "task.handoff") {
             const a = head(event.payload.fromAgentId);
             const b = head(event.payload.toAgentId);
             if (a && b) {
               showSparkle((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.4, (a[2] + b[2]) / 2, nowMs);
+              return true;
             }
-          } else if (c.agentId !== undefined) {
-            const p = head(c.agentId);
-            if (p) showSparkle(p[0], p[1] + 0.6, p[2], nowMs);
+            return false;
           }
+          if (c.agentId !== undefined) {
+            const p = head(c.agentId);
+            if (p) {
+              showSparkle(p[0], p[1] + 0.6, p[2], nowMs);
+              return true;
+            }
+          }
+          return false;
         }
       }
     },
@@ -257,7 +273,10 @@ export function Celebrations({
 
   const celebrationsRef = useRef<ReturnType<typeof createCelebrations> | null>(null);
   if (celebrationsRef.current === null) {
-    celebrationsRef.current = createCelebrations({ now: () => performance.now() });
+    celebrationsRef.current = createCelebrations({
+      now: () => performance.now(),
+      reducedMotion: reduced,
+    });
   }
   const celebrations = celebrationsRef.current;
   useEffect(() => celebrations.setReducedMotion(reduced), [celebrations, reduced]);
@@ -265,7 +284,7 @@ export function Celebrations({
   useEffect(
     () =>
       store.onEvent((event) => {
-        for (const c of celebrations.handle(event)) rig.play(c, event, performance.now());
+        celebrations.handle(event, (c) => rig.play(c, event, performance.now()));
       }),
     [store, celebrations, rig],
   );
