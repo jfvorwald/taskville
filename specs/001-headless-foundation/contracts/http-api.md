@@ -195,7 +195,9 @@ submission, a session end, or the agent finishing). The feed then sends one more
 with `phase: "unfinished"`, `finishedAt` set to the boundary's time, no `durationMs` and no
 `evidence.output`: it reports that no result was recorded, not an outcome. The frame `id` is the
 boundary event's sequence. A `PostToolUse` that arrives later replaces `unfinished`, as in the
-reducer.
+reducer. Known limitation (#285): the reducer keeps at most 32 open calls per agent and, at a
+boundary, records only the latest-started open call as `unfinished`; a call it dropped for either
+reason never gets an `unfinished` frame and stays `running` in the feed.
 
 ```text
 { "toolCallId", "agentId", "toolName"?, "phase": "running" | "succeeded" | "failed" | "unfinished",
@@ -209,8 +211,10 @@ a body was stored for the call, `evidence.output` only once the call finished (n
 evidence store's state when the frame is written, so an evicted body still shows that the call
 happened (`GET /v1/evidence/:id` then answers `410`). The heartbeat after the backlog
 (carrying the head) marks the client as caught up; the engine sends it after the backlog frames and
-a turn of the event loop, and not at all if the stream already ended. The `head` is the last
-project event folded, so it may count frames still queued for the client and not yet written.
+a turn of the event loop, and not at all if the stream already ended. The catch-up heartbeat's `head` is the last
+project event folded, so it may count frames still queued for the client and not yet written. An
+idle heartbeat carries the storage head; when that is ahead of what the stream folded, the stream
+goes back to the backlog and sends the missing frames before the next heartbeat.
 The stream cap is checked before the agent is looked up: with the cap full, an unknown agent or
 project is `503 too_many_streams`, not `404`.
 
