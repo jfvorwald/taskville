@@ -7,6 +7,7 @@ export {
   type LightingSnapshot,
 } from "./controller.ts";
 export { DayNightLighting } from "./DayNightLighting.tsx";
+export { DAY_EMISSIVE, emissiveLevel } from "./emissive.ts";
 export { lightingController } from "./instance.ts";
 export {
   browserTimeZone,

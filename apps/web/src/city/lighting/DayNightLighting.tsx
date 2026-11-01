@@ -4,7 +4,9 @@ import { Color } from "three";
 import { resolveTokens, tintHex } from "../../themes/core/contract.ts";
 import { themeController } from "../../themes/core/index.ts";
 import { useTheme } from "../../themes/core/react.ts";
+import { setSharedEmissiveLevel } from "../buildings/materials.ts";
 import type { LightingController } from "./controller.ts";
+import { emissiveLevel } from "./emissive.ts";
 import { lightingController } from "./instance.ts";
 import { useLighting } from "./react.ts";
 import { lightRig } from "./skyColors.ts";
@@ -38,6 +40,11 @@ export function DayNightLighting({
     if (history) r.sky = tintHex(r.sky, theme.history.tint, theme.history.desaturate);
     return r;
   }, [state, themeId, history]);
+
+  // The window and lamp glow follow nightness through one shared level, with no per-frame work.
+  useEffect(() => {
+    setSharedEmissiveLevel(emissiveLevel(state.nightness));
+  }, [state.nightness]);
 
   // `tokens` is a dependency on purpose: ThemedCity resets the background whenever it changes,
   // and this effect runs after it in the same commit.
