@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCameraRig } from "../../../src/city/interaction/cameraRig.ts";
-import { markHoverDirtyOnCameraChange } from "../../../src/city/interaction/hover.ts";
+import {
+  markHoverDirtyOnCameraChange,
+  repickOnCameraChange,
+} from "../../../src/city/interaction/hover.ts";
 
 // M3.24 (roborev 5618 #1): zooming or turning with the camera buttons moves the city under a
 // still pointer, so the hover pick has to run again. The layer marks hover dirty whenever the
@@ -92,6 +95,63 @@ describe("markHoverDirtyOnCameraChange", () => {
       expect(markDirty).toHaveBeenCalledTimes(2);
       rig.reset();
       expect(markDirty).toHaveBeenCalledTimes(3);
+    });
+  });
+});
+
+// M3.24 (roborev 5704): dragging to orbit changes the camera while the stored pick coordinates stay
+// put, so a camera-triggered repick during a drag highlights whatever sat under the OLD position
+// and replaces the grabbing cursor. The release handler already requests a fresh pick, so the
+// camera-change invalidation is skipped while a drag is active.
+describe("repickOnCameraChange", () => {
+  it("is true only when the pointer is inside and no drag is active", () => {
+    expect(repickOnCameraChange({ inside: true, dragging: false })).toBe(true);
+    expect(repickOnCameraChange({ inside: true, dragging: true })).toBe(false);
+    expect(repickOnCameraChange({ inside: false, dragging: false })).toBe(false);
+    expect(repickOnCameraChange({ inside: false, dragging: true })).toBe(false);
+  });
+
+  describe("as the predicate of markHoverDirtyOnCameraChange", () => {
+    it("does not mark dirty when the camera orbits during a drag", () => {
+      const rig = createCameraRig();
+      const markDirty = vi.fn();
+      const state = { inside: true, dragging: true };
+      markHoverDirtyOnCameraChange(rig, markDirty, () => repickOnCameraChange(state));
+      rig.orbitBy(10);
+      rig.orbitBy(10);
+      expect(markDirty).not.toHaveBeenCalled();
+    });
+
+    it("marks dirty on a camera change when inside and not dragging", () => {
+      const rig = createCameraRig();
+      const markDirty = vi.fn();
+      const state = { inside: true, dragging: false };
+      markHoverDirtyOnCameraChange(rig, markDirty, () => repickOnCameraChange(state));
+      rig.zoomBy(1.5);
+      expect(markDirty).toHaveBeenCalledTimes(1);
+    });
+
+    it("never marks dirty when the pointer is outside, dragging or not", () => {
+      const rig = createCameraRig();
+      const markDirty = vi.fn();
+      const state = { inside: false, dragging: false };
+      markHoverDirtyOnCameraChange(rig, markDirty, () => repickOnCameraChange(state));
+      rig.zoomBy(1.5);
+      state.dragging = true;
+      rig.orbitBy(30);
+      expect(markDirty).not.toHaveBeenCalled();
+    });
+
+    it("resumes marking after the drag ends", () => {
+      const rig = createCameraRig();
+      const markDirty = vi.fn();
+      const state = { inside: true, dragging: true };
+      markHoverDirtyOnCameraChange(rig, markDirty, () => repickOnCameraChange(state));
+      rig.orbitBy(10);
+      expect(markDirty).not.toHaveBeenCalled();
+      state.dragging = false; // release
+      rig.zoomBy(1.5);
+      expect(markDirty).toHaveBeenCalledTimes(1);
     });
   });
 });
