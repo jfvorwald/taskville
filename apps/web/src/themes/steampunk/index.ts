@@ -11,7 +11,7 @@ const tokens: ThemeTokens = {
   "--tv-text": "#4a2f22",
   "--tv-text-muted": "#6a5241",
   "--tv-accent": "#975f22",
-  "--tv-focus": "#bf7926",
+  "--tv-focus": "#9d631f",
   "--tv-neon": "#c8913a",
   "--tv-radius": "8px",
   "--tv-font": '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',

@@ -11,7 +11,7 @@ const tokens: ThemeTokens = {
   "--tv-text": "#0f3f73",
   "--tv-text-muted": "#385c7e",
   "--tv-accent": "#1873b3",
-  "--tv-focus": "#c47a14",
+  "--tv-focus": "#a16410",
   "--tv-neon": "#5fd8ff",
   "--tv-radius": "14px",
   "--tv-font": '"Segoe UI", "Frutiger", "Avenir Next", system-ui, sans-serif',
