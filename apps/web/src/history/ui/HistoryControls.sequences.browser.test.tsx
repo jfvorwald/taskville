@@ -2,7 +2,10 @@ import { act, useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
-import { storedEnvelopeSchemas } from "../../../../../packages/protocol/src/index.ts";
+import {
+  storedEnvelopeSchema,
+  storedEnvelopeSchemas,
+} from "../../../../../packages/protocol/src/index.ts";
 import { eventBuilder, PROJECT, SECRET } from "../../../test/data/fake-engine.ts";
 import {
   attention,
@@ -10,6 +13,8 @@ import {
   projectStateHash,
   REDUCER_VERSION,
   reduce,
+  SILENT_THRESHOLD_MS,
+  type StoredEnvelope,
   snapshotResponseSchema,
 } from "../../data/domain.ts";
 import { DEFAULT_PROJECT_ID, selectProject } from "../../data/project.ts";
@@ -36,8 +41,8 @@ function recording(offsets: number[]) {
 // Transport only: the real provider, controller, DataStore and reducer remain mounted.
 // Mirrors timelines/routes.ts: timestamp selects greatest matching sequence; numeric at is
 // an ingest sequence. State hashes and response envelopes are generated from real replay.
-function engine(offsets: number[]) {
-  const log = recording(offsets);
+function engine(offsets: number[], suppliedLog?: readonly StoredEnvelope[]) {
+  const log = suppliedLog ?? recording(offsets);
   const stateAt = (sequence: number) =>
     log.slice(0, sequence).reduce(reduce, initialState(PROJECT));
   const requests: URL[] = [];
@@ -142,10 +147,14 @@ function Presented() {
   const history = useHistoryPresentation();
   const view = useSyncExternalStore(history.store.subscribe, history.store.getState);
   return (
-    <output aria-label="Presented recording">
-      {history.mode}:{view.state?.head ?? 0}:{Object.keys(view.state?.agents ?? {}).join(",")}
-      {JSON.stringify(view.state?.activity ?? {})}
-    </output>
+    <>
+      <output aria-label="Presented recording">
+        {history.mode}:{view.state?.head ?? 0}:{Object.keys(view.state?.agents ?? {}).join(",")}
+        {JSON.stringify(view.state?.activity ?? {})}
+      </output>
+      <output aria-label="Replay attention">{JSON.stringify(view.attention)}</output>
+      <output aria-label="Replay clock">{history.time}</output>
+    </>
   );
 }
 
@@ -158,8 +167,8 @@ afterEach(async () => {
   selectProject(DEFAULT_PROJECT_ID);
 });
 
-async function mount(offsets: number[]) {
-  const transport = engine(offsets);
+async function mount(offsets: number[], suppliedLog?: readonly StoredEnvelope[]) {
+  const transport = engine(offsets, suppliedLog);
   vi.stubGlobal("fetch", transport.fetcher);
   selectProject(PROJECT);
   dataStore.getState().reset(PROJECT);
@@ -299,6 +308,56 @@ describe("recorded sequence navigation through HistoryProvider and Controls", ()
 
 const PLAY_LOG = [0, 500, 5000, 30_000, 300_000, 1_200_000];
 describe("visible playback controls drive recorded presentation", () => {
+  it("crosses the silent-agent threshold between events without refetching the same state", async () => {
+    const emit = eventBuilder();
+    const offsets = [0, 1_000, 20 * 60_000];
+    const events = [
+      emit("agent.registered", "quiet-agent"),
+      emit("agent.connected", "quiet-agent"),
+      emit("agent.registered", "later-agent"),
+    ];
+    const log = events.map((event, index) => {
+      const at = new Date(START + offsets[index]).toISOString();
+      return storedEnvelopeSchema.parse({ ...event, occurredAt: at, receivedAt: at });
+    });
+    const transport = await mount(offsets, log);
+    const head = () =>
+      page.getByRole("status", { name: "Presented recording" }).element().textContent;
+    await expect.poll(head).toContain("history:3:");
+    await key("Home");
+    await expect.poll(head).toContain("history:1:");
+    await page.getByRole("button", { name: "Next moment" }).click();
+    await expect.poll(head).toContain("history:2:");
+    const readAttention = () =>
+      JSON.parse(
+        page.getByRole("status", { name: "Replay attention" }).element().textContent ?? "[]",
+      );
+    expect(readAttention()).toEqual([]);
+    const reads = transport.requests.filter((url) => url.pathname.endsWith("/state")).length;
+    vi.useFakeTimers();
+    vi.setSystemTime(START);
+    speed(600);
+    click("Play");
+    await advance(900);
+    expect(readAttention()).toEqual([]);
+    await advance(200);
+    expect(readAttention()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          agentId: "quiet-agent",
+          level: "trouble",
+          kind: "silent",
+          heuristic: true,
+        }),
+      ]),
+    );
+    expect(head()).toContain("history:2:");
+    expect(
+      Number(page.getByRole("status", { name: "Replay clock" }).element().textContent),
+    ).toBeGreaterThan(START + 1_000 + SILENT_THRESHOLD_MS);
+    expect(transport.requests.filter((url) => url.pathname.endsWith("/state"))).toHaveLength(reads);
+  });
+
   it.each([1, 10, 60, 600])(
     "plays at %ix, pauses and returns to the latest live store",
     async (rate) => {

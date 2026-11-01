@@ -159,6 +159,56 @@ describe("timeline fixture contract", () => {
 });
 
 describe("sequence playback keeps progress between recorded moments", () => {
+  it("advances its clock without refetching an unchanged recorded state", async () => {
+    const { createHistoryStore } = await import("../../../src/history/state/store.ts");
+    let elapsed = 0;
+    let reads = 0;
+    const liveStore = createDataStore();
+    liveStore.getState().reset(PROJECT);
+    const history = createHistoryStore({
+      liveStore,
+      timelineId: TIMELINE,
+      secret: SECRET,
+      now: () => elapsed,
+      moments: LOG.map((event) => ({
+        sequence: event.ingestSequence,
+        time: Date.parse(event.receivedAt),
+      })),
+      fetch: async (input) => {
+        reads += 1;
+        const at = new URL(String(input), "http://127.0.0.1").searchParams.get("at");
+        const event = required(LOG.find((event) => event.ingestSequence === Number(at)));
+        return Response.json(bodyAt(Date.parse(event.receivedAt)));
+      },
+    });
+    cleanups.push(() => history.dispose());
+    await history.getState().seekSequence(1, START);
+    const recorded = history.getState().state;
+    history.getState().play();
+    elapsed = 500;
+    await history.getState().tick();
+    expect(history.getState().time).toBe(START + 500);
+    expect(history.getState().state).toBe(recorded);
+    expect(reads).toBe(1);
+    elapsed = 900;
+    await history.getState().tick();
+    history.getState().pause();
+    elapsed += 5_000;
+    await history.getState().tick();
+    expect(history.getState().time).toBe(START + 900);
+    expect(reads).toBe(1);
+    history.getState().play();
+    elapsed += 50;
+    await history.getState().tick();
+    expect(history.getState().time).toBe(START + 950);
+    history.getState().setRate(10);
+    elapsed += 5;
+    await history.getState().tick();
+    expect(history.getState().time).toBe(START + 1_000);
+    expect(history.getState().state).toEqual(stateAt(START + 1_000));
+    expect(reads).toBe(2);
+  });
+
   it.each(["pause/resume", "rate change", "pause between ticks"])(
     "preserves elapsed progress through %s",
     async (control) => {
