@@ -144,7 +144,8 @@ export interface NotificationDecision {
 }
 
 const requestKey = (projectId: string, requestId: string) => `${projectId}:${requestId}`;
-const agentKey = (projectId: string, agentId: string) => `${projectId}\u0000${agentId}`;
+// IDs are opaque text, so a separator could collide; a JSON-encoded tuple cannot.
+const agentKey = (projectId: string, agentId: string) => JSON.stringify([projectId, agentId]);
 
 /**
  * One notification per agent that enters `needs_you` in a project: it has a `needs_you` record in
