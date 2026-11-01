@@ -61,6 +61,10 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
   let playing: string | null = null;
   let loading: string | null = null;
   let loadToken = 0;
+  /** The theme whose load just failed. Not retried until the theme changes or a loop is wanted anew. */
+  let failed: string | null = null;
+  /** The context is suspended: nothing could sound, so it was parked until a loop is wanted. */
+  let parked = false;
 
   const silenced = () => !enabled || history || settings.getSnapshot().muted;
 
@@ -71,6 +75,12 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     backend.setVolume(next);
   }
 
+  function park() {
+    if (parked) return;
+    parked = true;
+    backend.suspend?.();
+  }
+
   function syncLoop() {
     const s = settings.getSnapshot();
     const wanted = enabled && !s.muted && !s.chimeOnly ? theme : null;
@@ -79,6 +89,9 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       loading = null;
       if (playing !== null) backend.stopLoop();
       playing = null;
+      failed = null;
+      // Nothing can loop now, so let the context rest (disable() parks after its own silence).
+      if (enabled) park();
       return;
     }
     if (wanted === playing) {
@@ -87,10 +100,15 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       loading = null;
       return;
     }
-    if (wanted === loading) return;
+    if (wanted === loading || wanted === failed) return;
     loadToken += 1;
     const token = loadToken;
     loading = wanted;
+    if (parked) {
+      // Wake the context before the loop returns to it.
+      parked = false;
+      backend.start().catch(() => {});
+    }
     loadLoop(wanted).then(
       (asset) => {
         if (token !== loadToken) return;
@@ -102,6 +120,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
         // No loop for this theme, or it failed to load: stay quiet rather than complain.
         if (token !== loadToken) return;
         loading = null;
+        failed = wanted;
         // The old theme's loop must not play on under the new theme.
         if (playing !== null) backend.stopLoop();
         playing = null;
@@ -135,6 +154,8 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
           if (mine !== generation) return;
           enabled = true;
           volume = undefined;
+          parked = false; // start() just woke the context
+          failed = null;
           wasMuted = settings.getSnapshot().muted;
           applyVolume();
           unsubscribe = settings.subscribe(onSettings);
@@ -154,7 +175,10 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       unsubscribe?.();
       unsubscribe = null;
       syncLoop();
-      if (wasEnabled) backend.silence?.();
+      if (wasEnabled) {
+        backend.silence?.();
+        park();
+      }
     },
 
     update(records) {
@@ -172,7 +196,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     },
 
     handleEvent(event) {
-      if (silenced() || settings.getSnapshot().chimeOnly) return;
+      if (!enabled || history) return;
       if (event.provenance === "imported" || event.late === true) return;
       let cue: "tick" | "pop";
       if (event.type === "task.status_changed" && event.payload.status === "completed") {
@@ -182,18 +206,22 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       } else {
         return;
       }
+      // Recorded before the mute check, so an event delivered while muted counts as heard.
       if (seen.has(event.eventId)) return;
       seen.add(event.eventId);
       if (seen.size > SEEN_EVENT_LIMIT) {
         const oldest = seen.values().next();
         if (!oldest.done) seen.delete(oldest.value);
       }
+      const { muted, chimeOnly } = settings.getSnapshot();
+      if (muted || chimeOnly) return;
       backend.playCue(cue);
     },
 
     setTheme(themeId) {
       if (themeId === theme) return;
       theme = themeId;
+      failed = null;
       syncLoop();
     },
 

@@ -15,6 +15,8 @@ export interface AudioBackend {
   stopLoop(): void;
   /** Cuts any cue that is still ringing (on mute or when sound is turned off). */
   silence?(): void;
+  /** Parks the context so an idle city costs nothing. start() or playCue() bring it back. */
+  suspend?(): void | Promise<void>;
 }
 
 export interface WebAudioBackendOptions {
@@ -85,6 +87,28 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
     osc.stop(opts.at + opts.duration + 0.05);
   }
 
+  /** The cue itself, with the rate limit measured on the running clock. */
+  function sound(cue: Cue) {
+    if (!ctx || !cueBus) return;
+    const now = ctx.currentTime;
+    const last = lastCueAt.get(cue);
+    if (last !== undefined && now - last < MIN_CUE_GAP_S) return;
+    lastCueAt.set(cue, now);
+    const t = now + 0.01;
+    switch (cue) {
+      case "chime":
+        note(ctx, cueBus, { type: "sine", from: 784, at: t, duration: 1.1, peak: 0.22 });
+        note(ctx, cueBus, { type: "sine", from: 1047, at: t + 0.14, duration: 1.3, peak: 0.18 });
+        break;
+      case "tick":
+        note(ctx, cueBus, { type: "triangle", from: 1800, at: t, duration: 0.05, peak: 0.1 });
+        break;
+      case "pop":
+        note(ctx, cueBus, { type: "sine", from: 620, to: 220, at: t, duration: 0.12, peak: 0.2 });
+        break;
+    }
+  }
+
   function decode(themeId: string, asset: unknown): Promise<AudioBuffer> | null {
     const cached = decoded.get(themeId);
     if (cached) return cached;
@@ -134,22 +158,25 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
 
     playCue(cue) {
       if (!ctx || !cueBus) return;
-      const now = ctx.currentTime;
-      const last = lastCueAt.get(cue);
-      if (last !== undefined && now - last < MIN_CUE_GAP_S) return;
-      lastCueAt.set(cue, now);
-      const t = now + 0.01;
-      switch (cue) {
-        case "chime":
-          note(ctx, cueBus, { type: "sine", from: 784, at: t, duration: 1.1, peak: 0.22 });
-          note(ctx, cueBus, { type: "sine", from: 1047, at: t + 0.14, duration: 1.3, peak: 0.18 });
-          break;
-        case "tick":
-          note(ctx, cueBus, { type: "triangle", from: 1800, at: t, duration: 0.05, peak: 0.1 });
-          break;
-        case "pop":
-          note(ctx, cueBus, { type: "sine", from: 620, to: 220, at: t, duration: 0.12, peak: 0.2 });
-          break;
+      if (ctx.state === "suspended") {
+        // Parked: wake the context first and sound the cue once its clock runs again.
+        ctx.resume().then(
+          () => sound(cue),
+          () => {},
+        );
+        return;
+      }
+      sound(cue);
+    },
+
+    async suspend() {
+      if (!ctx) return;
+      // A suspended clock is frozen, so the rate-limit times taken from it mean nothing after.
+      lastCueAt.clear();
+      try {
+        await ctx.suspend();
+      } catch {
+        // Already closed or not suspendable: nothing to park.
       }
     },
 
@@ -176,7 +203,11 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
           voice = { source, gain };
         },
         () => {
-          // A loop that cannot be decoded leaves the city quiet; the cues still work.
+          // A loop that cannot be decoded leaves the city quiet; the cues still work. The old
+          // theme's loop must not play on under the new theme.
+          if (token !== loopToken) return;
+          if (voice && ctx) fadeOut(voice, ctx);
+          voice = null;
         },
       );
     },

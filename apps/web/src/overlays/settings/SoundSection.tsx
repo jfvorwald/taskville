@@ -32,6 +32,7 @@ export function SoundSection({
 }: SoundSectionProps) {
   const values = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [on, setOn] = useState(soundscape.enabled);
+  const [failed, setFailed] = useState(false);
 
   const toggle = async () => {
     if (on) {
@@ -40,7 +41,15 @@ export function SoundSection({
       return;
     }
     // Called straight from the click, so the browser lets the audio context start.
-    await soundscape.enable();
+    try {
+      await soundscape.enable();
+    } catch {
+      // The browser refused to start audio: stay on "Enable sound" so the viewer can try again.
+      setFailed(true);
+      setOn(false);
+      return;
+    }
+    setFailed(false);
     setOn(soundscape.enabled);
   };
 
@@ -50,6 +59,11 @@ export function SoundSection({
       <Button className={styles.action} onPress={toggle}>
         {on ? "Turn sound off" : "Enable sound"}
       </Button>
+      {failed ? (
+        <span role="status" className={styles.note}>
+          Sound could not start. Try again.
+        </span>
+      ) : null}
       <Slider
         className={styles.slider}
         minValue={0}

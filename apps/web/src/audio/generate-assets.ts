@@ -7,7 +7,7 @@
 // cycles in the loop, and the filtered noise is made periodic, so the loop point is seamless. Levels are low; the backend plays them under the cues.
 
 import { writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RATE = 11025;
@@ -169,10 +169,21 @@ function encodeWav(signal: Float64Array): Buffer {
 
 const LOOPS: Record<string, () => Float64Array> = { cyberpunk, steampunk, solarpunk, aero };
 
-const dir = dirname(fileURLToPath(import.meta.url));
-for (const [themeId, make] of Object.entries(LOOPS)) {
-  const file = join(dir, `ambient-${themeId}.wav`);
-  const bytes = encodeWav(make());
-  writeFileSync(file, bytes);
-  console.log(`${file} ${bytes.length} bytes`);
+/** One loop's WAV bytes. Pure: nothing is written, so importing this module is safe. */
+export function buildLoopWav(themeId: string): Buffer {
+  const make = LOOPS[themeId];
+  if (!make) throw new Error(`no ambient loop for theme "${themeId}"`);
+  return encodeWav(make());
+}
+
+// Write the files only when run as a script, never when imported.
+const scriptPath = process.argv[1];
+if (scriptPath !== undefined && fileURLToPath(import.meta.url) === resolve(scriptPath)) {
+  const dir = dirname(fileURLToPath(import.meta.url));
+  for (const themeId of Object.keys(LOOPS)) {
+    const file = join(dir, `ambient-${themeId}.wav`);
+    const bytes = buildLoopWav(themeId);
+    writeFileSync(file, bytes);
+    console.log(`${file} ${bytes.length} bytes`);
+  }
 }
