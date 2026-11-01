@@ -468,6 +468,82 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     }
   });
 
+  it("keeps Settings onscreen and all 24 attention projects reachable with a tall header", async () => {
+    const root = document.documentElement;
+    const attributes = ["style", "data-theme", "data-mode", "data-history"].map(
+      (name) => [name, root.getAttribute(name)] as const,
+    );
+    const detach = themeController.attach(root);
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await page.viewport(320, 640);
+      await mountSeeded();
+      selectionStore.select("a2");
+      await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+      const projects = Array.from({ length: 24 }, (_, index) => ({
+        projectId: "project-".concat(String(index)),
+        name: "Taskville workspace ".concat(
+          String(index).padStart(2, "0"),
+          " telemetry and observability dashboard",
+        ),
+        attention: [needsYou("agent-".concat(String(index)), "request-".concat(String(index)))],
+      }));
+      attentionStore.setState({
+        ready: true,
+        feed: Object.fromEntries(projects.map((project) => [project.projectId, project])),
+      });
+      const last = page.getByRole("button", {
+        name: projects[23].name.concat(": 1 needs you"),
+        exact: true,
+      });
+      await expect.element(last).toBeVisible();
+      const settings = toggle().element();
+      const settingsBox = settings.getBoundingClientRect();
+      expect(settingsBox.top).toBeGreaterThanOrEqual(0);
+      expect(settingsBox.bottom).toBeLessThanOrEqual(window.innerHeight);
+      expect(
+        settings.contains(
+          document.elementFromPoint(
+            settingsBox.left + settingsBox.width / 2,
+            settingsBox.top + settingsBox.height / 2,
+          ),
+        ),
+      ).toBe(true);
+      const chips = last.element().parentElement;
+      if (!chips) throw new Error("project chip container absent");
+      expect(/auto|scroll/.test(getComputedStyle(chips).overflowY)).toBe(true);
+      expect(chips.clientHeight).toBeGreaterThan(0);
+      expect(chips.scrollHeight).toBeGreaterThan(chips.clientHeight);
+      for (const project of projects) {
+        const button = page
+          .getByRole("button", { name: project.name.concat(": 1 needs you"), exact: true })
+          .element();
+        chips.scrollTop += button.getBoundingClientRect().top - chips.getBoundingClientRect().top;
+        await new Promise(requestAnimationFrame);
+        const box = button.getBoundingClientRect();
+        const clip = chips.getBoundingClientRect();
+        const left = Math.max(0, box.left, clip.left);
+        const right = Math.min(window.innerWidth, box.right, clip.right);
+        const top = Math.max(0, box.top, clip.top);
+        const bottom = Math.min(window.innerHeight, box.bottom, clip.bottom);
+        expect(right).toBeGreaterThan(left);
+        expect(bottom).toBeGreaterThan(top);
+        expect(
+          button.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2)),
+        ).toBe(true);
+      }
+      await last.click();
+      expect(projectSelection.getState().projectId).toBe(projects[23].projectId);
+    } finally {
+      detach();
+      for (const [name, value] of attributes) {
+        if (value === null) root.removeAttribute(name);
+        else root.setAttribute(name, value);
+      }
+      await page.viewport(viewport.width, viewport.height);
+    }
+  });
+
   it("is unchanged with nothing selected: the toggle is there, closed, and opens Settings in the sidebar", async () => {
     await mountSeeded();
 
