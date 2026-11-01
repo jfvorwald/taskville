@@ -3,6 +3,7 @@
 // the shared packages, instead of copying their rules.
 import { type JsonValue, redactJson } from "../../../../../packages/adapters/src/redact/json.ts";
 import { redactText } from "../../../../../packages/adapters/src/redact/text.ts";
+import { visibleControls } from "./format.ts";
 
 /** A secret-looking part of an input: UTF-16 offsets into the text, half-open. */
 export interface MaskSpan {
@@ -53,38 +54,86 @@ function valueRanges(value: JsonValue, text: string): Map<string, [number, numbe
   return out === text ? ranges : null;
 }
 
+/** The whole input as one span, for when nothing finer can be trusted. */
+const wholeInput = (text: string): MaskSpan => ({
+  kind: "sensitive-value",
+  start: 0,
+  end: text.length,
+});
+
+/** A string as JSON writes it inside its quotes. */
+const escaped = (s: string) => JSON.stringify(s).slice(1, -1);
+
+/** True for `{ command }` alone, which the card shows as the command itself. */
+function isCommandOnly(toolInput: unknown, text: string): boolean {
+  if (typeof toolInput !== "object" || toolInput === null || Array.isArray(toolInput)) return false;
+  const keys = Object.keys(toolInput);
+  return (
+    keys.length === 1 &&
+    keys[0] === "command" &&
+    (toolInput as { command?: unknown }).command === text
+  );
+}
+
 /**
- * The secret spans of an input as the card shows it. `redactText` reads the text; it cannot see
- * that `{ "password": { "value": "x" } }` seals a whole object under a sensitive name, which the
- * JSON redactor does. For a structured input shown as pretty JSON, each value the JSON redactor
- * masked in full is added as one span covering that whole value.
+ * The secret spans of an input as the card shows it (`text` is `inputText(toolInput)`).
+ *
+ * `redactText` reads the text. For a structured input shown as pretty JSON that is not enough: a
+ * newline in a string is shown as backslash and n, which hides the start of a line from it, and
+ * it cannot see that `{ "password": { "value": "x" } }` seals a whole object under a sensitive
+ * name. The JSON redactor reads the real values, so each string span and each sealed value it
+ * masks is mapped to its place in the displayed text and added. When the displayed layout cannot
+ * be mapped and the JSON redactor found something, the whole input is one span: fail closed.
  */
 export function inputMaskSpans(toolInput: unknown, text: string): MaskSpan[] {
   const spans = maskSpans(text);
   if (typeof toolInput !== "object" || toolInput === null) return spans;
-  const ranges = valueRanges(toolInput as JsonValue, text);
-  if (ranges === null) return spans;
-  const wholes: MaskSpan[] = [];
-  for (const { path, spans: masked } of redactJson(toolInput as JsonValue).masks) {
+  const json = toolInput as JsonValue;
+  const masks = redactJson(json).masks;
+  if (masks.length === 0) return spans;
+
+  const found: MaskSpan[] = [];
+  if (isCommandOnly(toolInput, text)) {
+    // Shown as the command itself, so the offsets in the string are the offsets in the text.
+    for (const { spans: inString } of masks) {
+      for (const s of inString) found.push({ kind: s.kind, start: s.start, end: s.end });
+    }
+    return merge([...spans, ...found]);
+  }
+
+  const ranges = valueRanges(json, text);
+  if (ranges === null) return [wholeInput(text)];
+  for (const { path, spans: masked } of masks) {
     const range = ranges.get(JSON.stringify(path));
     const first = masked[0];
-    if (range === undefined || first === undefined) continue;
-    // A value the JSON redactor masked from its first character to its last is sealed whole: an
-    // object, array, number or boolean under a sensitive name, or a string such as the `value`
-    // of a `name`/`value` pair whose two properties are not side by side. The text pass cannot
-    // tell those apart from other text, so cover the displayed value (a string without its quotes).
+    if (range === undefined || first === undefined) return [wholeInput(text)];
     const node = path.reduce<unknown>(
       (at, key) => (at as Record<string | number, unknown>)[key],
       toolInput,
     );
-    if (first.start !== 0) continue;
     if (typeof node !== "string") {
-      wholes.push({ kind: first.kind, start: range[0], end: range[1] });
-    } else if (first.end >= node.length && node.length > 0) {
-      wholes.push({ kind: first.kind, start: range[0] + 1, end: range[1] - 1 });
+      // An object, array, number or boolean sealed whole under a sensitive name.
+      if (first.start === 0) found.push({ kind: first.kind, start: range[0], end: range[1] });
+      continue;
+    }
+    // A string: its displayed form is the escaped string between quotes, so each span's place is
+    // the length of the escaped text before it.
+    const base = range[0] + 1;
+    if (text.slice(base, range[1] - 1) !== escaped(node)) {
+      found.push({ kind: first.kind, start: base, end: range[1] - 1 });
+      continue;
+    }
+    let cursor = 0;
+    let shown = base;
+    for (const s of masked) {
+      shown += escaped(node.slice(cursor, s.start)).length;
+      const start = shown;
+      shown += escaped(node.slice(s.start, s.end)).length;
+      found.push({ kind: s.kind, start, end: shown });
+      cursor = s.end;
     }
   }
-  return merge([...spans, ...wholes]);
+  return merge([...spans, ...found]);
 }
 
 /** Sorted spans with overlaps joined, the first kind winning. */
@@ -97,4 +146,26 @@ function merge(spans: MaskSpan[]): MaskSpan[] {
     else out.push({ ...span });
   }
   return out;
+}
+
+/**
+ * `raw` with the invisible and reordering characters shown as `<U+XXXX>` markers, and the spans
+ * moved to the same places in the result. Spans are found on the raw text, which is what the
+ * engine redacts; only what the user sees changes.
+ */
+export function markControls(
+  raw: string,
+  spans: readonly MaskSpan[],
+): { text: string; spans: MaskSpan[] } {
+  let text = "";
+  let cursor = 0;
+  const moved: MaskSpan[] = [];
+  for (const span of spans) {
+    text += visibleControls(raw.slice(cursor, span.start));
+    const start = text.length;
+    text += visibleControls(raw.slice(span.start, span.end));
+    moved.push({ kind: span.kind, start, end: text.length });
+    cursor = span.end;
+  }
+  return { text: text + visibleControls(raw.slice(cursor)), spans: moved };
 }

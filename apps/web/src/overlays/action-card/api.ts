@@ -81,16 +81,23 @@ export async function fetchExactInput(args: {
   secret: string;
   projectId: string;
   requestId: string;
+  signal?: AbortSignal | undefined;
 }): Promise<ExactInputResult> {
-  const { secret, projectId, requestId } = args;
+  const { secret, projectId, requestId, signal } = args;
   const url = `/v1/requests/${encodeURIComponent(requestId)}/input?projectId=${encodeURIComponent(projectId)}`;
   try {
-    const response = await args.fetch(url, { headers: { [SESSION_HEADER]: secret } });
+    const response = await args.fetch(url, {
+      headers: { [SESSION_HEADER]: secret },
+      ...(signal === undefined ? {} : { signal }),
+    });
     if (response.status === 410) return { kind: "expired" };
     if (response.status === 404) return { kind: "unknown" };
     if (!response.ok) return { kind: "failed" };
     const body: unknown = await response.json();
-    return isHeldRequest(body) ? { kind: "ok", input: body } : { kind: "failed" };
+    // The body must be for the request that was asked about.
+    return isHeldRequest(body) && body.requestId === requestId
+      ? { kind: "ok", input: body }
+      : { kind: "failed" };
   } catch {
     return { kind: "failed" };
   }
@@ -114,6 +121,7 @@ export async function sendCommand(args: {
   fetch: typeof fetch;
   secret: string;
   body: CommandBody;
+  signal?: AbortSignal | undefined;
 }): Promise<SendResult> {
   let response: Response;
   try {
@@ -121,6 +129,7 @@ export async function sendCommand(args: {
       method: "POST",
       headers: { [SESSION_HEADER]: args.secret, "Content-Type": "application/json" },
       body: JSON.stringify(args.body),
+      ...(args.signal === undefined ? {} : { signal: args.signal }),
     });
   } catch {
     return { ok: false, code: "network", status: 0 };
@@ -159,7 +168,8 @@ const MESSAGES: Readonly<Record<string, string>> = {
   unknown_session: "The engine does not know this session.",
   unknown_project: "The engine does not know this project.",
   history_context_rejected: "Commands are not available while viewing history.",
-  network: "Could not reach the engine. Try again.",
+  network: "Could not reach the engine. The command may have been sent; try again.",
+  timeout: "The engine did not respond in time. The command may have been sent; try again.",
 };
 
 /** A short plain sentence for an error code. Never the code itself, never server text. */

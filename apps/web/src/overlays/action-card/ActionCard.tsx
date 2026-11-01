@@ -1,4 +1,15 @@
-import { Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useData } from "../../data/react.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { useSession } from "../../pairing/session.tsx";
@@ -15,15 +26,25 @@ import {
   type HeldRequest,
   sendCommand,
 } from "./api.ts";
-import { formatWaiting } from "./format.ts";
+import { formatWaiting, stripControls, visibleControls } from "./format.ts";
 import { inputText } from "./input.ts";
-import { inputMaskSpans, type MaskSpan } from "./mask.ts";
+import { inputMaskSpans, type MaskSpan, markControls } from "./mask.ts";
 import { type CardTarget, useCardTarget } from "./target.ts";
 
 export const ACTION_CARD_ID = "action-card";
 
 /** How often the waiting time is recomputed from the store clock. */
 const TICK_MS = 1000;
+
+/** How long Allow stays off after an exact input renders, so a click made as it appears is not taken. */
+const SETTLE_MS = 500;
+
+/** How long an engine call may take before the card stops waiting for it. */
+const INPUT_TIMEOUT_MS = 10_000;
+const COMMAND_TIMEOUT_MS = 10_000;
+
+/** The engine's limit for a deny note (MAX_DENY_MESSAGE_CHARS). */
+const NOTE_MAX_CHARS = 1000;
 
 export type ActionCardProps = OverlayProps & {
   /** The data store to read. Default: the app store. */
@@ -50,7 +71,7 @@ interface Notice {
   text: string;
 }
 
-/** A key for one click. Each click gets its own, so a retry is never mistaken for a replay. */
+/** A key for one click. A retry of the same click reuses it, so the engine can tell it is a replay. */
 function newKey(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -70,6 +91,9 @@ const STATUS_TEXT: Record<Exclude<CardState, "open">, string> = {
   closed: "This request is no longer open.",
 };
 
+const NOT_HELD_TEXT =
+  "Taskville no longer holds this request, so it cannot be answered here. Answer it in the terminal, or open the session.";
+
 /** The input with each masked span replaced by a reveal button until it is revealed. */
 function inputNodes(
   text: string,
@@ -83,7 +107,7 @@ function inputNodes(
     nodes.push(<Fragment key={`t${cursor}`}>{text.slice(cursor, span.start)}</Fragment>);
     nodes.push(
       revealed.has(index) ? (
-        <span key={span.start} className={styles.revealed}>
+        <span key={span.start} className={styles.revealed} data-revealed={index} tabIndex={-1}>
           {text.slice(span.start, span.end)}
         </span>
       ) : (
@@ -91,6 +115,7 @@ function inputNodes(
           key={span.start}
           type="button"
           className={styles.reveal}
+          data-mask={index}
           onClick={() => reveal(index)}
         >
           {`Reveal masked ${span.kind}`}
@@ -103,11 +128,27 @@ function inputNodes(
   return nodes;
 }
 
+/** A scroll area must be reachable by keyboard, or its overflow cannot be read without a mouse. */
+const FOCUSABLE = { tabIndex: 0 };
+
 /** The exact input in a monospace scroll area; focusable so a keyboard can scroll it. */
-function InputBox({ children }: { children: ReactNode }) {
+function InputBox({
+  boxRef,
+  onScroll,
+  children,
+}: {
+  boxRef: RefObject<HTMLPreElement | null>;
+  onScroll?: () => void;
+  children: ReactNode;
+}) {
   return (
-    // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroll area must be reachable by keyboard
-    <pre className={styles.input} data-testid="action-card-input" tabIndex={0}>
+    <pre
+      ref={boxRef}
+      className={styles.input}
+      data-testid="action-card-input"
+      {...FOCUSABLE}
+      onScroll={onScroll}
+    >
       {children}
     </pre>
   );
@@ -116,8 +157,9 @@ function InputBox({ children }: { children: ReactNode }) {
 /**
  * The action card (ARCHITECTURE.md 2.4): for the selected agent that needs you, who is asking,
  * for what, the exact input, and Allow once, Deny or Open session. Every string from the agent or
- * the engine is a React text child. Sending a decision ends as "Sent, unconfirmed": the engine
- * has relayed it, only the agent's own event confirms it.
+ * the engine is a React text child, with invisible and reordering characters made visible.
+ * Sending a decision ends as "Sent, unconfirmed": the engine has relayed it, only the agent's own
+ * event confirms it.
  */
 export function ActionCard({
   mode,
@@ -155,20 +197,43 @@ function CardBody({
 }) {
   const readOnly = mode === "history";
   const projectId = useData((s) => s.projectId, store);
+  const sessionCwd = useData(
+    (s) =>
+      target.sessionId === undefined
+        ? undefined
+        : s.state?.sessions?.[target.sessionId]?.workingDirectory,
+    store,
+  );
   const { requestId } = target;
   const wantsInput = !readOnly && target.answerable && projectId !== null;
 
   const [load, setLoad] = useState<Load>({ kind: wantsInput ? "loading" : "idle" });
   const [sent, setSent] = useState(false);
-  const [forced, setForced] = useState<"expired" | "closed" | null>(null);
-  const [openOnly, setOpenOnly] = useState(false);
+  const [forced, setForced] = useState<"closed" | null>(null);
+  const [notHeld, setNotHeld] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [note, setNote] = useState("");
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
+  const [settled, setSettled] = useState(false);
+  const [scroll, setScroll] = useState({ overflow: false, atEnd: true });
   const [now, setNow] = useState(() => store.now());
   const inFlight = useRef(false);
+  const mounted = useRef(true);
+  const commandTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const retry = useRef<{ signature: string; key: string } | null>(null);
+  const boxRef = useRef<HTMLPreElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const focusAfterReveal = useRef<number | null>(null);
   const noteId = useId();
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(commandTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(store.now()), TICK_MS);
@@ -178,89 +243,178 @@ function CardBody({
   useEffect(() => {
     if (!wantsInput) return;
     let cancelled = false;
-    void fetchExactInput({ fetch, secret, projectId, requestId }).then((result) => {
-      if (cancelled) return;
-      if (result.kind === "ok") setLoad({ kind: "ok", input: result.input });
-      else setLoad({ kind: result.kind === "expired" ? "expired" : "failed" });
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), INPUT_TIMEOUT_MS);
+    void fetchExactInput({ fetch, secret, projectId, requestId, signal: controller.signal }).then(
+      (result) => {
+        clearTimeout(timer);
+        if (cancelled) return;
+        if (result.kind === "ok") setLoad({ kind: "ok", input: result.input });
+        else setLoad({ kind: result.kind === "expired" ? "expired" : "failed" });
+      },
+    );
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
     };
   }, [wantsInput, fetch, secret, projectId, requestId]);
 
-  const state: CardState = sent
-    ? "sent"
-    : (forced ?? (load.kind === "expired" ? "expired" : recordedState(target.requestState)));
-  const variant = target.answerable && !openOnly ? "decision" : "open-only";
+  // Allow stays off for a moment after the input appears.
+  useEffect(() => {
+    if (load.kind !== "ok") return;
+    const timer = setTimeout(() => setSettled(true), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [load]);
 
-  const toolInput = load.kind === "ok" ? load.input.toolInput : null;
-  const text = load.kind === "ok" ? inputText(toolInput) : null;
-  const spans = useMemo(
-    () => (text === null ? [] : inputMaskSpans(toolInput, text)),
-    [toolInput, text],
-  );
+  const recorded = recordedState(target.requestState);
+  let state: CardState = sent ? "sent" : (forced ?? recorded);
+  // A card that only remembers its request offers no decision on it.
+  if (state === "open" && target.stale === true) state = "closed";
+  // The bridge no longer holding the request only matters while the request is still open: a
+  // state the store recorded outranks it.
+  const variant =
+    target.answerable && !((notHeld || load.kind === "expired") && state === "open")
+      ? "decision"
+      : "open-only";
+
+  const shown = useMemo(() => {
+    if (load.kind !== "ok") return null;
+    const raw = inputText(load.input.toolInput);
+    return markControls(raw, inputMaskSpans(load.input.toolInput, raw));
+  }, [load]);
+  const text = shown?.text ?? null;
+  const spans = shown?.spans ?? [];
   const unrevealed = spans.length - revealed.size;
-  const cwd = load.kind === "ok" ? load.input.cwd : undefined;
+  const lineCount = text === null ? 0 : text.split("\n").length;
+
+  // Does the input box overflow, and has it been scrolled to the end?
+  const measure = useCallback(() => {
+    const box = boxRef.current;
+    if (box === null) return;
+    const overflow = box.scrollHeight > box.clientHeight + 1;
+    const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 2;
+    setScroll((before) =>
+      before.overflow === overflow && before.atEnd === atEnd ? before : { overflow, atEnd },
+    );
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the box changes size when its text or reveals change
+  useLayoutEffect(measure, [measure, text, revealed]);
+  const hasBox = text !== null;
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!hasBox || box === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [hasBox, measure]);
+
+  // After a reveal the clicked button is gone: move focus on, to the next reveal or the text.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs after each reveal
+  useLayoutEffect(() => {
+    const index = focusAfterReveal.current;
+    const box = boxRef.current;
+    focusAfterReveal.current = null;
+    if (index === null || box === null) return;
+    const buttons = Array.from(box.querySelectorAll<HTMLElement>("button[data-mask]"));
+    const next = buttons.find((b) => Number(b.dataset.mask) > index) ?? buttons[0];
+    (next ?? box.querySelector<HTMLElement>(`[data-revealed="${index}"]`))?.focus();
+  }, [revealed]);
+
+  // After a send the status line takes focus, so a screen reader reads the result.
+  useEffect(() => {
+    if (state === "sent") statusRef.current?.focus();
+  }, [state]);
+
+  const cwd = (load.kind === "ok" ? load.input.cwd : undefined) ?? sessionCwd;
 
   const locked = state !== "open" || busy;
   const canOpen = !locked && target.sessionId !== undefined;
-  const canAllow = !locked && load.kind === "ok" && unrevealed === 0;
+  const canAllow =
+    !locked &&
+    load.kind === "ok" &&
+    unrevealed === 0 &&
+    settled &&
+    (!scroll.overflow || scroll.atEnd);
 
   const fail = (code: string) => {
-    if (code === "request_expired") setForced("expired");
+    if (code === "request_expired") setNotHeld(true);
     else if (code === "request_not_open") setForced("closed");
     else {
-      if (code === "not_answerable") setOpenOnly(true);
+      if (code === "not_answerable") setNotHeld(true);
       setNotice({ kind: "error", text: commandErrorMessage(code) });
     }
   };
 
   const submit = async (
-    body: CommandBody,
+    make: (idempotencyKey: string) => CommandBody,
     done: (command: CommandRecord) => Promise<void> | void,
   ) => {
     if (inFlight.current || state !== "open") return;
     inFlight.current = true;
     setBusy(true);
     setNotice(null);
-    const result = await sendCommand({ fetch, secret, body });
+    // A retry of the same command after a lost answer reuses its key; anything else gets a new one.
+    const signature = JSON.stringify(make(""));
+    const key = retry.current?.signature === signature ? retry.current.key : newKey();
+    const controller = new AbortController();
+    let timedOut = false;
+    commandTimer.current = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, COMMAND_TIMEOUT_MS);
+    const result = await sendCommand({ fetch, secret, body: make(key), signal: controller.signal });
+    clearTimeout(commandTimer.current);
     inFlight.current = false;
+    if (!mounted.current) return;
     setBusy(false);
-    if (result.ok) await done(result.command);
-    else fail(result.code);
+    if (result.ok) {
+      retry.current = null;
+      await done(result.command);
+      return;
+    }
+    const code = timedOut ? "timeout" : result.code;
+    retry.current = code === "network" || code === "timeout" ? { signature, key } : null;
+    fail(code);
   };
 
   const decide = (behavior: "allow" | "deny") => {
     if (projectId === null) return;
     void submit(
-      buildDecideBody({ projectId, requestId, idempotencyKey: newKey(), behavior, note }),
-      () => setSent(true),
+      (idempotencyKey) => buildDecideBody({ projectId, requestId, idempotencyKey, behavior, note }),
+      ({ status }) => {
+        if (status === "delivered") setSent(true);
+        else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
+      },
     );
   };
 
   const open = () => {
-    if (projectId === null || target.sessionId === undefined) return;
+    const { sessionId } = target;
+    if (projectId === null || sessionId === undefined) return;
     void submit(
-      buildOpenBody({
-        projectId,
-        requestId,
-        sessionId: target.sessionId,
-        idempotencyKey: newKey(),
-      }),
+      (idempotencyKey) => buildOpenBody({ projectId, requestId, sessionId, idempotencyKey }),
       async ({ result }) => {
         if (result?.outcome === "opened") {
           setNotice({ kind: "info", text: "Session opened." });
         } else if (result?.outcome === "copy-only") {
-          const sessionId = result.sessionId ?? target.sessionId ?? "";
+          const id = result.sessionId ?? sessionId;
           const where = result.cwd ?? cwd;
+          const lines = [`session ${stripControls(id)}`];
+          if (where !== undefined) lines.push(`cwd ${stripControls(where)}`);
           try {
-            await navigator.clipboard.writeText(
-              where === undefined ? `session ${sessionId}` : `session ${sessionId}\ncwd ${where}`,
-            );
-            setNotice({ kind: "info", text: "Copied the session id and working directory." });
+            await navigator.clipboard.writeText(lines.join("\n"));
+            if (mounted.current) {
+              setNotice({ kind: "info", text: "Copied the session id and working directory." });
+            }
           } catch {
-            const detail = where === undefined ? sessionId : `${sessionId} in ${where}`;
-            setNotice({ kind: "info", text: `Could not copy. Session ${detail}` });
+            const detail = where === undefined ? id : `${id} in ${where}`;
+            if (mounted.current) {
+              setNotice({
+                kind: "info",
+                text: `Could not copy. Session ${visibleControls(detail)}`,
+              });
+            }
           }
         } else {
           setNotice({ kind: "info", text: "Session open requested." });
@@ -269,7 +423,13 @@ function CardBody({
     );
   };
 
-  const reveal = (index: number) => setRevealed((before) => new Set(before).add(index));
+  const reveal = (index: number) => {
+    focusAfterReveal.current = index;
+    setRevealed((before) => new Set(before).add(index));
+  };
+
+  const statusText =
+    state !== "open" ? STATUS_TEXT[state] : notice?.kind === "info" ? notice.text : "";
 
   return (
     <InteractiveRegion
@@ -279,46 +439,59 @@ function CardBody({
       data-variant={variant}
       data-readonly={readOnly ? "true" : undefined}
     >
-      <h2 className={styles.title}>{target.agentName}</h2>
+      <h2 className={styles.title}>{visibleControls(target.agentName)}</h2>
       <dl className={styles.facts}>
         <dt>Project</dt>
-        <dd>{projectId}</dd>
+        <dd>{projectId === null ? null : visibleControls(projectId)}</dd>
         {target.sessionId !== undefined && (
           <>
             <dt>Session</dt>
-            <dd>{target.sessionId}</dd>
+            <dd>{visibleControls(target.sessionId)}</dd>
           </>
         )}
         {target.toolName !== undefined && (
           <>
             <dt>Tool</dt>
-            <dd>{target.toolName}</dd>
+            <dd>{visibleControls(target.toolName)}</dd>
           </>
         )}
         <dt>Waiting</dt>
         <dd>{formatWaiting(now - target.sinceMs)}</dd>
       </dl>
-      {cwd !== undefined && (
+      {!readOnly && load.kind !== "loading" && (
         <p className={styles.cwd} data-testid="action-card-cwd">
-          {cwd}
+          {`Working directory: ${cwd === undefined ? "unknown" : visibleControls(cwd)}`}
         </p>
       )}
 
-      {state !== "open" && (
-        <p className={styles.status} role="status">
-          {STATUS_TEXT[state]}
-        </p>
-      )}
+      <p ref={statusRef} className={styles.status} role="status" tabIndex={-1}>
+        {statusText}
+      </p>
 
       {readOnly ? (
-        <InputBox>{target.inputPreview ?? "No input recorded."}</InputBox>
+        <InputBox boxRef={boxRef}>
+          {visibleControls(target.inputPreview ?? "No input recorded.")}
+        </InputBox>
       ) : variant === "open-only" ? (
         <p className={styles.reason}>
-          {target.reason ?? "This prompt is not held by Taskville. Answer it in the terminal."}
+          {state === "open" && (notHeld || load.kind === "expired")
+            ? NOT_HELD_TEXT
+            : visibleControls(
+                target.reason ?? "This prompt is not held by Taskville. Answer it in the terminal.",
+              )}
         </p>
       ) : (
         <>
-          {text !== null && <InputBox>{inputNodes(text, spans, revealed, reveal)}</InputBox>}
+          {text !== null && (
+            <InputBox boxRef={boxRef} onScroll={measure}>
+              {inputNodes(text, spans, revealed, reveal)}
+            </InputBox>
+          )}
+          {scroll.overflow && text !== null && (
+            <p className={styles.hint}>
+              {`Input: ${lineCount} lines. Scroll to the end to enable Allow once.`}
+            </p>
+          )}
           {load.kind === "loading" && <p className={styles.hint}>Loading the exact input...</p>}
           {(load.kind === "failed" || load.kind === "idle") && state === "open" && (
             <p className={styles.hint}>
@@ -336,6 +509,7 @@ function CardBody({
             id={noteId}
             className={styles.noteBox}
             rows={2}
+            maxLength={NOTE_MAX_CHARS}
             value={note}
             disabled={locked}
             onChange={(event) => setNote(event.target.value)}
@@ -343,11 +517,8 @@ function CardBody({
         </>
       )}
 
-      {notice !== null && (
-        <p
-          className={notice.kind === "error" ? styles.error : styles.hint}
-          role={notice.kind === "error" ? "alert" : "status"}
-        >
+      {notice?.kind === "error" && (
+        <p className={styles.error} role="alert">
           {notice.text}
         </p>
       )}

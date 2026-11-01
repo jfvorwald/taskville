@@ -28,6 +28,8 @@ export interface CardTarget {
   sinceMs: number;
   answerable: boolean;
   requestState: string;
+  /** True when the request has left attention and the card only remembers it. */
+  stale?: boolean;
 }
 
 /**
@@ -83,5 +85,5 @@ export function useCardTarget(store: DataStore, selectedId: string | null): Card
   const held = kept.current;
   if (live !== null || held === null) return live;
   const state = requests?.[held.requestId]?.state;
-  return state === undefined ? held : { ...held, requestState: state };
+  return { ...held, requestState: state ?? held.requestState, stale: true };
 }
