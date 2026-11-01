@@ -46,6 +46,7 @@ export function layoutAnchored(
     let top = box.y - box.height;
     const fits = box.width <= bounds.width && box.height <= bounds.height;
     if (fits) {
+      top = clamp(top, 0, bounds.height - box.height);
       let blocker = findOverlap(placed, left, top, box, gap);
       while (blocker) {
         top = blocker.top - box.height - gap;
