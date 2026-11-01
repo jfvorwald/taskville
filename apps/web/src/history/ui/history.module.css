@@ -1,0 +1,40 @@
+.header,
+.timeline {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  pointer-events: auto;
+  font-size: 0.875rem;
+}
+
+.header {
+  top: 16px;
+  right: 16px;
+}
+
+.timeline {
+  bottom: 24px;
+  left: 20%;
+  right: 20%;
+}
+
+.timeline input {
+  flex: 1;
+  min-width: 0;
+}
+
+.header button,
+.timeline button {
+  color: inherit;
+  background: var(--tv-surface);
+  border: 1px solid var(--tv-text-muted);
+  border-radius: var(--tv-radius);
+  padding: 6px 10px;
+  cursor: pointer;
+}

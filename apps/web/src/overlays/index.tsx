@@ -5,7 +5,7 @@ import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
 import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
-import { dataStore } from "../data/store.ts";
+import { type DataStore, dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
@@ -44,8 +44,6 @@ const ENABLED = [
   "bubbles",
 ];
 
-const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
-
 const noIntent = () => {};
 
 function localStorageOrNull(): Storage | null {
@@ -60,7 +58,14 @@ function localStorageOrNull(): Storage | null {
  * The DOM layer over the canvas: the overlay host plus the paired badge. `pointer-events: none`
  * on the layer lets the canvas keep the pointer; an overlay that needs it uses InteractiveRegion.
  */
-export function OverlayRoot() {
+export function OverlayRoot({
+  store = dataStore,
+  mode = "live",
+}: {
+  store?: DataStore;
+  mode?: "live" | "history";
+}) {
+  const selectors: OverlaySelectors = useMemo(() => ({ counts: countsSelector(store) }), [store]);
   useDataSync(useCurrentProjectId());
   // The selected agent belongs to the project that was shown; it is not in the next one.
   useEffect(
@@ -82,7 +87,7 @@ export function OverlayRoot() {
       <OverlayHost
         registry={registry}
         enabled={ENABLED}
-        mode="live"
+        mode={mode}
         selectors={selectors}
         selection={selection}
         anchors={worldAnchors}
