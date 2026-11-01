@@ -14,6 +14,7 @@ import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
 import { debugHookRequested } from "../../testHooks.ts";
 import { AgentsLayer } from "../agents/index.ts";
 import type { AgentLabelEntry, AgentView, Placement } from "../agents/types.ts";
+import { TeamDecorations } from "../crew/teams/TeamDecorations.tsx";
 import { presentationEpoch } from "../runtime/epoch.ts";
 import { rebuildPresentation } from "../runtime/rebuild.ts";
 import { agentAnchorId } from "./AgentLabels.tsx";
@@ -96,10 +97,10 @@ export function CityAgents({
   const activity = state?.activity;
   const models = useMemo(
     () =>
-      activity === undefined
+      state === null || activity === undefined
         ? null
-        : buildModels({ agents, activity, attention }, table, placementFor),
-    [agents, activity, attention, table, placementFor],
+        : buildModels({ agents, activity, attention, tasks: state.tasks }, table, placementFor),
+    [agents, activity, attention, table, placementFor, state],
   );
 
   // A departing bot keeps its last look until it has walked out of the city.
@@ -207,5 +208,10 @@ export function CityAgents({
     setPruned((n) => n + 1);
   }, -1);
 
-  return <AgentsLayer agents={views} reducedMotion={reduced} onLabels={onLabels} now={store.now} />;
+  return (
+    <>
+      <AgentsLayer agents={views} reducedMotion={reduced} onLabels={onLabels} now={store.now} />
+      <TeamDecorations views={models?.views ?? []} store={store} />
+    </>
+  );
 }
