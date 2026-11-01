@@ -97,7 +97,26 @@ const OPENER_CWD_REFUSED_MESSAGE = "The session directory is not inside a projec
 const DEFAULT_MAX_REMEMBERED_RESULTS = 500;
 
 /** Directory name endings that macOS launches instead of opening as a folder. */
-const LAUNCHABLE_SUFFIXES = [".app", ".command", ".workflow", ".terminal", ".tool"];
+const LAUNCHABLE_SUFFIXES = [
+  ".app",
+  ".command",
+  ".workflow",
+  ".terminal",
+  ".tool",
+  ".pkg",
+  ".mpkg",
+  ".prefpane",
+  ".saver",
+  ".action",
+  ".service",
+  ".qlgenerator",
+  ".mdimporter",
+  ".xpc",
+  ".plugin",
+  ".bundle",
+  ".scptd",
+  ".wdgt",
+];
 
 // C0 (but not tab and newline), DEL, and C1 controls.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point

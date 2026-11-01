@@ -54,9 +54,9 @@ posts `{ "code" }` and receives `200 { "session": "<secret>" }` (256-bit). The c
 is single-use and valid for 10 minutes after `serve` issues it (`PAIRING_CODE_TTL_MS`,
 security review #17 F4); a reused, expired or unknown code gets
 `401 invalid_pairing_code`, and a new code needs a `serve` restart (decision #163).
-Requires a matching `Origin`. A pairing survives page reloads until revoked. Whether
-it survives engine restarts is decision #113; until it is answered, pairings are kept
-in memory and a restart means pairing again.
+Requires a matching `Origin`. A pairing survives page reloads until revoked. A pairing
+also survives engine restarts (decision #113, closed: pairings persist). Issue #198 is open
+about sessions not minted by the run the human started.
 
 ### `POST /v1/pairing/revoke`
 

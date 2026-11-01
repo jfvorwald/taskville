@@ -2,24 +2,40 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-01, 11:45 EST. **Main:** 75ad020. **State:** G3 closed by the owner. M4 in progress under the owner's M4 to M6 authorization (T3 Code with Claude subagents, experiment #231 run B); M5 and M6 overlap where M4 waits. Gate issues stay open for owner review.
+**Updated:** 2026-11-01, 16:20 EST. **Main:** 912e2dd. **State:** M4 complete to its gate; G4 [#75](https://github.com/jfvorwald/taskville/issues/75) awaits owner review (left open; the owner has not reviewed it). M5 and M6 continue under the owner's M4 to M6 authorization (T3 Code, experiment #231 run B).
 
-## In progress: M4 Stuck and interaction (with early M5 and M6 work)
+## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
-Merged so far (merge-commit PRs, roborev panels and reviews recorded in each report):
+Gate summary: [G4 #75](https://github.com/jfvorwald/taskville/issues/75). Retro: [retros/M4.md](retros/M4.md). Lessons L-182 to L-195.
 
 | Ticket | PR | Outcome |
 | --- | --- | --- |
 | M4.08 #49 session opener | #273 | [report](tasks/M4.08.md) |
-| M4.05 #53 overlay polish | #274 | draw calls unmeasured (#268 open); clip pending for the wave run; [report](tasks/M4.05.md) |
+| M4.05 #53 stuck visuals | #274, clip #316 | fps of stuck agents unmeasured (#268 open); [report](tasks/M4.05.md) |
 | M4.02 #51 permission bridge | #275 | decision #271 defaults in force; [report](tasks/M4.02.md) |
-| M4.12 #272 flaky shim test | #276 | harness port filter; [report](tasks/M4.12.md) |
-| M4.06 #54 speech bubbles | #277 | anchor-layer collision noted; [report](tasks/M4.06.md) |
-| M4.01 #50 attention feed and needs-you | #278 | interim Back to Unsorted; [report](tasks/M4.01.md) |
-| M4.03 #52 command service | #280 | known limitations listed in the report and PR; [report](tasks/M4.03.md) |
-| M6.01 #60 timeline API | #282 | calm-day seek MET; lively-day seek MISSED, checkpoints in #279; [report](tasks/M6.01.md) |
+| M4.12 #272 flaky shim test | #276 | orchestrator port probes; [report](tasks/M4.12.md) |
+| M4.06 #54 quip and emote bubbles | #277 | [report](tasks/M4.06.md) |
+| M4.01 #50 global attention feed | #278 | interim Back to Unsorted; [report](tasks/M4.01.md) |
+| M4.03 #52 command service | #280 | known limitations in the report; [report](tasks/M4.03.md) |
+| M4.09 #55 soundscape | #287 | [report](tasks/M4.09.md) |
+| M4.04 #61 bridge and command wiring, installer hook | #288 | decision #284 defaults applied; [report](tasks/M4.04.md) |
+| M4.07 #62 action card | #294 | [report](tasks/M4.07.md) |
+| M4.16 #302 opener retry key | #304 | [report](tasks/M4.16.md) |
+| M4.15 #293 hidden characters, reload reset | #305 | [report](tasks/M4.15.md) |
+| M4.14 #290 header count from the global feed | #297 | [report](tasks/M4.14.md) |
+| M4.13 #286 audio parking after failed loads | #299 | [report](tasks/M4.13.md) |
+| M4.10 #69 permission e2e | #308 | replay 6/6; live run NOT RUN pending #289 (issue open); [report](tasks/M4.10.md) |
+| M4.11 #70 security review | review on #70 | fixes in #309 (M4.17, #310); H1 rests on #198 |
+| M4.17 #309 security review fixes | #310 | [report](tasks/M4.17.md) |
 
-Open: M4.09 #55 soundscape (review fixes in green), M4.07 #62 action card (green), M4.04 #61 bridge wiring, input route and installer hook (green), then M4.10 e2e, M4.11 security review, the wave run and M4.RT. M5.01 #56 agent feed APIs (review fixes in green). New follow-ups: #279 (M6.08 replay checkpoints), #281 (M5.14 agent index). The M3 web performance shortfall (#268) stays open and unmet.
+Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with 10 load flakes (all 8 files passed alone); app e2e, permission replay and telemetry replay pass; web smoke theme switch failed twice: Settings unreachable while an agent is selected (#315, from the M5.07 sidebar composition).
+
+## In progress: M5 Crews and code feed and M6 History
+
+- Merged: M5.01 #56 (#291), M5.03 #58 (#301), M5.05 #59 (#292), M5.07 #65 (#303), M5.16 #296 (#298), M6.01 #60 (#282), M6.02 #68 (#300).
+- In review or fix rounds: M5.02 #57 (subagent visuals), M5.06 #64 (Live tab, PR #307 draft), M6.03 #73 (history UI, PR #306 draft).
+- Not started: M5.04, M5.08 to M5.13, M6.04 to M6.07; follow-ups #279 (M6.08), #281 (M5.14), #285 (M5.15), #311 (M6.09), #312 (M6.10), #313 (M5.17), #314 (M5.18), #315 (M5.19, P0 regression).
+- Performance: the M3 budget shortfall (#268) stays open and unmet; lively-day seeks miss 300 ms (#279).
 
 ## Done in wave 2 (M3 Live city)
 
@@ -128,6 +144,10 @@ SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16'
 
 Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskville/issues?q=is%3Aopen+label%3Awaiting%3Auser).
 
+- G4 [#75](https://github.com/jfvorwald/taskville/issues/75): the M4 gate review.
+- [#198](https://github.com/jfvorwald/taskville/issues/198): sessions not minted by the run the human started can now approve prompts (M4.11 H1); default accept and document in force.
+- [#289](https://github.com/jfvorwald/taskville/issues/289): live permission e2e writes `~/.claude.json`; NOT RUN meanwhile.
+- [#284](https://github.com/jfvorwald/taskville/issues/284): bridge hook port-squatting residual; defaults applied.
 - [#271](https://github.com/jfvorwald/taskville/issues/271): permission request fall-through stays open and unanswerable (default in force).
 - [#236](https://github.com/jfvorwald/taskville/issues/236): theme mockup fidelity (defaults block nothing).
 - [#178](https://github.com/jfvorwald/taskville/issues/178), [#190](https://github.com/jfvorwald/taskville/issues/190), [#198](https://github.com/jfvorwald/taskville/issues/198): engine, protocol and installer decisions on their defaults.
