@@ -85,8 +85,12 @@ export interface CommandService {
 /** The note the agent sees when a deny carries none (the bridge's hook response needs one). */
 const DEFAULT_DENY_MESSAGE = "Denied in Taskville";
 
-const INTERRUPTED_OPENER_MESSAGE = "The session opener was interrupted by an engine stop";
-const INTERRUPTED_DECISION_MESSAGE = "The decision was interrupted by an engine stop";
+// Start-up recovery cannot know how a cut-short command ended, so the reason says so instead of
+// presenting a guess as fact (constitution IV).
+const INTERRUPTED_OPENER_MESSAGE =
+  "The engine stopped before the outcome was recorded; the session may have opened";
+const INTERRUPTED_DECISION_MESSAGE =
+  "The engine stopped before the outcome was recorded; the decision may have reached Claude Code";
 const OPENER_CWD_REFUSED_MESSAGE = "The session directory is not inside a project root";
 
 /** Session results kept for replaying an idempotent session.open (oldest forgotten first). */
@@ -178,9 +182,12 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
       type: command.type,
       requestId: command.requestId,
       status:
-        command.status === "requested" && deliveredHere.has(command.id)
-          ? "delivered"
-          : command.status,
+        (command.status === "requested" || command.status === "delivered") &&
+        results.has(command.id)
+          ? "succeeded"
+          : command.status === "requested" && deliveredHere.has(command.id)
+            ? "delivered"
+            : command.status,
       ...(result === undefined ? {} : { result }),
     };
   };
@@ -256,10 +263,12 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     if (existing === undefined) return undefined;
     if (!isSameCommand(existing, body)) return error(409, "idempotency_conflict");
     // An opener this process is not running was cut short by an engine stop: end the command
-    // instead of answering "in flight" forever.
+    // instead of answering "in flight" forever. One that ran here and only failed to record its
+    // outcome is remembered in `results` and replays as succeeded.
     if (
       (existing.status === "requested" || existing.status === "delivered") &&
       body.type === "session.open" &&
+      !results.has(existing.id) &&
       !opening.has(`${body.projectId}\0${body.sessionId}`)
     ) {
       return endWithout(
@@ -293,7 +302,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
           return failure(409, "command_in_flight");
       }
     }
-    switch (command.status) {
+    switch (view.status) {
       case "succeeded":
         return { status: 200, body: { command: view } };
       case "failed":
@@ -448,13 +457,20 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
         sessionId: body.sessionId,
         ...(cwd === undefined ? {} : { cwd }),
       };
-      record(body.projectId, "command.delivered", `command.delivered:${commandId}`, {
-        commandId,
-      });
-      record(body.projectId, "command.succeeded", `command.succeeded:${commandId}`, {
-        commandId,
-      });
+      // The opener ran, so the session may be open: a failed append cannot undo that. The outcome
+      // is kept in memory first, so the command reads as succeeded (also on a retry of the key)
+      // even when the log could not be written; the error is logged by name only.
       remember(commandId, result);
+      try {
+        record(body.projectId, "command.delivered", `command.delivered:${commandId}`, {
+          commandId,
+        });
+        record(body.projectId, "command.succeeded", `command.succeeded:${commandId}`, {
+          commandId,
+        });
+      } catch (cause) {
+        logFailure(cause, "recording the opened session failed after the opener ran");
+      }
       return {
         status: 200,
         body: {
