@@ -15,6 +15,7 @@ import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
 import { CITY_LAYOUT, type WorkAreaLayout } from "../layout/index.ts";
 import { agentAnchorId, usePrefersReducedMotion } from "../movement/index.ts";
 import { type Burst, createBurst } from "./burst.ts";
+import { SPARKLE_RADIUS, sparkleAnchor } from "./placement.ts";
 import type { Celebration } from "./triggers.ts";
 import { CONFETTI_DURATION_MS, CONFETTI_MAX_PARTICLES, createCelebrations } from "./triggers.ts";
 
@@ -57,7 +58,7 @@ function starGeometry(): ShapeGeometry {
   const shape = new Shape();
   const points = 8;
   for (let i = 0; i < points; i += 1) {
-    const r = i % 2 === 0 ? 0.35 : 0.08;
+    const r = i % 2 === 0 ? SPARKLE_RADIUS : 0.08;
     const a = (i / points) * Math.PI * 2;
     if (i === 0) shape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
     else shape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
@@ -185,19 +186,11 @@ function createRig(anchors: AnchorSource) {
         case "sparkle": {
           // The reduced-motion icon sits where the full celebration would have played.
           if (c.source === "merge-burst") {
-            showSparkle(
-              archives.footprint.cx,
-              archives.height + ROOF_THICKNESS + 1,
-              archives.footprint.cz,
-              nowMs,
-            );
+            const at = sparkleAnchor("archives");
+            showSparkle(at.x, at.y, at.z, nowMs);
           } else if (c.source === "shimmer") {
-            showSparkle(
-              testLab.footprint.cx,
-              testLab.height + ROOF_THICKNESS + 1,
-              testLab.footprint.cz,
-              nowMs,
-            );
+            const at = sparkleAnchor("test_lab");
+            showSparkle(at.x, at.y, at.z, nowMs);
           } else if (c.source === "high-five" && event.type === "task.handoff") {
             const a = head(event.payload.fromAgentId);
             const b = head(event.payload.toAgentId);
