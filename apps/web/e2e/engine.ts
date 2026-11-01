@@ -30,6 +30,7 @@ writeFileSync(
     paired: parts.pairing.issueCode(),
     fresh: parts.pairing.issueCode(),
     interaction: parts.pairing.issueCode(),
+    accessibility: parts.pairing.issueCode(),
     home,
   }),
 );
