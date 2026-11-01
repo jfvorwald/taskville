@@ -261,7 +261,8 @@ export interface ToolCallFrame {
   toolCallId: string;
   agentId: string;
   toolName: string;
-  phase: "running" | "succeeded" | "failed";
+  /** `unfinished`: the reducer closed the call with no PostToolUse (the session or agent ended). */
+  phase: "running" | "succeeded" | "failed" | "unfinished";
   startedAt?: string;
   finishedAt?: string;
   durationMs?: number;
@@ -338,6 +339,32 @@ export async function expectQuiet(reader: SseReader, ms = 150): Promise<void> {
   }
   if (frame !== "quiet" && frame?.event !== "heartbeat") {
     throw new Error(`expected no more frames, got ${JSON.stringify(frame)}`);
+  }
+}
+
+/** Ingests raw domain events (agent.registered and the like) that no hook mapper would send. */
+export function ingestRaw(
+  h: Harness,
+  projectId: string,
+  label: string,
+  events: { type: string; agentId: string; at: string; payload: Record<string, unknown> }[],
+): void {
+  const response = h.engine.pipeline.ingest(
+    events.map((e, i) => ({
+      schemaVersion: 1,
+      projectId,
+      sourceId: "adapter:test",
+      sourceEventId: `${label}#${i}`,
+      occurredAt: e.at,
+      type: e.type,
+      agentId: e.agentId,
+      payload: e.payload,
+      provenance: "live",
+    })),
+  );
+  for (const result of response.results) {
+    if (result.status !== "accepted")
+      throw new Error(`raw ingest ${label}: ${JSON.stringify(result)}`);
   }
 }
 

@@ -133,10 +133,10 @@ describe("GET /v1/agents/:id/feed: order and pairing", () => {
     await reader.cancel();
   });
 
-  it("leaves a ToolCall whose PostToolUse never arrives running, and never invents an end", async () => {
+  it("keeps a ToolCall whose PostToolUse has not arrived yet running, with no end invented", async () => {
     const h = await start();
     h.addProject("spike", SPIKE_CWD);
-    await h.play(UNMATCHED.file);
+    await h.play(UNMATCHED.file, { stopBefore: endsUnmatchedSession });
     const reader = await h.openFeed(UNMATCHED.agent);
     const [frame] = await toolCallFrames(reader, 1);
     expect(frame?.data.toolCallId).toBe(UNMATCHED.toolCallId);
@@ -148,7 +148,51 @@ describe("GET /v1/agents/:id/feed: order and pairing", () => {
     await expectQuiet(reader);
     await reader.cancel();
   });
+
+  // Constitution IV: the reducer closes a call that never got a PostToolUse as `unfinished` when
+  // its session ends (a recorded fact: it never reported a result). The feed says so too, and
+  // still invents no outcome: no duration, no output evidence.
+  it("shows a ToolCall the session ended on as unfinished, in a backlog read after the end", async () => {
+    const h = await start();
+    h.addProject("spike", SPIKE_CWD);
+    await h.play(UNMATCHED.file);
+    const reader = await h.openFeed(UNMATCHED.agent);
+    const frames = await toolCallFrames(reader, 2);
+    expect(frames.map((f) => [f.data.toolCallId, f.data.phase])).toEqual([
+      [UNMATCHED.toolCallId, "running"],
+      [UNMATCHED.toolCallId, "unfinished"],
+    ]);
+    const unfinished = frames[1]?.data;
+    expect(unfinished?.toolName).toBe("Bash");
+    expect(unfinished?.startedAt).toBe(frames[0]?.data.startedAt);
+    expect(unfinished).not.toHaveProperty("durationMs");
+    expect(unfinished?.evidence.output).toBeNull();
+    expect(frames[1]?.id).toBeGreaterThan(frames[0]?.id ?? Number.POSITIVE_INFINITY);
+    await expectQuiet(reader);
+    await reader.cancel();
+  });
+
+  it("sends the unfinished frame live when the session ends under an open feed", async () => {
+    const h = await start();
+    h.addProject("spike", SPIKE_CWD);
+    const next = await h.play(UNMATCHED.file, { stopBefore: endsUnmatchedSession });
+    const reader = await h.openFeed(UNMATCHED.agent);
+    const [running] = await toolCallFrames(reader, 1);
+    expect(running?.data.phase).toBe("running");
+    await expectQuiet(reader);
+
+    await h.play(UNMATCHED.file, { from: next });
+    const [closed] = await toolCallFrames(reader, 1);
+    await reader.cancel();
+    expect(closed?.data.toolCallId).toBe(UNMATCHED.toolCallId);
+    expect(closed?.data.phase).toBe("unfinished");
+    expect(closed?.id).toBeGreaterThan(running?.id ?? Number.POSITIVE_INFINITY);
+  });
 });
+
+/** The SessionEnd of the session that holds the unmatched helper call (the last hook of the recording). */
+const endsUnmatchedSession = (hook: Record<string, unknown>): boolean =>
+  hook.hook_event_name === "SessionEnd" && String(hook.session_id).startsWith("a127629f");
 
 describe("GET /v1/agents/:id/feed: backlog, then live", () => {
   it("sends the backlog first and then each new frame as it is recorded, with no gap or duplicate", async () => {
