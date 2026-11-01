@@ -60,7 +60,7 @@ function state(tasks: TaskInput[], extra: { members?: string[] } = {}) {
 }
 
 describe("dispatchQueue", () => {
-  it.each(["failed", "cancelled", "blocked", "unknown"] as const)(
+  it.each(["failed", "cancelled", "blocked", "awaiting_input", "reviewing", "unknown"] as const)(
     "preserves recorded %s distinctly from other task outcomes",
     (status) => {
       const scenario = teamScenario();

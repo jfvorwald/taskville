@@ -209,7 +209,7 @@ it("mirrors all 40 recorded team tasks between keyboard queue paging and mounted
   }
 }, 30_000);
 
-it.each(["failed", "cancelled", "blocked", "unknown"] as const)(
+it.each(["failed", "cancelled", "blocked", "awaiting_input", "reviewing", "unknown"] as const)(
   "AgentList exposes recorded %s in accessible team task text",
   async (status) => {
     const scenario = teamScenario();

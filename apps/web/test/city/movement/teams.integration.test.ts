@@ -6,7 +6,7 @@ import { DEFAULT_ACTIVITY_AREAS } from "../../../src/city/movement/areas.ts";
 import { buildModels } from "../../../src/city/movement/models.ts";
 import { createNavigator } from "../../../src/city/movement/navigator.ts";
 import { type ProjectState, reduce } from "../../../src/data/domain.ts";
-import { TEAM, teamScenario } from "../crew/teams/integration.fixture.ts";
+import { TASK, TEAM, teamScenario } from "../crew/teams/integration.fixture.ts";
 
 function models(state: ProjectState) {
   const input = { ...state, agents: Object.values(state.agents), attention: [] };
@@ -67,6 +67,30 @@ describe("team movement integration", () => {
     const result = models(working);
     expect(result.views.find((v) => v.id === "pip")?.activity).toBe(activity);
     expect(result.intents.find((i) => i.id === "pip")?.area).toBe(area);
+  });
+
+  it("starts an assigned teammate with no recorded work activity at Dispatch", () => {
+    const scenario = teamScenario();
+    const assigned = reduce(scenario.state, scenario.claim());
+    expect(assigned.tasks[TASK]).toMatchObject({
+      status: "assigned",
+      assignedAgentIds: ["pip"],
+    });
+    expect(assigned.activity.pip).toMatchObject({ activity: "idle", heuristic: false });
+    const result = models(assigned);
+    // Assignment alone supplies no work destination or activity. Dispatch is initial placement.
+    expect(result.intents.find((i) => i.id === "pip")?.area).toBeNull();
+    expect(result.views.find((v) => v.id === "pip")?.activity).toBe("idle");
+    const nav = createNavigator();
+    nav.sync(result.intents, { place: true });
+    const destination = CITY_LAYOUT.slots.find((s) => s.id === nav.get("pip")?.slotId);
+    expect(destination?.areaId).toBe("dispatch");
+    expect(nav.get("pip")).toMatchObject({
+      state: "idle",
+      onTheWay: false,
+      x: destination?.x,
+      z: destination?.z,
+    });
   });
 
   it("starts an unclaimed teammate at Dispatch and walks to its recorded work area on claim", () => {
