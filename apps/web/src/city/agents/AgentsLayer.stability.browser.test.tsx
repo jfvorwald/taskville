@@ -49,9 +49,21 @@ function Stage({ list, onLabels, onState }: StageProps) {
   );
 }
 
+// The full browser suite runs files in parallel on software WebGL (SwiftShader), and a page can
+// then go several seconds without a frame or a commit (4.6 s measured), so these waits need far
+// more than `vi.waitFor`'s 1 s default. A healthy run still meets each condition in milliseconds.
+const FRAME_WAIT = { timeout: 10_000 };
+
+/**
+ * Waits until `frames` more frames are drawn: the settle window after a rerender, before checking
+ * that nothing was redrawn or re-sent. Counted in frames, not time, and bounded generously.
+ */
 async function framesLater(state: RootState, frames: number): Promise<void> {
   const target = state.gl.info.render.frame + frames;
-  await vi.waitFor(() => expect(state.gl.info.render.frame).toBeGreaterThanOrEqual(target));
+  await vi.waitFor(
+    () => expect(state.gl.info.render.frame).toBeGreaterThanOrEqual(target),
+    FRAME_WAIT,
+  );
 }
 
 /**
@@ -88,7 +100,7 @@ describe("label texture redraws", () => {
       state = s;
     };
     const screen = await render(<Stage list={agents()} onState={onState} />);
-    await vi.waitFor(() => expect(state).toBeDefined());
+    await vi.waitFor(() => expect(state).toBeDefined(), FRAME_WAIT);
     const root = state as RootState;
     const versions = (): number[] => {
       const out: number[] = [];
@@ -100,7 +112,7 @@ describe("label texture redraws", () => {
     await vi.waitFor(() => {
       expect(versions()).toHaveLength(2);
       expect(versions().every((v) => v >= 1)).toBe(true);
-    });
+    }, FRAME_WAIT);
     await framesLater(root, 3);
     const before = versions();
 
@@ -116,9 +128,9 @@ describe("label texture redraws", () => {
     await vi.waitFor(() => {
       const now = versions();
       expect(now[0]).toBeGreaterThan(before[0] ?? 0);
-    });
+    }, FRAME_WAIT);
     expect(versions()[1]).toBe(before[1]);
-  });
+  }, 60_000);
 });
 
 describe("onLabels notifications", () => {
@@ -129,7 +141,7 @@ describe("onLabels notifications", () => {
     };
     const onLabels = vi.fn<(entries: readonly AgentLabelEntry[]) => void>();
     const screen = await render(<Stage list={agents()} onLabels={onLabels} onState={onState} />);
-    await vi.waitFor(() => expect(onLabels).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onLabels).toHaveBeenCalled(), FRAME_WAIT);
     const root = state as RootState;
     expect(onLabels.mock.calls[0]?.[0].map((e) => `${e.name}/${e.status}`)).toEqual([
       "Ada/Implementing",
@@ -146,14 +158,17 @@ describe("onLabels notifications", () => {
 
     // Changed text is a real update: sent once, with no empty list in between.
     await screen.rerender(<Stage list={agents("testing")} onLabels={onLabels} onState={onState} />);
-    await vi.waitFor(() => expect(onLabels.mock.calls.length).toBe(callsAfterMount + 1));
+    await vi.waitFor(
+      () => expect(onLabels.mock.calls.length).toBe(callsAfterMount + 1),
+      FRAME_WAIT,
+    );
     expect(onLabels.mock.calls.at(-1)?.[0][0]?.status).toBe("Testing");
     expect(onLabels.mock.calls.some(([entries]) => entries.length === 0)).toBe(false);
 
     // Unmounting is the one time the slot is told to clear.
     await screen.unmount();
-    await vi.waitFor(() => expect(onLabels.mock.calls.at(-1)?.[0]).toEqual([]));
-  });
+    await vi.waitFor(() => expect(onLabels.mock.calls.at(-1)?.[0]).toEqual([]), FRAME_WAIT);
+  }, 60_000);
 
   it("hands the current entries to an onLabels that arrives after mount", async () => {
     let state: RootState | undefined;
@@ -163,14 +178,14 @@ describe("onLabels notifications", () => {
     const list = agents();
     // Mounted without a callback: local labels draw, nobody to tell.
     const screen = await render(<Stage list={list} onState={onState} />);
-    await vi.waitFor(() => expect(state).toBeDefined());
+    await vi.waitFor(() => expect(state).toBeDefined(), FRAME_WAIT);
     const root = state as RootState;
     await framesLater(root, 3);
 
     // The slot attaches later with the agents unchanged: local labels hide, so it must hear them.
     const onLabels = vi.fn<(entries: readonly AgentLabelEntry[]) => void>();
     await screen.rerender(<Stage list={list} onLabels={onLabels} onState={onState} />);
-    await vi.waitFor(() => expect(onLabels).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onLabels).toHaveBeenCalled(), FRAME_WAIT);
     await framesLater(root, 5);
     expect(onLabels).toHaveBeenCalledTimes(1);
     expect(onLabels.mock.calls[0]?.[0].map((e) => `${e.name}/${e.status}`)).toEqual([
@@ -186,8 +201,8 @@ describe("onLabels notifications", () => {
     expect(second).not.toHaveBeenCalled();
 
     await screen.unmount();
-    await vi.waitFor(() => expect(second.mock.calls.at(-1)?.[0]).toEqual([]));
-  });
+    await vi.waitFor(() => expect(second.mock.calls.at(-1)?.[0]).toEqual([]), FRAME_WAIT);
+  }, 60_000);
 
   it("does not call back repeatedly when the callback is a new inline function each render", async () => {
     let state: RootState | undefined;
@@ -202,10 +217,10 @@ describe("onLabels notifications", () => {
         }}
       />,
     );
-    await vi.waitFor(() => expect(received.length).toBeGreaterThan(0));
+    await vi.waitFor(() => expect(received.length).toBeGreaterThan(0), FRAME_WAIT);
     await framesLater(state as RootState, 10);
     expect(received.filter((entries) => entries.length > 0)).toHaveLength(1);
     expect(received.some((entries) => entries.length === 0)).toBe(false);
     await screen.unmount();
-  });
+  }, 60_000);
 });
