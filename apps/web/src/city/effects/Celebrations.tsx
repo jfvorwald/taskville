@@ -38,6 +38,15 @@ const SPARKLE_MS = 1200;
 const ROOF_THICKNESS = 0.25;
 const HEAD_LIFT = 0.3;
 
+/** `?debug=celebrations` exposes a read-only list of the celebrations played, for end-to-end checks. */
+function debugEnabled(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get("debug") === "celebrations";
+  } catch {
+    return false;
+  }
+}
+
 const area = (id: WorkAreaLayout["id"]) => {
   const found = CITY_LAYOUT.areas.find((a) => a.id === id);
   if (found === undefined) throw new Error(`unknown area ${id}`);
@@ -118,7 +127,11 @@ function createRig(anchors: AnchorSource) {
   group.add(sparkle);
   let sparkleAt = Number.NEGATIVE_INFINITY;
 
+  /** Appended at play time only, so the debug probe costs nothing per frame. */
+  const played: { kind: string; at: number }[] = [];
+
   const showSparkle = (x: number, y: number, z: number, nowMs: number) => {
+    played.push({ kind: "sparkle", at: nowMs });
     sparkle.position.set(x, y, z);
     sparkle.visible = true;
     sparkleAt = nowMs;
@@ -129,11 +142,15 @@ function createRig(anchors: AnchorSource) {
 
   return {
     group,
+    played: (): ReadonlyArray<{ kind: string; at: number }> => played,
     play(c: Celebration, event: StoredEnvelope, nowMs: number) {
       switch (c.kind) {
         case "confetti": {
           const p = head(c.agentId);
-          if (p) confetti.emit(p[0], p[1] + HEAD_LIFT, p[2], c.particles, nowMs);
+          if (p) {
+            confetti.emit(p[0], p[1] + HEAD_LIFT, p[2], c.particles, nowMs);
+            played.push({ kind: "confetti", at: nowMs });
+          }
           return;
         }
         case "high-five": {
@@ -147,10 +164,12 @@ function createRig(anchors: AnchorSource) {
               HIGH_FIVE_PARTICLES,
               nowMs,
             );
+            played.push({ kind: "high-five", at: nowMs });
           }
           return;
         }
         case "merge-burst":
+          played.push({ kind: "merge-burst", at: nowMs });
           merge.emit(
             archives.footprint.cx,
             archives.height + ROOF_THICKNESS + 0.5,
@@ -161,6 +180,7 @@ function createRig(anchors: AnchorSource) {
           return;
         case "shimmer":
           shimmerAt = nowMs;
+          played.push({ kind: "shimmer", at: nowMs });
           return;
         case "sparkle": {
           // The reduced-motion icon sits where the full celebration would have played.
@@ -227,6 +247,15 @@ export function Celebrations({
 
   const rig = useMemo(() => createRig(anchors), [anchors]);
   useEffect(() => () => rig.dispose(), [rig]);
+
+  useEffect(() => {
+    if (!debugEnabled()) return;
+    const w = window as unknown as { __taskvilleCelebrations?: () => unknown };
+    w.__taskvilleCelebrations = () => rig.played().map((p) => ({ ...p }));
+    return () => {
+      delete w.__taskvilleCelebrations;
+    };
+  }, [rig]);
 
   const celebrationsRef = useRef<ReturnType<typeof createCelebrations> | null>(null);
   if (celebrationsRef.current === null) {
