@@ -148,6 +148,8 @@ export function CityAgents({
   const publishPositions = useCallback(() => {
     const point = anchorPoint.current;
     for (const a of nav.list()) {
+      // Crew has navigation intents too, but its visible bots own their anchors.
+      if (!lastViews.current.has(a.id)) continue;
       const p = placementFor(a.id);
       p.x = a.x;
       p.z = a.z;
@@ -187,7 +189,7 @@ export function CityAgents({
 
   useEffect(
     () => () => {
-      anchors.replaceAnchors("agent:", {});
+      for (const id of lastViews.current.keys()) anchors.removeAnchor(agentAnchorId(id));
       labels.set([]);
     },
     [anchors, labels],
@@ -220,10 +222,11 @@ export function CityAgents({
     if (!gone) return;
     for (const a of nav.list()) {
       if (!a.gone) continue;
+      const ownedAnchor = lastViews.current.has(a.id);
       lastViews.current.delete(a.id);
       placements.current.delete(a.id);
       shown.current.delete(a.id);
-      anchors.removeAnchor(agentAnchorId(a.id));
+      if (ownedAnchor) anchors.removeAnchor(agentAnchorId(a.id));
     }
     nav.prune();
     setPruned((n) => n + 1);

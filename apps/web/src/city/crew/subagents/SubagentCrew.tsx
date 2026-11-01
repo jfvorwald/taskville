@@ -173,25 +173,39 @@ function CrewFamilyView({
   const slots = useRef(new Map<string, number>());
   // Where this family's door last was while its parent was in sight.
   const lastDoor = useRef<Place | undefined>(undefined);
+  const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
 
-  const register = useCallback((id: string, handle: BotHandle | null) => {
-    if (handle === null) bots.current.delete(id);
-    else bots.current.set(id, handle);
-  }, []);
+  const register = useCallback(
+    (id: string, handle: BotHandle | null) => {
+      if (handle === null) {
+        bots.current.delete(id);
+        anchors.removeAnchor(agentAnchorId(id));
+      } else bots.current.set(id, handle);
+    },
+    [anchors],
+  );
   // The ids are the family's, so the places are dropped with the bots. A store update that keeps a
   // member keeps its place (and its hidden flag): its crew must not reappear behind the marker.
   const placed = useRef<string[]>([]);
   useEffect(() => {
     const ids = family.members.map((m) => m.id);
     const kept = new Set(ids);
-    for (const id of placed.current) if (!kept.has(id)) places.delete(id);
+    for (const id of placed.current) {
+      if (!kept.has(id)) {
+        places.delete(id);
+        anchors.removeAnchor(agentAnchorId(id));
+      }
+    }
     placed.current = ids;
-  }, [family.members, places]);
+  }, [family.members, places, anchors]);
   useEffect(
     () => () => {
-      for (const id of placed.current) places.delete(id);
+      for (const id of placed.current) {
+        places.delete(id);
+        anchors.removeAnchor(agentAnchorId(id));
+      }
     },
-    [places],
+    [places, anchors],
   );
 
   const onMarkerClick = useCallback(() => {
@@ -210,6 +224,7 @@ function CrewFamilyView({
       // way down.
       g.visible = false;
       for (const m of family.members) {
+        anchors.removeAnchor(agentAnchorId(m.id));
         const place = places.get(m.id);
         if (place !== undefined) place.hidden = true;
         else places.set(m.id, { x: 0, z: 0, hidden: true });
@@ -276,6 +291,7 @@ function CrewFamilyView({
       const index = slots.current.get(id);
       if (found === undefined || index === undefined || !shown.has(id)) {
         bot.root.visible = false;
+        anchors.removeAnchor(agentAnchorId(id));
         // Gone: its running crew stays where it last stood. Behind the marker: its crew goes with it.
         if (found === undefined || index === undefined) places.delete(id);
         else {
@@ -297,6 +313,13 @@ function CrewFamilyView({
       const x = Math.sin(spot.angle) * radius;
       const z = Math.cos(spot.angle) * radius;
       bot.root.position.set(x, hop, z);
+      if (bot.root.visible) {
+        const point = anchorPoint.current;
+        point[0] = doorX + x;
+        point[1] = hop + LABEL_HEIGHT * bot.root.scale.y;
+        point[2] = doorZ + z;
+        anchors.setAnchor(agentAnchorId(id), point);
+      } else anchors.removeAnchor(agentAnchorId(id));
       const place = places.get(id);
       if (place === undefined) places.set(id, { x: doorX + x, z: doorZ + z });
       else {
