@@ -357,6 +357,8 @@ describe("no route mints a pairing code (#113, #174)", () => {
           "GET /v1/projects",
           "GET /v1/projects/:id/events",
           "GET /v1/projects/:id/snapshot",
+          "GET /v1/requests/:requestId/input",
+          "POST /v1/bridge/claude-code/permission",
           "POST /v1/commands",
           "POST /v1/events/batch",
           "POST /v1/pairing",
