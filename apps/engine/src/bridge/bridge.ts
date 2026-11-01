@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { attributeHook } from "@taskville/adapters/claude-code";
 import { redactJson } from "@taskville/adapters/redact";
 import { hashCanonical } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
@@ -31,12 +32,11 @@ export const MAX_LOSSY_SESSIONS = 1000;
 /** Hook responses held at once; a request over the cap is recorded but not held. */
 export const MAX_HELD = 64;
 
-/** Serialized `tool_input` length a held request may keep in memory; larger inputs are not held. */
+/** Serialized `tool_input` size in UTF-8 bytes a held request may keep; larger inputs are not held. */
 export const MAX_HELD_INPUT_BYTES = 262_144;
 
 /** `request.opened` for a request the bridge is not holding: red, but never answerable. */
 const UNHELD_SOURCE_ID = `${RESERVED_SOURCE_PREFIX}bridge-unheld`;
-const SOURCE_ID = "claude-code";
 
 /** What a city user decides (the M4.03 command service calls `decide`). */
 export type BridgeDecision = { behavior: "allow" } | { behavior: "deny"; message: string };
@@ -78,7 +78,7 @@ interface Tracked {
   projectId: string;
   sessionId: string;
   agentId: string;
-  /** Session, prompt, tool name, and input hash, as S-1 correlates them; undefined if unhashable. */
+  /** Session, agent, prompt, tool name, and input hash, as S-1 correlates them; undefined if unhashable. */
   key: string | undefined;
   /** `open` until the bridge records an outcome or a city decision reaches the hook. */
   state: "open" | "closed";
@@ -98,7 +98,8 @@ const idText = (value: unknown): string | undefined =>
 /** Whether a tool input is small enough to keep in memory while its hook response is held. */
 function withinHeldInputCap(toolInput: unknown): boolean {
   try {
-    return (JSON.stringify(toolInput)?.length ?? 0) <= MAX_HELD_INPUT_BYTES;
+    const text = JSON.stringify(toolInput);
+    return (text === undefined ? 0 : Buffer.byteLength(text, "utf8")) <= MAX_HELD_INPUT_BYTES;
   } catch {
     return false;
   }
@@ -121,12 +122,19 @@ function decisionResponse(decision: BridgeDecision): Response {
 
 function correlationKey(
   sessionId: string,
+  sourceAgentId: string | undefined,
   promptId: string | undefined,
   toolName: string,
   toolInput: unknown,
 ): string | undefined {
   try {
-    return hashCanonical([sessionId, promptId ?? null, toolName, toolInput ?? null]);
+    return hashCanonical([
+      sessionId,
+      sourceAgentId ?? null,
+      promptId ?? null,
+      toolName,
+      toolInput ?? null,
+    ]);
   } catch {
     return undefined;
   }
@@ -187,9 +195,13 @@ export class PermissionBridge {
     const sessionId = idText(own(raw, "session_id"));
     const toolName = idText(own(raw, "tool_name"));
     if (sessionId === undefined || toolName === undefined) return undefined;
+    // The hook's agent, as telemetry attributes it. A hook telemetry would ignore (a bad agent_id)
+    // gets the empty 2xx and records nothing.
+    const attribution = attributeHook(raw);
+    if (!attribution.ok) return fallThrough();
+    const { agentId, sourceAgentId } = attribution.subject;
     const toolInput = own(raw, "tool_input");
     const promptId = idText(own(raw, "prompt_id"));
-    const agentId = `${SOURCE_ID}:${sessionId}`;
 
     const projectId = await resolveProjectId(own(raw, "cwd"), this.#options.storage.projects());
     if (this.#closed) return fallThrough();
@@ -224,7 +236,7 @@ export class PermissionBridge {
       projectId,
       sessionId,
       agentId,
-      key: correlationKey(sessionId, promptId, toolName, toolInput),
+      key: correlationKey(sessionId, sourceAgentId, promptId, toolName, toolInput),
       state: "open",
     });
     if (!hold) return fallThrough();
@@ -313,9 +325,12 @@ export class PermissionBridge {
     const sessionId = idText(own(raw, "session_id"));
     const toolName = idText(own(raw, "tool_name"));
     if (sessionId === undefined || toolName === undefined) return;
+    const attribution = attributeHook(raw);
+    if (!attribution.ok) return;
     if (this.#lossyOverflow || this.#lossySessions.has(sessionId)) return;
     const key = correlationKey(
       sessionId,
+      attribution.subject.sourceAgentId,
       idText(own(raw, "prompt_id")),
       toolName,
       own(raw, "tool_input"),
