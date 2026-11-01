@@ -161,7 +161,7 @@ test("with no viewer connected the hook gets the empty 2xx and nothing is decide
   expect(eventsOfType(engine.home, "command.delivered")).toHaveLength(0);
 });
 
-test("a viewer that never answers lets the hook fall through after the window, and the card stops offering Allow and Deny", async ({
+test("a viewer that never answers lets the hook fall through, and the next click finds out", async ({
   browser,
 }) => {
   const page = await openCity(browser);
@@ -175,25 +175,25 @@ test("a viewer that never answers lets the hook fall through after the window, a
   expect(answer.text).toBe("");
   expect(answer.elapsedMs).toBeGreaterThanOrEqual(HOLD_WINDOW_SECONDS * 1000 - 500);
 
-  // Decision #271 D2: after fall-through the engine drops the exact input and fails a late
-  // decision as expired, so the card shows Open session only. M4.07 pins two ways to get there
-  // (`data-variant="open-only"`, or `data-state="expired"` with every button off), so accept
-  // either; what must hold is that Allow and Deny are no longer offered.
-  await expect
-    .poll(
-      async () => {
-        const variant = await card(page).getAttribute("data-variant");
-        const state = await card(page).getAttribute("data-state");
-        return variant === "open-only" || state === "expired" || state === "closed";
-      },
-      { timeout: 15_000, message: "the card should leave its answerable state" },
-    )
-    .toBe(true);
+  // Nothing was decided: the request stays open and no command was delivered (decision #271 D1).
+  expect(eventsOfType(engine.home, "request.resolved")).toHaveLength(0);
+  expect(eventsOfType(engine.home, "command.delivered")).toHaveLength(0);
+
+  // No event flips an open card, so it still offers Allow. It learns the hold ended on its next
+  // call to the engine: the late Allow fails as expired (410 request_expired) and the card
+  // becomes the open-session-only variant (#271 D2).
+  await allow(page).click();
+  await expect(card(page)).toHaveAttribute("data-variant", "open-only", { timeout: 10_000 });
+  await expect(card(page)).toContainText(/ended/i);
+  await expect(card(page)).toContainText(/terminal/i);
   await expect(allow(page)).toHaveCount(0);
   await expect(deny(page)).toHaveCount(0);
+  await expect(openSession(page)).toBeEnabled();
 
-  // The engine never recorded a decision.
+  // No second response reached the hook, and no decision was delivered or recorded.
+  await page.waitForTimeout(500);
   expect(eventsOfType(engine.home, "command.delivered")).toHaveLength(0);
+  expect(eventsOfType(engine.home, "request.resolved")).toHaveLength(0);
 });
 
 test("a double click on Allow answers once", async ({ browser }) => {

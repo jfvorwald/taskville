@@ -31,7 +31,7 @@ the client shows until the viewer picks another.
 | Allow once | the held hook gets the `response-allow.json` body; the card says "Sent, unconfirmed"; one `command.delivered` |
 | Deny with a note | the held hook gets a deny whose `message` is the note (shape of `response-deny.json`) |
 | no viewer | the hook gets an empty 2xx at once; `request.opened` is recorded; no command, no resolution |
-| viewer, no answer | after the window the hook gets an empty 2xx; the card stops offering Allow and Deny (decision #271 D2); no command |
+| viewer, no answer | after the window the hook gets an empty 2xx; nothing is recorded as decided; clicking Allow once then turns the card into the open-session-only variant (decision #271 D2), with Open session enabled and no `command.delivered` |
 | double click | one `permission.decide` command, one `command.delivered`, one hook answer |
 
 The action card is addressed only through the markers pinned in
