@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { dispatchQueue, teamProgress } from "../../../../src/city/crew/teams/queue.ts";
+import { reduce } from "../../../../src/data/domain.ts";
+import {
+  TASK as RECORDED_TASK,
+  TEAM as RECORDED_TEAM,
+  teamScenario,
+} from "./integration.fixture.ts";
 
 // ARCHITECTURE 2.9: the team's shared task list (TaskCreated and TaskCompleted hooks, mapped to
 // task.created / task.assigned / task.status_changed) is the Dispatch building's queue. The queue
@@ -54,6 +60,30 @@ function state(tasks: TaskInput[], extra: { members?: string[] } = {}) {
 }
 
 describe("dispatchQueue", () => {
+  it.each(["failed", "cancelled", "blocked", "unknown"] as const)(
+    "preserves recorded %s distinctly from other task outcomes",
+    (status) => {
+      const scenario = teamScenario();
+      const recorded = [
+        scenario.claim(),
+        scenario.status("running"),
+        scenario.status(status),
+      ].reduce(reduce, scenario.state);
+      // Valid domain events, including the running -> blocked transition, reach presentation intact.
+      expect(recorded.tasks[RECORDED_TASK]?.status).toBe(status);
+      expect(recorded.tasks[RECORDED_TASK]?.transitionWarning).toBeUndefined();
+      expect(dispatchQueue(recorded, RECORDED_TEAM)).toEqual([
+        expect.objectContaining({
+          taskId: RECORDED_TASK,
+          title: "Test the parser",
+          state: status,
+          claimedBy: ["pip"],
+        }),
+      ]);
+      expect(teamProgress(recorded, RECORDED_TEAM)).toEqual({ completed: 0, total: 1 });
+    },
+  );
+
   it("is empty for a team with no recorded tasks, and for an unknown team", () => {
     expect(dispatchQueue(state([]), TEAM)).toEqual([]);
     expect(dispatchQueue(state([]), "claude-code:team:nope")).toEqual([]);

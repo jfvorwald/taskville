@@ -208,3 +208,27 @@ it("mirrors all 40 recorded team tasks between keyboard queue paging and mounted
     await screen.unmount();
   }
 }, 30_000);
+
+it.each(["failed", "cancelled", "blocked", "unknown"] as const)(
+  "AgentList exposes recorded %s in accessible team task text",
+  async (status) => {
+    const scenario = teamScenario();
+    dataStore.getState().reset(PROJECT);
+    dataStore.getState().applySnapshotState(scenario.state);
+    for (const event of [scenario.claim(), scenario.status("running"), scenario.status(status)]) {
+      dataStore.getState().applyEvent(event);
+    }
+    const screen = await render(<AgentList {...props} />);
+    try {
+      const region = page.getByRole("region", { name: /Team tasks/i });
+      await expect.element(region).toBeVisible();
+      // Match the task's actual text and status together, without prescribing colors or layout.
+      await expect
+        .poll(() => region.element().textContent)
+        .toMatch(new RegExp(`Test the parser\\s*\\(${status}\\)`));
+      await expect.element(region).not.toHaveTextContent("Other team's task");
+    } finally {
+      await screen.unmount();
+    }
+  },
+);

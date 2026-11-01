@@ -1,4 +1,7 @@
-import { storedEnvelopeSchemas } from "../../../../../../packages/protocol/src/index.ts";
+import {
+  storedEnvelopeSchemas,
+  type TaskStatus,
+} from "../../../../../../packages/protocol/src/index.ts";
 import { initialState, reduce, type StoredEnvelope } from "../../../../src/data/domain.ts";
 
 export const PROJECT = "team-integration";
@@ -67,6 +70,7 @@ export function teamScenario() {
     }),
     endTeam: () => event("team.ended", { teamId: TEAM }),
     createTask: (taskId: string) => event("task.created", { title: `Task ${taskId}` }, taskId),
+    status: (status: TaskStatus) => event("task.status_changed", { status }, TASK),
     complete: () => event("task.status_changed", { status: "completed" }, TASK),
   };
 }
