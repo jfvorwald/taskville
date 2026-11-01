@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { storedEnvelopeSchemas } from "../../../../../packages/protocol/src/index.ts";
 import type { Placement } from "../../../src/city/agents/types.ts";
 import { CITY_LAYOUT } from "../../../src/city/layout/index.ts";
 import { DEFAULT_ACTIVITY_AREAS } from "../../../src/city/movement/areas.ts";
@@ -85,5 +86,53 @@ describe("team movement integration", () => {
     const destination = CITY_LAYOUT.slots.find((s) => s.id === nav.get("pip")?.slotId);
     expect(destination?.areaId).toBe("test_lab");
     expect(nav.get("pip")).toMatchObject({ onTheWay: false, x: destination?.x, z: destination?.z });
+  });
+
+  it("keeps an assignment-free teammate idle at its workstation after recorded work", () => {
+    const scenario = teamScenario();
+    const nav = createNavigator();
+    expect(scenario.state.activity.pip?.activity).toBe("idle");
+    expect(Object.values(scenario.state.tasks).every((t) => t.assignedAgentIds.length === 0)).toBe(
+      true,
+    );
+    nav.sync(models(scenario.state).intents, { place: true });
+    expect(nav.get("pip")).toMatchObject({ state: "idle", onTheWay: false });
+    expect(CITY_LAYOUT.slots.find((s) => s.id === nav.get("pip")?.slotId)?.areaId).toBe("dispatch");
+
+    // Work is recorded without task.assigned. Initial Dispatch placement must not pin it there.
+    const working = reduce(scenario.state, scenario.work());
+    expect(working.tasks).toEqual(scenario.state.tasks);
+    nav.tick(0);
+    nav.sync(models(working).intents);
+    nav.tick(100);
+    expect(nav.get("pip")).toMatchObject({ state: "walking", onTheWay: true });
+    for (let t = 200; t <= 120_000; t += 100) nav.tick(t);
+    const workstation = CITY_LAYOUT.slots.find((s) => s.id === nav.get("pip")?.slotId);
+    expect(workstation?.areaId).toBe("test_lab");
+    expect(nav.get("pip")).toMatchObject({
+      state: "working",
+      onTheWay: false,
+      x: workstation?.x,
+      z: workstation?.z,
+    });
+    const resting = { ...nav.get("pip"), state: "idle" };
+
+    // TeammateIdle maps to activity.ended, not task.assigned or agent.finished.
+    const idleEvent = storedEnvelopeSchemas["activity.ended"].parse({
+      ...scenario.work(),
+      type: "activity.ended",
+      payload: {},
+    });
+    const idle = reduce(working, idleEvent);
+    expect(idle.activity.pip).toMatchObject({ activity: "idle", heuristic: false });
+    expect(idle.tasks).toEqual(scenario.state.tasks);
+    expect(idle.agents.pip?.finishedAt).toBeUndefined();
+    expect(idle.teams[TEAM]?.endedAt).toBeUndefined();
+    expect(models(idle).views.find((v) => v.id === "pip")?.activity).toBe("idle");
+    nav.sync(models(idle).intents);
+    expect.soft(nav.get("pip")).toEqual(resting);
+    nav.tick(240_000);
+    nav.sync(models(idle).intents);
+    expect.soft(nav.get("pip")).toEqual(resting);
   });
 });
