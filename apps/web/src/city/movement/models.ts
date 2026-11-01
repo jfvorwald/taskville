@@ -57,8 +57,8 @@ export function identityOf(agent: Agent): string {
 
 /**
  * Views and intents for every agent that has not finished, in the store's order. Finished agents
- * are left out, so navigation walks them out. Subagents get an intent but no view: the crew layer
- * (`crew/subagents`) is their only drawing. `placementFor` must return the same object for an
+ * are left out, so navigation walks them out. A subagent with a known parent gets an intent but no
+ * view: the crew layer (`crew/subagents`) is its only drawing. `placementFor` must return the same object for an
  * id every time: navigation mutates it in place and the bots read it each frame.
  */
 export function buildModels(
@@ -92,8 +92,10 @@ export function buildModels(
     const attention = attentionView(record);
     const parent = agent.parentAgentId === undefined ? undefined : byId.get(agent.parentAgentId);
     const agentType = agent.kind === "subagent" ? agent.role : undefined;
-    // A subagent is drawn by the crew layer (M5.02), so it has an intent but no block-agent view.
-    if (agent.kind !== "subagent") {
+    // A subagent whose parent is known is drawn by the crew layer (M5.02), so it has an intent
+    // but no block-agent view. One without a recorded parent has no door to walk out of and
+    // stays a block agent.
+    if (agent.kind !== "subagent" || parent === undefined) {
       views.push({
         id: agent.id,
         kind: agent.kind,
