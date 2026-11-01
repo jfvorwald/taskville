@@ -15,7 +15,8 @@
     "perf": "node tests/perf/run.ts",
     "perf:unit": "node --test tests/perf/",
     "retro": "node scripts/retro/src/main.ts",
-    "taskville": "node apps/cli/src/main.ts"
+    "taskville": "node apps/cli/src/main.ts",
+    "test:e2e:web": "VITE_TV_TEST_HOOKS=1 pnpm --filter @taskville/web exec vite build && pnpm --filter @taskville/web exec playwright test -c ../../tests/e2e/web/playwright.config.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

@@ -34,6 +34,7 @@ const CODE_NAMES = [
   "accessibility",
   "movement",
   "lighting",
+  "web",
 ];
 const spec = process.env.E2E_SPEC ?? "";
 const mine = spec === "smoke" ? ["paired", "fresh"] : CODE_NAMES.includes(spec) ? [spec] : [];
