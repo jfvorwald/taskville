@@ -384,6 +384,90 @@ describe("OverlayRoot: Settings stays reachable while an agent is selected (M5.1
     }
   });
 
+  it("keeps the visible right side of a long attention chip clickable at 320px", async () => {
+    const width = 320;
+    const root = document.documentElement;
+    const attributes = ["style", "data-theme", "data-mode", "data-history"].map(
+      (name) => [name, root.getAttribute(name)] as const,
+    );
+    const detach = themeController.attach(root);
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await page.viewport(width, 640);
+      await mountSeeded();
+      selectionStore.select("a2");
+      await vi.waitFor(() => expect(agentPanel()).not.toBeNull());
+      attentionStore.setState({
+        ready: true,
+        feed: Object.fromEntries(
+          [
+            // Realistic descriptive names, within the engine's 100-character project-name limit.
+            {
+              projectId: "development",
+              name: "Taskville development telemetry and observability dashboard",
+            },
+            {
+              projectId: "production",
+              name: "Taskville production telemetry and observability dashboard",
+            },
+          ].map(({ projectId, name }) => [
+            projectId,
+            { projectId, name, attention: [needsYou(projectId, `request-${projectId}`)] },
+          ]),
+        ),
+      });
+      const chip = page.getByRole("button", {
+        name: "Taskville development telemetry and observability dashboard: 1 needs you",
+        exact: true,
+      });
+      await expect.element(chip).toBeVisible();
+      const projectChips = page.getByRole("button", { name: /: 1 needs you$/ }).elements();
+      expect(projectChips).toHaveLength(2);
+      expect(
+        projectChips.some(
+          (control) =>
+            control.getBoundingClientRect().top >=
+            counts().element().getBoundingClientRect().bottom,
+        ),
+      ).toBe(true);
+      expect(window.innerWidth).toBe(width);
+      expect(window.innerHeight).toBe(640);
+      const chipElement = chip.element();
+      const chipBox = chipElement.getBoundingClientRect();
+      expect(chipBox.top).toBeGreaterThanOrEqual(counts().element().getBoundingClientRect().bottom);
+      // The header can clip long labels on the left. Check only the visible chip area so
+      // unrelated clipping cannot masquerade as Settings intercepting this button.
+      const left = Math.max(0, chipBox.left);
+      const right = Math.min(window.innerWidth, chipBox.right);
+      expect(right).toBeGreaterThan(left);
+      const y = chipBox.top + chipBox.height / 2;
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(window.innerHeight);
+      for (const fraction of [0.1, 0.5, 0.9]) {
+        const x = left + (right - left) * fraction;
+        const hit = document.elementFromPoint(x, y);
+        expect(
+          chipElement.contains(hit),
+          JSON.stringify({
+            point: { x, y },
+            chip: chipBox.toJSON(),
+            settings: toggle().element().getBoundingClientRect().toJSON(),
+            hit: hit?.outerHTML,
+          }),
+        ).toBe(true);
+      }
+      await chip.click();
+      expect(projectSelection.getState().projectId).toBe("development");
+    } finally {
+      detach();
+      for (const [name, value] of attributes) {
+        if (value === null) root.removeAttribute(name);
+        else root.setAttribute(name, value);
+      }
+      await page.viewport(viewport.width, viewport.height);
+    }
+  });
+
   it("is unchanged with nothing selected: the toggle is there, closed, and opens Settings in the sidebar", async () => {
     await mountSeeded();
 
