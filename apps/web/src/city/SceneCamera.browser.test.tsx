@@ -1,21 +1,14 @@
 import { _roots } from "@react-three/fiber";
 import { Vector3 } from "three";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import { SessionProvider } from "../pairing/session.tsx";
 import { SceneRoot } from "../SceneRoot.tsx";
 import { CITY_CAMERA, cameraPosition } from "./layout/index.ts";
 
-const frames = (n: number) =>
-  new Promise<void>((resolve) => {
-    const step = (left: number) =>
-      left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1));
-    step(n);
-  });
-
-/** The camera R3F draws with, read from the mounted canvas root. */
-function drawnCamera() {
-  for (const root of _roots.values()) return root.store.getState().camera;
+/** The mounted canvas root's state, if R3F has created one. */
+function mountedRoot() {
+  for (const root of _roots.values()) return root.store.getState();
   return undefined;
 }
 
@@ -28,9 +21,18 @@ describe("the drawn camera pose (SceneRoot with the city mounted)", () => {
         </SessionProvider>
       </div>,
     );
-    await frames(5);
+    // Wait for the condition, not a frame count: the root exists and has drawn, so its camera is
+    // the one drawn with. The full browser suite runs files in parallel on software WebGL
+    // (SwiftShader), where a page can go several seconds without a frame (4.6 s measured).
+    await vi.waitFor(
+      () =>
+        expect(mountedRoot()?.gl.info.render.frame ?? 0, "an R3F root has drawn").toBeGreaterThan(
+          0,
+        ),
+      { timeout: 10_000 },
+    );
 
-    const camera = drawnCamera();
+    const camera = mountedRoot()?.camera;
     expect(camera, "an R3F root is mounted").toBeDefined();
     if (!camera) return;
     expect((camera as { isOrthographicCamera?: boolean }).isOrthographicCamera).toBe(true);
@@ -48,5 +50,5 @@ describe("the drawn camera pose (SceneRoot with the city mounted)", () => {
     expect(actual.x).toBeCloseTo(expected.x, 4);
     expect(actual.y).toBeCloseTo(expected.y, 4);
     expect(actual.z).toBeCloseTo(expected.z, 4);
-  });
+  }, 30_000);
 });
