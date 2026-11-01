@@ -131,6 +131,41 @@ describe("identity colors avoid the attention hues", () => {
     expect(bad.slice(0, 5)).toEqual([]);
   });
 
+  it("keeps the fallback trim (session without a team, subagent without a parent) out of the reserved hues", () => {
+    const bad: string[] = [];
+    for (let i = 0; i < 2000; i++) {
+      const sessionTrim = agentColors(view({ id: `s${i}`, sourceId: "cc", sourceAgentId: `s-${i}` }))
+        .trim;
+      const sessionNoSource = agentColors(view({ id: `plain-${i}` })).trim;
+      const subagentTrim = agentColors(
+        view({ id: `u${i}`, kind: "subagent", agentType: `type-${i}` }),
+      ).trim;
+      const subagentNoType = agentColors(view({ id: `n${i}`, kind: "subagent" })).trim;
+      for (const [label, c] of [
+        ["session", sessionTrim],
+        ["session (no source)", sessionNoSource],
+        ["subagent", subagentTrim],
+        ["subagent (no type)", subagentNoType],
+      ] as const) {
+        if (reserved(c)) bad.push(`${label} ${i}: ${c} (hue ${Math.round(hueOf(c))})`);
+      }
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+  });
+
+  it("keeps the fallback trim stable per identity", () => {
+    for (let i = 0; i < 200; i++) {
+      const session = view({ id: `s${i}`, sourceId: "cc", sourceAgentId: `s-${i}` });
+      const sub = view({ id: `u${i}`, kind: "subagent", agentType: `type-${i}` });
+      for (const v of [session, sub]) {
+        const first = agentColors(v).trim;
+        expect(first).toMatch(HEX);
+        expect(agentColors(v).trim).toBe(first);
+        expect(agentColors({ ...v, activity: "testing", displayName: "renamed" }).trim).toBe(first);
+      }
+    }
+  });
+
   it("still separates identities and stays stable once the bands are excluded", () => {
     const make = (i: number) => view({ id: `agent-${i}`, sourceId: "cc", sourceAgentId: `s-${i}` });
     const bodies = new Set<string>();
