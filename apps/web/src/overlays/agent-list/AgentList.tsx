@@ -36,6 +36,7 @@ export function AgentList({ selection }: OverlayProps) {
             data-agent-id={row.id}
             data-urgent={row.urgent ? "true" : undefined}
             data-current={selection.selectedId === row.id ? "true" : undefined}
+            aria-current={selection.selectedId === row.id ? "true" : undefined}
           >
             <span className={styles.name}>{row.name}</span>
             <span className={styles.status}>{row.detail}</span>

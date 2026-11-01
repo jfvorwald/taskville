@@ -2,7 +2,9 @@ import { useThree } from "@react-three/fiber";
 import { useEffect } from "react";
 import { cameraRig } from "../interaction/index.ts";
 import { movementLabels } from "../movement/index.ts";
+import { presentationEpoch } from "./epoch.ts";
 import { createIdleThrottle, shouldRenderFrame } from "./idle-throttle.ts";
+import { motionSignals } from "./motion-signals.ts";
 import { watchVisibility } from "./visibility.ts";
 
 /**
@@ -17,11 +19,6 @@ export function RenderPacer() {
   useEffect(() => {
     const now = () => performance.now();
     const throttle = createIdleThrottle({ now });
-    const signals = {
-      agentsMoving: false,
-      cameraMoving: false,
-      effectsActive: false,
-    };
     // Pointer and key activity drives hover glow, fades and the selection marker.
     let touched = false;
     const touch = () => {
@@ -41,7 +38,7 @@ export function RenderPacer() {
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
       const view = cameraRig.getSnapshot();
-      signals.cameraMoving =
+      const cameraChanged =
         view !== lastView ||
         camera.zoom !== lastZoom ||
         camera.position.x !== lastX ||
@@ -52,10 +49,9 @@ export function RenderPacer() {
       lastX = camera.position.x;
       lastY = camera.position.y;
       lastZ = camera.position.z;
-      signals.agentsMoving = movementLabels
-        .getSnapshot()
-        .some((l) => l.state === "walking" || l.state === "arriving" || l.state === "departing");
-      signals.effectsActive = touched;
+      // Working agents' loops draw at 20 fps by design (CTO decision): only walking, arriving and
+      // departing count as agents moving, which keeps the idle throttle effective.
+      const signals = motionSignals(movementLabels.getSnapshot(), cameraChanged, touched);
       touched = false;
       if (!shouldRenderFrame(throttle.update(signals), lastRenderAt, t)) return;
       lastRenderAt = t;
@@ -67,7 +63,8 @@ export function RenderPacer() {
       onPause() {
         cancelAnimationFrame(raf);
       },
-      onResume() {
+      onResume({ hiddenForMs }) {
+        presentationEpoch.bump(hiddenForMs);
         lastRenderAt = null;
         lastView = cameraRig.getSnapshot();
         raf = requestAnimationFrame(loop);
