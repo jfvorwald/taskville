@@ -75,10 +75,17 @@ describe("navigator", () => {
     expect(must(nav, "b").slotId).toBe("workshop:0");
 
     // It never reaches the workshop first: its distance to Workshop only grows from here.
+    // It also never jumps: every frame moves it at most walking speed (plus the easing lane).
     let nearestWorkshop = dist(before, slot("workshop:0"));
+    let prev = { x: before.x, z: before.z };
+    let worstStep = dist(prev, must(nav, "a"));
     run(nav, clock, 60_000, () => {
-      nearestWorkshop = Math.min(nearestWorkshop, dist(must(nav, "a"), slot("workshop:0")));
+      const now = must(nav, "a");
+      nearestWorkshop = Math.min(nearestWorkshop, dist(now, slot("workshop:0")));
+      worstStep = Math.max(worstStep, dist(prev, now));
+      prev = { x: now.x, z: now.z };
     });
+    expect(worstStep).toBeLessThan((1.6 * 50) / 1000 + 0.2);
     expect(nearestWorkshop).toBeGreaterThan(dist(before, slot("workshop:0")) - 0.6);
     const done = must(nav, "a");
     expect(dist(done, slot("archives:0"))).toBeLessThan(1e-6);

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { run } from "../../cli/src/main.ts";
+import { DEFAULT_ACTIVITY_AREAS } from "../src/city/movement/areas.ts";
 import { CODES_FILE } from "./codes.ts";
 
 // M3.06: the seeded demo (`taskville demo start`) drives six agents through the engine; the city
@@ -18,6 +19,18 @@ interface Walker {
 }
 
 const CORE = ["Ada", "Brook", "Cyd", "Dee", "Eli", "Fay"];
+
+// The label's status text is the recorded activity (the agents' `agentLabel`); the area an agent
+// belongs in is what the app's activity-to-area table says for it. Statuses that name no place
+// (Idle, Waiting, Handing off, Working, attention states) are not checked.
+const STATUS_ACTIVITY = {
+  Implementing: "implementing",
+  Testing: "testing",
+  Reviewing: "reviewing",
+  Researching: "researching",
+  Documenting: "documenting",
+  Dispatching: "dispatching",
+} as const;
 const port = Number(process.env.E2E_PORT ?? 4817);
 
 test("six demo agents walk to their areas without overlapping", async ({ page }) => {
@@ -100,6 +113,34 @@ test("six demo agents walk to their areas without overlapping", async ({ page })
       expect(Math.hypot(a.x - b.x, a.z - b.z), `${a.id} and ${b.id}`).toBeGreaterThan(0.6);
     }
   }
+
+  // Each core agent stands in the area its current activity maps to (the demo's core agents are
+  // main agents, so the activity table alone decides), not just at some slot.
+  const misplaced = async () => {
+    const { walkers, statuses } = await page.evaluate(() => {
+      const snap = (
+        window as unknown as { __taskvilleMovement: () => Walker[] }
+      ).__taskvilleMovement();
+      const texts: Record<string, string> = {};
+      for (const el of document.querySelectorAll<HTMLElement>("[data-testid=agent-label]")) {
+        texts[el.dataset.agentId ?? ""] = el.children[1]?.textContent ?? "";
+      }
+      return { walkers: snap, statuses: texts };
+    });
+    const wrong: string[] = [];
+    let checked = 0;
+    for (const w of walkers.filter((x) => coreIds.includes(x.id) && !x.gone)) {
+      const status = statuses[w.id] as keyof typeof STATUS_ACTIVITY | undefined;
+      const activity = status === undefined ? undefined : STATUS_ACTIVITY[status];
+      if (activity === undefined) continue;
+      checked++;
+      const want = DEFAULT_ACTIVITY_AREAS.activities[activity];
+      const have = w.slotId?.split(":")[0] ?? null;
+      if (have !== want) wrong.push(`${w.id} (${status}): slot ${w.slotId}, expected area ${want}`);
+    }
+    return checked === 0 ? ["no core agent has an activity that maps to an area"] : wrong;
+  };
+  await expect.poll(misplaced, { timeout: 20_000, intervals: [500] }).toEqual([]);
 
   if (process.env.E2E_SCREENSHOT) {
     await page.waitForTimeout(500);
