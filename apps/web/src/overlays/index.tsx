@@ -99,9 +99,10 @@ export function OverlayRoot({
     selection.selectedId !== null &&
     agents !== undefined &&
     Object.hasOwn(agents, selection.selectedId);
-  // The live card is the app's own store; it is not asked while a recording is shown, so replay
-  // facts never become the remembered target.
-  const liveCard = useCardTarget(dataStore, mode === "live" ? selection.selectedId : null) !== null;
+  // The live card is asked of the app's own store only, so it keeps its final request across a
+  // recording and replay facts never become the remembered target.
+  const liveTarget = useCardTarget(dataStore, selection.selectedId);
+  const liveCard = liveTarget !== null;
   const recordedTarget = useRecordedTarget(store, mode, selection.selectedId);
   // Needs-you takes the single sidebar ahead of the selected agent and settings.
   const cardOpen = mode === "history" ? (recordedTarget ?? null) !== null : liveCard;
@@ -109,7 +110,7 @@ export function OverlayRoot({
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
-      <PresentedSidebar store={store} recordedTarget={recordedTarget}>
+      <PresentedSidebar store={store} recordedTarget={recordedTarget} liveTarget={liveTarget}>
         <OverlayHost
           registry={registry}
           enabled={ENABLED}

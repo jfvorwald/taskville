@@ -56,6 +56,11 @@ export type ActionCardProps = OverlayProps & {
    * path, `null` shows no card, a target shows that request read-only.
    */
   recordedTarget?: CardTarget | null | undefined;
+  /**
+   * The live target when the caller keeps it (so it survives a recording being shown). Default:
+   * the card reads and keeps its own from `store`.
+   */
+  liveTarget?: CardTarget | null | undefined;
 };
 
 type Fetch = typeof fetch;
@@ -171,12 +176,14 @@ export function ActionCard({
   store = dataStore,
   fetch = defaultFetch,
   recordedTarget,
+  liveTarget,
 }: ActionCardProps) {
   const secret = useSession();
   // A recorded card never feeds the live kept target, and a live one never shows in its place.
   const recorded = mode === "history" && recordedTarget !== undefined;
-  const live = useCardTarget(store, recorded ? null : selection.selectedId);
-  const target = recorded ? recordedTarget : live;
+  const kept = liveTarget !== undefined;
+  const own = useCardTarget(store, recorded || kept ? null : selection.selectedId);
+  const target = recorded ? recordedTarget : kept ? liveTarget : own;
   if (target === null) return null;
   return (
     <CardBody

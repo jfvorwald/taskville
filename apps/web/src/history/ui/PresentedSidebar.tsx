@@ -11,6 +11,7 @@ import { recordedCardTarget } from "./recordedTarget.ts";
 interface Presented {
   store: DataStore;
   recordedTarget: CardTarget | null | undefined;
+  liveTarget?: CardTarget | null | undefined;
 }
 
 const Context = createContext<Presented>({ store: dataStore, recordedTarget: undefined });
@@ -37,15 +38,21 @@ export function useRecordedTarget(
 export function PresentedSidebar({
   store,
   recordedTarget,
+  liveTarget,
   children,
 }: Presented & { children: ReactNode }) {
-  const value = useMemo(() => ({ store, recordedTarget }), [store, recordedTarget]);
+  const value = useMemo(
+    () => ({ store, recordedTarget, liveTarget }),
+    [store, recordedTarget, liveTarget],
+  );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
 function PresentedActionCard(props: OverlayProps) {
-  const { store, recordedTarget } = useContext(Context);
-  return <ActionCard {...props} store={store} recordedTarget={recordedTarget} />;
+  const { store, recordedTarget, liveTarget } = useContext(Context);
+  return (
+    <ActionCard {...props} store={store} recordedTarget={recordedTarget} liveTarget={liveTarget} />
+  );
 }
 
 function PresentedAgentPanel(props: OverlayProps) {
