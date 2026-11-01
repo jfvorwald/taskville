@@ -100,6 +100,9 @@ export function createCrewTracker(): CrewTracker {
           state = observeSubagent(initialLifecycle(), { kind: "started", atMs: nowMs });
         }
         if (finished) state = observeSubagent(state, { kind: "finished", atMs: nowMs });
+        // Done and faded: dropped, so history never costs a frame. Once dropped, a finished agent
+        // is skipped above as one that was never seen running.
+        if (subagentFrame(state, nowMs).phase === "gone") continue;
         states.set(agent.id, state);
         present.add(agent.id);
 

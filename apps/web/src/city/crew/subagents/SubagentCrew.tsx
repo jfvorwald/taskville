@@ -169,6 +169,8 @@ function CrewFamilyView({
       const index = slots.current.get(id);
       if (found === undefined || index === undefined || !shown.has(id)) {
         bot.root.visible = false;
+        // Its own crew has nowhere to stand while it is out of sight (behind the marker or gone).
+        places.delete(id);
         continue;
       }
       const f = reducedMotion ? stillFrame(found) : found;
