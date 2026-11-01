@@ -26,7 +26,7 @@ export function AgentList({ selection }: OverlayProps) {
         data-testid="agent-list"
         className={styles.list}
         selectionMode="single"
-        selectionBehavior="replace"
+        selectionBehavior="toggle"
         selectedKeys={selectedKeys}
         onSelectionChange={(keys) => {
           // Emptying the set (clicking the selected row again) must not clear the city selection.

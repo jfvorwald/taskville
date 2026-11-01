@@ -16,6 +16,9 @@ export function rebuildPresentation(
 ): void {
   if (hiddenForMs < REBUILD_AFTER_MS) return;
   nav.setReducedMotion(true);
-  nav.tick(nowMs);
-  nav.setReducedMotion(reduced);
+  try {
+    nav.tick(nowMs);
+  } finally {
+    nav.setReducedMotion(reduced);
+  }
 }

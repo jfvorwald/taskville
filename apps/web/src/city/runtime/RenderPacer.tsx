@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { cameraRig } from "../interaction/index.ts";
 import { movementLabels } from "../movement/index.ts";
 import { presentationEpoch } from "./epoch.ts";
-import { createIdleThrottle, shouldRenderFrame } from "./idle-throttle.ts";
+import { createFramePacer, createIdleThrottle } from "./idle-throttle.ts";
 import { motionSignals } from "./motion-signals.ts";
 import { watchVisibility } from "./visibility.ts";
 
@@ -19,6 +19,7 @@ export function RenderPacer() {
   useEffect(() => {
     const now = () => performance.now();
     const throttle = createIdleThrottle({ now });
+    let pacer = createFramePacer();
     // Pointer and key activity drives hover glow, fades and the selection marker.
     let touched = false;
     const touch = () => {
@@ -32,7 +33,6 @@ export function RenderPacer() {
     let lastX = camera.position.x;
     let lastY = camera.position.y;
     let lastZ = camera.position.z;
-    let lastRenderAt: number | null = null;
     let raf = 0;
 
     const loop = (t: number) => {
@@ -53,8 +53,7 @@ export function RenderPacer() {
       // departing count as agents moving, which keeps the idle throttle effective.
       const signals = motionSignals(movementLabels.getSnapshot(), cameraChanged, touched);
       touched = false;
-      if (!shouldRenderFrame(throttle.update(signals), lastRenderAt, t)) return;
-      lastRenderAt = t;
+      if (!pacer.shouldRender(throttle.update(signals), t)) return;
       invalidate();
     };
 
@@ -65,7 +64,7 @@ export function RenderPacer() {
       },
       onResume({ hiddenForMs }) {
         presentationEpoch.bump(hiddenForMs);
-        lastRenderAt = null;
+        pacer = createFramePacer();
         lastView = cameraRig.getSnapshot();
         raf = requestAnimationFrame(loop);
       },
