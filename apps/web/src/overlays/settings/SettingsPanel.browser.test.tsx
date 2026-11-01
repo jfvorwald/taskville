@@ -89,6 +89,31 @@ describe("SettingsPanel", () => {
     expect(store.getSnapshot().dayNight).toBe("day");
   });
 
+  // M4.01: desktop notifications are opt-in, a switch that is off until the viewer turns it on.
+  it("offers a Desktop notifications switch that is off by default and is not disabled", async () => {
+    await render(<SettingsPanel {...overlayProps} store={createSettingsStore(memoryStorage())} />);
+    await openPanel();
+    const toggle = page.getByRole("switch", { name: "Desktop notifications" });
+    await expect.element(toggle).toBeVisible();
+    await expect.element(toggle).not.toBeChecked();
+    await expect.element(toggle).not.toBeDisabled();
+  });
+
+  it("turns Desktop notifications on, writes it to the store, and keeps it across a reload", async () => {
+    const storage = memoryStorage();
+    const store = createSettingsStore(storage);
+    const first = await render(<SettingsPanel {...overlayProps} store={store} />);
+    await openPanel();
+    // The switch's input is visually hidden; a viewer clicks its label.
+    await page.getByText("Desktop notifications", { exact: true }).click();
+    expect(store.getSnapshot().desktopNotifications).toBe(true);
+    await first.unmount();
+
+    await render(<SettingsPanel {...overlayProps} store={createSettingsStore(storage)} />);
+    await openPanel();
+    await expect.element(page.getByRole("switch", { name: "Desktop notifications" })).toBeChecked();
+  });
+
   it("shows sound and code privacy as disabled placeholders", async () => {
     await render(<SettingsPanel {...overlayProps} store={createSettingsStore(memoryStorage())} />);
     await openPanel();
@@ -191,9 +216,13 @@ describe("SettingsPanel in a short sidebar", () => {
       expect(box.top).toBeGreaterThanOrEqual(slotBox.top);
       expect(box.bottom).toBeLessThanOrEqual(slotBox.bottom + 0.5);
 
-      // Scrolled into view, the last control sits inside the scroller and so inside the slot.
-      last.scrollIntoView({ block: "end" });
-      const lastBox = last.getBoundingClientRect();
+      // Scrolled into view, the last control sits inside the scroller and so inside the slot. The
+      // visible control is the switch's label; its input is visually hidden and its box can sit
+      // below the label, so it is not what a viewer reaches (M4.01 added a switch above, which
+      // made the panel scroll for the first time at this height).
+      const control = last.closest("label") ?? last;
+      control.scrollIntoView({ block: "end" });
+      const lastBox = control.getBoundingClientRect();
       expect(lastBox.top).toBeGreaterThanOrEqual(box.top - 0.5);
       expect(lastBox.bottom).toBeLessThanOrEqual(box.bottom + 0.5);
     } finally {

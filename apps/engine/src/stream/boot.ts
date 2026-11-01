@@ -10,6 +10,7 @@ import {
   type Storage,
 } from "../storage/index.ts";
 import { registerTimelineRoutes } from "../timelines/index.ts";
+import { ATTENTION_TICK_MS, AttentionFeed, registerAttentionRoute } from "./attention.ts";
 import { type ExpiredRequest, expireOpenRequests } from "./expire.ts";
 import { StreamHub } from "./hub.ts";
 import { CUTOFF_DRAIN_TIMEOUT_MS, MAX_SSE_STREAMS, registerStreamRoutes } from "./routes.ts";
@@ -24,6 +25,8 @@ export interface BootOptions {
   now?: () => Date;
   logger?: Logger;
   heartbeatMs?: number;
+  /** How often the global attention feed recomputes against the clock (default 30000). */
+  attentionTickMs?: number;
   queueLimit?: number;
   maxStreams?: number;
   drainTimeoutMs?: number;
@@ -40,6 +43,7 @@ export interface Engine {
   queueLimit: number;
   maxStreams: number;
   drainTimeoutMs: number;
+  attentionTickMs: number;
   /** For `createApp({ health })`: database readable and in WAL mode. */
   health(): { db: "ok" | "error"; walMode: boolean };
   /** Ends every open stream, then closes the database. Call before closing the HTTP server. */
@@ -66,10 +70,20 @@ export function bootEngine(options: BootOptions): Engine {
     if (expired.length > 0)
       options.logger?.info({ count: expired.length }, "open requests expired");
     const hub = new StreamHub();
+    const attentionTickMs = options.attentionTickMs ?? ATTENTION_TICK_MS;
+    const attentionFeed = new AttentionFeed({
+      storage,
+      now,
+      tickMs: attentionTickMs,
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
     const pipeline = new IngestPipeline({
       storage,
       now,
-      onCommit: hub.publish,
+      onCommit: (batch) => {
+        hub.publish(batch);
+        attentionFeed.publish(batch);
+      },
       ...(options.logger ? { logger: options.logger } : {}),
     });
     const queueLimit = options.queueLimit ?? 1000;
@@ -86,6 +100,15 @@ export function bootEngine(options: BootOptions): Engine {
       drainTimeoutMs,
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
     });
+    registerAttentionRoute(options.app, {
+      feed: attentionFeed,
+      hub,
+      pairing: options.pairing,
+      maxStreams,
+      queueLimit,
+      drainTimeoutMs,
+      ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
+    });
     registerTimelineRoutes(options.app, { storage, now });
     return {
       storage,
@@ -96,6 +119,7 @@ export function bootEngine(options: BootOptions): Engine {
       queueLimit,
       maxStreams,
       drainTimeoutMs,
+      attentionTickMs,
       health: () => {
         if (closed) return { db: "error", walMode: false };
         try {
@@ -108,6 +132,7 @@ export function bootEngine(options: BootOptions): Engine {
       close: () => {
         if (closed) return;
         closed = true;
+        attentionFeed.close();
         hub.close();
         storage.close();
       },

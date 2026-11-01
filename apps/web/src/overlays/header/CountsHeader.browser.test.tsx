@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import { DEFAULT_PROJECT_ID, projectSelection, selectProject } from "../../data/project.ts";
 import { createAnchorSource } from "../host/anchors.ts";
 import type { AgentCounts, OverlayProps, Selector } from "../host/types.ts";
+import { EMPTY_ATTENTION_FEED } from "./attention.ts";
+import { attentionStore } from "./attentionSync.ts";
 import { CountsHeader, countsHeaderOverlay } from "./CountsHeader.tsx";
 
 function counts(initial: AgentCounts) {
@@ -61,5 +64,98 @@ describe("CountsHeader", () => {
   it("is registered for the header slot in both modes", () => {
     expect(countsHeaderOverlay).toMatchObject({ id: "counts-header", slot: "header" });
     expect(countsHeaderOverlay.modes).toEqual(["live", "history"]);
+  });
+});
+
+// M4.01 (roborev 5812, 5814, 5817): the needs-you count spans every project, so once the global
+// feed has delivered its first snapshot it comes from the feed; before that, from this project.
+
+const T = "2026-10-30T11:00:00.000Z";
+const waiting = (agentId: string, requestId: string) => ({
+  agentId,
+  level: "needs_you" as const,
+  kind: "permission" as const,
+  since: T,
+  requestId,
+  heuristic: false,
+});
+const projectOf = (projectId: string, name: string, agents: string[]) => ({
+  projectId,
+  name,
+  attention: agents.map((a) => waiting(a, `r-${projectId}-${a}`)),
+});
+
+afterEach(() => {
+  attentionStore.setState({ feed: EMPTY_ATTENTION_FEED, ready: false });
+  selectProject(DEFAULT_PROJECT_ID);
+});
+
+describe("CountsHeader needs-you count from the global feed", () => {
+  it("sums needs-you across projects once the feed is ready, not this project's own count", async () => {
+    const c = counts({ active: 3, needsYou: 1 });
+    attentionStore.setState({
+      feed: {
+        unsorted: projectOf("unsorted", "Unsorted", ["a"]),
+        beta: projectOf("beta", "Beta", ["b", "c"]),
+      },
+      ready: true,
+    });
+    await render(<CountsHeader {...props(c.selector)} />);
+    await expect.element(page.getByText("3 active · 3 need you")).toBeVisible();
+    await expect
+      .element(page.getByRole("status", { name: "3 agents active, 3 need you" }))
+      .toBeVisible();
+  });
+
+  it("shows zero when the ready feed has nothing, even if this project's stream still says 1", async () => {
+    const c = counts({ active: 3, needsYou: 1 });
+    attentionStore.setState({ feed: EMPTY_ATTENTION_FEED, ready: true });
+    await render(<CountsHeader {...props(c.selector)} />);
+    await expect.element(page.getByText("3 active · 0 need you")).toBeVisible();
+  });
+
+  it("falls back to this project's count until the feed's first snapshot, then switches over", async () => {
+    const c = counts({ active: 3, needsYou: 1 });
+    attentionStore.setState({
+      feed: { beta: projectOf("beta", "Beta", ["b", "c"]) },
+      ready: false,
+    });
+    await render(<CountsHeader {...props(c.selector)} />);
+    await expect.element(page.getByText("3 active · 1 needs you")).toBeVisible();
+    attentionStore.setState({ ready: true });
+    await expect.element(page.getByText("3 active · 2 need you")).toBeVisible();
+  });
+});
+
+describe("CountsHeader way back from another project", () => {
+  it("offers no way back while on the built-in project", async () => {
+    const c = counts({ active: 1, needsYou: 0 });
+    await render(<CountsHeader {...props(c.selector)} />);
+    await expect
+      .element(page.getByRole("button", { name: "Back to Unsorted" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("returns to the built-in project from a chosen one with Back to Unsorted", async () => {
+    const c = counts({ active: 1, needsYou: 0 });
+    selectProject("beta");
+    await render(<CountsHeader {...props(c.selector)} />);
+    await page.getByRole("button", { name: "Back to Unsorted" }).click();
+    expect(projectSelection.getState().projectId).toBe(DEFAULT_PROJECT_ID);
+    await expect
+      .element(page.getByRole("button", { name: "Back to Unsorted" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("switches to another project from its chip", async () => {
+    const c = counts({ active: 1, needsYou: 0 });
+    attentionStore.setState({
+      feed: { beta: projectOf("beta", "Beta", ["b"]) },
+      ready: true,
+    });
+    await render(<CountsHeader {...props(c.selector)} />);
+    await page.getByRole("button", { name: "Beta: 1 needs you" }).click();
+    expect(projectSelection.getState().projectId).toBe("beta");
+    await expect.element(page.getByRole("button", { name: "Back to Unsorted" })).toBeVisible();
   });
 });
