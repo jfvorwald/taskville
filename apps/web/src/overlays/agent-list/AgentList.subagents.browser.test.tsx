@@ -111,7 +111,9 @@ describe("AgentList with crew subagents", () => {
       try {
         await expect.element(page.getByRole("row", { name: /KID/ }), WAIT).toBeInTheDocument();
         if (needsYou) {
-          await expect.element(page.getByRole("row", { name: /KID/ })).toMatchTextContent("Needs you");
+          await expect
+            .element(page.getByRole("row", { name: /KID/ }))
+            .toMatchTextContent("Needs you");
         }
         clock.now = 10_000;
         await frames(5);
