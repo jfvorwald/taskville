@@ -125,6 +125,8 @@ function CrewFamilyView({
   const live = useRef<string[]>([]);
   const phases = useRef<SubagentPhase[]>([]);
   const slots = useRef(new Map<string, number>());
+  // Where this family's door last was while its parent was in sight.
+  const lastDoor = useRef<Place | undefined>(undefined);
 
   const register = useCallback((id: string, handle: BotHandle | null) => {
     if (handle === null) bots.current.delete(id);
@@ -145,18 +147,30 @@ function CrewFamilyView({
   useFrame(() => {
     const g = root.current;
     if (g === null) return;
-    // A family of a top-level parent follows the parent's anchor; one of a subagent follows that bot.
+    // A family of a top-level parent follows the parent's anchor; one of a subagent follows that
+    // bot. When the parent is out of sight (finished and faded, left the city, behind the
+    // marker) the family stays where it last stood: a running subagent never disappears.
     const parentPlace = places.get(family.parentId);
     const anchor =
       family.parentGeneration === 0 ? anchors.getAnchor(agentAnchorId(family.parentId)) : undefined;
-    const doorX = anchor === undefined ? parentPlace?.x : anchor[0];
-    const doorZ = anchor === undefined ? parentPlace?.z : anchor[2];
-    g.visible = doorX !== undefined && doorZ !== undefined;
-    if (doorX === undefined || doorZ === undefined) {
-      // Out of sight all the way down: the crews of this family's bots have nowhere to stand.
+    const liveX = anchor === undefined ? parentPlace?.x : anchor[0];
+    const liveZ = anchor === undefined ? parentPlace?.z : anchor[2];
+    if (liveX !== undefined && liveZ !== undefined) {
+      if (lastDoor.current === undefined) lastDoor.current = { x: liveX, z: liveZ };
+      else {
+        lastDoor.current.x = liveX;
+        lastDoor.current.z = liveZ;
+      }
+    }
+    const stood = lastDoor.current;
+    g.visible = stood !== undefined;
+    if (stood === undefined) {
+      // Never placed: the crews of this family's bots have nowhere to stand yet.
       for (const m of family.members) places.delete(m.id);
       return;
     }
+    const doorX = stood.x;
+    const doorZ = stood.z;
     g.position.set(doorX, 0, doorZ);
 
     const nowMs = store.now();
