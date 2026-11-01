@@ -29,16 +29,14 @@ export function agentColors(v: AgentView): AgentColors {
     return {
       body: colorFrom(`type:${type}`),
       trim:
-        v.parentIdentity === undefined
-          ? shift(colorFrom(`type:${type}`))
-          : colorFrom(v.parentIdentity),
+        v.parentIdentity === undefined ? colorFrom(`trim:${type}`) : colorFrom(v.parentIdentity),
     };
   }
   const body = colorFrom(identityKey(v));
   if ((v.kind === "teammate" || v.kind === "lead") && v.teamId !== undefined) {
     return { body, trim: colorFrom(`scarf:${v.teamId}`) };
   }
-  return { body, trim: shift(body) };
+  return { body, trim: colorFrom(`trim:${identityKey(v)}`) };
 }
 
 const HUE_MIN = 55;
@@ -62,19 +60,6 @@ function colorFrom(text: string): string {
   const sat = 55 + ((h >>> 4) & 0xf);
   const light = 48 + (h & 0xf) / 2;
   return hslToHex(hue, sat, light);
-}
-
-/** A darker, hue-shifted companion of a hex color, used when there is no better trim source. */
-function shift(hex: string): string {
-  const n = Number.parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  const to = (c: number) =>
-    Math.round(c * 0.55)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${to(b)}${to(r)}${to(g)}`;
 }
 
 function hslToHex(h: number, s: number, l: number): string {
