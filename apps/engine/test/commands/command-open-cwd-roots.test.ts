@@ -148,6 +148,51 @@ describe("session.open: the recorded cwd must lie inside a configured root", () 
     });
   }
 
+  // M4.17 L3: the denylist also covers the other macOS bundle and package suffixes, matched
+  // case-insensitively (the file system is).
+  const MORE_SUFFIXES = [
+    ".pkg",
+    ".mpkg",
+    ".prefpane",
+    ".saver",
+    ".action",
+    ".service",
+    ".qlgenerator",
+    ".mdimporter",
+    ".xpc",
+    ".plugin",
+    ".bundle",
+    ".scptd",
+    ".wdgt",
+  ];
+  for (const suffix of MORE_SUFFIXES) {
+    it(`refuses a directory inside the root whose name ends in ${suffix}`, async () => {
+      const cwd = join(rootDir, `Thing${suffix}`);
+      mkdirSync(cwd);
+      await expectRefused(boot(cwd), [cwd, base]);
+    });
+
+    it(`refuses ${suffix} regardless of case (x${suffix[0]}${suffix.slice(1).toUpperCase()})`, async () => {
+      const cwd = join(rootDir, `x${suffix[0]}${suffix.slice(1).toUpperCase()}`);
+      mkdirSync(cwd);
+      await expectRefused(boot(cwd), [cwd, base]);
+    });
+  }
+
+  it("refuses a mixed-case name such as x.prefPane", async () => {
+    const cwd = join(rootDir, "x.prefPane");
+    mkdirSync(cwd);
+    await expectRefused(boot(cwd), [cwd, base]);
+  });
+
+  it("accepts a directory whose name only contains one of the new suffixes (repo.pkg-tools)", async () => {
+    const cwd = join(rootDir, "repo.pkg-tools");
+    mkdirSync(cwd);
+    const h = boot(cwd);
+    expect((await h.post(openBody())).status).toBe(200);
+    expect(h.execFile).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a symlink whose resolved path ends in .app", async () => {
     mkdirSync(join(rootDir, "Real.app"));
     const alias = join(rootDir, "harmless");

