@@ -1,0 +1,15 @@
+{
+  "needs_you": [
+    "Little help here?",
+    "Need a yes on this one",
+    "Can you take a look?",
+    "Waiting on your OK"
+  ],
+  "trouble": [
+    "Something is not right",
+    "I am stuck, please look",
+    "That did not go well",
+    "Hit a snag over here"
+  ],
+  "waiting": ["All done, what is next?", "Ready when you are", "Standing by", "Idle and waiting"]
+}

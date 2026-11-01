@@ -1,0 +1,20 @@
+{
+  "needs_you": [
+    "Could we plant this one together?",
+    "Need your blessing on this",
+    "A gentle nudge, please approve",
+    "Your green light helps me grow"
+  ],
+  "trouble": [
+    "Something wilted, can you help?",
+    "Roots are tangled here",
+    "A storm rolled in on my task",
+    "I could use a little care"
+  ],
+  "waiting": [
+    "Soaking up the sun",
+    "Resting in the garden",
+    "Ready to sprout a new task",
+    "Basking until you need me"
+  ]
+}
