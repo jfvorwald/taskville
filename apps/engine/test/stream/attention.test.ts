@@ -357,6 +357,41 @@ describe("stream lifecycle", () => {
     await res.body?.cancel();
   });
 
+  it("cuts off a client that never reads even when no attention change happens (security L1)", async () => {
+    // Nothing is ingested: only the snapshot and heartbeats are written, and the client takes none
+    // of them. Each write is bounded by the drain timeout, as on the project streams.
+    const { app } = setup({ heartbeatMs: 10, drainTimeoutMs: 50 });
+    const res = await feedRequest(app, bearer(CLI_TOKEN));
+    expect(res.status).toBe(200);
+    expect(engine?.hub.openStreams()).toBe(1);
+
+    await waitFor(() => engine?.hub.openStreams() === 0, 2000);
+    expect(engine?.hub.openStreams()).toBe(0);
+    await res.body?.cancel();
+  });
+
+  it("cuts off a client that read the snapshot and then stopped, with only heartbeats flowing", async () => {
+    const { app } = setup({ heartbeatMs: 10, drainTimeoutMs: 50 });
+    const reader = await openFeed(app);
+    expect((await frame(reader)).event).toBe("snapshot");
+    expect(engine?.hub.openStreams()).toBe(1);
+
+    await waitFor(() => engine?.hub.openStreams() === 0, 2000);
+    expect(engine?.hub.openStreams()).toBe(0);
+    await reader.cancel();
+  });
+
+  it("keeps a client that keeps reading", async () => {
+    const { app } = setup({ heartbeatMs: 10, drainTimeoutMs: 200 });
+    const reader = await openFeed(app);
+    expect((await frame(reader)).event).toBe("snapshot");
+    for (let i = 0; i < 5; i++) {
+      expect((await frame(reader)).event).toBe("heartbeat");
+    }
+    expect(engine?.hub.openStreams()).toBe(1);
+    await reader.cancel();
+  });
+
   it("counts toward the stream cap and is released when the client disconnects", async () => {
     const { app } = setup({ maxStreams: 1 });
     const first = await openFeed(app);

@@ -4,7 +4,7 @@ import { DEFAULT_PROJECT_ID, selectProject } from "../../data/project.ts";
 import { getSettingsStore } from "../settings/store.ts";
 import type { AttentionFeed } from "./attention.ts";
 import { useAttentionTabTitle, useDesktopNotifications } from "./attentionEffects.ts";
-import { type AttentionStore, createAttentionStore } from "./attentionSync.ts";
+import { type AttentionStore, createAttentionStore, startAttentionSync } from "./attentionSync.ts";
 
 // M4.01: the two effects that reach outside the page. The tab title shows how many agents need
 // you in every project; a desktop notification is raised for a new needs-you in another project,
@@ -57,6 +57,22 @@ describe("tab title", () => {
 
     store.setState({ feed: feedOf() });
     await vi.waitFor(() => expect(document.title).toBe("Taskville"));
+  });
+});
+
+describe("tab title on unmount", () => {
+  afterEach(() => {
+    document.title = "";
+  });
+
+  it("goes back to plain Taskville when the effect unmounts, instead of keeping the last count (S4)", async () => {
+    const store = createAttentionStore();
+    const screen = await render(<Effects store={store} />);
+    store.setState({ feed: feedOf(project("beta", "Beta", "b", "c")), ready: true });
+    await vi.waitFor(() => expect(document.title).toBe("(2) Taskville"));
+
+    await screen.unmount();
+    expect(document.title).toBe("Taskville");
   });
 });
 
@@ -122,5 +138,113 @@ describe("desktop notifications", () => {
     store.setState({ feed: feedOf(), ready: true });
     store.setState({ feed: feedOf(project("beta", "Beta", "b")) });
     expect(calls).toHaveLength(0);
+  });
+
+  it("shows the project name and agent ID cut to 60 characters with control and bidi characters removed (security L2)", async () => {
+    stubNotification("granted");
+    getSettingsStore().set("desktopNotifications", true);
+    await render(<Effects store={store} />);
+    store.setState({ feed: feedOf(), ready: true });
+
+    // Stripping comes first, so the 60 characters kept are all visible ones.
+    const name = `\u0000\u0007x‮y⁦z\u007F${"n".repeat(80)}`;
+    const agentId = `‮a\u0001${"b".repeat(80)}⁩`;
+    store.setState({
+      feed: feedOf({ projectId: "evil", name, attention: [record(agentId, "req-evil")] }),
+    });
+
+    expect(calls).toHaveLength(1);
+    const forbidden = (text: string) =>
+      [...text].some((ch) => {
+        const c = ch.codePointAt(0) ?? 0;
+        return (
+          c <= 0x1f || c === 0x7f || (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)
+        );
+      });
+    const title = calls[0]?.title ?? "";
+    const body = calls[0]?.options?.body ?? "";
+    expect(title).toBe(`xyz${"n".repeat(57)} needs you`);
+    expect(forbidden(title)).toBe(false);
+    expect(forbidden(body)).toBe(false);
+    expect(body).toContain(`a${"b".repeat(59)}`);
+    expect(body).not.toContain("b".repeat(60));
+  });
+
+  it("leaves an ordinary project name and agent ID as they are", async () => {
+    stubNotification("granted");
+    getSettingsStore().set("desktopNotifications", true);
+    await render(<Effects store={store} />);
+    store.setState({ feed: feedOf(), ready: true });
+    store.setState({ feed: feedOf(project("beta", "Beta app", "agent-7")) });
+    expect(calls[0]?.title).toBe("Beta app needs you");
+    expect(calls[0]?.options?.body).toContain("agent-7");
+  });
+});
+
+describe("desktop notifications across a reconnect", () => {
+  const tags: string[] = [];
+  const encoder = new TextEncoder();
+
+  beforeEach(() => {
+    tags.length = 0;
+    selectProject(DEFAULT_PROJECT_ID);
+    getSettingsStore().set("desktopNotifications", true);
+    class FakeNotification {
+      static permission = "granted";
+      onclick: (() => void) | null = null;
+      constructor(_title: string, options?: NotificationOptions) {
+        tags.push(options?.tag ?? "");
+      }
+      close() {}
+    }
+    vi.stubGlobal("Notification", FakeNotification);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    getSettingsStore().set("desktopNotifications", false);
+  });
+
+  const snapshotChunk = (...projects: ReturnType<typeof project>[]) =>
+    encoder.encode(`event: snapshot\ndata: ${JSON.stringify({ projects, computedAt: T })}\n\n`);
+
+  it("does not announce a request it already knew, and announces a new one (S5)", async () => {
+    // Three connections: the first learns beta's request, the second re-sends the same one, the
+    // third adds gamma's. The feed has no resume, so each starts with a snapshot.
+    const scripts: ((c: ReadableStreamDefaultController<Uint8Array>) => void)[] = [
+      (c) => {
+        c.enqueue(snapshotChunk(project("beta", "Beta", "b")));
+        c.close();
+      },
+      (c) => {
+        c.enqueue(snapshotChunk(project("beta", "Beta", "b")));
+        c.close();
+      },
+      (c) => {
+        c.enqueue(snapshotChunk(project("beta", "Beta", "b"), project("gamma", "Gamma", "g")));
+      },
+    ];
+    let opened = 0;
+    const fetchImpl: typeof fetch = async () => {
+      const script = scripts[Math.min(opened, scripts.length - 1)];
+      opened += 1;
+      return new Response(new ReadableStream<Uint8Array>({ start: (c) => script?.(c) }), {
+        status: 200,
+      });
+    };
+    const store = createAttentionStore();
+    await render(<Effects store={store} />);
+    const sync = startAttentionSync({
+      store,
+      secret: "s",
+      fetch: fetchImpl,
+      sleep: () => new Promise((r) => setTimeout(r, 5)),
+    });
+
+    await vi.waitFor(() => expect("gamma" in store.getState().feed).toBe(true));
+    await sync.stop();
+    expect(opened).toBe(3);
+    // Beta's request was in the first snapshot (nothing to announce) and again in the second (not
+    // new). Gamma's arrived on the third: exactly one notification, for it.
+    expect(tags).toEqual(["gamma:req-gamma-g"]);
   });
 });

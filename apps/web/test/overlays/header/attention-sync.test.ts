@@ -216,4 +216,54 @@ describe("startAttentionSync", () => {
     expect(calls).toBe(1);
     await sync.stop();
   });
+
+  it("empties the store when a reconnect finds the session unpaired, so no stale count stays on screen", async () => {
+    const feed = scriptedFeed();
+    let calls = 0;
+    const fetchImpl: typeof fetch = (input, init) => {
+      calls += 1;
+      if (calls === 1) return feed.fetchImpl(input, init);
+      return Promise.resolve(new Response("{}", { status: 401 }));
+    };
+    const store = createAttentionStore();
+    const sync = startAttentionSync({
+      store,
+      secret: SECRET,
+      fetch: fetchImpl,
+      sleep: instantSleep([]),
+    });
+    const first = await feed.open(0);
+    first.push(snapshot({ projectId: "beta", name: "Beta", attention: [needsYou("a", "r1")] }));
+    await until(() => store.getState().ready);
+    expect(Object.keys(store.getState().feed)).toEqual(["beta"]);
+
+    // The pairing was revoked: the stream ends and the retry is refused with 401, which stops the sync.
+    first.end();
+    await until(() => calls >= 2);
+    await until(() => !store.getState().ready);
+    expect(store.getState().feed).toEqual({});
+    expect(store.getState().ready).toBe(false);
+
+    await sync.stop();
+  });
+
+  it("keeps the last view while a dropped connection is retried (only a 401 empties the store)", async () => {
+    const feed = scriptedFeed();
+    const store = createAttentionStore();
+    const sync = startAttentionSync({
+      store,
+      secret: SECRET,
+      fetch: feed.fetchImpl,
+      sleep: instantSleep([]),
+    });
+    const first = await feed.open(0);
+    first.push(snapshot({ projectId: "beta", name: "Beta", attention: [needsYou("a", "r1")] }));
+    await until(() => store.getState().ready);
+    first.end();
+    await feed.open(1);
+    expect(Object.keys(store.getState().feed)).toEqual(["beta"]);
+    expect(store.getState().ready).toBe(true);
+
+    await sync.stop();
+  });
 });
