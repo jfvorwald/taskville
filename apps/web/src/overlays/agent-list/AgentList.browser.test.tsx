@@ -7,7 +7,9 @@ import type { OverlayProps } from "../host/types.ts";
 import { AgentList } from "./AgentList.tsx";
 
 // M3.14 code-review fix (S5): the selected row must carry an accessible state, not only a
-// styling hook, so a screen reader user hears which agent is selected.
+// styling hook, so a screen reader user hears which agent is selected. React Aria's GridListItem
+// filters out aria-current, so the list uses GridList single selection (aria-selected) bound to
+// the M3.11 selection.
 
 const rows = [
   {
@@ -44,15 +46,15 @@ function props(selectedId: string | null): OverlayProps {
 afterEach(() => movementLabels.set([]));
 
 describe("AgentList selection state", () => {
-  it("marks the selected row aria-current=true and no other row", async () => {
+  it("marks the selected row aria-selected=true and no other row", async () => {
     movementLabels.set(rows);
     await render(<AgentList {...props("b2")} />);
     await expect
       .element(page.getByRole("row", { name: /Brook/ }))
-      .toHaveAttribute("aria-current", "true");
+      .toHaveAttribute("aria-selected", "true");
     await expect
       .element(page.getByRole("row", { name: /Ada/ }))
-      .not.toHaveAttribute("aria-current");
+      .not.toHaveAttribute("aria-selected", "true");
   });
 
   it("marks no row when nothing is selected", async () => {
@@ -60,9 +62,9 @@ describe("AgentList selection state", () => {
     await render(<AgentList {...props(null)} />);
     await expect
       .element(page.getByRole("row", { name: /Ada/ }))
-      .not.toHaveAttribute("aria-current");
+      .not.toHaveAttribute("aria-selected", "true");
     await expect
       .element(page.getByRole("row", { name: /Brook/ }))
-      .not.toHaveAttribute("aria-current");
+      .not.toHaveAttribute("aria-selected", "true");
   });
 });

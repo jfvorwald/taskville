@@ -57,7 +57,7 @@ describe("rebuildPresentation", () => {
     rebuildPresentation(nav, t + 60_000, false, 60_000);
     nav.sync([
       { id: "a", area: "workshop", rest: "working" },
-      { id: "b", area: "library", rest: "working" },
+      { id: "b", area: "archives", rest: "working" },
     ]);
     nav.tick(t + 60_000);
     nav.tick(t + 60_100);
@@ -69,7 +69,7 @@ describe("rebuildPresentation", () => {
   it("restores a reduced-motion preference of true afterwards (later walks still snap)", () => {
     const { nav, t } = walkingNav(true);
     rebuildPresentation(nav, t + 60_000, true, 60_000);
-    nav.sync([{ id: "b", area: "library", rest: "working" }]);
+    nav.sync([{ id: "b", area: "archives", rest: "working" }]);
     nav.tick(t + 60_100);
     const b = must(nav, "b");
     expect(b.onTheWay).toBe(false);
