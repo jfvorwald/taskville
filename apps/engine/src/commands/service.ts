@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { realpath } from "node:fs/promises";
+import { isAbsolute, relative, sep } from "node:path";
 import type { Command, PendingRequest, ProjectState, Session } from "@taskville/domain/reducer";
 import type { CommandStatus, CommandType } from "@taskville/protocol";
 import type { Logger } from "pino";
@@ -48,6 +50,8 @@ export interface CommandServiceOptions {
   now?: () => Date;
   newId?: () => string;
   logger?: Logger;
+  /** Session results kept for replays and `GET`, oldest forgotten first. Defaults to 500. */
+  maxRememberedResults?: number;
 }
 
 /** What a command's response and `GET /v1/commands/:id` show. */
@@ -82,9 +86,18 @@ export interface CommandService {
 const DEFAULT_DENY_MESSAGE = "Denied in Taskville";
 
 const INTERRUPTED_OPENER_MESSAGE = "The session opener was interrupted by an engine stop";
+const INTERRUPTED_DECISION_MESSAGE = "The decision was interrupted by an engine stop";
+const OPENER_CWD_REFUSED_MESSAGE = "The session directory is not inside a project root";
 
 /** Session results kept for replaying an idempotent session.open (oldest forgotten first). */
-const MAX_REMEMBERED_RESULTS = 500;
+const DEFAULT_MAX_REMEMBERED_RESULTS = 500;
+
+/** Directory name endings that macOS launches instead of opening as a folder. */
+const LAUNCHABLE_SUFFIXES = [".app", ".command", ".workflow", ".terminal", ".tool"];
+
+// C0 (but not tab and newline), DEL, and C1 controls.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
+const NOTE_CONTROLS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 
 type ErrorCode =
   | "bad_request"
@@ -95,6 +108,7 @@ type ErrorCode =
   | "opener_failed"
   | "request_expired"
   | "request_not_open"
+  | "request_session_mismatch"
   | "unknown_command"
   | "unknown_project"
   | "unknown_request"
@@ -109,6 +123,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   opener_failed: "The session opener failed",
   request_expired: "The request can no longer be answered here",
   request_not_open: "The request is no longer open",
+  request_session_mismatch: "The request belongs to another session",
   unknown_command: "No such command",
   unknown_project: "No such project",
   unknown_request: "No such request",
@@ -117,6 +132,7 @@ const MESSAGES: Record<ErrorCode, string> = {
 
 export function createCommandService(options: CommandServiceOptions): CommandService {
   const { engine, bridge, opener } = options;
+  const maxRememberedResults = options.maxRememberedResults ?? DEFAULT_MAX_REMEMBERED_RESULTS;
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? randomUUID;
   const commitOptions: EngineCommitOptions = {
@@ -129,8 +145,18 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
   const opening = new Set<string>();
   /** Results of session.open commands, for replays and `GET`. Not in the log. */
   const results = new Map<string, SessionOpenResult>();
+  /**
+   * permission.decide commands whose hook was answered but whose `command.delivered` could not be
+   * appended: the log still says `requested`, the agent has its answer, so they show `delivered`.
+   */
+  const deliveredHere = new Set<string>();
   /** Which project a command belongs to; unknown IDs fall back to scanning the projections. */
   const commandProjects = new Map<string, string>();
+
+  /** Only the error name is logged: a message can carry paths and arguments. */
+  const logFailure = (cause: unknown, message: string): void => {
+    options.logger?.error({ errName: (cause as Error | undefined)?.name }, message);
+  };
 
   const error = (
     status: number,
@@ -151,7 +177,10 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
       id: command.id,
       type: command.type,
       requestId: command.requestId,
-      status: command.status,
+      status:
+        command.status === "requested" && deliveredHere.has(command.id)
+          ? "delivered"
+          : command.status,
       ...(result === undefined ? {} : { result }),
     };
   };
@@ -229,7 +258,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     // An opener this process is not running was cut short by an engine stop: end the command
     // instead of answering "in flight" forever.
     if (
-      existing.status === "requested" &&
+      (existing.status === "requested" || existing.status === "delivered") &&
       body.type === "session.open" &&
       !opening.has(`${body.projectId}\0${body.sessionId}`)
     ) {
@@ -250,7 +279,7 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     const failure = (status: number, code: ErrorCode, message?: string) =>
       error(status, code, message, view);
     if (command.type === "permission.decide") {
-      switch (command.status) {
+      switch (view.status) {
         case "delivered":
         case "succeeded":
           return { status: 200, body: { command: view } };
@@ -294,26 +323,47 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     if (!request.answerable) {
       return endWithout(body, commandId, "unsupported", "not_answerable", 422);
     }
-    if (bridge.lookup(body.requestId) === undefined) {
+    // The bridge must hold this very request: another project's or session's hold with the same
+    // ID must not receive the decision.
+    const held = bridge.lookup(body.requestId);
+    if (
+      held === undefined ||
+      held.projectId !== body.projectId ||
+      held.sessionId !== request.sessionId
+    ) {
       return endWithout(body, commandId, "expired", "request_expired", 410);
     }
     const decision: CommandBridgeDecision =
       body.decision.behavior === "allow"
         ? { behavior: "allow" }
-        : { behavior: "deny", message: body.decision.message ?? DEFAULT_DENY_MESSAGE };
+        : { behavior: "deny", message: cleanNote(body.decision.message) ?? DEFAULT_DENY_MESSAGE };
     if (!bridge.decide(body.requestId, decision)) {
       return endWithout(body, commandId, "expired", "request_expired", 410);
     }
     // The hook response is answered; what follows only records it. "Sent, unconfirmed": never
-    // command.succeeded here (decision #116 D4).
-    record(
-      body.projectId,
-      "request.resolved",
-      `request.resolved:${body.requestId}:${commandId}`,
-      { requestId: body.requestId, resolution: "answered_here", decision: body.decision.behavior },
-      request,
-    );
-    record(body.projectId, "command.delivered", `command.delivered:${commandId}`, { commandId });
+    // command.succeeded here (decision #116 D4). A failed append cannot undo the answer, so it is
+    // logged (by name only) and the command still reads as delivered, also on a retry.
+    try {
+      record(
+        body.projectId,
+        "request.resolved",
+        `request.resolved:${body.requestId}:${commandId}`,
+        {
+          requestId: body.requestId,
+          resolution: "answered_here",
+          decision: body.decision.behavior,
+        },
+        request,
+      );
+    } catch (cause) {
+      logFailure(cause, "recording the resolved request failed after the decision was sent");
+    }
+    try {
+      record(body.projectId, "command.delivered", `command.delivered:${commandId}`, { commandId });
+    } catch (cause) {
+      deliveredHere.add(commandId);
+      logFailure(cause, "recording the delivered command failed after the decision was sent");
+    }
     return {
       status: 200,
       body: {
@@ -336,29 +386,55 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
       ? state.sessions[body.sessionId]
       : undefined;
     if (session === undefined) return error(404, "unknown_session");
+    const request = Object.hasOwn(state.requests, body.requestId)
+      ? state.requests[body.requestId]
+      : undefined;
+    if (request === undefined) return error(404, "unknown_request");
 
+    // No await between the idempotency check above and claiming the session slot below (and
+    // recording command.requested): two submits of the same key or session cannot both get past
+    // them. Everything that awaits comes after the claim.
     const slot = `${body.projectId}\0${body.sessionId}`;
     if (opening.has(slot)) return error(409, "command_in_flight");
     opening.add(slot);
     try {
       const commandId = newId();
       requested(body, commandId, { sessionId: body.sessionId });
-      // The working directory is the recorded one, never the request's; isDirectory keeps a file
-      // (such as an `x.command` script) from reaching the opener.
+      if (request.state !== "open") {
+        return endWithout(body, commandId, "failed", "request_not_open", 409);
+      }
+      if (request.sessionId !== body.sessionId) {
+        return endWithout(body, commandId, "failed", "request_session_mismatch", 409);
+      }
+      // The working directory is the recorded one, never the request's. Telemetry recorded it, so
+      // a directory the opener would receive must resolve inside one of the project's roots;
+      // isDirectory keeps a file (such as an `x.command` script) from reaching the opener.
       const cwd = session.workingDirectory;
+      let openerCwd = cwd ?? "";
+      const template = opener.config.sessionOpener;
+      if (cwd !== undefined && template?.some((arg) => arg.includes("{cwd}")) === true) {
+        const resolved = await resolveOpenerCwd(body.projectId, cwd);
+        if (resolved === undefined) {
+          return endWithout(
+            body,
+            commandId,
+            "failed",
+            "opener_failed",
+            502,
+            OPENER_CWD_REFUSED_MESSAGE,
+          );
+        }
+        openerCwd = resolved;
+      }
       const outcome = await openSession(
-        { sessionId: body.sessionId, cwd: cwd ?? "" },
+        { sessionId: body.sessionId, cwd: openerCwd },
         {
           config: opener.config,
           execFile: opener.execFile,
           isDirectory: defaultIsDirectory,
         },
       ).catch((cause: unknown) => {
-        // Only the name is logged: an error message can carry the arguments and the path.
-        options.logger?.error(
-          { errName: (cause as Error | undefined)?.name },
-          "session opener threw",
-        );
+        logFailure(cause, "session opener threw");
         return {
           status: "failed" as const,
           message: "The session opener could not be started",
@@ -398,10 +474,32 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
 
   const remember = (commandId: string, result: SessionOpenResult): void => {
     results.set(commandId, result);
-    if (results.size > MAX_REMEMBERED_RESULTS) {
+    while (results.size > maxRememberedResults) {
       const [oldest] = results.keys();
-      if (oldest !== undefined) results.delete(oldest);
+      if (oldest === undefined) break;
+      results.delete(oldest);
     }
+  };
+
+  /**
+   * The recorded directory's real path, or undefined when it must not reach the opener: missing,
+   * outside every root of the project (symlinks resolved on both sides), or named like something
+   * macOS launches.
+   */
+  const resolveOpenerCwd = async (projectId: string, cwd: string): Promise<string | undefined> => {
+    try {
+      const real = await realpath(cwd);
+      const name = real.slice(real.lastIndexOf(sep) + 1).toLowerCase();
+      if (LAUNCHABLE_SUFFIXES.some((suffix) => name.endsWith(suffix))) return undefined;
+      const roots = engine.storage.projects().find((project) => project.id === projectId)?.roots;
+      for (const root of roots ?? []) {
+        const realRoot = await realpath(root).catch(() => undefined);
+        if (realRoot !== undefined && isInside(realRoot, real)) return real;
+      }
+    } catch {
+      // A path that cannot be resolved is refused.
+    }
+    return undefined;
   };
 
   const findCommand = (commandId: string): Command | undefined => {
@@ -418,16 +516,34 @@ export function createCommandService(options: CommandServiceOptions): CommandSer
     return undefined;
   };
 
-  // A session.open still `requested` when the service starts was cut short by an engine stop (an
-  // opener runs only inside this process), so end it now and `GET` agrees with a repeated `POST`.
-  for (const project of engine.storage.projects()) {
-    for (const command of Object.values(stateOf(project.id)?.commands ?? {})) {
-      if (command.type !== "session.open" || command.status !== "requested") continue;
-      record(project.id, "command.failed", `command.failed:${command.id}`, {
-        commandId: command.id,
-        reason: INTERRUPTED_OPENER_MESSAGE,
-      });
+  // Commands cut short by an engine stop are ended now, so `GET` agrees with a repeated `POST`: a
+  // session.open still `requested` or `delivered` (an opener runs only inside this process), and a
+  // permission.decide still `requested` (its hook response did not survive the stop). A
+  // permission.decide that is `delivered` stays: it was sent, and M4.04 confirms it. One that
+  // cannot be ended is logged and skipped; it never stops the service from starting.
+  try {
+    for (const project of engine.storage.projects()) {
+      for (const command of Object.values(stateOf(project.id)?.commands ?? {})) {
+        const stale =
+          command.type === "session.open"
+            ? command.status === "requested" || command.status === "delivered"
+            : command.status === "requested";
+        if (!stale) continue;
+        try {
+          record(project.id, "command.failed", `command.failed:${command.id}`, {
+            commandId: command.id,
+            reason:
+              command.type === "session.open"
+                ? INTERRUPTED_OPENER_MESSAGE
+                : INTERRUPTED_DECISION_MESSAGE,
+          });
+        } catch (cause) {
+          logFailure(cause, "ending a command cut short by an engine stop failed");
+        }
+      }
     }
+  } catch (cause) {
+    logFailure(cause, "recovering commands cut short by an engine stop failed");
   }
 
   return {
@@ -465,11 +581,22 @@ function decisionIdentity(decision: PermissionDecideBody["decision"]): {
   behavior: "allow" | "deny";
   noteDigest?: string;
 } {
-  if (decision.behavior === "allow" || decision.message === undefined) {
-    return { behavior: decision.behavior };
-  }
-  return {
-    behavior: "deny",
-    noteDigest: createHash("sha256").update(decision.message).digest("hex"),
-  };
+  const note = decision.behavior === "deny" ? cleanNote(decision.message) : undefined;
+  if (note === undefined) return { behavior: decision.behavior };
+  return { behavior: "deny", noteDigest: createHash("sha256").update(note).digest("hex") };
+}
+
+/**
+ * The deny note as the agent should see it: control characters stripped except newline and tab,
+ * and undefined when nothing but whitespace is left (a blank note counts as no note).
+ */
+function cleanNote(message: string | undefined): string | undefined {
+  const note = message?.replace(NOTE_CONTROLS, "");
+  return note === undefined || note.trim() === "" ? undefined : note;
+}
+
+/** Whether `path` is `root` or lies below it (both already resolved). */
+function isInside(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
