@@ -65,7 +65,24 @@ export function guardRealSettings(): void {
   });
 }
 
-/** The 15 telemetry events of ARCHITECTURE.md 8.1, without PermissionRequest (M4.04). */
+/** The env var that carries the bridge token to Claude Code's http hook (never written to settings). */
+export const BRIDGE_ENV = "TASKVILLE_BRIDGE_TOKEN";
+
+/**
+ * The PermissionRequest `http` hook `taskville install claude-code` writes (M4.04, #61; shape from
+ * spike S-1 `fixtures/claude-code/permission/hook-settings.json`): the engine URL's bridge route,
+ * the bridge token through `allowedEnvVars` (the header holds the variable, not the token), and a
+ * `timeout` of the hold window plus 5 s (default 90 + 5). No matcher: it covers every tool.
+ */
+export const bridgeHook = (url = "http://127.0.0.1:4807", timeout = 95) => ({
+  type: "http",
+  url: `${url}/v1/bridge/claude-code/permission`,
+  timeout,
+  headers: { Authorization: `Bearer $${BRIDGE_ENV}` },
+  allowedEnvVars: [BRIDGE_ENV],
+});
+
+/** The 15 async command-hook events of ARCHITECTURE.md 8.1; PermissionRequest (M4.04) is separate. */
 export const EVENTS = [
   "SessionStart",
   "SessionEnd",

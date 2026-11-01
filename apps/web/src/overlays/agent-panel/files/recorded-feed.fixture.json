@@ -1,0 +1,510 @@
+{
+  "frames": [
+    {
+      "id": 5,
+      "data": {
+        "toolCallId": "toolu_014UPG2xkvhxUGhFx93KjKnV",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "phase": "running",
+        "toolName": "Agent",
+        "filePaths": [],
+        "summary": "Edit notes.txt and count lines",
+        "startedAt": "2026-10-31T12:00:08.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 8,
+      "data": {
+        "toolCallId": "toolu_014UPG2xkvhxUGhFx93KjKnV",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "toolName": "Agent",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:08.000Z",
+        "finishedAt": "2026-10-31T12:00:13.000Z",
+        "durationMs": 15,
+        "summary": "Edit notes.txt and count lines",
+        "filePaths": [],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "data": {
+        "toolCallId": "toolu_018m7i1VTyTy9W4D5r1nHfYN",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "phase": "running",
+        "toolName": "Agent",
+        "filePaths": [],
+        "summary": "Create hello.txt and cat it",
+        "startedAt": "2026-10-31T12:00:16.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 13,
+      "data": {
+        "toolCallId": "toolu_018m7i1VTyTy9W4D5r1nHfYN",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "toolName": "Agent",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:16.000Z",
+        "finishedAt": "2026-10-31T12:00:21.000Z",
+        "durationMs": 5,
+        "summary": "Create hello.txt and cat it",
+        "filePaths": [],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 15,
+      "data": {
+        "toolCallId": "toolu_013yYY4xd5K3RFMzMz8e5i7C",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "phase": "running",
+        "toolName": "Read",
+        "filePaths": ["/tmp/spike-s2/proj/notes.txt"],
+        "summary": "/tmp/spike-s2/proj/notes.txt",
+        "startedAt": "2026-10-31T12:00:24.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 17,
+      "data": {
+        "toolCallId": "toolu_013yYY4xd5K3RFMzMz8e5i7C",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "toolName": "Read",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:24.000Z",
+        "finishedAt": "2026-10-31T12:00:27.000Z",
+        "durationMs": 5,
+        "summary": "/tmp/spike-s2/proj/notes.txt",
+        "filePaths": ["/tmp/spike-s2/proj/notes.txt"],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 18,
+      "data": {
+        "toolCallId": "toolu_012456Qp8BNCL1oE2LoMK9x5",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "phase": "running",
+        "toolName": "Write",
+        "filePaths": ["/tmp/spike-s2/proj/hello.txt"],
+        "summary": "/tmp/spike-s2/proj/hello.txt",
+        "startedAt": "2026-10-31T12:00:30.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 20,
+      "data": {
+        "toolCallId": "toolu_012456Qp8BNCL1oE2LoMK9x5",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "toolName": "Write",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:30.000Z",
+        "finishedAt": "2026-10-31T12:00:33.000Z",
+        "durationMs": 15,
+        "summary": "/tmp/spike-s2/proj/hello.txt",
+        "filePaths": ["/tmp/spike-s2/proj/hello.txt"],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 23,
+      "data": {
+        "toolCallId": "toolu_01GeBmtUupJG5rrfSPKQUyXo",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "phase": "running",
+        "toolName": "Bash",
+        "filePaths": [],
+        "summary": "Print contents of hello.txt",
+        "startedAt": "2026-10-31T12:00:39.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 24,
+      "data": {
+        "toolCallId": "toolu_01GeBmtUupJG5rrfSPKQUyXo",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:a0b4668e13e056653",
+        "toolName": "Bash",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:39.000Z",
+        "finishedAt": "2026-10-31T12:00:42.000Z",
+        "durationMs": 268,
+        "summary": "Print contents of hello.txt",
+        "filePaths": [],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 25,
+      "data": {
+        "toolCallId": "toolu_01BFbfwiNzH1amZ3p2p6TGUm",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "phase": "running",
+        "toolName": "Edit",
+        "filePaths": ["/tmp/spike-s2/proj/notes.txt"],
+        "summary": "/tmp/spike-s2/proj/notes.txt",
+        "startedAt": "2026-10-31T12:00:45.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 27,
+      "data": {
+        "toolCallId": "toolu_01BFbfwiNzH1amZ3p2p6TGUm",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "toolName": "Edit",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:45.000Z",
+        "finishedAt": "2026-10-31T12:00:48.000Z",
+        "durationMs": 5,
+        "summary": "/tmp/spike-s2/proj/notes.txt",
+        "filePaths": ["/tmp/spike-s2/proj/notes.txt"],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 30,
+      "data": {
+        "toolCallId": "toolu_01VQt15Q1ofuUjxj8YqTpPsK",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "phase": "running",
+        "toolName": "Bash",
+        "filePaths": [],
+        "summary": "Count lines in notes.txt",
+        "startedAt": "2026-10-31T12:00:55.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 31,
+      "data": {
+        "toolCallId": "toolu_01VQt15Q1ofuUjxj8YqTpPsK",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5:afdf84bea07a9064c",
+        "toolName": "Bash",
+        "phase": "succeeded",
+        "startedAt": "2026-10-31T12:00:55.000Z",
+        "finishedAt": "2026-10-31T12:00:58.000Z",
+        "durationMs": 33,
+        "summary": "Count lines in notes.txt",
+        "filePaths": [],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    },
+    {
+      "id": 36,
+      "data": {
+        "toolCallId": "toolu_01PE3uiFG5Rfwytm3PJY1Edg",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "phase": "running",
+        "toolName": "Bash",
+        "filePaths": [],
+        "summary": "Attempt to read missing.txt (expected to fail)",
+        "startedAt": "2026-10-31T12:01:08.000Z",
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": null
+        }
+      }
+    },
+    {
+      "id": 37,
+      "data": {
+        "toolCallId": "toolu_01PE3uiFG5Rfwytm3PJY1Edg",
+        "agentId": "claude-code:1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5",
+        "toolName": "Bash",
+        "phase": "failed",
+        "startedAt": "2026-10-31T12:01:08.000Z",
+        "finishedAt": "2026-10-31T12:01:11.000Z",
+        "durationMs": 26,
+        "summary": "Exit code 1",
+        "filePaths": [],
+        "evidence": {
+          "input": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsImlucHV0Il0",
+            "status": "stored"
+          },
+          "output": {
+            "id": "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsIm91dHB1dCJd",
+            "status": "stored"
+          }
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_014UPG2xkvhxUGhFx93KjKnV",
+      "part": "input",
+      "text": "{\"description\":\"Edit notes.txt and count lines\",\"prompt\":\"In notes.txt use the Edit tool to replace beta with BETA, then run the Bash command: wc -l notes.txt. Reply with the count.\",\"subagent_type\":\"general-purpose\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 217
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxNFVQRzJ4a3ZoeFVHaEZ4OTNLaktuViIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_014UPG2xkvhxUGhFx93KjKnV",
+      "part": "output",
+      "text": "{\"isAsync\":true,\"status\":\"async_launched\",\"agentId\":\"afdf84bea07a9064c\",\"description\":\"Edit notes.txt and count lines\",\"resolvedModel\":\"claude-haiku-5-5\",\"prompt\":\"In notes.txt use the Edit tool to replace beta with BETA, then run the Bash command: wc -l notes.txt. Reply with the count.\",\"outputFile\":\"/tmp/claude-uid/-tmp-spike-s2-proj/1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5/tasks/afdf84bea07a9064c.output\",\"canReadOutputFile\":true,\"canContinueAgent\":true}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 456
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_018m7i1VTyTy9W4D5r1nHfYN",
+      "part": "input",
+      "text": "{\"description\":\"Create hello.txt and cat it\",\"prompt\":\"Use the Write tool to create hello.txt containing the line: hello from B. Then run the Bash command: cat hello.txt. Reply with the output.\",\"subagent_type\":\"general-purpose\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 229
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxOG03aTFWVHlUeTlXNEQ1cjFuSGZZTiIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_018m7i1VTyTy9W4D5r1nHfYN",
+      "part": "output",
+      "text": "{\"isAsync\":true,\"status\":\"async_launched\",\"agentId\":\"a0b4668e13e056653\",\"description\":\"Create hello.txt and cat it\",\"resolvedModel\":\"claude-haiku-5-5\",\"prompt\":\"Use the Write tool to create hello.txt containing the line: hello from B. Then run the Bash command: cat hello.txt. Reply with the output.\",\"outputFile\":\"/tmp/claude-uid/-tmp-spike-s2-proj/1469cdbe-10a8-4b66-bb64-bcf51f4f2bf5/tasks/a0b4668e13e056653.output\",\"canReadOutputFile\":true,\"canContinueAgent\":true}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 468
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_013yYY4xd5K3RFMzMz8e5i7C",
+      "part": "input",
+      "text": "{\"file_path\":\"/tmp/spike-s2/proj/notes.txt\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 44
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxM3lZWTR4ZDVLM1JGTXpNejhlNWk3QyIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_013yYY4xd5K3RFMzMz8e5i7C",
+      "part": "output",
+      "text": "{\"type\":\"text\",\"file\":{\"filePath\":\"/tmp/spike-s2/proj/notes.txt\",\"content\":\"alpha\\nbeta\\ngamma\\n\",\"numLines\":4,\"startLine\":1,\"totalLines\":4}}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 141
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_012456Qp8BNCL1oE2LoMK9x5",
+      "part": "input",
+      "text": "{\"file_path\":\"/tmp/spike-s2/proj/hello.txt\",\"content\":\"hello from B\\n\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 71
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxMjQ1NlFwOEJOQ0wxb0UyTG9NSzl4NSIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_012456Qp8BNCL1oE2LoMK9x5",
+      "part": "output",
+      "text": "{\"type\":\"create\",\"filePath\":\"/tmp/spike-s2/proj/hello.txt\",\"content\":\"hello from B\\n\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 148
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_01GeBmtUupJG5rrfSPKQUyXo",
+      "part": "input",
+      "text": "{\"command\":\"cat /tmp/spike-s2/proj/hello.txt\",\"description\":\"Print contents of hello.txt\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 90
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxR2VCbXRVdXBKRzVycmZTUEtRVXlYbyIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_01GeBmtUupJG5rrfSPKQUyXo",
+      "part": "output",
+      "text": "{\"stdout\":\"hello from B\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 98
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_01BFbfwiNzH1amZ3p2p6TGUm",
+      "part": "input",
+      "text": "{\"file_path\":\"/tmp/spike-s2/proj/notes.txt\",\"old_string\":\"beta\",\"new_string\":\"BETA\",\"replace_all\":false}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 104
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxQkZiZndpTnpIMWFtWjNwMnA2VEdVbSIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_01BFbfwiNzH1amZ3p2p6TGUm",
+      "part": "output",
+      "text": "{\"filePath\":\"/tmp/spike-s2/proj/notes.txt\",\"oldString\":\"beta\",\"newString\":\"BETA\",\"originalFile\":\"alpha\\nbeta\\ngamma\\n\",\"structuredPatch\":[{\"oldStart\":1,\"oldLines\":3,\"newStart\":1,\"newLines\":3,\"lines\":[\" alpha\",\"-beta\",\"+BETA\",\" gamma\"]}],\"userModified\":false,\"replaceAll\":false}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 277
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_01VQt15Q1ofuUjxj8YqTpPsK",
+      "part": "input",
+      "text": "{\"command\":\"wc -l /tmp/spike-s2/proj/notes.txt\",\"description\":\"Count lines in notes.txt\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 89
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxVlF0MTVRMW9mdVVqeGo4WXFUcFBzSyIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_01VQt15Q1ofuUjxj8YqTpPsK",
+      "part": "output",
+      "text": "{\"stdout\":\"       3 /tmp/spike-s2/proj/notes.txt\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 123
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsImlucHV0Il0": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsImlucHV0Il0",
+      "projectId": "spike",
+      "toolCallId": "toolu_01PE3uiFG5Rfwytm3PJY1Edg",
+      "part": "input",
+      "text": "{\"command\":\"cat missing.txt\",\"description\":\"Attempt to read missing.txt (expected to fail)\"}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 92
+    },
+    "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsIm91dHB1dCJd": {
+      "id": "WyJzcGlrZSIsInRvb2x1XzAxUEUzdWlGRzVSZnd5dG0zUEpZMUVkZyIsIm91dHB1dCJd",
+      "projectId": "spike",
+      "toolCallId": "toolu_01PE3uiFG5Rfwytm3PJY1Edg",
+      "part": "output",
+      "text": "{\"error\":\"Exit code 1\\ncat: missing.txt: No such file or directory\",\"is_interrupt\":false}",
+      "masks": [],
+      "truncated": false,
+      "bytes": 89
+    }
+  }
+}

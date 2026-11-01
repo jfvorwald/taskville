@@ -6,7 +6,7 @@
 // for tool events and others alike ("Matcher patterns"). Command hooks without `args` run in
 // shell form (`sh -c` on macOS and Linux), so the command is POSIX-quoted here.
 
-/** The telemetry events of ARCHITECTURE.md 8.1. PermissionRequest is the bridge's (M4.04). */
+/** The async command-hook events of ARCHITECTURE.md 8.1. PermissionRequest is the bridge's. */
 export const HOOK_EVENTS = [
   "SessionStart",
   "SessionEnd",
@@ -24,6 +24,22 @@ export const HOOK_EVENTS = [
   "TaskCompleted",
   "Elicitation",
 ] as const;
+
+/** The hook event the permission bridge's `http` hook is installed for (M4.04). */
+export const BRIDGE_HOOK_EVENT = "PermissionRequest";
+
+/** The route of the permission bridge, appended to the engine URL. */
+export const BRIDGE_ROUTE = "/v1/bridge/claude-code/permission";
+
+/** The variable that carries the bridge token to the hook; the token is never written to settings. */
+export const BRIDGE_TOKEN_ENV = "TASKVILLE_BRIDGE_TOKEN";
+
+/** What the bridge hook depends on: where the engine listens and the hook's own timeout. */
+export interface BridgeHookParts {
+  /** The engine base URL, such as `http://127.0.0.1:4807`. */
+  url: string;
+  timeoutSeconds: number;
+}
 
 /** File name of the installed shim. Distinctive, because it is how entries are recognized. */
 export const SHIM_NAME = "taskville-claude-code-shim.sh";
@@ -61,6 +77,20 @@ const MARKER = new RegExp(
   `^(?:TASKVILLE_HOME=${QUOTED} )?(?:TASKVILLE_URL=${QUOTED} )?'(?:[^']|'\\\\'')*/${SHIM_NAME.replaceAll(".", "\\.")}'$`,
 );
 
+// Exactly the URL the installer writes: a loopback origin and the bridge route, nothing after it.
+const BRIDGE_URL = new RegExp(`^http://(?:127\\.0\\.0\\.1|localhost):[0-9]{1,5}${BRIDGE_ROUTE}$`);
+
+/** The PermissionRequest `http` handler the installer writes (spike S-1 for the shape). */
+export function bridgeHookHandler(parts: BridgeHookParts): JsonObject {
+  return {
+    type: "http",
+    url: `${parts.url}${BRIDGE_ROUTE}`,
+    timeout: parts.timeoutSeconds,
+    headers: { Authorization: `Bearer $${BRIDGE_TOKEN_ENV}` },
+    allowedEnvVars: [BRIDGE_TOKEN_ENV],
+  };
+}
+
 const isObject = (value: unknown): value is JsonObject =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -73,6 +103,27 @@ export function isTaskvilleHook(handler: unknown): boolean {
     MARKER.test(handler.command)
   );
 }
+
+/**
+ * True for an `http` handler whose URL is exactly the bridge route on a loopback origin and that
+ * carries the token the way the installer writes it (the `Authorization` header and
+ * `allowedEnvVars`). The timeout and matcher are not checked, so an edited entry is still
+ * replaced; a hand-written hook at the same URL with other headers is the user's and is kept.
+ */
+export function isTaskvilleBridgeHook(handler: unknown): boolean {
+  if (!isObject(handler) || handler.type !== "http" || typeof handler.url !== "string") {
+    return false;
+  }
+  const written = bridgeHookHandler({ url: "", timeoutSeconds: 0 });
+  return (
+    BRIDGE_URL.test(handler.url) &&
+    JSON.stringify(handler.headers) === JSON.stringify(written.headers) &&
+    JSON.stringify(handler.allowedEnvVars) === JSON.stringify(written.allowedEnvVars)
+  );
+}
+
+const isTaskvilleEntry = (handler: unknown): boolean =>
+  isTaskvilleHook(handler) || isTaskvilleBridgeHook(handler);
 
 /** Strict JSON parse of a settings file: an object whose `hooks`, if present, has the known shape. */
 export function parseSettings(text: string): JsonObject {
@@ -180,14 +231,14 @@ export function removeTaskvilleHooks(settings: JsonObject): {
     const kept: Json[] = [];
     for (const group of groups) {
       const handlers = isObject(group) && Array.isArray(group.hooks) ? group.hooks : undefined;
-      const mine = handlers?.filter(isTaskvilleHook).length ?? 0;
+      const mine = handlers?.filter(isTaskvilleEntry).length ?? 0;
       if (handlers === undefined || mine === 0) {
         kept.push(group);
         continue;
       }
       removed += mine;
       changed = true;
-      const rest = handlers.filter((h) => !isTaskvilleHook(h));
+      const rest = handlers.filter((h) => !isTaskvilleEntry(h));
       if (rest.length > 0) kept.push(put(group as JsonObject, "hooks", rest));
     }
     if (!changed) continue;
@@ -199,8 +250,15 @@ export function removeTaskvilleHooks(settings: JsonObject): {
   return { settings: next, removed };
 }
 
-/** Settings with exactly one Taskville handler per telemetry event, running `command`. */
-export function addTaskvilleHooks(settings: JsonObject, command: string): JsonObject {
+/**
+ * Settings with exactly one Taskville handler per telemetry event, running `command`, and, when
+ * `bridge` is given, one PermissionRequest `http` handler (appended after the user's own groups).
+ */
+export function addTaskvilleHooks(
+  settings: JsonObject,
+  command: string,
+  bridge?: JsonObject,
+): JsonObject {
   const base = removeTaskvilleHooks(settings).settings;
   let hooks: JsonObject = Object.hasOwn(base, "hooks") && isObject(base.hooks) ? base.hooks : {};
   for (const event of HOOK_EVENTS) {
@@ -209,6 +267,12 @@ export function addTaskvilleHooks(settings: JsonObject, command: string): JsonOb
       ...existing,
       { hooks: [{ type: "command", command, async: true }] },
     ]);
+  }
+  if (bridge !== undefined) {
+    const existing = Object.hasOwn(hooks, BRIDGE_HOOK_EVENT)
+      ? (hooks[BRIDGE_HOOK_EVENT] as Json[])
+      : [];
+    hooks = put(hooks, BRIDGE_HOOK_EVENT, [...existing, { hooks: [bridge] }]);
   }
   return put(base, "hooks", hooks);
 }

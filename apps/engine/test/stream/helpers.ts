@@ -55,6 +55,8 @@ export class SseReader {
   readonly #decoder = new TextDecoder();
   #buffer = "";
   #done = false;
+  /** A read that timed out in `next`: kept so the chunk it receives is not lost. */
+  #pending: ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> | undefined;
 
   constructor(res: Response) {
     if (!res.body) throw new Error("no body");
@@ -72,12 +74,17 @@ export class SseReader {
       }
       if (this.#done) return null;
       let timer: NodeJS.Timeout | undefined;
+      // A timed-out wait leaves its read pending; the next call reuses it, so the chunk that read
+      // receives is not swallowed.
+      const read = this.#pending ?? this.#reader.read();
+      this.#pending = read;
       const chunk = await Promise.race([
-        this.#reader.read(),
+        read,
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error("timed out waiting for a frame")), timeoutMs);
         }),
       ]).finally(() => clearTimeout(timer));
+      this.#pending = undefined;
       if (chunk.done) this.#done = true;
       else this.#buffer += this.#decoder.decode(chunk.value, { stream: true });
     }

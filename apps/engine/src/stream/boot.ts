@@ -2,7 +2,12 @@ import type { Hono } from "hono";
 import type { Logger } from "pino";
 import type { PairingStore } from "../auth/pairing.ts";
 import type { AppEnv } from "../http/app.ts";
-import { domainReducer, IngestPipeline, registerIngestRoute } from "../ingest/index.ts";
+import {
+  type CommittedBatch,
+  domainReducer,
+  IngestPipeline,
+  registerIngestRoute,
+} from "../ingest/index.ts";
 import {
   ensureUnsortedProject,
   openStorage,
@@ -36,6 +41,8 @@ export interface Engine {
   storage: Storage;
   hub: StreamHub;
   pipeline: IngestPipeline;
+  /** Broadcasts committed batches to project streams and the global attention feed. */
+  onCommit(batch: CommittedBatch): void;
   /** Projects whose projection was rebuilt at boot (missing or another reducer version). */
   rebuilt: string[];
   /** Requests that were still open and got `request.expired` at this boot. */
@@ -77,13 +84,14 @@ export function bootEngine(options: BootOptions): Engine {
       tickMs: attentionTickMs,
       ...(options.logger ? { logger: options.logger } : {}),
     });
+    const onCommit = (batch: CommittedBatch): void => {
+      hub.publish(batch);
+      attentionFeed.publish(batch);
+    };
     const pipeline = new IngestPipeline({
       storage,
       now,
-      onCommit: (batch) => {
-        hub.publish(batch);
-        attentionFeed.publish(batch);
-      },
+      onCommit,
       ...(options.logger ? { logger: options.logger } : {}),
     });
     const queueLimit = options.queueLimit ?? 1000;
@@ -114,6 +122,7 @@ export function bootEngine(options: BootOptions): Engine {
       storage,
       hub,
       pipeline,
+      onCommit,
       rebuilt,
       expired,
       queueLimit,

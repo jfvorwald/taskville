@@ -13,7 +13,7 @@ import type { Logger } from "pino";
 import { resolveProjectId } from "../sources/claude-code/index.ts";
 import type { Storage } from "../storage/index.ts";
 import type { StreamHub } from "../stream/index.ts";
-import { commitEngineEvent } from "./commit.ts";
+import { commitEngineEvent, type EngineCommitOptions } from "./commit.ts";
 
 /** Hold window default (decision #116 D1): 90 seconds, whether or not a viewer is focused. */
 export const DEFAULT_HOLD_WINDOW_MS = 90_000;
@@ -48,11 +48,14 @@ export interface HeldRequest {
   sessionId: string;
   toolName: string;
   toolInput: unknown;
+  /** The hook's working directory, when it sent one. */
+  cwd?: string;
 }
 
 export interface PermissionBridgeOptions {
   storage: Storage;
   hub: StreamHub;
+  onCommit?: EngineCommitOptions["onCommit"];
   /** How long a hook response is held for the city, in milliseconds. Default 90,000. */
   holdWindowMs?: number;
   /** Runs `run` after `delayMs` and returns a cancel function. Defaults to `setTimeout`. */
@@ -211,6 +214,8 @@ export class PermissionBridge {
     const { agentId, sourceAgentId } = attribution.subject;
     const toolInput = own(raw, "tool_input");
     const promptId = promptIdOf(raw);
+    const hookCwd = own(raw, "cwd");
+    const cwd = typeof hookCwd === "string" ? hookCwd : undefined;
 
     const projectId = await resolveProjectId(own(raw, "cwd"), this.#options.storage.projects());
     if (this.#closed) return fallThrough();
@@ -265,6 +270,7 @@ export class PermissionBridge {
         sessionId,
         toolName,
         toolInput,
+        ...(cwd === undefined ? {} : { cwd }),
         signal,
         resolve,
         cancelTimer: () => {},
@@ -285,8 +291,15 @@ export class PermissionBridge {
   lookup(requestId: string): HeldRequest | undefined {
     const held = this.#held.get(requestId);
     if (held === undefined) return undefined;
-    const { projectId, sessionId, toolName, toolInput } = held;
-    return { requestId, projectId, sessionId, toolName, toolInput };
+    const { projectId, sessionId, toolName, toolInput, cwd } = held;
+    return {
+      requestId,
+      projectId,
+      sessionId,
+      toolName,
+      toolInput,
+      ...(cwd === undefined ? {} : { cwd }),
+    };
   }
 
   /**
@@ -453,6 +466,7 @@ export class PermissionBridge {
       {
         storage: this.#options.storage,
         hub: this.#options.hub,
+        ...(this.#options.onCommit ? { onCommit: this.#options.onCommit } : {}),
         ...(this.#options.now ? { now: this.#options.now } : {}),
         ...(this.#options.newEventId ? { newEventId: this.#options.newEventId } : {}),
         ...(this.#options.logger ? { logger: this.#options.logger } : {}),

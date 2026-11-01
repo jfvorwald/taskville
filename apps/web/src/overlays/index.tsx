@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { useSoundscape } from "../audio/index.ts";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
@@ -6,7 +7,9 @@ import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
+import { ACTION_CARD_ID, actionCardOverlay, useCardTarget } from "./action-card/index.ts";
 import { agentListOverlay } from "./agent-list/index.ts";
+import { AGENT_PANEL_ID, agentPanelOverlay } from "./agent-panel/shell/index.ts";
 import { bubblesOverlay } from "./bubbles/index.ts";
 import {
   countsHeaderOverlay,
@@ -33,6 +36,8 @@ const registry = createOverlayRegistry([
   themedSettingsOverlay,
   agentListOverlay,
   bubblesOverlay,
+  agentPanelOverlay,
+  actionCardOverlay,
 ]);
 const ENABLED = [
   "counts-header",
@@ -41,6 +46,8 @@ const ENABLED = [
   "settings-panel",
   "agent-list",
   "bubbles",
+  AGENT_PANEL_ID,
+  ACTION_CARD_ID,
 ];
 
 const selectors: OverlaySelectors = { counts: countsSelector(dataStore) };
@@ -72,14 +79,24 @@ export function OverlayRoot() {
   useAttentionSync();
   useAttentionTabTitle();
   useDesktopNotifications();
+  useSoundscape();
   const connection = useData((s) => s.connection);
   const selection = useSelection();
+  const agents = useData((s) => s.state?.agents);
+  const selectedAgent =
+    selection.selectedId !== null &&
+    agents !== undefined &&
+    Object.hasOwn(agents, selection.selectedId);
+  // Needs-you takes the single sidebar ahead of the selected agent and settings.
+  const cardOpen = useCardTarget(dataStore, selection.selectedId) !== null;
+  const sidebar = cardOpen ? ACTION_CARD_ID : selectedAgent ? AGENT_PANEL_ID : "settings-panel";
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">
       <OverlayHost
         registry={registry}
         enabled={ENABLED}
+        sidebar={sidebar}
         mode="live"
         selectors={selectors}
         selection={selection}
