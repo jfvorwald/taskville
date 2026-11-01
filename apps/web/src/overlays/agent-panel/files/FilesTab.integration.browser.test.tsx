@@ -384,7 +384,15 @@ describe("M5.07 production Files integration", () => {
     await expect
       .element(page.getByRole("radiogroup", { name: "Theme", exact: true }))
       .toBeVisible();
+    // #315: an open Settings is an explicit choice and holds the sidebar through a selection
+    // change, until the user closes it. The selection itself is still made.
     selectionStore.select(A);
+    await expect
+      .element(page.getByRole("radiogroup", { name: "Theme", exact: true }))
+      .toBeVisible();
+    expect(selectionStore.getSnapshot()).toBe(A);
+    expect(page.getByTestId("agent-panel").elements()).toHaveLength(0);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect
       .element(page.getByTestId("agent-panel"), { timeout: 2000 })
       .toHaveAttribute("data-agent-id", A);
