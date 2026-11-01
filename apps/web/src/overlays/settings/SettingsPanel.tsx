@@ -32,7 +32,7 @@ export interface SettingsPanelProps extends OverlayProps {
 }
 
 /**
- * The settings sidebar: theme, day or night, reduced motion, and placeholders for sound and code
+ * The settings sidebar: theme, day or night, reduced motion, sound, and a placeholder for code
  * privacy. Values live in the settings store (local to this viewer), not in the engine.
  */
 export function SettingsPanel({
@@ -120,17 +120,6 @@ export function SettingsPanel({
             }}
           >
             Desktop notifications
-          </Switch>
-          <Switch
-            className={styles.switch}
-            isDisabled
-            aria-label="Sound"
-            aria-describedby="settings-sound-note"
-          >
-            Sound
-            <span id="settings-sound-note" className={styles.note}>
-              Coming later
-            </span>
           </Switch>
           <Switch
             className={styles.switch}
