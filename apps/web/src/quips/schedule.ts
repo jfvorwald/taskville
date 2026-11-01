@@ -6,6 +6,9 @@ export const QUIP_VISIBLE_MS = 4000;
 const MIN_GAP_MS = 45_000;
 const MAX_GAP_MS = 90_000;
 
+/** Quips stop for a state this old (the red ring stays), which bounds the work per call. */
+export const QUIP_MAX_AGE_MS = 24 * 3_600_000;
+
 export interface QuipWindow {
   startMs: number;
   endMs: number;
@@ -40,8 +43,12 @@ export function quipSchedule(input: QuipScheduleInput & { count: number }): Quip
   return windows;
 }
 
-/** Whether a bubble for this state is up at `nowMs`. */
+/**
+ * Whether a bubble for this state is up at `nowMs`. A state 24 h old or more shows none, so the
+ * scan is at most 24 h of gaps (about 1,900 draws) however old `sinceMs` is.
+ */
 export function quipVisibleAt(input: QuipScheduleInput, nowMs: number): boolean {
+  if (nowMs - input.sinceMs >= QUIP_MAX_AGE_MS) return false;
   const nextGap = gaps(input);
   let startMs = input.sinceMs;
   while (startMs <= nowMs) {
