@@ -301,3 +301,30 @@ describe("ToolCallTracker is bounded by what the reducer holds (security review 
     expect(openCallCount(tracker)).toBe(0);
   });
 });
+
+describe("ToolCallTracker restores a repeated start the reducer holds again (review fix 65c61e3)", () => {
+  // Pass now. Mutation: drop the `else { this.#restoreRepeatedStart(event); }` branch in apply().
+  // The reducer drops the oldest open call beyond its cap; a second start for that toolCallId (new
+  // source event) is a new call to the reducer, which holds it running again. The tracker sends no
+  // frame for the repeat, but its open set must track the call again, or the turn end closes it
+  // in the reducer without the feed ever announcing it.
+  it("sends the unfinished frame at a turn end for a call that was dropped and then started again", () => {
+    const tracker = new ToolCallTracker("p", "tracked");
+    for (let i = 0; i <= MAX_OPEN_TOOL_CALLS_PER_AGENT; i++) {
+      tracker.apply(envelope("tool_call.started", { toolCallId: `again-${i}`, toolName: "Bash" }));
+    }
+    // again-0 is the oldest of MAX + 1 open calls: the reducer dropped it, the tracker forgot it.
+    expect(openCallCount(tracker)).toBe(MAX_OPEN_TOOL_CALLS_PER_AGENT);
+
+    const repeat = tracker.apply(
+      envelope("tool_call.started", { toolCallId: "again-0", toolName: "Bash" }),
+    );
+    expect(repeat).toBeUndefined(); // a repeated start sends no frame
+    expect(openCallCount(tracker)).toBe(MAX_OPEN_TOOL_CALLS_PER_AGENT);
+
+    const closed = tracker.apply(envelope("session.turn_ended", {}));
+    expect(closed?.toolCallId).toBe("again-0");
+    expect(closed?.phase).toBe("unfinished");
+    expect(openCallCount(tracker)).toBe(0);
+  });
+});

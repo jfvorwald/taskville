@@ -133,6 +133,40 @@ describe("GET /v1/agents/:id/crew: teams that ended", () => {
     expect(b?.resultSummary).toBe("b is done");
   });
 
+  // Pass now. Mutation: in crew.ts, `finishedAt` of a teammate takes its own `agent.finishedAt`
+  // over the team's end even when the team ended first.
+  it("keeps the team's end as a teammate's finish when its own agent.finished arrives after the team ended", async () => {
+    const h = await start();
+    h.addProject("spike", SPIKE_CWD);
+    ingestRaw(h, "spike", "late-finish", [
+      { type: "agent.registered", agentId: "tl", at: at(0), payload: registration("lead", "tl") },
+      {
+        type: "team.started",
+        agentId: "tl",
+        at: at(1),
+        payload: { teamId: "team-1", leadAgentId: "tl", name: "crew" },
+      },
+      {
+        type: "agent.registered",
+        agentId: "tm-a",
+        at: at(2),
+        payload: registration("teammate", "tm-a", { teamId: "team-1" }),
+      },
+      { type: "team.ended", agentId: "tl", at: at(5), payload: { teamId: "team-1" } },
+      { type: "agent.finished", agentId: "tm-a", at: at(8), payload: { summary: "a, late" } },
+    ]);
+
+    const crew = await crewOf(h, "tl");
+    expect(crew.team).toMatchObject({ id: "team-1", endedAt: at(5) });
+    const [a] = crew.teammates;
+    expect(a?.agentId).toBe("tm-a");
+    expect(a?.status).toBe("finished");
+    // The earlier of its own finish (8 s) and its team's end (5 s): not moved later by the late finish.
+    expect(a?.finishedAt).toBe(at(5));
+    expect(a?.elapsedMs).toBe(3000);
+    expect(a?.resultSummary).toBe("a, late");
+  });
+
   // Fail now: crew.ts takes the first team led by the agent (`teams.find`), which here is the one
   // that ended. A lead that ran two teams in sequence gets the one that is running.
   it("gives a lead that ran two teams in sequence the running one, with its teammates", async () => {
