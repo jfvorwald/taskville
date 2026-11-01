@@ -72,8 +72,12 @@ async function run(options: AttentionSyncOptions, signal: AbortSignal): Promise<
         await response.body?.cancel().catch(() => {});
         return;
       }
-      // An unpaired session cannot be fixed by retrying; the pairing flow owns that.
-      if (response.status === 401) return;
+      // An unpaired session cannot be fixed by retrying; the pairing flow owns that. What was
+      // held is no longer the viewer's to see, so the store empties rather than show a stale count.
+      if (response.status === 401) {
+        store.setState({ feed: EMPTY_ATTENTION_FEED, ready: false });
+        return;
+      }
       if (response.ok && response.body !== null) {
         for await (const raw of readSseFrames(response.body, signal)) {
           if (signal.aborted) return;

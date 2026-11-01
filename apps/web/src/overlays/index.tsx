@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
+import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
-import { useCurrentProjectId } from "../data/project.ts";
+import { projectSelection, useCurrentProjectId } from "../data/project.ts";
 import { useData, useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
 import { themedSettingsOverlay } from "../wiring/index.ts";
@@ -57,6 +58,14 @@ function localStorageOrNull(): Storage | null {
  */
 export function OverlayRoot() {
   useDataSync(useCurrentProjectId());
+  // The selected agent belongs to the project that was shown; it is not in the next one.
+  useEffect(
+    () =>
+      projectSelection.subscribe((state, before) => {
+        if (state.projectId !== before.projectId) selectionStore.select(null);
+      }),
+    [],
+  );
   useAttentionSync();
   useAttentionTabTitle();
   useDesktopNotifications();

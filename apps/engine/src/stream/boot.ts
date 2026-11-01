@@ -70,7 +70,12 @@ export function bootEngine(options: BootOptions): Engine {
       options.logger?.info({ count: expired.length }, "open requests expired");
     const hub = new StreamHub();
     const attentionTickMs = options.attentionTickMs ?? ATTENTION_TICK_MS;
-    const attentionFeed = new AttentionFeed({ storage, now, tickMs: attentionTickMs });
+    const attentionFeed = new AttentionFeed({
+      storage,
+      now,
+      tickMs: attentionTickMs,
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
     const pipeline = new IngestPipeline({
       storage,
       now,
@@ -100,6 +105,7 @@ export function bootEngine(options: BootOptions): Engine {
       pairing: options.pairing,
       maxStreams,
       queueLimit,
+      drainTimeoutMs,
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
     });
     return {

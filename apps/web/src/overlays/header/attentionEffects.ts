@@ -15,6 +15,33 @@ export function useAttentionTabTitle(store: AttentionStore = attentionStore): vo
   useEffect(() => {
     document.title = formatTabTitle(total);
   }, [total]);
+  // Leaving must not keep the last count on the tab.
+  useEffect(
+    () => () => {
+      document.title = formatTabTitle(0);
+    },
+    [],
+  );
+}
+
+const TEXT_LIMIT = 60;
+
+/**
+ * Project names and agent IDs are opaque text from outside, and an operating system shows a
+ * notification outside the page. Control characters and bidi overrides are removed first, so the
+ * characters kept are all visible ones, then the text is cut to `TEXT_LIMIT` characters.
+ */
+function plainText(text: string): string {
+  const kept = [...text].filter((ch) => {
+    const c = ch.codePointAt(0) ?? 0;
+    return !(
+      c <= 0x1f ||
+      c === 0x7f ||
+      (c >= 0x202a && c <= 0x202e) ||
+      (c >= 0x2066 && c <= 0x2069)
+    );
+  });
+  return kept.slice(0, TEXT_LIMIT).join("");
 }
 
 /** The viewer's `desktopNotifications` choice, read through the same shape the overlay host uses. */
@@ -30,8 +57,8 @@ function desktopNotificationsEnabled(): boolean {
 }
 
 function raise(notification: DesktopNotification): void {
-  const shown = new Notification(`${notification.projectName} needs you`, {
-    body: `${notification.agentId} is waiting for your answer`,
+  const shown = new Notification(`${plainText(notification.projectName)} needs you`, {
+    body: `${plainText(notification.agentId)} is waiting for your answer`,
     // The request ID makes the tag, so the browser never shows the same request twice.
     tag: notification.key,
   });

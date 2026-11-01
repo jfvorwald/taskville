@@ -7,6 +7,7 @@ import {
 } from "@taskville/protocol";
 import type { Hono } from "hono";
 import { type SSEStreamingApi, streamSSE } from "hono/streaming";
+import type { Logger } from "pino";
 import type { PairingStore } from "../auth/pairing.ts";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
@@ -14,6 +15,7 @@ import type { CommittedBatch } from "../ingest/index.ts";
 import { domainReducer } from "../ingest/index.ts";
 import type { Storage } from "../storage/index.ts";
 import type { StreamHub } from "./hub.ts";
+import { CUTOFF_DRAIN_TIMEOUT_MS } from "./routes.ts";
 
 /** How often the feed recomputes attention against the clock, for silence that no event announces. */
 export const ATTENTION_TICK_MS = 30_000;
@@ -40,32 +42,46 @@ export interface AttentionFeedOptions {
   /** Engine clock for `computedAt` and the silence rule. */
   now?: () => Date;
   tickMs?: number;
+  /** Where a storage failure is reported (the error name only). */
+  logger?: Logger;
 }
 
-/** The part of a record that makes it a different record; its reason text changes every tick and does not. */
+/**
+ * The part of a record that makes it a different record; its reason text changes every tick and
+ * does not. JSON keeps the fields apart whatever characters the opaque IDs hold.
+ */
 const recordKey = (r: Attention): string =>
-  `${r.agentId}\u0000${r.level}\u0000${r.kind}\u0000${r.requestId ?? ""}`;
+  JSON.stringify([r.agentId, r.level, r.kind, r.requestId ?? null]);
+
+/** One project's record keys in a fixed order, so a reorder of the same set compares equal. */
+const keysOf = (records: readonly Attention[]): string[] => records.map(recordKey).sort();
+
+const sameKeys = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((key, i) => key === b[i]);
 
 /**
  * The global attention feed (ARCHITECTURE.md 2.8 and 10): which projects have an agent that needs
  * you or is in trouble. One instance per engine. It remembers the last set it announced for each
  * project and tells its listeners only when a set changes, whether a commit or the timer found it.
  * While nobody listens it does no work; a new listener recomputes every project first, so its
- * snapshot and the change frames after it agree.
+ * snapshot and the change frames after it agree. A storage failure is logged and skipped: the
+ * feed keeps running and the next commit or tick tries again.
  */
 export class AttentionFeed {
   readonly #storage: Storage;
   readonly #now: () => Date;
+  readonly #logger: Logger | undefined;
   readonly #listeners = new Set<AttentionListener>();
-  /** Last announced record keys per project that has any. */
-  readonly #announced = new Map<string, string>();
+  /** Last announced name and sorted record keys per project that has any. */
+  readonly #announced = new Map<string, { name: string; keys: string[] }>();
   readonly #timer: NodeJS.Timeout;
 
   constructor(options: AttentionFeedOptions) {
     this.#storage = options.storage;
     this.#now = options.now ?? (() => new Date());
+    this.#logger = options.logger;
     this.#timer = setInterval(() => {
-      if (this.#listeners.size > 0) this.#refreshAll();
+      if (this.#listeners.size > 0) this.#refreshAll(this.#names(), this.#now());
     }, options.tickMs ?? ATTENTION_TICK_MS);
     this.#timer.unref();
   }
@@ -74,20 +90,23 @@ export class AttentionFeed {
   readonly publish = (batch: CommittedBatch): void => {
     if (this.#listeners.size === 0) return;
     const names = this.#names();
+    if (names === undefined) return;
     const at = this.#now();
     for (const projectId of Object.keys(batch.heads)) this.#refresh(projectId, names, at);
   };
 
   /** Registers a listener and gives it the snapshot as its first frame. Returns unsubscribe. */
   subscribe(listener: AttentionListener): () => void {
-    this.#refreshAll();
     const names = this.#names();
     const at = this.#now();
+    this.#refreshAll(names, at);
     const projects: ProjectAttention[] = [];
     for (const projectId of [...this.#announced.keys()].sort()) {
-      const name = names.get(projectId);
+      const name = names?.get(projectId);
       if (name === undefined) continue;
-      projects.push({ projectId, name, attention: this.#compute(projectId, at) });
+      const records = this.#tryCompute(projectId, at);
+      if (records === undefined) continue;
+      projects.push({ projectId, name, attention: records });
     }
     listener.offer({ event: "snapshot", data: { projects, computedAt: at.toISOString() } });
     this.#listeners.add(listener);
@@ -101,29 +120,51 @@ export class AttentionFeed {
     this.#listeners.clear();
   }
 
-  #names(): Map<string, string> {
-    return new Map(this.#storage.projects().map((p) => [p.id, p.name]));
+  /** Every project's name, or undefined when storage failed (nothing is concluded from that). */
+  #names(): Map<string, string> | undefined {
+    try {
+      return new Map(this.#storage.projects().map((p) => [p.id, p.name]));
+    } catch (error) {
+      this.#logger?.error({ errName: (error as Error).name }, "attention projects unreadable");
+      return undefined;
+    }
   }
 
-  #refreshAll(): void {
-    const names = this.#names();
-    const at = this.#now();
+  #refreshAll(names: Map<string, string> | undefined, at: Date): void {
+    if (names === undefined) return;
     for (const projectId of names.keys()) this.#refresh(projectId, names, at);
+    // A project that left storage while it had attention is cleared, then forgotten.
+    for (const projectId of [...this.#announced.keys()]) {
+      if (!names.has(projectId)) this.#refresh(projectId, names, at);
+    }
   }
 
   #refresh(projectId: string, names: Map<string, string>, at: Date): void {
+    const known = this.#announced.get(projectId);
     const name = names.get(projectId);
-    if (name === undefined) return;
-    const records = this.#compute(projectId, at);
-    const key = records.map(recordKey).join("\u0001");
-    if (key === (this.#announced.get(projectId) ?? "")) return;
-    if (key === "") this.#announced.delete(projectId);
-    else this.#announced.set(projectId, key);
+    if (name === undefined && known === undefined) return;
+    const records = name === undefined ? [] : this.#tryCompute(projectId, at);
+    if (records === undefined) return;
+    const keys = keysOf(records);
+    if (sameKeys(keys, known?.keys ?? [])) return;
+    const shownName = name ?? known?.name ?? projectId;
+    if (keys.length === 0) this.#announced.delete(projectId);
+    else this.#announced.set(projectId, { name: shownName, keys });
     const frame: AttentionFrame = {
       event: "attention",
-      data: { projectId, name, attention: records, computedAt: at.toISOString() },
+      data: { projectId, name: shownName, attention: records, computedAt: at.toISOString() },
     };
     for (const listener of [...this.#listeners]) listener.offer(frame);
+  }
+
+  /** The project's records, or undefined (logged) when storage or replay failed. */
+  #tryCompute(projectId: string, at: Date): Attention[] | undefined {
+    try {
+      return this.#compute(projectId, at);
+    } catch (error) {
+      this.#logger?.error({ errName: (error as Error).name }, "attention unreadable");
+      return undefined;
+    }
   }
 
   #compute(projectId: string, at: Date): Attention[] {
@@ -140,6 +181,8 @@ export class AttentionFeed {
 export interface AttentionSubscriberOptions {
   queueLimit: number;
   heartbeatMs: number;
+  /** A write the client has not taken after this long ends the stream. */
+  drainTimeoutMs: number;
 }
 
 /**
@@ -182,12 +225,33 @@ export class AttentionSubscriber implements AttentionListener {
     while (!this.#closed) {
       const next = this.#queue.shift();
       if (next) {
-        await this.#stream.writeSSE({ event: next.event, data: JSON.stringify(next.data) });
+        await this.#write(next.event, JSON.stringify(next.data));
         continue;
       }
       if ((await this.#idle()) === "heartbeat" && !this.#closed) {
-        await this.#stream.writeSSE({ event: "heartbeat", data: "{}" });
+        await this.#write("heartbeat", "{}");
       }
+    }
+  }
+
+  /**
+   * One write, raced against the drain timeout: a client that never reads would otherwise hold
+   * its socket and its stream slot forever (security review L1). On expiry the stream aborts.
+   */
+  async #write(event: string, data: string): Promise<void> {
+    const write = this.#stream.writeSSE({ event, data });
+    write.catch(() => {});
+    let timer: NodeJS.Timeout | undefined;
+    const expired = new Promise<"expired">((resolve) => {
+      timer = setTimeout(() => resolve("expired"), this.#options.drainTimeoutMs);
+    });
+    try {
+      if ((await Promise.race([write, expired])) === "expired") {
+        this.abort();
+        this.#stream.abort();
+      }
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -213,6 +277,8 @@ export interface AttentionRouteOptions {
   pairing: PairingStore;
   heartbeatMs?: number;
   queueLimit?: number;
+  /** Default `CUTOFF_DRAIN_TIMEOUT_MS`, as for the project streams. */
+  drainTimeoutMs?: number;
   maxStreams: number;
 }
 
@@ -225,6 +291,7 @@ export function registerAttentionRoute(app: Hono<AppEnv>, options: AttentionRout
   const { feed, hub, maxStreams } = options;
   const heartbeatMs = options.heartbeatMs ?? SSE_HEARTBEAT_INTERVAL_MS;
   const queueLimit = options.queueLimit ?? SSE_SUBSCRIBER_QUEUE_LIMIT;
+  const drainTimeoutMs = options.drainTimeoutMs ?? CUTOFF_DRAIN_TIMEOUT_MS;
 
   app.get("/v1/attention/events", requireScope("read"), (c) => {
     // Checked and tracked in the same tick, as for the project streams, so the cap cannot be overshot.
@@ -238,7 +305,11 @@ export function registerAttentionRoute(app: Hono<AppEnv>, options: AttentionRout
       stream.onAbort(untrack);
       const unwatch = bySession ? options.pairing.onRevoke(() => stream.abort()) : () => {};
       stream.onAbort(unwatch);
-      const subscriber = new AttentionSubscriber(stream, { queueLimit, heartbeatMs });
+      const subscriber = new AttentionSubscriber(stream, {
+        queueLimit,
+        heartbeatMs,
+        drainTimeoutMs,
+      });
       const unsubscribe = feed.subscribe(subscriber);
       stream.onAbort(() => subscriber.abort());
       try {
