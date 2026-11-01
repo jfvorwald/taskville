@@ -1,3 +1,5 @@
+import type { OverlayMode } from "../host/types.ts";
+
 /** The card's two engine calls and their request bodies (contracts/http-api.md). */
 
 const SESSION_HEADER = "X-Taskville-Session";
@@ -7,6 +9,7 @@ export interface DecideBody {
   projectId: string;
   requestId: string;
   idempotencyKey: string;
+  context: { mode: OverlayMode };
   decision: { behavior: "allow" } | { behavior: "deny"; message?: string };
 }
 
@@ -16,6 +19,7 @@ export interface OpenBody {
   requestId: string;
   sessionId: string;
   idempotencyKey: string;
+  context: { mode: OverlayMode };
 }
 
 export type CommandBody = DecideBody | OpenBody;
@@ -24,16 +28,24 @@ export function buildDecideBody(args: {
   projectId: string;
   requestId: string;
   idempotencyKey: string;
+  mode: OverlayMode;
   behavior: "allow" | "deny";
   note?: string | undefined;
 }): DecideBody {
-  const { projectId, requestId, idempotencyKey, behavior } = args;
+  const { projectId, requestId, idempotencyKey, mode, behavior } = args;
   const message = args.note?.trim();
   const decision =
     behavior === "deny" && message
       ? ({ behavior: "deny", message } as const)
       : ({ behavior } as const);
-  return { type: "permission.decide", projectId, requestId, idempotencyKey, decision };
+  return {
+    type: "permission.decide",
+    projectId,
+    requestId,
+    idempotencyKey,
+    context: { mode },
+    decision,
+  };
 }
 
 export function buildOpenBody(args: {
@@ -41,9 +53,17 @@ export function buildOpenBody(args: {
   requestId: string;
   sessionId: string;
   idempotencyKey: string;
+  mode: OverlayMode;
 }): OpenBody {
-  const { projectId, requestId, sessionId, idempotencyKey } = args;
-  return { type: "session.open", projectId, requestId, sessionId, idempotencyKey };
+  const { projectId, requestId, sessionId, idempotencyKey, mode } = args;
+  return {
+    type: "session.open",
+    projectId,
+    requestId,
+    sessionId,
+    idempotencyKey,
+    context: { mode },
+  };
 }
 
 /** The request as the bridge holds it (`GET /v1/requests/:requestId/input`). */

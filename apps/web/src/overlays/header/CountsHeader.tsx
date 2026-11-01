@@ -12,16 +12,16 @@ import styles from "./header.module.css";
  * The counts line at the top of the screen, `3 active · 1 needs you`, and one chip for each other
  * project that has an agent waiting on you (`Beta: 2 need you`); a chip opens that project.
  */
-export function CountsHeader({ selectors }: OverlayProps) {
+export function CountsHeader({ selectors, mode }: OverlayProps) {
   const { counts } = selectors;
   const value = useSyncExternalStore(counts.subscribe, counts.getSnapshot, counts.getSnapshot);
   const feed = useAttentionFeed();
   const currentProjectId = useCurrentProjectId();
   const ready = useAttentionReady();
   const { needsYouTotal, otherProjects } = selectAttentionHeader(feed, currentProjectId);
-  // The needs-you count spans every project, so it comes from the global feed. Until the feed's
-  // first snapshot arrives there is nothing to total, and this project's own count stands in.
-  const needsYou = ready ? needsYouTotal : value.needsYou;
+  // Live needs-you totals span every project once the feed is ready. History keeps its
+  // recorded count; the live feed continues separately for navigation and live alerts.
+  const needsYou = mode === "live" && ready ? needsYouTotal : value.needsYou;
   const shown = { ...value, needsYou };
   const away = currentProjectId !== DEFAULT_PROJECT_ID;
   return (

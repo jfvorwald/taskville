@@ -103,14 +103,22 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     ringing = undefined;
   }
 
-  /** A cue wakes a parked context; once the last cue has rung out and no loop is wanted, park it. */
+  /** A cue wakes a parked context; once it rings out and no loop needs the context, park it. */
   function sound(cue: "chime" | "tick" | "pop") {
     backend.playCue(cue);
     parked = false;
     clearTimeout(ringing);
     ringing = setTimeout(() => {
       ringing = undefined;
-      if (enabled && wantedLoop() === null) park();
+      const wanted = wantedLoop();
+      if (
+        enabled &&
+        playing === null &&
+        loading === null &&
+        (wanted === null || wanted === failed)
+      ) {
+        park();
+      }
     }, CUE_TAIL_MS);
   }
 
@@ -156,6 +164,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
         // The old theme's loop must not play on under the new theme.
         if (playing !== null) backend.stopLoop();
         playing = null;
+        park();
       },
     );
   }

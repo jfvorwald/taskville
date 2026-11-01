@@ -124,6 +124,8 @@ export interface Task {
   /** Absent until `task.created` arrives, if another task event came first. */
   readonly title?: string;
   readonly status: TaskStatus;
+  /** Actor of the latest completed status event, if recorded. Never an assignment. */
+  readonly completedByAgentId?: string;
   /** The source's own status value, kept when `status` is `unknown`. */
   readonly sourceValue?: string;
   /** Ordered by assignment time. */

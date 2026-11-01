@@ -12,6 +12,8 @@ vi.mock("./index.ts", () => ({ startWiring: wiring.start }));
 vi.mock("../pairing/session.tsx", () => ({
   SessionProvider: ({ children }: { children: unknown }) => children,
   usePairing: () => ({ state: { status: "checking" }, retry: () => {} }),
+  // HistoryProvider (mounted by App) reads the session through this hook.
+  useSession: () => "test-session",
 }));
 vi.mock("../SceneRoot.tsx", () => ({ SceneRoot: () => null }));
 

@@ -8,12 +8,22 @@ export function formatWaiting(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** Controls, format characters and the contract's explicit invisible extras. */
+/**
+ * Controls, format characters, the contract's explicit invisible extras and the remaining
+ * default-ignorable code points.
+ */
 const HIDDEN =
-  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\u034f|\u3164|\uffa0|[\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}]/u;
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\u034f|\u3164|\uffa0|[\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}]|[\u115f\u1160]|[\u17b4\u17b5]|[\u180b-\u180d]|\u180f|[\u{e0100}-\u{e01ef}]/u;
+
+/** Non-ASCII spaces: marked on the card, but real characters of a path, so kept when copying. */
+const NON_ASCII_SPACE = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\u2800]/u;
+
+function isInvisible(char: string): boolean {
+  return char !== "\t" && char !== "\n" && HIDDEN.test(char);
+}
 
 function isHidden(char: string): boolean {
-  return char !== "\t" && char !== "\n" && HIDDEN.test(char);
+  return isInvisible(char) || NON_ASCII_SPACE.test(char);
 }
 
 /**
@@ -28,9 +38,27 @@ export function visibleControls(text: string): string {
   }).join("");
 }
 
-/** `text` on one line, with every control and invisible character (newline and tab too) removed. */
+/**
+ * `text` on one line, with every control and invisible character (newline and tab too) removed.
+ * Non-ASCII spaces stay: they can be part of a real path, and the copied text is quoted.
+ */
 export function stripControls(text: string): string {
   return Array.from(text)
-    .filter((char) => !isHidden(char) && char !== "\t" && char !== "\n")
+    .filter((char) => !isInvisible(char) && char !== "\t" && char !== "\n")
     .join("");
+}
+
+/** `value` inside POSIX single quotes, so a shell reads it as one inert word. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The clipboard text for a session that cannot be opened here. It is pasted into a terminal, so
+ * each value has its controls stripped and is single-quoted, one line per value.
+ */
+export function copyOnlyText(args: { sessionId: string; cwd?: string | undefined }): string {
+  const lines = [`session ${shellQuote(stripControls(args.sessionId))}`];
+  if (args.cwd !== undefined) lines.push(`cwd ${shellQuote(stripControls(args.cwd))}`);
+  return lines.join("\n");
 }
