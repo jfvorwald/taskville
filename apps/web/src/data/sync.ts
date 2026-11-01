@@ -82,9 +82,11 @@ async function run(options: SyncOptions, signal: AbortSignal): Promise<void> {
       });
       checkStatus(response);
       if (response.body === null) throw new Error("event stream has no body");
-      attempt = 0;
       actions().setConnection("live");
-      await consume(store, response.body);
+      // A stream that opens proves nothing; only an applied event shows the connection is healthy.
+      await consume(store, response.body, () => {
+        attempt = 0;
+      });
       // The server closed the stream cleanly: same as a drop, resume from the cursor.
     } catch (error) {
       if (signal.aborted) return;
@@ -130,7 +132,11 @@ function checkStatus(response: Response): void {
 }
 
 /** Applies stream frames until the stream ends; throws Resnapshot when the cursor is untrustworthy. */
-async function consume(store: DataStore, body: ReadableStream<Uint8Array>): Promise<void> {
+async function consume(
+  store: DataStore,
+  body: ReadableStream<Uint8Array>,
+  onApplied: () => void,
+): Promise<void> {
   for await (const raw of readSseFrames(body)) {
     let data: unknown;
     try {
@@ -155,6 +161,7 @@ async function consume(store: DataStore, body: ReadableStream<Uint8Array>): Prom
     } catch {
       throw new Resnapshot("reducer rejected event");
     }
+    onApplied();
   }
 }
 

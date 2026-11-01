@@ -66,7 +66,14 @@ export interface DataState {
   fail(error: SyncError): void;
 }
 
-export type DataStore = StoreApi<DataState>;
+export type DataStore = StoreApi<DataState> & {
+  /**
+   * Calls `listener` once per event applied from the stream, in order, after the event has been
+   * reduced into state. Not called for snapshot loads or when applying fails. A throwing listener
+   * affects neither state nor other listeners. Returns an idempotent unsubscribe.
+   */
+  onEvent(listener: (event: StoredEnvelope) => void): () => void;
+};
 
 export interface DataStoreOptions {
   /** Milliseconds since the epoch; attention depends on it. Default `Date.now`. */
@@ -106,7 +113,9 @@ export function createDataStore(options: DataStoreOptions = {}): DataStore {
     return { agents, attention: records, counts: attentionCounts(next, now()) };
   }
 
-  return createStore<DataState>()((set) => ({
+  const listeners = new Set<(event: StoredEnvelope) => void>();
+
+  const store = createStore<DataState>()((set) => ({
     ...fresh(null),
 
     select: (selectedAgentId) => set({ selectedAgentId }),
@@ -118,17 +127,36 @@ export function createDataStore(options: DataStoreOptions = {}): DataStore {
     applySnapshotState: (state) =>
       set((s) => ({ state, cursor: state.head, error: null, ...derive(s, state) })),
 
-    applyEvent: (event) =>
+    applyEvent: (event) => {
       set((s) => {
         if (s.state === null) throw new Error("applyEvent before a snapshot");
         const state = reduce(s.state, event);
         return { state, cursor: state.head, ...derive(s, state) };
-      }),
+      });
+      // Snapshot of the set, so a listener that unsubscribes mid-dispatch cannot skip another.
+      for (const listener of [...listeners]) {
+        try {
+          listener(event);
+        } catch {
+          // A broken listener must not undo the applied event or starve the others.
+        }
+      }
+    },
 
     setConnection: (connection) => set({ connection }),
 
     fail: (error) => set({ connection: "failed", error }),
   }));
+
+  return Object.assign(store, {
+    onEvent(listener: (event: StoredEnvelope) => void) {
+      const entry = (event: StoredEnvelope) => listener(event);
+      listeners.add(entry);
+      return () => {
+        listeners.delete(entry);
+      };
+    },
+  });
 }
 
 /** The app-wide store. Tests and tools build their own with `createDataStore`. */
