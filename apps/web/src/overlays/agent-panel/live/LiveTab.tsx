@@ -44,8 +44,21 @@ const safe = (text: string) => visibleControls(redactText(text).text);
 /** No rendered body is longer than this. A deep or huge body shows a note instead of the rest. */
 const CAP = 20_000;
 const TRUNCATED = "Display truncated at 20,000 characters";
-/** The first CAP characters of a body, for text that is diffed before hidden characters are shown. */
-const head = (text: string) => ({ text: text.slice(0, CAP), truncated: text.length > CAP });
+/**
+ * The part of a body that fits CAP characters once its hidden characters are shown, for text that
+ * is diffed before the markers go in.
+ */
+function head(text: string) {
+  let width = 0;
+  let end = 0;
+  for (const char of text) {
+    const shown = char < " " || char > "~" ? visibleControls(char).length : 1;
+    if (width + shown > CAP) break;
+    width += shown;
+    end += char.length;
+  }
+  return { text: text.slice(0, end), truncated: end < text.length };
+}
 function bounded(text: string): { text: string; truncated: boolean } {
   const head = text.slice(0, CAP);
   const shown = visibleControls(head);
@@ -422,6 +435,7 @@ function GroupCard({
 }) {
   const heading = useId();
   const list = useId();
+  const settled = calls.filter((call) => call.phase === "succeeded").length;
   return (
     <article
       className={styles.card}
@@ -433,6 +447,21 @@ function GroupCard({
       <h3 id={heading}>
         {kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`}
       </h3>
+      {settled < calls.length ? (
+        <p>
+          {[
+            ["running", "running"],
+            ["failed", "failed"],
+            ["unfinished", "unfinished"],
+          ]
+            .map(
+              ([phase, label]) => [calls.filter((c) => c.phase === phase).length, label] as const,
+            )
+            .filter(([count]) => count > 0)
+            .map(([count, label]) => `${count} ${label}`)
+            .join(", ")}
+        </p>
+      ) : null}
       {/* The name stays "Expand ..." in both states; aria-expanded carries the state. */}
       <Button
         aria-expanded={expanded}
@@ -475,6 +504,7 @@ function GroupCard({
                 ) : (
                   bounded(subject).text
                 )}
+                {call.phase === "succeeded" ? null : <span> ({safe(String(call.phase))})</span>}
                 {hits.map((path) => (
                   <span key={path}>
                     {" "}
