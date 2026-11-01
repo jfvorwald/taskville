@@ -108,13 +108,15 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
-async function setup() {
+async function setup(withLiveSnapshot = true) {
   const { createHistoryStore } = await import("../../../src/history/state/store.ts");
   let elapsed = 0;
   const liveStore = createDataStore({ now: () => START + 1_200_000 });
   liveStore.getState().reset(PROJECT);
-  liveStore.getState().applySnapshotState(stateAt(START + 30_000));
-  liveStore.getState().setConnection("live");
+  if (withLiveSnapshot) {
+    liveStore.getState().applySnapshotState(stateAt(START + 30_000));
+    liveStore.getState().setConnection("live");
+  }
   const engine = timelineEngine();
   const history = createHistoryStore({
     liveStore,
@@ -389,6 +391,64 @@ describe("history state", () => {
     const count = engine.requests.length;
     await history.getState().tick();
     expect(engine.requests).toHaveLength(count);
+  });
+
+  it("fences a pending seek on same-project reset while live state is already null", async () => {
+    const { history, liveStore, engine } = await setup(false);
+    expect(liveStore.getState().state).toBeNull();
+    engine.defer();
+    const pending = history.getState().seek(START + 30_000);
+    liveStore.getState().reset(PROJECT);
+    expect(history.getState()).toMatchObject({ mode: "live", time: null, playing: false });
+    expect(history.getState().state).toBe(liveStore.getState().state);
+    let publications = 0;
+    const unsubscribe = history.subscribe(() => {
+      publications += 1;
+    });
+    required(engine.requests[0]).resolve();
+    await pending;
+    unsubscribe();
+    expect(history.getState()).toMatchObject({ mode: "live", time: null, playing: false });
+    expect(history.getState().state).toBe(liveStore.getState().state);
+    expect(publications).toBe(0);
+  });
+
+  it("clears completed replay on same-project reset while live state remains null", async () => {
+    const { history, liveStore, engine, advance } = await setup(false);
+    await history.getState().seek(START + 1_000);
+    history.getState().play();
+    expect(history.getState()).toMatchObject({ mode: "history", playing: true });
+    expect(liveStore.getState().state).toBeNull();
+    liveStore.getState().reset(PROJECT);
+    const afterReset = history.getState();
+    advance(1_000);
+    await history.getState().tick();
+    expect(afterReset).toMatchObject({ mode: "live", time: null, playing: false });
+    expect(afterReset.state).toBe(liveStore.getState().state);
+    expect(history.getState()).toBe(afterReset);
+    expect(engine.requests).toHaveLength(1);
+  });
+
+  it("preserves pending and completed replay across ordinary null-state notifications", async () => {
+    const { history, liveStore, engine } = await setup(false);
+    engine.defer();
+    const time = START + 30_000;
+    const pending = history.getState().seek(time);
+    liveStore.getState().setConnection("stale");
+    liveStore.getState().select("a1");
+    expect(liveStore.getState().state).toBeNull();
+    required(engine.requests[0]).resolve();
+    await pending;
+    expect(history.getState()).toMatchObject({ mode: "history", time, playing: false });
+    expect(history.getState().state).toEqual(stateAt(time));
+    history.getState().play();
+    const replay = history.getState();
+    liveStore.getState().setConnection("connecting");
+    liveStore.getState().select(null);
+    expect(liveStore.getState().state).toBeNull();
+    expect(history.getState()).toBe(replay);
+    expect(history.getState()).toMatchObject({ mode: "history", time, playing: true });
+    expect(engine.requests).toHaveLength(1);
   });
 
   it("dispose stops publication from late seeks and detaches from the live store", async () => {
