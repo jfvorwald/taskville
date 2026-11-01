@@ -1,0 +1,14 @@
+.counts {
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.counts[data-needs-you="true"] {
+  box-shadow: inset 0 0 0 1px var(--tv-accent);
+}

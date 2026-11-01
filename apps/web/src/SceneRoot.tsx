@@ -1,5 +1,6 @@
 import { Canvas } from "@react-three/fiber";
 import { CityRoot } from "./city/index.tsx";
+import { AnchorBridge, worldAnchors } from "./overlays/host/index.ts";
 import { OverlayRoot } from "./overlays/index.tsx";
 import styles from "./SceneRoot.module.css";
 import { readCssToken } from "./themes/index.ts";
@@ -18,6 +19,7 @@ export function SceneRoot() {
       >
         <color attach="background" args={[readCssToken("--tv-scene-bg", "#11141a")]} />
         <ambientLight intensity={1} />
+        <AnchorBridge source={worldAnchors} />
         <CityRoot />
       </Canvas>
       <OverlayRoot />
