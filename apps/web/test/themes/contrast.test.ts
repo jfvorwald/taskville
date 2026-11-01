@@ -67,11 +67,7 @@ export function parseColor(value: string): Rgba {
 /** Source-over: `fg` (with its alpha) painted on an opaque `bg`. */
 function composite(fg: Rgba, bg: Rgb): Rgb {
   const a = fg[3];
-  return [
-    fg[0] * a + bg[0] * (1 - a),
-    fg[1] * a + bg[1] * (1 - a),
-    fg[2] * a + bg[2] * (1 - a),
-  ];
+  return [fg[0] * a + bg[0] * (1 - a), fg[1] * a + bg[1] * (1 - a), fg[2] * a + bg[2] * (1 - a)];
 }
 
 function opaque(value: string, over: Rgb): Rgb {
