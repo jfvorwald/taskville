@@ -59,6 +59,8 @@ export interface HarnessOptions {
   queueLimit?: number;
   maxStreams?: number;
   drainTimeoutMs?: number;
+  /** Feed heartbeat interval (default 60 s, so no heartbeat fires inside an ordinary test). */
+  heartbeatMs?: number;
 }
 
 export interface PlayOptions {
@@ -143,7 +145,7 @@ export function useHarness(): (options?: HarnessOptions) => Promise<Harness> {
       pairing,
       evidence,
       now: () => ROUTE_NOW,
-      heartbeatMs: 60_000,
+      heartbeatMs: options.heartbeatMs ?? 60_000,
       queueLimit: engine.queueLimit,
       maxStreams: engine.maxStreams,
       drainTimeoutMs: engine.drainTimeoutMs,
@@ -347,7 +349,13 @@ export function ingestRaw(
   h: Harness,
   projectId: string,
   label: string,
-  events: { type: string; agentId: string; at: string; payload: Record<string, unknown> }[],
+  events: {
+    type: string;
+    agentId: string;
+    at: string;
+    payload: Record<string, unknown>;
+    sessionId?: string;
+  }[],
 ): void {
   const response = h.engine.pipeline.ingest(
     events.map((e, i) => ({
@@ -358,6 +366,7 @@ export function ingestRaw(
       occurredAt: e.at,
       type: e.type,
       agentId: e.agentId,
+      ...(e.sessionId === undefined ? {} : { sessionId: e.sessionId }),
       payload: e.payload,
       provenance: "live",
     })),
