@@ -69,7 +69,7 @@ is never stored.
 | `tool_call.started` | `{ toolCallId, toolName, filePaths?, summary? }` | ToolCall `running` | Any |
 | `tool_call.finished` | `{ toolCallId, phase: "succeeded" \| "failed", durationMs?, summary? }` | Closes the ToolCall; updates `consecutiveToolFailures` | Any |
 | `request.opened` | `{ requestId, kind: "permission" \| "elicitation" \| "input", toolName?, inputPreview? (max 2,000 chars), reason?, expiresAt?, heuristic? }` | PendingRequest `open`; agent `needs_you`. `heuristic: true` when the source guessed which agent the request belongs to (decision #120). Answerable only when the source is `taskville:bridge` (M4). Merged with an open permission request of the same session, agent, and tool | Any (never answerable); bridge (answerable) |
-| `request.resolved` | `{ requestId, resolution: "answered_here" \| "answered_elsewhere" }` | Closes the request | Engine |
+| `request.resolved` | `{ requestId, resolution: "answered_here" \| "answered_elsewhere", decision?: "allow" \| "deny" }` | Closes the request. `decision` is optional and additive: the permission bridge sets it when it learned which way the user answered in the terminal (decision #116 D2 and D3: a closed hook is `deny`, a matching `PostToolUse` is `allow`) | Engine |
 | `request.expired` | `{ requestId }` | Closes the request as `expired` (emitted at engine start for every open request) | Engine |
 | `command.requested` | `{ commandId, commandType, requestId, payload, idempotencyKey }` | Command `requested` | Engine |
 | `command.delivered` / `command.succeeded` / `command.expired` / `command.unsupported` | `{ commandId }` | Command status | Engine |

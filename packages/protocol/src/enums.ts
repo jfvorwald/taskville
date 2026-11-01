@@ -67,6 +67,10 @@ export type RequestState = (typeof REQUEST_STATES)[number];
 export const REQUEST_RESOLUTIONS = ["answered_here", "answered_elsewhere"] as const;
 export type RequestResolution = (typeof REQUEST_RESOLUTIONS)[number];
 
+/** Which way a terminal answer went (decision #116 D2 and D3). */
+export const REQUEST_DECISIONS = ["allow", "deny"] as const;
+export type RequestDecision = (typeof REQUEST_DECISIONS)[number];
+
 export const COMMAND_TYPES = ["permission.decide", "session.open"] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];
 
