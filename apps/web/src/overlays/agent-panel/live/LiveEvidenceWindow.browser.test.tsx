@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
 import { initialState } from "../../../data/domain.ts";
@@ -228,6 +228,10 @@ describe("M5.17 visible evidence through default paired AgentPanel", () => {
     await expect.element(card(179)).toMatchTextContent("BODY-179");
     await turn();
     const firstReads = hits.filter((id) => id === idOf(179)).length;
+    // Traverse as a paused reader; follow-on-scroll is covered by LiveFollow tests.
+    slot().element().focus();
+    await userEvent.keyboard("f");
+    await expect.element(slot().getByRole("button", { name: "Jump to latest" })).toBeVisible();
     await scroll(viewport, 0);
     await expect.element(card(0)).toMatchTextContent("BODY-0");
     const traversed = new Set<string>();
