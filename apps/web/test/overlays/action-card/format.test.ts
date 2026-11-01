@@ -172,3 +172,30 @@ describe("copyOnlyText (M4.17 M1)", () => {
     expect(copied).not.toContain("\r");
   });
 });
+
+// M4.17 roborev 6355: the card marks non-ASCII spaces, but a copied cwd must keep them, because
+// they can be real characters of the path and the copied text is quoted anyway.
+describe("copyOnlyText keeps non-ASCII spaces (M4.17 roborev 6355)", () => {
+  it("keeps a no-break space inside the single quotes", () => {
+    expect(copyOnlyText({ sessionId: "s", cwd: "/p/a\u00a0b" })).toBe("session 's'\ncwd '/p/a\u00a0b'");
+  });
+
+  it("shows the same no-break space as a marker on the card", () => {
+    expect(visibleControls("/p/a\u00a0b")).toBe("/p/a<U+00A0>b");
+  });
+
+  it.each([0x00a0, 0x1680, 0x2000, 0x2005, 0x200a, 0x202f, 0x205f, 0x3000, 0x2800])(
+    "keeps space code point %i in the copied cwd",
+    (code) => {
+      const space = String.fromCodePoint(code);
+      expect(copyOnlyText({ sessionId: "s", cwd: `/p/a${space}b` })).toBe(
+        `session 's'\ncwd '/p/a${space}b'`,
+      );
+    },
+  );
+
+  it("still strips real control and bidi characters next to a kept space", () => {
+    const copied = copyOnlyText({ sessionId: "s", cwd: "/p/a\u00a0\u0007b\u202ec" });
+    expect(copied).toBe("session 's'\ncwd '/p/a\u00a0bc'");
+  });
+});
