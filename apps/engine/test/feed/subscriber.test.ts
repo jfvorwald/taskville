@@ -327,4 +327,19 @@ describe("ToolCallTracker restores a repeated start the reducer holds again (rev
     expect(closed?.phase).toBe("unfinished");
     expect(openCallCount(tracker)).toBe(0);
   });
+
+  // Pass now (guards the restore against over-reach). A repeated start for a call the reducer
+  // still holds sends no frame and leaves the open set as it was.
+  it("sends no frame and changes no open count for a repeated start of a call the reducer still holds", () => {
+    const tracker = new ToolCallTracker("p", "tracked");
+    for (let i = 0; i < 3; i++) {
+      tracker.apply(envelope("tool_call.started", { toolCallId: `held-${i}`, toolName: "Bash" }));
+    }
+    expect(openCallCount(tracker)).toBe(3);
+    const repeat = tracker.apply(
+      envelope("tool_call.started", { toolCallId: "held-1", toolName: "Bash" }),
+    );
+    expect(repeat).toBeUndefined();
+    expect(openCallCount(tracker)).toBe(3);
+  });
 });
