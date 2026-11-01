@@ -3,6 +3,7 @@ import { cameraControlsOverlay, useSelection } from "../city/interaction/index.t
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
 import { useDataSync } from "../data/react.ts";
 import { dataStore } from "../data/store.ts";
+import { themedSettingsOverlay } from "../wiring/index.ts";
 import { countsHeaderOverlay } from "./header/index.ts";
 import {
   createOverlayRegistry,
@@ -11,7 +12,6 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
-import { settingsOverlay } from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
@@ -21,7 +21,7 @@ const registry = createOverlayRegistry([
   countsHeaderOverlay,
   agentLabelsOverlay,
   cameraControlsOverlay,
-  settingsOverlay,
+  themedSettingsOverlay,
 ]);
 const ENABLED = ["counts-header", "agent-labels", "camera-controls", "settings-panel"];
 
