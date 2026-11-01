@@ -2,7 +2,40 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-10-31, 19:10 EDT. **Main:** 982d7e3. **State:** G2 [#40](https://github.com/jfvorwald/taskville/issues/40) closed by the owner ("looks good"). M3 started: M3.01 #26 assigned (batch 1, runs alone). Owner direction: M3 only this session.
+**Updated:** 2026-11-01, 00:05 EDT. **Main:** 4490436. **State:** M3 complete; stopped at gate G3 [#48](https://github.com/jfvorwald/taskville/issues/48) for the owner.
+
+## Done in wave 2 (M3 Live city)
+
+Gate summary: [G3 #48](https://github.com/jfvorwald/taskville/issues/48). Retro: [retros/M3.md](retros/M3.md). Lessons L-118 to L-181. Merged as a chain of merge-commit PRs (lead/m3 merge chain; no force pushes).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M3.01 #26 web scaffold, engine static hosting, pairing page | #229 | [report](tasks/M3.01.md) |
+| M3.02 #30 client data layer | #238 | sync abort race fixed in M3.23; [report](tasks/M3.02.md) |
+| M3.03 #31 overlay host and anchors | #239 | [report](tasks/M3.03.md) |
+| M3.04 #32 city layout and buildings | #240 | instanced meshes on theme switch fixed in M3.24; [report](tasks/M3.04.md) |
+| M3.05 #33 block agents | #241 | [report](tasks/M3.05.md) |
+| M3.07 #37 theme system and cyberpunk | #242 | [report](tasks/M3.07.md) |
+| M3.06 #36 navigation state machine | #243 | [report](tasks/M3.06.md) |
+| M3.18 #232 navigator queue flag | #244 | [report](tasks/M3.18.md) |
+| M3.11 #38 camera, selection, glow, fade | #245 | [report](tasks/M3.11.md) |
+| M3.12 #44 day and night lighting | #246 | [report](tasks/M3.12.md) |
+| M3.15 #39 settings panel | #247 | [report](tasks/M3.15.md) |
+| M3.08 #41, M3.09 #42, M3.10 #43 themes | #248, #249, #250 | reports [08](tasks/M3.08.md), [09](tasks/M3.09.md), [10](tasks/M3.10.md) |
+| M3.17 #230 cross-ticket wiring | #251 | no task report |
+| lead: @axe-core/playwright | #252 | dependency for M3.14 |
+| lead: e2e one engine per spec | #255 | harness |
+| M3.13 #45 celebrations | #253 | [report](tasks/M3.13.md) |
+| M3.14 #46 accessibility and comfort | #254 | [report](tasks/M3.14.md) |
+| M3.20 #234 emissive level | #259 | [report](tasks/M3.20.md) |
+| M3.22 #237 reduced motion wiring | #260 | [report](tasks/M3.22.md) |
+| M3.19 #233 test hooks behind a build flag | #261 | [report](tasks/M3.19.md) |
+| M3.21 #235 token contrast | #262 | [report](tasks/M3.21.md) |
+| M3.23 #256 data and overlay review fixes | #264 | [report](tasks/M3.23.md) |
+| M3.25 #258 settings and wiring review fixes | #265 | [report](tasks/M3.25.md) |
+| M3.24 #257 city rendering review fixes | #266 | [report](tasks/M3.24.md) |
+| M3.26 #263 flaky browser tests | #267 | [report](tasks/M3.26.md) |
+| M3.16 #47 performance budget and smoke | #269 | below budget, #268; [report](tasks/M3.16.md) |
 
 ## Done in wave 2 (M2)
 
@@ -78,7 +111,9 @@ SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16'
 
 Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskville/issues?q=is%3Aopen+label%3Awaiting%3Auser).
 
-- [#178](https://github.com/jfvorwald/taskville/issues/178), [#190](https://github.com/jfvorwald/taskville/issues/190), [#198](https://github.com/jfvorwald/taskville/issues/198): engine, protocol and installer decisions on their defaults. None touches `apps/web`.
+- G3 [#48](https://github.com/jfvorwald/taskville/issues/48): the M3 gate review.
+- [#236](https://github.com/jfvorwald/taskville/issues/236): theme mockup fidelity (defaults block nothing).
+- [#178](https://github.com/jfvorwald/taskville/issues/178), [#190](https://github.com/jfvorwald/taskville/issues/190), [#198](https://github.com/jfvorwald/taskville/issues/198): engine, protocol and installer decisions on their defaults.
 
 Items there are blocking only if the ticket says so; everything else proceeds on its stated default.
 
@@ -86,6 +121,7 @@ Items there are blocking only if the ticket says so; everything else proceeds on
 
 | What | Value | Command | Ticket |
 | --- | --- | --- | --- |
+| Web city, six demo agents moving / idle (M3.16) | 33.5 fps (target 60, MISS) / 21.0 fps (target 20); idle browser CPU 11.3% of one core (target under 5%, MISS) | `node tests/e2e/web/measure.ts --headed` on main 4490436 code, real GPU, no workers (a roborev job running) | #47, #268 |
 | `.claude/check.sh` wall time, clean clone | 0.72 s | `time ./.claude/check.sh` (macOS, Node 26.8.2, pnpm 12.4.2) | #2 |
 | Redaction, adversarial 100,000-char inputs | at most 27 ms each alone (23 inputs); up to 285 ms under parallel `pnpm check` | adapters test suite | #24 |
 | `pnpm check` wall time (36 files, 768 tests) | 8.1 s | `time pnpm check` (macOS, Node 26.8.2) | #10 |
@@ -161,4 +197,4 @@ Targets in the spec are not measurements until a ticket records them here with t
 
 ## Next
 
-M3 Live city runs from [handoffs/M3-START.md](handoffs/M3-START.md). Batch 1: M3.01 #26 (Claude Sonnet 5.5, high) in `.worktrees/M3.01`, stop 22:30 EDT. Batch 2 (#30, #32, #31, #33) starts after M3.01 merges, two workers at a time. Usage at resume: 15%, reset 20:00 EDT; provisional cutoff for the following window 01:00 EDT (no new assignments after 00:00). M4, M5 and the follow-ups #214, #215, #222 are unblocked by G2 but not scheduled this session.
+Stopped at G3 (#48). After the owner closes it: M4 and M5 per the roadmap; schedule #268 (web performance), #236 (theme fidelity), and the post-G3 follow-ups #214, #215, #222 and the browser-test follow-ups in the M3.26 report. The next milestone runs in T3 Code with Claude subagents as the orchestration experiment's comparison run (#231); M3's baseline snapshot is linked from the G3 summary.
