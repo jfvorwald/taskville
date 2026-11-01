@@ -11,8 +11,17 @@ export interface RawFrame {
  * `retry:` are ignored. Reconnection is the caller's job, because it must resume from its own
  * cursor rather than the browser's `EventSource` rules.
  */
-export async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<RawFrame> {
+export async function* readSseFrames(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<RawFrame> {
   const reader = body.getReader();
+  // Cancelling the reader ends a pending read, so an abort never leaves the loop waiting on bytes.
+  const onAbort = () => {
+    reader.cancel().catch(() => {});
+  };
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
   const decoder = new TextDecoder();
   let buffer = "";
   // A chunk can end between the "\r" and "\n" of one CRLF, so a trailing "\r" waits for the next
@@ -38,6 +47,7 @@ export async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGen
       if (done) return;
     }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     // Stops the download when the consumer leaves early (abort, resnapshot, bad frame).
     reader.cancel().catch(() => {});
   }
