@@ -10,6 +10,7 @@ import {
   fakeGithubToken,
   HOLD_MS,
   heldRequestId,
+  manualSignal,
   permissionHook,
   postPermission,
   projectState,
@@ -93,22 +94,24 @@ describe("POST /v1/bridge/claude-code/permission - decided within the hold windo
     expect(await (await pending).json()).toEqual(ALLOW_BODY);
   });
 
-  it("does not record a terminal outcome for a response the city already answered", async () => {
-    const { app, engine, bridge, connectViewer } = boot();
+  it("does not record a terminal outcome when the connection closes after the city answered", async () => {
+    const { bridge, engine, connectViewer, scheduler } = boot();
     connectViewer();
-
-    const pending = postPermission(app, permissionHook());
+    const hook = manualSignal();
+    const pending = bridge.handle(permissionHook(), hook.signal);
     const requestId = await heldRequestId(engine);
-    bridge.decide(requestId, { behavior: "allow" });
-    await pending;
-    // Claude Code closes the connection after it reads the answer. That is not a terminal deny.
-    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const terminal = eventsOf(engine, "request.resolved").filter(
-      (event) => (event.payload as { decision?: string }).decision === "deny",
-    );
-    expect(terminal).toEqual([]);
+    expect(bridge.decide(requestId, { behavior: "allow" })).toBe(true);
+    expect((await pending)?.status).toBe(200);
+    // The abort listener is gone once the answer is sent: this reaches nothing. (The real-socket
+    // version is in terminal-answers.test.ts; a socket close is racy, so this one is exact.)
+    hook.abort();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(eventsOf(engine, "request.resolved")).toEqual([]);
     expect(eventsOf(engine, "request.expired")).toEqual([]);
+    expect(scheduler.pending).toBe(0);
+    expect(projectState(engine).requests[requestId]?.state).toBe("open");
   });
 });
 

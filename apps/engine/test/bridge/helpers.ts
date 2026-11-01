@@ -9,6 +9,7 @@ import {
   registerBridgeRoutes,
 } from "../../src/bridge/index.ts";
 import { createProject } from "../../src/projects/index.ts";
+import type { Storage } from "../../src/storage/index.ts";
 import type { Engine } from "../../src/stream/index.ts";
 import { BRIDGE_TOKEN, bearer, HOST, ORIGIN } from "../http/helpers.ts";
 import { fixedNow, T0 } from "../ingest/helpers.ts";
@@ -148,7 +149,6 @@ export function wireBridge(
   const scheduler = new ManualScheduler();
   const bridge = createPermissionBridge({
     storage: engine.storage,
-    pipeline: engine.pipeline,
     hub: engine.hub,
     schedule: scheduler.schedule,
     ...options,
@@ -222,4 +222,82 @@ export function heldRequestId(engine: Engine): Promise<string> {
     }
     return only.id;
   });
+}
+
+/**
+ * Storage whose `transaction` throws while `state.fail` is true, to stand in for a disk error
+ * (full disk, locked database) at the moment the bridge records an outcome. Reads still work.
+ * While `state.stub` is true, `transaction` appends nothing and answers as if it had committed.
+ */
+export function failableStorage(storage: Storage): {
+  storage: Storage;
+  state: { fail: boolean; stub: boolean };
+} {
+  const state = { fail: false, stub: false };
+  const proxy = new Proxy(storage, {
+    get(target, prop) {
+      if (prop === "transaction" && state.fail) {
+        return () => {
+          throw new Error("SQLITE_FULL: database or disk is full");
+        };
+      }
+      if (prop === "transaction" && state.stub) {
+        // Appends nothing: a cheap "committed" answer, for tests that drive thousands of requests.
+        return () => ({ projectId: PROJECT, ingestSequence: 1 });
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { storage: proxy, state };
+}
+
+/** Like `bootBridge`, but the bridge's storage can be made to fail on demand (`state.fail`). */
+export function bootFailingBridge(
+  dbPath: string,
+  options: Partial<PermissionBridgeOptions> = {},
+): BridgeHarness & { state: { fail: boolean; stub: boolean } } {
+  const { app, engine } = bootInProcess(dbPath);
+  const failing = failableStorage(engine.storage);
+  return {
+    ...wireBridge(app, engine, { storage: failing.storage, ...options }),
+    state: failing.state,
+  };
+}
+
+/** An abort signal the test fires by hand, so the abort listener runs inside the test's call. */
+export function manualSignal(): { signal: AbortSignal; abort: () => void } {
+  let listener: (() => void) | undefined;
+  let aborted = false;
+  const signal = {
+    get aborted() {
+      return aborted;
+    },
+    addEventListener: (_type: string, fn: () => void) => {
+      listener = fn;
+    },
+    removeEventListener: (_type: string, fn: () => void) => {
+      if (listener === fn) listener = undefined;
+    },
+  } as unknown as AbortSignal;
+  return {
+    signal,
+    abort: () => {
+      aborted = true;
+      const fn = listener;
+      listener = undefined;
+      fn?.();
+    },
+  };
+}
+
+/** Rejects when `promise` has not settled after `ms`: a hold that should not happen fails fast. */
+export function within<T>(promise: Promise<T>, ms = 500): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`still pending after ${ms} ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }

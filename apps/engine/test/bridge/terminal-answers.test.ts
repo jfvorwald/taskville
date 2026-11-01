@@ -51,27 +51,32 @@ function freePort(): Promise<number> {
   });
 }
 
+/** A real socket: only a real connection can be closed by the client. */
+async function bootOnSocket(): Promise<number> {
+  const port = await freePort();
+  const pairing = new PairingStore();
+  const app = createApp({
+    port,
+    cliToken: CLI_TOKEN,
+    bridgeToken: BRIDGE_TOKEN,
+    pairing,
+    logger: pino({ level: "silent" }),
+  });
+  const engine = bootEngine({ app, dbPath: dbPath(), pairing, heartbeatMs: 60_000 });
+  harness = wireBridge(app, engine);
+  server = await startServer({ app, port });
+  harness.connectViewer();
+  return port;
+}
+
 function resolvedEvents(engine: Engine) {
   return eventsOf(engine, "request.resolved");
 }
 
 describe("the hook connection closes before any city answer (decision #116 D2)", () => {
   it("records a terminal deny: answered_elsewhere with decision deny", async () => {
-    // A real socket: only a real connection can be closed by the client.
-    const port = await freePort();
-    const pairing = new PairingStore();
-    const app = createApp({
-      port,
-      cliToken: CLI_TOKEN,
-      bridgeToken: BRIDGE_TOKEN,
-      pairing,
-      logger: pino({ level: "silent" }),
-    });
-    const engine = bootEngine({ app, dbPath: dbPath(), pairing, heartbeatMs: 60_000 });
-    harness = wireBridge(app, engine);
-    server = await startServer({ app, port });
-    harness.connectViewer();
-
+    const port = await bootOnSocket();
+    const { engine } = harness as BridgeHarness;
     const abort = new AbortController();
     const sent = fetch(`http://127.0.0.1:${port}${BRIDGE_PERMISSION_PATH}`, {
       method: "POST",
@@ -98,8 +103,34 @@ describe("the hook connection closes before any city answer (decision #116 D2)",
     expect(resolved?.sourceId).toMatch(/^taskville:/);
     expect(projectState(engine).requests[requestId]?.state).toBe("answered_elsewhere");
     // The hold timer is cancelled, and a late city decision reaches nothing.
-    expect(harness.scheduler.pending).toBe(0);
-    expect(harness.bridge.decide(requestId, { behavior: "allow" })).toBe(false);
+    expect((harness as BridgeHarness).scheduler.pending).toBe(0);
+    expect((harness as BridgeHarness).bridge.decide(requestId, { behavior: "allow" })).toBe(false);
+  });
+});
+
+describe("a response the city already answered (decision #116 D2)", () => {
+  it("records no terminal outcome when the client closes the connection after the answer", async () => {
+    const port = await bootOnSocket();
+    const { engine, bridge } = harness as BridgeHarness;
+
+    const abort = new AbortController();
+    const sent = fetch(`http://127.0.0.1:${port}${BRIDGE_PERMISSION_PATH}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BRIDGE_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(permissionHook()),
+      signal: abort.signal,
+    }).catch(() => undefined);
+    const requestId = await heldRequestId(engine);
+
+    expect(bridge.decide(requestId, { behavior: "allow" })).toBe(true);
+    // Claude Code closes the connection as it reads the answer (or just after). Not a terminal No.
+    abort.abort();
+    await sent;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(resolvedEvents(engine)).toEqual([]);
+    expect(eventsOf(engine, "request.expired")).toEqual([]);
+    expect(projectState(engine).requests[requestId]?.state).toBe("open");
   });
 });
 
