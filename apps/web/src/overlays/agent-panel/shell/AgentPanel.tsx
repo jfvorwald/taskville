@@ -192,8 +192,10 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
         >
           {renderTab !== undefined ? (
             renderTab(active, agent.id)
-          ) : active === "files" ? (
+          ) : active === "files" && mode === "live" ? (
             <ConnectedFilesTab agentId={agent.id} />
+          ) : active === "files" ? (
+            <p>Files are not available for this history view.</p>
           ) : null}
         </TabPanel>
       </Tabs>
