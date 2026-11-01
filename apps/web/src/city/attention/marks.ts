@@ -1,4 +1,5 @@
 import { Mesh, type Object3D, Sprite, Vector3 } from "three";
+import { LABEL_HEIGHT } from "../agents/labelEntries.ts";
 import { hullScale, type Size3 } from "../interaction/hull.ts";
 import type { Emote } from "./emote.ts";
 import type { PulseState } from "./pulse.ts";
@@ -11,8 +12,10 @@ import { emoteMaterial, pulseStep, rimMaterial, ringGeometry, ringMaterial } fro
 
 const RIM_THICKNESS = 0.03;
 const RING_LIFT = 0.02;
-const EMOTE_Y = 1.3;
-const EMOTE_SIZE = 0.3;
+// The world label's DOM anchor sits at LABEL_HEIGHT in the agent's local space and the label is
+// drawn above it, so the emote's top edge stops at the anchor: centre + half the size.
+const EMOTE_SIZE = 0.22;
+const EMOTE_Y = LABEL_HEIGHT - EMOTE_SIZE / 2;
 
 export interface AttentionMarks {
   update(pulse: PulseState, emote: Emote | null): void;
