@@ -159,7 +159,7 @@ export function TeamDecorations({
               {queue.map((task, n) => (
                 <group
                   key={task.taskId}
-                  position={[0, -0.4 - n * 0.4, dispatch.footprint.halfZ + 0.15]}
+                  position={[0, 0.9 + n * 0.4, dispatch.footprint.halfZ + 0.15]}
                   userData={{ teamId: team.id, taskId: task.taskId, state: task.state }}
                 >
                   <mesh

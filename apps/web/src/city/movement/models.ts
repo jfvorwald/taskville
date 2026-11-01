@@ -16,6 +16,7 @@ export type AgentActivity = NonNullable<ProjectState["activity"][string]>;
 export interface ModelInput {
   readonly agents: readonly Agent[];
   readonly tasks?: ProjectState["tasks"];
+  readonly teams?: ProjectState["teams"];
   /** `ProjectState.activity`, keyed by agent id. */
   readonly activity: Readonly<Record<string, AgentActivity | undefined>>;
   /** Most urgent first (the store's order). */
@@ -112,10 +113,16 @@ export function buildModels(
         : activity === "idle"
           ? "idle"
           : "working";
+    const team =
+      agent.teamId !== undefined &&
+      input.teams !== undefined &&
+      Object.hasOwn(input.teams, agent.teamId)
+        ? input.teams[agent.teamId]
+        : undefined;
     intents.push({
       id: agent.id,
       area:
-        agent.kind === "lead" && agent.teamId !== undefined
+        agent.kind === "lead" && team !== undefined && team.endedAt === undefined
           ? "dispatch"
           : agent.kind === "teammate" &&
               agent.teamId !== undefined &&

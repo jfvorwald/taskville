@@ -99,7 +99,11 @@ export function CityAgents({
     () =>
       state === null || activity === undefined
         ? null
-        : buildModels({ agents, activity, attention, tasks: state.tasks }, table, placementFor),
+        : buildModels(
+            { agents, activity, attention, tasks: state.tasks, teams: state.teams },
+            table,
+            placementFor,
+          ),
     [agents, activity, attention, table, placementFor, state],
   );
 
