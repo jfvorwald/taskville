@@ -19,6 +19,12 @@ test("day, dusk and night lighting from the browser clock", async ({ page, brows
   // The pairing code is one-time: pair once, then reload at each time on the stored session.
   await page.clock.setFixedTime(new Date(cases[0].at));
   await page.goto(`/#pair=${codes().lighting}`);
+  // Reloading mid-exchange can drop the session: wait until the page is paired (the city is up
+  // and the session is stored) before the first reload.
+  await expect(page.getByTestId("scene-root")).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("taskville.session") !== null))
+    .toBe(true);
   for (const c of cases) {
     await page.clock.setFixedTime(new Date(c.at));
     await page.reload();

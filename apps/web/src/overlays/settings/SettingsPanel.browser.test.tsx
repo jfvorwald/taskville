@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { createAnchorSource } from "../host/anchors.ts";
@@ -140,5 +140,64 @@ describe("SettingsPanel", () => {
       ? [input.getAttribute("aria-label"), textOf(input.getAttribute("aria-describedby"))].join(" ")
       : accessible;
     expect(named).toMatch(/coming later/i);
+  });
+});
+
+// roborev 5624 #2: the sidebar slot is the viewport minus 64px above and 16px below, and the host
+// clips what overflows it. At a short viewport the expanded panel must scroll inside the slot, not
+// run past it, or the lower controls cannot be reached.
+describe("SettingsPanel in a short sidebar", () => {
+  const SLOT_TOP = 64;
+  const SLOT_BOTTOM = 16;
+  let restore: { width: number; height: number };
+
+  beforeEach(async () => {
+    restore = { width: window.innerWidth, height: window.innerHeight };
+    await page.viewport(800, 480);
+  });
+
+  afterEach(async () => {
+    await page.viewport(restore.width, restore.height);
+  });
+
+  it("keeps the last control reachable by scrolling a container inside the slot", async () => {
+    // The overlay host's sidebar slot: absolutely placed, clipping (host.module.css).
+    const slot = document.createElement("div");
+    slot.style.cssText = `position:absolute;top:${SLOT_TOP}px;right:16px;bottom:${SLOT_BOTTOM}px;width:360px;overflow:hidden;`;
+    document.body.appendChild(slot);
+    try {
+      await render(
+        <SettingsPanel {...overlayProps} store={createSettingsStore(memoryStorage())} />,
+        { container: slot },
+      );
+      await openPanel();
+
+      const last = page.getByRole("switch", { name: "Hide code in the city" }).element();
+      const slotBox = slot.getBoundingClientRect();
+      expect(slotBox.height).toBe(480 - SLOT_TOP - SLOT_BOTTOM);
+
+      // Some container between the last control and the slot must scroll, and fit inside the slot.
+      let scroller: HTMLElement | null = last.parentElement;
+      while (scroller && scroller !== slot) {
+        const overflowY = getComputedStyle(scroller).overflowY;
+        if (overflowY === "auto" || overflowY === "scroll") break;
+        scroller = scroller.parentElement;
+      }
+      expect(scroller, "a scroll container (overflow-y auto) inside the sidebar slot").not.toBe(
+        slot,
+      );
+      expect(scroller).not.toBeNull();
+      const box = (scroller as HTMLElement).getBoundingClientRect();
+      expect(box.top).toBeGreaterThanOrEqual(slotBox.top);
+      expect(box.bottom).toBeLessThanOrEqual(slotBox.bottom + 0.5);
+
+      // Scrolled into view, the last control sits inside the scroller and so inside the slot.
+      last.scrollIntoView({ block: "end" });
+      const lastBox = last.getBoundingClientRect();
+      expect(lastBox.top).toBeGreaterThanOrEqual(box.top - 0.5);
+      expect(lastBox.bottom).toBeLessThanOrEqual(box.bottom + 0.5);
+    } finally {
+      slot.remove();
+    }
   });
 });

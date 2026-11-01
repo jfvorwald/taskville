@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { createAnchorSource } from "../overlays/host/anchors.ts";
 import type { OverlayProps } from "../overlays/host/types.ts";
-import { THEMES } from "../themes/core/index.ts";
+import { THEMES, themeController } from "../themes/core/index.ts";
 import { themedSettingsOverlay } from "./themedSettingsOverlay.tsx";
 
 // The app registers one theme today, which the panel's own placeholder list also shows. A second
@@ -44,5 +44,40 @@ describe("themedSettingsOverlay", () => {
       await expect.element(group.getByRole("radio", { name: theme.name })).toBeVisible();
     }
     expect(group.getByRole("radio").elements()).toHaveLength(THEMES.length);
+  });
+});
+
+// roborev 5636 #2: with ?theme=steampunk the city shows steampunk while the stored theme setting
+// stays cyberpunk. The panel must show the theme in use, and choosing any theme must apply it,
+// including the one the stored setting already names.
+describe("themedSettingsOverlay: a theme in use that differs from the stored one", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    themeController.setTheme("cyberpunk");
+  });
+
+  afterEach(() => {
+    themeController.setTheme("cyberpunk");
+    localStorage.clear();
+  });
+
+  it("marks the theme in use, not the stored theme", async () => {
+    themeController.setTheme("steampunk"); // what ?theme=steampunk does; nothing is stored
+    const { Component } = themedSettingsOverlay;
+    await render(<Component {...overlayProps} />);
+    await page.getByRole("button", { name: "Settings" }).click();
+
+    await expect.element(page.getByRole("radio", { name: "Steampunk" })).toBeChecked();
+    await expect.element(page.getByRole("radio", { name: "Cyberpunk" })).not.toBeChecked();
+  });
+
+  it("switches back to the stored theme when it is chosen", async () => {
+    themeController.setTheme("steampunk");
+    const { Component } = themedSettingsOverlay;
+    await render(<Component {...overlayProps} />);
+    await page.getByRole("button", { name: "Settings" }).click();
+
+    await page.getByText("Cyberpunk", { exact: true }).click();
+    expect(themeController.store.getState().themeId).toBe("cyberpunk");
   });
 });
