@@ -540,3 +540,55 @@ describe("M5.06 history and controlled-slot isolation controls", () => {
     },
   );
 });
+
+describe("M5.06 reviewed evidence recovery", () => {
+  it.each(["network", "server"] as const)(
+    "retries a transient %s evidence failure",
+    async (failure) => {
+      const frame = synthetic(
+        "Write",
+        "retry-write",
+        { file_path: NOTES, content: "recovered excerpt" },
+        undefined,
+        [NOTES],
+      );
+      const id = frame.data.evidence.input?.id;
+      if (!id) throw new Error("input missing");
+      const original = globalThis.fetch;
+      let attempts = 0;
+      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith(`/v1/evidence/${id}`) && ++attempts === 1) {
+          if (failure === "network") throw new TypeError("synthetic transport interruption");
+          return new Response(null, { status: 503 });
+        }
+        return original(input, init);
+      });
+      await mount();
+      await expect.element(card(NOTES), { timeout: 2200 }).toMatchTextContent("recovered excerpt");
+      expect(attempts).toBe(2);
+    },
+  );
+
+  it("retains the captured truncated Write excerpt as literal text", async () => {
+    const frame = synthetic(
+      "Write",
+      "truncated-write",
+      { file_path: NOTES, content: "original" },
+      undefined,
+      [NOTES],
+    );
+    const id = frame.data.evidence.input?.id;
+    if (!id) throw new Error("input missing");
+    const excerpt = '{"file_path":"notes.txt","content":"captured <img src=x>';
+    bodies[id] = {
+      ...bodies[id],
+      text: excerpt,
+      bytes: new TextEncoder().encode(excerpt).length,
+      truncated: true,
+    };
+    await mount();
+    await expect.element(card(NOTES)).toMatchTextContent(excerpt);
+    await expect.element(card(NOTES)).toMatchTextContent("Recorded excerpt truncated");
+    expect(card(NOTES).element().querySelector("img")).toBeNull();
+  });
+});
