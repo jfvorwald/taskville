@@ -30,6 +30,7 @@ writeFileSync(
     paired: parts.pairing.issueCode(),
     fresh: parts.pairing.issueCode(),
     interaction: parts.pairing.issueCode(),
+    celebrations: parts.pairing.issueCode(),
     home,
   }),
 );
