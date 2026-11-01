@@ -128,6 +128,10 @@ function ToolCard({
         ? outputValue
         : JSON.stringify(outputValue, null, 2);
   const tool = typeof call.toolName === "string" ? call.toolName : "not reported";
+  const fragment =
+    tool === "Edit" && old !== undefined && next !== undefined
+      ? diffWordsWithSpace(old, next, { timeout: 25, maxEditLength: 1000 })
+      : undefined;
   return (
     <article className={styles.card}>
       <h3>
@@ -153,21 +157,32 @@ function ToolCard({
         <div>
           <p>Edit fragment</p>
           {old !== undefined && next !== undefined ? (
-            diffWordsWithSpace(old, next).map((part) =>
-              part.added ? (
-                <ins key={JSON.stringify(part)}>{part.value}</ins>
-              ) : part.removed ? (
-                <del key={JSON.stringify(part)}>{part.value}</del>
-              ) : (
-                <span key={JSON.stringify(part)}>{part.value}</span>
-              ),
+            fragment === undefined ? (
+              <>
+                <p>Original fragment</p>
+                <pre>{old}</pre>
+                <p>Replacement fragment</p>
+                <pre>{next}</pre>
+              </>
+            ) : (
+              fragment.map((part) =>
+                part.added ? (
+                  <ins key={JSON.stringify(part)}>{part.value}</ins>
+                ) : part.removed ? (
+                  <del key={JSON.stringify(part)}>{part.value}</del>
+                ) : (
+                  <span key={JSON.stringify(part)}>{part.value}</span>
+                ),
+              )
             )
           ) : (
             <p>Input: not reported</p>
           )}
         </div>
       ) : tool === "Write" ? (
-        <pre>{string(input.content) ?? "not reported"}</pre>
+        <pre>
+          {string(input.content) ?? (typeof inputValue === "string" ? inputValue : "not reported")}
+        </pre>
       ) : tool === "Bash" ? (
         <>
           <p>{string(input.command) ?? "not reported"}</p>

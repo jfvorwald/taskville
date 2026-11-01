@@ -61,6 +61,7 @@ function SelectedLive({
     let cursor = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     const requested = new Set<string>();
+    const evidenceRetries = new Set<ReturnType<typeof setTimeout>>();
     const queue: (() => Promise<void>)[] = [];
     function drain() {
       while (!signal.aborted && active < 4 && queue.length) {
@@ -83,14 +84,19 @@ function SelectedLive({
         const key = JSON.stringify([ref.id, call.toolCallId, part]);
         if (requested.has(key)) continue;
         requested.add(key);
-        queue.push(async () => {
+        const read = async (attempt: number): Promise<void> => {
           if (obsolete()) return;
           try {
             const response = await fetch(`/v1/evidence/${encodeURIComponent(ref.id)}`, {
               headers,
               signal: bodySignal,
             });
-            if (obsolete() || !response.ok) return;
+            if (obsolete()) return;
+            if (!response.ok) {
+              if (response.status === 429 || response.status >= 500)
+                throw new Error("Evidence unavailable");
+              return;
+            }
             const body: EvidenceResponse = await response.json();
             if (
               obsolete() ||
@@ -103,9 +109,23 @@ function SelectedLive({
               return;
             setEvidence((old) => ({ ...old, [ref.id]: body }));
           } catch {
+            if (obsolete()) return;
+            if (attempt < 2) {
+              const timer = setTimeout(
+                () => {
+                  evidenceRetries.delete(timer);
+                  if (obsolete()) return;
+                  queue.push(() => read(attempt + 1));
+                  drain();
+                },
+                500 * 2 ** attempt,
+              );
+              evidenceRetries.add(timer);
+            } else requested.delete(key);
             // Unavailable evidence remains not reported. Never log bodies or credentials.
           }
-        });
+        };
+        queue.push(() => read(0));
       }
       drain();
     }
@@ -136,6 +156,8 @@ function SelectedLive({
             bodyController = new AbortController();
             queue.length = 0;
             requested.clear();
+            for (const timer of evidenceRetries) clearTimeout(timer);
+            evidenceRetries.clear();
             cursor = 0;
             setCalls([]);
             setEvidence({});
@@ -177,6 +199,8 @@ function SelectedLive({
       bodyController.abort();
       queue.length = 0;
       clearTimeout(retry);
+      for (const timer of evidenceRetries) clearTimeout(timer);
+      evidenceRetries.clear();
     };
   }, [projectId, agentId, secret]);
   return (
