@@ -30,7 +30,12 @@ import {
   worldAnchors,
 } from "./host/index.ts";
 import styles from "./overlays.module.css";
-import { SETTINGS_OVERLAY_ID, SettingsOpenContext, SettingsToggle } from "./settings/index.ts";
+import {
+  SETTINGS_OVERLAY_ID,
+  SettingsOpenContext,
+  SettingsToggle,
+  useKeepToggleFocus,
+} from "./settings/index.ts";
 
 /**
  * Every bundled overlay. A later ticket adds its definition here (one import, one array entry)
@@ -117,6 +122,7 @@ export function OverlayRoot({
       : selectedAgent
         ? AGENT_PANEL_ID
         : SETTINGS_OVERLAY_ID;
+  useKeepToggleFocus(settingsOpen[0], sidebar);
   const storage = useMemo(localStorageOrNull, []);
   return (
     <div className={styles.layer} data-testid="overlay-root">

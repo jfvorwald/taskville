@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Button } from "react-aria-components";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import styles from "./settings.module.css";
@@ -19,19 +19,48 @@ export function useSettingsOpen(): SettingsOpenState {
   return owned ?? local;
 }
 
+const TOGGLE_ATTRIBUTE = "data-settings-toggle";
+
+/** Set when a toggle was pressed, so the button that takes its place can keep the keyboard. */
+let refocusToggle = false;
+
+/** What a Settings button does when pressed: flip the state and ask for focus to stay on one. */
+export function useToggleSettings([open, setOpen]: SettingsOpenState): () => void {
+  return () => {
+    refocusToggle = true;
+    setOpen(!open);
+  };
+}
+
+/**
+ * The panel's button and the floating one are different elements, so pressing one unmounts it
+ * when the sidebar switches. After that render, focus moves to whichever Settings button is shown.
+ */
+export function useKeepToggleFocus(open: boolean, sidebar: string | null) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a change of either is the trigger.
+  useEffect(() => {
+    if (!refocusToggle) return;
+    refocusToggle = false;
+    document.querySelector<HTMLElement>(`[${TOGGLE_ATTRIBUTE}]`)?.focus();
+  }, [open, sidebar]);
+}
+
 /**
  * The Settings button for when the sidebar is showing something else, so it stays reachable
  * whatever is selected. It sits above the sidebar, where the panel's own button would be.
  */
 export function SettingsToggle() {
-  const [open, setOpen] = useSettingsOpen();
+  const state = useSettingsOpen();
+  const [open] = state;
+  const toggle = useToggleSettings(state);
   return (
     <InteractiveRegion className={styles.floatingToggle}>
       <Button
         className={styles.toggle}
         aria-expanded={open}
         aria-controls="settings-panel-body"
-        onPress={() => setOpen(!open)}
+        data-settings-toggle=""
+        onPress={toggle}
       >
         Settings
       </Button>
