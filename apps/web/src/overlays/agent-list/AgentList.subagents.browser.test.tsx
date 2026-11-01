@@ -70,15 +70,24 @@ function props(): OverlayProps {
 afterEach(() => dataStore.getState().reset(PROJECT));
 
 describe("AgentList with crew subagents", () => {
-  it.each([false, true])(
-    "keeps a returning crew bot selectable with current attention (needsYou=%s)",
-    async (needsYou) => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+  ])(
+    "keeps a returning crew bot selectable with current attention (needsYou=%s, collapsed=%s)",
+    async (needsYou, collapsed) => {
       const clock = { now: 0 };
       const now = vi.spyOn(dataStore, "now").mockImplementation(() => clock.now);
       const boss = agent("boss", { kind: "lead" });
       const kid = agent("kid", { kind: "subagent", parentAgentId: "boss", role: "Explore" });
+      const siblings = collapsed
+        ? ["s1", "s2", "s3"].map((id) => agent(id, { kind: "subagent", parentAgentId: "boss" }))
+        : [];
       dataStore.getState().reset(PROJECT);
-      dataStore.getState().applySnapshotState(attentionState([boss, kid], needsYou ? ["kid"] : []));
+      dataStore
+        .getState()
+        .applySnapshotState(attentionState([boss, ...siblings, kid], needsYou ? ["kid"] : []));
       let root: RootState | undefined;
       const screen = await render(
         <>
@@ -118,7 +127,16 @@ describe("AgentList with crew subagents", () => {
         clock.now = 10_000;
         await frames(5);
         expect(bot()).toBe(true);
-        dataStore.getState().applySnapshotState(stateOf([boss, { ...kid, finishedAt: T }], []));
+        if (collapsed) {
+          let hidden = false;
+          root?.scene.traverse((object) => {
+            if (object.userData.agentId === "kid" && !object.visible) hidden = true;
+          });
+          expect(hidden).toBe(true);
+        }
+        dataStore
+          .getState()
+          .applySnapshotState(stateOf([boss, ...siblings, { ...kid, finishedAt: T }], []));
         await frames(5);
         expect(bot()).toBe(true);
         const rows = page.getByRole("row", { name: /KID/ }).elements();
@@ -133,7 +151,7 @@ describe("AgentList with crew subagents", () => {
         await frames(8);
         await vi.waitFor(() => expect(bot()).toBe(false), WAIT);
         await expect.element(page.getByRole("row", { name: /KID/ }), WAIT).not.toBeInTheDocument();
-        expect(dataStore.getState().agents).toHaveLength(2);
+        expect(dataStore.getState().agents).toHaveLength(siblings.length + 2);
       } finally {
         await screen.unmount();
         now.mockRestore();

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { agentAnchorId } from "../../movement/AgentLabels.tsx";
 import { crewMarkerLabel, FAN_OUT_MS } from "./crew.ts";
+import { FADE_MS, HAND_OVER_MS, RETURN_MS } from "./lifecycle.ts";
 import { pillMaterial } from "./resources.ts";
 import { FRAME_WAIT, isShown, LEAD, mount, type Scene, sub, T, WORKING_MS } from "./testScene.tsx";
 
@@ -89,6 +90,10 @@ describe("M5.18 visible crew marker ownership", () => {
       await scene.frames(5);
       anchorAt(scene, "nested", marker, true);
       ringAt(scene, marker, "nested");
+      anchorAt(scene, "s4", marker, true);
+      scene.clock.now += RETURN_MS + HAND_OVER_MS + FADE_MS + 1;
+      await scene.frames(8);
+      await vi.waitFor(() => expect(scene.bot("s4")).toBeUndefined(), FRAME_WAIT);
       expect(scene.anchors.getAnchor(agentAnchorId("s4"))).toBeUndefined();
     } finally {
       await scene.unmount();
