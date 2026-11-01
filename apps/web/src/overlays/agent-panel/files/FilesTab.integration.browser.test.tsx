@@ -281,6 +281,7 @@ describe("M5.07 production Files integration", () => {
       );
       const view = await render(panel(A));
       await page.getByRole("tab", { name: "Files", exact: true }).click();
+      await row(NOTES).click();
       await expect
         .poll(() => evidenceRequests().filter((r) => r.url.pathname.endsWith(aInput)).length)
         .toBe(1);
