@@ -9,7 +9,6 @@ import {
   RESERVED_SOURCE_PREFIX,
 } from "@taskville/protocol";
 import type { Logger } from "pino";
-import type { IngestPipeline } from "../ingest/index.ts";
 import { resolveProjectId } from "../sources/claude-code/index.ts";
 import type { Storage } from "../storage/index.ts";
 import type { StreamHub } from "../stream/index.ts";
@@ -25,6 +24,15 @@ export const DEFAULT_HOLD_WINDOW_MS = 90_000;
  * lost a request is never attributed a PostToolUse again (the ambiguity check stays safe).
  */
 export const MAX_TRACKED_REQUESTS = 1000;
+
+/** Sessions that lost a request and so close nothing by PostToolUse (oldest forgotten first). */
+export const MAX_LOSSY_SESSIONS = 1000;
+
+/** Hook responses held at once; a request over the cap is recorded but not held. */
+export const MAX_HELD = 64;
+
+/** Serialized `tool_input` length a held request may keep in memory; larger inputs are not held. */
+export const MAX_HELD_INPUT_BYTES = 262_144;
 
 /** `request.opened` for a request the bridge is not holding: red, but never answerable. */
 const UNHELD_SOURCE_ID = `${RESERVED_SOURCE_PREFIX}bridge-unheld`;
@@ -44,11 +52,6 @@ export interface HeldRequest {
 
 export interface PermissionBridgeOptions {
   storage: Storage;
-  /**
-   * Accepted so the bridge is composed from the same parts as the other sources. Not used: the
-   * pipeline refuses the `taskville:` source, so the bridge commits through `commitEngineEvent`.
-   */
-  pipeline?: IngestPipeline;
   hub: StreamHub;
   /** How long a hook response is held for the city, in milliseconds. Default 90,000. */
   holdWindowMs?: number;
@@ -64,7 +67,6 @@ export interface PermissionBridgeOptions {
 
 interface Held extends HeldRequest {
   signal: AbortSignal;
-  agentId: string;
   resolve: (response: Response) => void;
   cancelTimer: () => void;
   onAbort: () => void;
@@ -92,6 +94,15 @@ const idText = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 && value.length <= ID_MAX_LENGTH
     ? value
     : undefined;
+
+/** Whether a tool input is small enough to keep in memory while its hook response is held. */
+function withinHeldInputCap(toolInput: unknown): boolean {
+  try {
+    return (JSON.stringify(toolInput)?.length ?? 0) <= MAX_HELD_INPUT_BYTES;
+  } catch {
+    return false;
+  }
+}
 
 /** The hook's answer when Taskville does not answer: Claude Code falls through to its own dialog. */
 const fallThrough = (): Response => new Response("", { status: 200 });
@@ -180,7 +191,11 @@ export class PermissionBridge {
     // A viewer is a stream open on the hook's project. With none, nobody can answer: the request
     // is still recorded (the agent turns red) but is not bridge-held, so it is not answerable.
     const hold =
-      !signal.aborted && this.#options.hub.subscriberCount(projectId) > 0 && !this.#closed;
+      !signal.aborted &&
+      this.#options.hub.subscriberCount(projectId) > 0 &&
+      !this.#closed &&
+      this.#held.size < MAX_HELD &&
+      withinHeldInputCap(toolInput);
     const requestId = (this.#options.newRequestId ?? (() => `bridge:request:${randomUUID()}`))();
     const preview = inputPreview(toolInput);
     const opened = this.#commit({
@@ -210,12 +225,18 @@ export class PermissionBridge {
     if (!hold) return fallThrough();
 
     return new Promise<Response>((resolve) => {
-      const onAbort = () => this.#closedByTerminal(requestId);
+      const onAbort = () => {
+        // An abort listener that throws is an uncaught exception; the hold is released regardless.
+        try {
+          this.#closedByTerminal(requestId);
+        } catch (error) {
+          this.#logFailure(error, "bridge terminal outcome failed");
+        }
+      };
       const held: Held = {
         requestId,
         projectId,
         sessionId,
-        agentId,
         toolName,
         toolInput,
         signal,
@@ -265,6 +286,24 @@ export class PermissionBridge {
    * with identical correlation fields (open or already closed) are ambiguous and close nothing.
    */
   observeHook(raw: unknown): void {
+    if (this.#closed) return;
+    try {
+      this.#observeHook(raw);
+    } catch (error) {
+      this.#logFailure(error, "bridge telemetry outcome failed");
+    }
+  }
+
+  /** Counts for tests and diagnostics: no request content. */
+  stats(): { held: number; tracked: number; lossySessions: number } {
+    return {
+      held: this.#held.size,
+      tracked: this.#tracked.size,
+      lossySessions: this.#lossySessions.size,
+    };
+  }
+
+  #observeHook(raw: unknown): void {
     if (!isRecord(raw) || own(raw, "hook_event_name") !== "PostToolUse") return;
     const sessionId = idText(own(raw, "session_id"));
     const toolName = idText(own(raw, "tool_name"));
@@ -283,8 +322,11 @@ export class PermissionBridge {
     const [requestId, tracked] = match;
     if (tracked.state !== "open") return;
     tracked.state = "closed";
-    this.#recordTerminal(requestId, tracked, "allow");
-    this.#take(requestId)?.resolve(fallThrough());
+    try {
+      this.#recordTerminal(requestId, tracked, "allow");
+    } finally {
+      this.#take(requestId)?.resolve(fallThrough());
+    }
   }
 
   /** Releases every held response with an empty 2xx and writes nothing (engine shutdown). */
@@ -301,12 +343,15 @@ export class PermissionBridge {
     // The hook's own timeout is the hold window plus a margin. A close after the window means the
     // hold timer was late (a stalled event loop), so it is a timeout, not an answer: record
     // nothing and let the request expire at the next start.
-    const timedOut = this.#nowMs() - held.heldAtMs >= this.#holdWindowMs;
-    if (!timedOut && tracked !== undefined && tracked.state === "open") {
-      tracked.state = "closed";
-      this.#recordTerminal(requestId, tracked, "deny");
+    try {
+      const timedOut = this.#nowMs() - held.heldAtMs >= this.#holdWindowMs;
+      if (!timedOut && tracked !== undefined && tracked.state === "open") {
+        tracked.state = "closed";
+        this.#recordTerminal(requestId, tracked, "deny");
+      }
+    } finally {
+      held.resolve(fallThrough());
     }
-    held.resolve(fallThrough());
   }
 
   #recordTerminal(requestId: string, tracked: Tracked, decision: "allow" | "deny"): void {
@@ -348,13 +393,28 @@ export class PermissionBridge {
 
   #track(requestId: string, tracked: Tracked): void {
     this.#tracked.set(requestId, tracked);
-    if (this.#tracked.size > MAX_TRACKED_REQUESTS) {
-      const [oldest] = this.#tracked;
-      if (oldest !== undefined) {
-        this.#tracked.delete(oldest[0]);
-        this.#lossySessions.add(oldest[1].sessionId);
-      }
+    if (this.#tracked.size <= MAX_TRACKED_REQUESTS) return;
+    // Never forget a request whose hook is still held: the city could no longer answer it.
+    for (const [id, entry] of this.#tracked) {
+      if (this.#held.has(id)) continue;
+      this.#tracked.delete(id);
+      this.#markLossy(entry.sessionId);
+      return;
     }
+  }
+
+  #markLossy(sessionId: string): void {
+    this.#lossySessions.delete(sessionId);
+    this.#lossySessions.add(sessionId);
+    if (this.#lossySessions.size > MAX_LOSSY_SESSIONS) {
+      const [oldest] = this.#lossySessions;
+      if (oldest !== undefined) this.#lossySessions.delete(oldest);
+    }
+  }
+
+  /** Logs the error name only: a storage error message can carry request content. */
+  #logFailure(error: unknown, message: string): void {
+    this.#options.logger?.error({ errName: (error as Error).name }, message);
   }
 
   #commit(event: Record<string, unknown>) {
