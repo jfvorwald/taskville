@@ -118,3 +118,65 @@ describe("session.open: an append failure after the opener ran", () => {
     }
   }
 });
+
+// M4.03 roborev 5954 (medium). The bounded result memory (`maxRememberedResults`) must not evict a
+// result whose outcome events were never appended: it is the only record that the opener ran, and
+// forgetting it would make a retry of the key report a failure for a session that opened. Results
+// the log also holds still go oldest first.
+describe("session.open: the bounded result memory and an unrecorded outcome", () => {
+  it("keeps the result of a command whose success append failed while recorded ones are evicted oldest first", async () => {
+    const sessions = ["s0", "s1", "s2", "s3"];
+    const seed = sessions.flatMap((id) => {
+      const dir = join(root, id);
+      mkdirSync(dir);
+      return [
+        sessionStarted(dir, id, `agent-${id}`),
+        requestOpened({ requestId: `req-${id}`, sessionId: id, agentId: `agent-${id}` }),
+      ];
+    });
+    harness = bootHarness(dbPath(), {
+      sessionOpener: TEMPLATE,
+      roots: [root],
+      seed,
+      serviceExtras: { maxRememberedResults: 2 },
+    });
+    const h = harness;
+    const bodyFor = (id: string) =>
+      openBody({ sessionId: id, requestId: `req-${id}`, idempotencyKey: `open-${id}` });
+
+    // The first open's success append fails after the opener ran; the later ones are recorded.
+    const restore = failAppend(h.engine.storage, "command.succeeded");
+    const first = await json(await h.post(bodyFor("s0")));
+    expect(first.command?.status).toBe("succeeded");
+    restore();
+    const ids: string[] = [first.command?.id ?? ""];
+    for (const id of sessions.slice(1)) {
+      const res = await h.post(bodyFor(id));
+      expect(res.status).toBe(200);
+      ids.push((await json(res)).command?.id ?? "");
+    }
+    expect(h.execFile).toHaveBeenCalledTimes(4);
+
+    // The unrecorded result survived the eviction: a retry of its key is still the same succeeded
+    // command with its result, and the opener is not run again.
+    const retry = await h.post(bodyFor("s0"));
+    expect(retry.status).toBe(200);
+    const again = await json(retry);
+    expect(again.error).toBeUndefined();
+    expect(again.command).toMatchObject({
+      id: ids[0],
+      status: "succeeded",
+      result: { outcome: "opened", sessionId: "s0", cwd: join(root, "s0") },
+    });
+    expect(h.execFile).toHaveBeenCalledTimes(4);
+    expect(types(commandEvents(h.engine))).not.toContain("command.failed");
+
+    // Recorded results are forgotten oldest first: s1 and s2 are gone, the newest (s3) is kept.
+    const views = await Promise.all(ids.map(async (id) => (await json(await h.get(id))).command));
+    expect(views[1]).toMatchObject({ id: ids[1], status: "succeeded" });
+    expect(views[1]).not.toHaveProperty("result");
+    expect(views[2]).toMatchObject({ id: ids[2], status: "succeeded" });
+    expect(views[2]).not.toHaveProperty("result");
+    expect(views[3]?.result).toMatchObject({ sessionId: "s3" });
+  });
+});
