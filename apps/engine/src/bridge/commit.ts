@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { parseInputEvent, type StoredEnvelope, storedEnvelopeSchemas } from "@taskville/protocol";
 import type { Logger } from "pino";
-import { domainReducer, normalizePayload } from "../ingest/index.ts";
+import { type CommittedBatch, domainReducer, normalizePayload } from "../ingest/index.ts";
 import { textProblem } from "../ingest/text-check.ts";
 import { clientContentHash, type ProjectionReducer, type Storage } from "../storage/index.ts";
 import type { StreamHub } from "../stream/index.ts";
@@ -10,6 +10,8 @@ import type { StreamHub } from "../stream/index.ts";
 export interface EngineCommitOptions {
   storage: Storage;
   hub: StreamHub;
+  /** Replaces hub-only publication when composed with the booted engine. Called after COMMIT. */
+  onCommit?: (batch: CommittedBatch) => void;
   now?: () => Date;
   newEventId?: () => string;
   reducer?: ProjectionReducer<ProjectState>;
@@ -22,8 +24,8 @@ export interface EngineCommitOptions {
  * its own events here instead of weakening that policy. Everything else matches the pipeline:
  * the same input parse, text check, masking, stored-shape check, one transaction that appends,
  * applies the reducer, and writes the projection (the `expireOpenRequests` pattern), and a
- * broadcast to the stream hub only after COMMIT. The pipeline's projection cache is validated
- * against the stored row on every batch, so it re-reads what this writes.
+ * broadcast through the commit notifier (or stream hub) only after COMMIT. The pipeline's
+ * projection cache is validated against the stored row on every batch, so it re-reads what this writes.
  *
  * Returns the stored event, or undefined when the event was refused or is a duplicate of one
  * already stored (nothing is written then).
@@ -72,7 +74,7 @@ export function commitEngineEvent(
   });
   if (stored !== undefined) {
     try {
-      options.hub.publish({
+      (options.onCommit ?? options.hub.publish)({
         events: [stored],
         heads: { [stored.projectId]: stored.ingestSequence },
       });

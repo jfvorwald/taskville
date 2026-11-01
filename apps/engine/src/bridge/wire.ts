@@ -17,7 +17,7 @@ export interface WirePermissionBridgeOptions {
   /** The Hono app from `createApp`; the routes are registered on it. */
   app: Hono<AppEnv>;
   /** The booted engine; its storage and stream hub are used. */
-  engine: Pick<Engine, "storage" | "hub">;
+  engine: Pick<Engine, "storage" | "hub"> & Partial<Pick<Engine, "onCommit">>;
   /** The hold window comes from `bridge.holdWindowSeconds`; the opener from `sessionOpener`. */
   config: Pick<TaskvilleConfig, "bridge" | "sessionOpener">;
   /** Runs the session opener. Defaults to the real detached spawn. */
@@ -48,6 +48,7 @@ export function wirePermissionBridge(options: WirePermissionBridgeOptions): Wire
   const bridge = createPermissionBridge({
     storage: engine.storage,
     hub: engine.hub,
+    ...(engine.onCommit ? { onCommit: engine.onCommit } : {}),
     holdWindowMs: config.bridge.holdWindowSeconds * 1000,
     ...(options.schedule ? { schedule: options.schedule } : {}),
     ...(options.monotonicNowMs ? { monotonicNowMs: options.monotonicNowMs } : {}),
