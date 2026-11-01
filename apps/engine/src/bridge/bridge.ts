@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { attributeHook } from "@taskville/adapters/claude-code";
+import { attributeHook, isHookId } from "@taskville/adapters/claude-code";
 import { redactJson } from "@taskville/adapters/redact";
 import { hashCanonical } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
@@ -89,6 +89,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const own = (record: Record<string, unknown>, key: string): unknown =>
   Object.hasOwn(record, key) ? record[key] : undefined;
+
+/** Telemetry's bound on `prompt_id` (adapters' `map.ts`); a value outside it counts as absent. */
+const MAX_PROMPT_ID = 100;
+
+/** The hook's `prompt_id`, validated as telemetry does so the request and its PostToolUse agree. */
+const promptIdOf = (raw: Record<string, unknown>): string | undefined => {
+  const id = own(raw, "prompt_id");
+  return isHookId(id, MAX_PROMPT_ID) ? id : undefined;
+};
 
 const idText = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 && value.length <= ID_MAX_LENGTH
@@ -201,7 +210,7 @@ export class PermissionBridge {
     if (!attribution.ok) return fallThrough();
     const { agentId, sourceAgentId } = attribution.subject;
     const toolInput = own(raw, "tool_input");
-    const promptId = idText(own(raw, "prompt_id"));
+    const promptId = promptIdOf(raw);
 
     const projectId = await resolveProjectId(own(raw, "cwd"), this.#options.storage.projects());
     if (this.#closed) return fallThrough();
@@ -325,13 +334,14 @@ export class PermissionBridge {
     const sessionId = idText(own(raw, "session_id"));
     const toolName = idText(own(raw, "tool_name"));
     if (sessionId === undefined || toolName === undefined) return;
+    if (this.#tracked.size === 0) return;
     const attribution = attributeHook(raw);
     if (!attribution.ok) return;
     if (this.#lossyOverflow || this.#lossySessions.has(sessionId)) return;
     const key = correlationKey(
       sessionId,
       attribution.subject.sourceAgentId,
-      idText(own(raw, "prompt_id")),
+      promptIdOf(raw),
       toolName,
       own(raw, "tool_input"),
     );
