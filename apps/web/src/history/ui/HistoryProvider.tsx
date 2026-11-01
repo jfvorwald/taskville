@@ -80,7 +80,6 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     let replayTime = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
     let moments: RecordedMoment[] = [];
-    let identitiesLoaded = false;
     const snapshot = createDataStore({ now: () => replayTime });
     snapshot.getState().reset(projectId);
     let value: Presentation;
@@ -94,7 +93,6 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
       timer = undefined;
       moments = [];
-      identitiesLoaded = false;
       metadata?.abort();
       metadata = undefined;
       unsubscribeHistory?.();
@@ -174,6 +172,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         const cursors = new Set<string>();
         const eventIds = new Set<string>();
         let expected = firstSequence;
+        // The head projection may prune retired agents; the loaded log still records them.
+        const agents = new Map<
+          string,
+          {
+            id: string;
+            name: string;
+            sourceId?: string;
+            sourceAgentId?: string;
+          }
+        >();
         do {
           const query = new URLSearchParams({
             from: String(firstSequence),
@@ -208,6 +216,24 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             )
               throw new Error("events");
             eventIds.add(event.eventId);
+            if (event.agentId) {
+              const before = agents.get(event.agentId);
+              if (!before) agents.set(event.agentId, { id: event.agentId, name: event.agentId });
+              if (
+                event.type === "agent.registered" &&
+                event.payload.heuristic !== true &&
+                (!before?.sourceId ||
+                  (before.sourceId === event.sourceId &&
+                    before.sourceAgentId === event.payload.sourceAgentId))
+              ) {
+                agents.set(event.agentId, {
+                  id: event.agentId,
+                  name: event.payload.displayName,
+                  sourceId: event.sourceId,
+                  sourceAgentId: event.payload.sourceAgentId,
+                });
+              }
+            }
             // Only recorded event facts become markers. Late prompts cannot open needs-you.
             const marker =
               event.type === "request.opened" && !event.late
@@ -265,16 +291,6 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           // Live notifications during the initial seek must not clear its range or pending flag.
           // The live subscription below owns project/reset cancellation.
           if (state.mode === "history" && state.state && state.time !== null) {
-            // Capture recorded identities at the pinned head once, retaining names across rewinds.
-            if (!identitiesLoaded) {
-              identitiesLoaded = true;
-              publish({
-                agents: Object.values(state.state.agents).map((agent) => ({
-                  id: agent.id,
-                  name: agent.displayName ?? agent.id,
-                })),
-              });
-            }
             replayTime = state.time;
             snapshot.getState().applySnapshotState(state.state);
             snapshot.getState().refreshAttention();
@@ -291,7 +307,11 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             });
           }
         });
-        publish({ range: { first: firstSequence, last: lastSequence }, moments });
+        publish({
+          range: { first: firstSequence, last: lastSequence },
+          moments,
+          agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
+        });
         await controller.getState().seekSequence(lastSequence, last);
       } catch {
         if (active && requestGeneration === generation) {
