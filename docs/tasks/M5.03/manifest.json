@@ -5,10 +5,7 @@
   "pace": "calm",
   "epoch": 1793556508793,
   "project": "unsorted",
-  "genuineDemoSteps": [
-    42,
-    57
-  ],
+  "genuineDemoSteps": [42, 57],
   "prerollEvents": 62,
   "recordedEvents": 21,
   "leadId": "d7-ada",
@@ -100,9 +97,7 @@
     },
     {
       "phase": "step-43",
-      "types": [
-        "tool_call.finished"
-      ],
+      "types": ["tool_call.finished"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -185,9 +180,7 @@
     },
     {
       "phase": "step-44",
-      "types": [
-        "activity.started"
-      ],
+      "types": ["activity.started"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -270,9 +263,7 @@
     },
     {
       "phase": "step-45",
-      "types": [
-        "session.turn_failed"
-      ],
+      "types": ["session.turn_failed"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -355,9 +346,7 @@
     },
     {
       "phase": "step-46",
-      "types": [
-        "tool_call.started"
-      ],
+      "types": ["tool_call.started"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -440,10 +429,7 @@
     },
     {
       "phase": "step-47",
-      "types": [
-        "tool_call.started",
-        "request.opened"
-      ],
+      "types": ["tool_call.started", "request.opened"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -526,9 +512,7 @@
     },
     {
       "phase": "step-48",
-      "types": [
-        "tool_call.finished"
-      ],
+      "types": ["tool_call.finished"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -611,9 +595,7 @@
     },
     {
       "phase": "step-49",
-      "types": [
-        "session.prompt_submitted"
-      ],
+      "types": ["session.prompt_submitted"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -696,9 +678,7 @@
     },
     {
       "phase": "step-50",
-      "types": [
-        "tool_call.started"
-      ],
+      "types": ["tool_call.started"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -781,9 +761,7 @@
     },
     {
       "phase": "step-51",
-      "types": [
-        "task.handoff"
-      ],
+      "types": ["task.handoff"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -866,9 +844,7 @@
     },
     {
       "phase": "step-52",
-      "types": [
-        "session.turn_ended"
-      ],
+      "types": ["session.turn_ended"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -951,9 +927,7 @@
     },
     {
       "phase": "step-53",
-      "types": [
-        "session.prompt_submitted"
-      ],
+      "types": ["session.prompt_submitted"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -1036,9 +1010,7 @@
     },
     {
       "phase": "step-54",
-      "types": [
-        "tool_call.finished"
-      ],
+      "types": ["tool_call.finished"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -1121,9 +1093,7 @@
     },
     {
       "phase": "step-55",
-      "types": [
-        "tool_call.finished"
-      ],
+      "types": ["tool_call.finished"],
       "walkers": [
         {
           "id": "d7-ada",
@@ -1206,9 +1176,7 @@
     },
     {
       "phase": "step-56",
-      "types": [
-        "activity.ended"
-      ],
+      "types": ["activity.ended"],
       "walkers": [
         {
           "id": "d7-ada",
