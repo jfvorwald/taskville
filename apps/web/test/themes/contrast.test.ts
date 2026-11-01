@@ -13,6 +13,9 @@ import { THEMES } from "../../src/themes/core/themes.ts";
  * - focus on surface: focus outline (agent-list `outline: 2px solid var(--tv-focus)`), WCAG 1.4.11
  * - text and muted on the hovered agent-list row, which is `--tv-accent` at 25% over the surface
  *   (agent-list.module.css `.row[data-hovered]`); text stays readable while hovered
+ * - focus outline on the hovered row (hovered and keyboard-focused at once), 3:1
+ * - focus outline over the selected row's inset accent bar (`.row[data-selected]`), 3:1
+ * - selected accent bar on the hovered row (selected and hovered at once), 3:1
  */
 
 type Rgb = readonly [number, number, number];
@@ -158,6 +161,28 @@ const PAIRINGS: readonly Pairing[] = [
         opaque(t["--tv-focus"], opaque(t["--tv-surface"], WHITE)),
         opaque(t["--tv-surface"], WHITE),
       ),
+  },
+  {
+    name: "--tv-focus on hovered agent-list row (non-text, 3:1)",
+    min: 3,
+    ratio: (t) => contrastRatio(opaque(t["--tv-focus"], hoverRow(t)), hoverRow(t)),
+  },
+  {
+    // `.row[data-selected]` paints a 3px inset accent bar; the 2px focus outline (offset -2px)
+    // sits on top of its left edge, so the outline must also stand out from the accent.
+    name: "--tv-focus on selected-row accent bar (non-text, 3:1)",
+    min: 3,
+    ratio: (t) =>
+      contrastRatio(
+        opaque(t["--tv-focus"], opaque(t["--tv-accent"], opaque(t["--tv-surface"], WHITE))),
+        opaque(t["--tv-accent"], opaque(t["--tv-surface"], WHITE)),
+      ),
+  },
+  {
+    // Selected and hovered at once: the accent bar sits on the hovered background.
+    name: "--tv-accent selected bar on hovered agent-list row (non-text, 3:1)",
+    min: 3,
+    ratio: (t) => contrastRatio(opaque(t["--tv-accent"], hoverRow(t)), hoverRow(t)),
   },
   {
     name: "--tv-text on hovered agent-list row",
