@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Group, Mesh, Sprite } from "three";
 import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
@@ -13,7 +13,7 @@ import { collapseCrew, crewMarkerLabel } from "./crew.ts";
 import { subagentScale } from "./generation.ts";
 import { parentIsWaiting, type SubagentPhase, stillFrame } from "./lifecycle.ts";
 import { crewGeometries, crewMaterial, PILL_SIZE, pillMaterial } from "./resources.ts";
-import { DOOR_RADIUS, MARKER_SPOT, workSpot } from "./spots.ts";
+import { doorRadius, markerSpot, reachOf, workSpot } from "./spots.ts";
 import {
   type CrewFamily,
   type CrewMember,
@@ -51,6 +51,8 @@ export function SubagentCrew({
   const tracker = useRef<CrewTracker | null>(null);
   tracker.current ??= createCrewTracker();
   const crew = tracker.current;
+  // Where each bot stands in the world, for the families that walk out of a bot.
+  const places = useRef(new Map<string, Place>());
   // Observing is idempotent: a repeated render never restarts a subagent's walk.
   const families = useMemo(() => crew.sync(agents, store.now()), [crew, agents, store]);
   return (
@@ -60,6 +62,7 @@ export function SubagentCrew({
           key={family.parentId}
           family={family}
           tracker={crew}
+          places={places.current}
           store={store}
           anchors={anchors}
           reducedMotion={reducedMotion}
@@ -69,6 +72,11 @@ export function SubagentCrew({
   );
 }
 
+interface Place {
+  x: number;
+  z: number;
+}
+
 interface BotHandle {
   root: Group;
   body: Mesh;
@@ -76,18 +84,28 @@ interface BotHandle {
   cube: Mesh;
   bodyHex: string;
   trimHex: string;
-  generation: number;
 }
 
 interface CrewFamilyViewProps {
   family: CrewFamily;
   tracker: CrewTracker;
+  places: Map<string, Place>;
   store: DataStore;
   anchors: AnchorSource;
   reducedMotion: boolean;
 }
 
-function CrewFamilyView({ family, tracker, store, anchors, reducedMotion }: CrewFamilyViewProps) {
+function CrewFamilyView({
+  family,
+  tracker,
+  places,
+  store,
+  anchors,
+  reducedMotion,
+}: CrewFamilyViewProps) {
+  const reach = reachOf(family.parentGeneration);
+  const marked = markerSpot(reach);
+  const emoteY = EMOTE_Y * reach + (1 - reach) * 0.4;
   const root = useRef<Group>(null);
   const waiting = useRef<Sprite>(null);
   const marker = useRef<Sprite>(null);
@@ -102,6 +120,13 @@ function CrewFamilyView({ family, tracker, store, anchors, reducedMotion }: Crew
     if (handle === null) bots.current.delete(id);
     else bots.current.set(id, handle);
   }, []);
+  // The ids are the family's, so the places are dropped with the bots.
+  useEffect(() => {
+    const ids = family.members.map((m) => m.id);
+    return () => {
+      for (const id of ids) places.delete(id);
+    };
+  }, [family.members, places]);
 
   const onMarkerClick = useCallback(() => {
     fannedAtMs.current = store.now();
@@ -110,10 +135,15 @@ function CrewFamilyView({ family, tracker, store, anchors, reducedMotion }: Crew
   useFrame(() => {
     const g = root.current;
     if (g === null) return;
-    const door = anchors.getAnchor(agentAnchorId(family.parentId));
-    g.visible = door !== undefined;
-    if (door === undefined) return;
-    g.position.set(door[0], 0, door[2]);
+    // A family of a top-level parent follows the parent's anchor; one of a subagent follows that bot.
+    const parentPlace = places.get(family.parentId);
+    const anchor =
+      family.parentGeneration === 0 ? anchors.getAnchor(agentAnchorId(family.parentId)) : undefined;
+    const doorX = anchor === undefined ? parentPlace?.x : anchor[0];
+    const doorZ = anchor === undefined ? parentPlace?.z : anchor[2];
+    g.visible = doorX !== undefined && doorZ !== undefined;
+    if (doorX === undefined || doorZ === undefined) return;
+    g.position.set(doorX, 0, doorZ);
 
     const nowMs = store.now();
     live.current.length = 0;
@@ -142,14 +172,23 @@ function CrewFamilyView({ family, tracker, store, anchors, reducedMotion }: Crew
         continue;
       }
       const f = reducedMotion ? stillFrame(found) : found;
-      const spot = workSpot(index, bot.generation);
-      const radius = DOOR_RADIUS + (spot.radius - DOOR_RADIUS) * f.outward;
+      const spot = workSpot(index, reach);
+      const door = doorRadius(reach);
+      const radius = door + (spot.radius - door) * f.outward;
       const homeward =
         f.phase === "returning" || f.phase === "handing_over" || f.phase === "fading";
       const walking = f.phase === "walking_out" || f.phase === "returning";
       const hop = walking && !reducedMotion ? Math.abs(Math.sin(nowMs * HOP_RATE)) * HOP_HEIGHT : 0;
       bot.root.visible = f.opacity > 0;
-      bot.root.position.set(Math.sin(spot.angle) * radius, hop, Math.cos(spot.angle) * radius);
+      const x = Math.sin(spot.angle) * radius;
+      const z = Math.cos(spot.angle) * radius;
+      bot.root.position.set(x, hop, z);
+      const place = places.get(id);
+      if (place === undefined) places.set(id, { x: doorX + x, z: doorZ + z });
+      else {
+        place.x = doorX + x;
+        place.z = doorZ + z;
+      }
       bot.root.rotation.y = homeward ? spot.angle + Math.PI : spot.angle;
       const body = crewMaterial(bot.bodyHex, f.opacity);
       if (bot.body.material !== body) bot.body.material = body;
@@ -181,14 +220,14 @@ function CrewFamilyView({ family, tracker, store, anchors, reducedMotion }: Crew
         ref={waiting}
         visible={false}
         material={emoteMaterial("...")}
-        position={[0, EMOTE_Y, 0]}
+        position={[0, emoteY, 0]}
         scale={[EMOTE_SIZE, EMOTE_SIZE, 1]}
         renderOrder={10}
       />
       {family.deepCount > 0 && (
         <sprite
           material={pillMaterial(`${family.deepCount} deeper`)}
-          position={[0.4, EMOTE_Y, 0]}
+          position={[0.4, emoteY, 0]}
           scale={[PILL_SIZE[0], PILL_SIZE[1], 1]}
           renderOrder={10}
         />
@@ -198,9 +237,9 @@ function CrewFamilyView({ family, tracker, store, anchors, reducedMotion }: Crew
         ref={marker}
         visible={false}
         position={[
-          Math.sin(MARKER_SPOT.angle) * MARKER_SPOT.radius,
-          MARKER_Y,
-          Math.cos(MARKER_SPOT.angle) * MARKER_SPOT.radius,
+          Math.sin(marked.angle) * marked.radius,
+          MARKER_Y * reach,
+          Math.cos(marked.angle) * marked.radius,
         ]}
         scale={[PILL_SIZE[0], PILL_SIZE[1], 1]}
         renderOrder={10}
@@ -234,13 +273,17 @@ function CrewBot({ member, register }: CrewBotProps) {
       cube: cube.current,
       bodyHex: colors.body,
       trimHex: colors.trim,
-      generation: member.generation,
     });
     return () => register(member.id, null);
-  }, [register, member.id, member.generation, colors.body, colors.trim]);
+  }, [register, member.id, colors.body, colors.trim]);
 
   return (
-    <group ref={root} visible={false} scale={subagentScale(member.generation)}>
+    <group
+      ref={root}
+      visible={false}
+      scale={subagentScale(member.generation)}
+      userData={{ agentId: member.id }}
+    >
       <mesh ref={body} geometry={geo.body} material={colorMaterial(colors.body)} />
       <mesh ref={trim} geometry={geo.trim} material={colorMaterial(colors.trim)} />
       <mesh

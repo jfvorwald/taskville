@@ -1,7 +1,7 @@
 import type { Agent } from "../../../data/domain.ts";
 import { identityKey } from "../../agents/identity.ts";
 import type { AgentView } from "../../agents/types.ts";
-import { splitByGeneration } from "./generation.ts";
+import { MAX_BOT_GENERATION, splitByGeneration } from "./generation.ts";
 import {
   initialLifecycle,
   type LifecycleState,
@@ -25,11 +25,13 @@ export interface CrewMember {
 }
 
 export interface CrewFamily {
-  /** The agent the bots walk out of: the first ancestor that is not itself a subagent. */
+  /** The agent the bots walk out of: their immediate parent. */
   readonly parentId: string;
+  /** 0 when the parent is not a subagent, otherwise the parent's own generation. */
+  readonly parentGeneration: number;
   /** Bots in registration order, including those still leaving after they finished. */
   readonly members: readonly CrewMember[];
-  /** Running subagents too deep for a bot. */
+  /** Running subagents below this parent's bots that are too deep for a bot of their own. */
   readonly deepCount: number;
 }
 
@@ -71,14 +73,22 @@ function identityOfParent(agent: Agent): string {
   });
 }
 
+interface Tracked {
+  readonly member: CrewMember;
+  readonly generation: number;
+  /** Ancestors from the parent up to the first one that is not a subagent. */
+  readonly lineage: readonly string[];
+  readonly finished: boolean;
+}
+
 export function createCrewTracker(): CrewTracker {
   const states = new Map<string, LifecycleState>();
 
   return {
     sync(agents, nowMs) {
       const byId = new Map(agents.map((a) => [a.id, a]));
-      const families = new Map<string, { members: CrewMember[]; running: CrewMember[] }>();
       const present = new Set<string>();
+      const tracked: Tracked[] = [];
 
       for (const agent of agents) {
         if (agent.kind !== "subagent" || agent.parentAgentId === undefined) continue;
@@ -93,37 +103,58 @@ export function createCrewTracker(): CrewTracker {
         states.set(agent.id, state);
         present.add(agent.id);
 
-        let generation = 1;
-        let parentId = agent.parentAgentId;
+        const lineage = [agent.parentAgentId];
         const seen = new Set([agent.id]);
         for (let hops = 0; hops < MAX_HOPS; hops++) {
-          const up = byId.get(parentId);
+          const up = byId.get(lineage[lineage.length - 1] as string);
           if (up?.kind !== "subagent" || up.parentAgentId === undefined || seen.has(up.id)) break;
           seen.add(up.id);
-          generation++;
-          parentId = up.parentAgentId;
+          lineage.push(up.parentAgentId);
         }
-
-        const family = families.get(parentId) ?? { members: [], running: [] };
-        families.set(parentId, family);
-        const member: CrewMember = {
-          id: agent.id,
+        const generation = lineage.length;
+        tracked.push({
+          member: {
+            id: agent.id,
+            generation,
+            view: viewOf(agent, byId.get(agent.parentAgentId)),
+          },
           generation,
-          view: viewOf(agent, byId.get(agent.parentAgentId)),
-        };
-        family.members.push(member);
-        if (!finished) family.running.push(member);
+          lineage,
+          finished,
+        });
       }
 
       for (const id of [...states.keys()]) if (!present.has(id)) states.delete(id);
 
-      const out: CrewFamily[] = [];
-      for (const [parentId, family] of families) {
-        const bots = splitByGeneration(family.members).bots;
-        const deepCount = splitByGeneration(family.running).deepCount;
-        if (bots.length > 0 || deepCount > 0) out.push({ parentId, members: bots, deepCount });
+      // A family is the bots of one immediate parent. Running subagents below the last bot level
+      // are counted on their generation-2 ancestor, the deepest parent that is drawn.
+      const families = new Map<
+        string,
+        { members: CrewMember[]; deepCount: number; parentGeneration: number }
+      >();
+      const familyOf = (parentId: string, parentGeneration: number) => {
+        let family = families.get(parentId);
+        if (family === undefined) {
+          family = { members: [], deepCount: 0, parentGeneration };
+          families.set(parentId, family);
+        }
+        return family;
+      };
+      const { bots, deepCount } = splitByGeneration(tracked);
+      for (const t of bots) {
+        familyOf(t.lineage[0] as string, t.generation - 1).members.push(t.member);
       }
-      return out;
+      if (deepCount > 0) {
+        for (const t of tracked) {
+          if (t.generation <= MAX_BOT_GENERATION || t.finished) continue;
+          const owner = t.lineage[t.generation - MAX_BOT_GENERATION - 1] as string;
+          familyOf(owner, MAX_BOT_GENERATION).deepCount++;
+        }
+      }
+      // Parents first: a family anchored on a bot reads that bot's place from the family above.
+      return [...families]
+        .map(([parentId, f]) => ({ parentId, ...f }))
+        .sort((x, y) => x.parentGeneration - y.parentGeneration);
     },
 
     frame(id, nowMs) {
