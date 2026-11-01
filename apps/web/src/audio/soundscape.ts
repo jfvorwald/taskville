@@ -47,6 +47,7 @@ export function createSoundscape(options: SoundscapeOptions): Soundscape {
   let enabling: Promise<void> | null = null;
   let unsubscribe: (() => void) | null = null;
   let volume: number | undefined;
+  let wasMuted = false;
   /** Agents in needs-you at the last live update: the baseline a chime is measured against. */
   let red = new Set<string>();
   const seen = new Set<string>();
@@ -74,7 +75,13 @@ export function createSoundscape(options: SoundscapeOptions): Soundscape {
       playing = null;
       return;
     }
-    if (wanted === playing || wanted === loading) return;
+    if (wanted === playing) {
+      // Back on the loop that is already playing: a load for another theme is now stale.
+      loadToken += 1;
+      loading = null;
+      return;
+    }
+    if (wanted === loading) return;
     loadToken += 1;
     const token = loadToken;
     loading = wanted;
@@ -95,6 +102,10 @@ export function createSoundscape(options: SoundscapeOptions): Soundscape {
   function onSettings() {
     if (!enabled) return;
     applyVolume();
+    const { muted } = settings.getSnapshot();
+    // Muting also cuts a cue that is still ringing.
+    if (muted && !wasMuted) backend.silence?.();
+    wasMuted = muted;
     syncLoop();
   }
 
@@ -114,6 +125,7 @@ export function createSoundscape(options: SoundscapeOptions): Soundscape {
           if (mine !== generation) return;
           enabled = true;
           volume = undefined;
+          wasMuted = settings.getSnapshot().muted;
           applyVolume();
           unsubscribe = settings.subscribe(onSettings);
           syncLoop();
@@ -127,10 +139,12 @@ export function createSoundscape(options: SoundscapeOptions): Soundscape {
     disable() {
       generation += 1;
       enabling = null;
+      const wasEnabled = enabled;
       enabled = false;
       unsubscribe?.();
       unsubscribe = null;
       syncLoop();
+      if (wasEnabled) backend.silence?.();
     },
 
     update(records) {

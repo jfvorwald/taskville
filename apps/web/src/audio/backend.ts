@@ -13,6 +13,8 @@ export interface AudioBackend {
   /** Plays the loop for `themeId` from its loaded `asset`, fading out any loop already playing. */
   startLoop(themeId: string, asset: unknown): void;
   stopLoop(): void;
+  /** Cuts any cue that is still ringing (on mute or when sound is turned off). */
+  silence?(): void;
 }
 
 export interface WebAudioBackendOptions {
@@ -46,6 +48,8 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
   const createContext = options.createContext ?? browserContext;
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
+  /** Every cue goes through this, so silence() can cut them all at once. */
+  let cueBus: GainNode | null = null;
   let volume = 0.5;
   const lastCueAt = new Map<Cue, number>();
   const decoded = new Map<string, Promise<AudioBuffer>>();
@@ -107,6 +111,8 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
         master = ctx.createGain();
         master.gain.value = volume;
         master.connect(ctx.destination);
+        cueBus = ctx.createGain();
+        cueBus.connect(master);
       }
       if (ctx.state === "suspended") await ctx.resume();
     },
@@ -116,8 +122,18 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
       if (master && ctx) master.gain.setTargetAtTime(next, ctx.currentTime, 0.05);
     },
 
+    silence() {
+      if (!ctx || !master || !cueBus) return;
+      // Fade the ringing bus out and swap in a fresh one for the cues that follow.
+      const old = cueBus;
+      old.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+      setTimeout(() => old.disconnect(), 250);
+      cueBus = ctx.createGain();
+      cueBus.connect(master);
+    },
+
     playCue(cue) {
-      if (!ctx || !master) return;
+      if (!ctx || !cueBus) return;
       const now = ctx.currentTime;
       const last = lastCueAt.get(cue);
       if (last !== undefined && now - last < MIN_CUE_GAP_S) return;
@@ -125,14 +141,14 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
       const t = now + 0.01;
       switch (cue) {
         case "chime":
-          note(ctx, master, { type: "sine", from: 784, at: t, duration: 1.1, peak: 0.22 });
-          note(ctx, master, { type: "sine", from: 1047, at: t + 0.14, duration: 1.3, peak: 0.18 });
+          note(ctx, cueBus, { type: "sine", from: 784, at: t, duration: 1.1, peak: 0.22 });
+          note(ctx, cueBus, { type: "sine", from: 1047, at: t + 0.14, duration: 1.3, peak: 0.18 });
           break;
         case "tick":
-          note(ctx, master, { type: "triangle", from: 1800, at: t, duration: 0.05, peak: 0.1 });
+          note(ctx, cueBus, { type: "triangle", from: 1800, at: t, duration: 0.05, peak: 0.1 });
           break;
         case "pop":
-          note(ctx, master, { type: "sine", from: 620, to: 220, at: t, duration: 0.12, peak: 0.2 });
+          note(ctx, cueBus, { type: "sine", from: 620, to: 220, at: t, duration: 0.12, peak: 0.2 });
           break;
       }
     },
