@@ -41,7 +41,7 @@ function attentionView(record: Attention | undefined): AttentionView | undefined
   };
 }
 
-function identityOf(agent: Agent): string {
+export function identityOf(agent: Agent): string {
   return identityKey({
     id: agent.id,
     kind: agent.kind,
@@ -57,7 +57,8 @@ function identityOf(agent: Agent): string {
 
 /**
  * Views and intents for every agent that has not finished, in the store's order. Finished agents
- * are left out, so navigation walks them out. `placementFor` must return the same object for an
+ * are left out, so navigation walks them out. Subagents get an intent but no view: the crew layer
+ * (`crew/subagents`) is their only drawing. `placementFor` must return the same object for an
  * id every time: navigation mutates it in place and the bots read it each frame.
  */
 export function buildModels(
@@ -91,20 +92,23 @@ export function buildModels(
     const attention = attentionView(record);
     const parent = agent.parentAgentId === undefined ? undefined : byId.get(agent.parentAgentId);
     const agentType = agent.kind === "subagent" ? agent.role : undefined;
-    views.push({
-      id: agent.id,
-      kind: agent.kind,
-      activity,
-      depth: depthOf(agent),
-      placement: placementFor(agent.id),
-      ...(agent.displayName === undefined ? {} : { displayName: agent.displayName }),
-      sourceId: agent.sourceId,
-      ...(agent.sourceAgentId === undefined ? {} : { sourceAgentId: agent.sourceAgentId }),
-      ...(agentType === undefined ? {} : { agentType }),
-      ...(parent === undefined ? {} : { parentIdentity: identityOf(parent) }),
-      ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
-      ...(attention === undefined ? {} : { attention }),
-    });
+    // A subagent is drawn by the crew layer (M5.02), so it has an intent but no block-agent view.
+    if (agent.kind !== "subagent") {
+      views.push({
+        id: agent.id,
+        kind: agent.kind,
+        activity,
+        depth: depthOf(agent),
+        placement: placementFor(agent.id),
+        ...(agent.displayName === undefined ? {} : { displayName: agent.displayName }),
+        sourceId: agent.sourceId,
+        ...(agent.sourceAgentId === undefined ? {} : { sourceAgentId: agent.sourceAgentId }),
+        ...(agentType === undefined ? {} : { agentType }),
+        ...(parent === undefined ? {} : { parentIdentity: identityOf(parent) }),
+        ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
+        ...(attention === undefined ? {} : { attention }),
+      });
+    }
     const rest: RestState =
       record?.level === "waiting" || activity === "waiting"
         ? "waiting"

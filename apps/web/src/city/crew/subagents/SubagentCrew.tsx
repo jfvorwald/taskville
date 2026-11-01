@@ -14,6 +14,7 @@ import { subagentScale } from "./generation.ts";
 import { parentIsWaiting, type SubagentPhase, stillFrame } from "./lifecycle.ts";
 import { crewGeometries, crewMaterial, PILL_SIZE, pillMaterial } from "./resources.ts";
 import { doorRadius, markerSpot, reachOf, workSpot } from "./spots.ts";
+import { type CrewBotTint, crewBotTint, TINT_HEX } from "./tint.ts";
 import {
   type CrewFamily,
   type CrewMember,
@@ -103,6 +104,14 @@ function CrewFamilyView({
   anchors,
   reducedMotion,
 }: CrewFamilyViewProps) {
+  const attention = useData((s) => s.attention, store);
+  // A subagent that needs you is still red, though it is no longer a block agent with a ring.
+  const tints = useMemo(
+    () => new Map(family.members.map((m) => [m.id, crewBotTint(m, attention)])),
+    [family.members, attention],
+  );
+  const tintsRef = useRef<ReadonlyMap<string, CrewBotTint | undefined>>(tints);
+  tintsRef.current = tints;
   const reach = reachOf(family.parentGeneration);
   const marked = markerSpot(reach);
   const emoteY = EMOTE_Y * reach + (1 - reach) * 0.4;
@@ -196,9 +205,11 @@ function CrewFamilyView({
         place.z = doorZ + z;
       }
       bot.root.rotation.y = homeward ? spot.angle + Math.PI : spot.angle;
-      const body = crewMaterial(bot.bodyHex, f.opacity);
+      const tint = tintsRef.current.get(id);
+      const tinted = tint === undefined ? undefined : TINT_HEX[tint.hue];
+      const body = crewMaterial(tinted ?? bot.bodyHex, f.opacity);
       if (bot.body.material !== body) bot.body.material = body;
-      const trim = crewMaterial(bot.trimHex, f.opacity);
+      const trim = crewMaterial(tinted ?? bot.trimHex, f.opacity);
       if (bot.trim.material !== trim) bot.trim.material = trim;
       if (bot.cube.material !== trim) bot.cube.material = trim;
       bot.cube.visible = f.carrying;

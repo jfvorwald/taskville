@@ -1,6 +1,6 @@
 import type { Agent } from "../../../data/domain.ts";
-import { identityKey } from "../../agents/identity.ts";
 import type { AgentView } from "../../agents/types.ts";
+import { identityOf } from "../../movement/models.ts";
 import { MAX_BOT_GENERATION, splitByGeneration } from "./generation.ts";
 import {
   initialLifecycle,
@@ -54,23 +54,8 @@ function viewOf(agent: Agent, parent: Agent | undefined): AgentView {
     ...(agent.sourceAgentId === undefined ? {} : { sourceAgentId: agent.sourceAgentId }),
     ...(agent.displayName === undefined ? {} : { displayName: agent.displayName }),
     ...(agent.role === undefined ? {} : { agentType: agent.role }),
-    ...(parent === undefined ? {} : { parentIdentity: identityOfParent(parent) }),
+    ...(parent === undefined ? {} : { parentIdentity: identityOf(parent) }),
   };
-}
-
-/** The same identity text the city's bots use for their trim, so a family shares one color. */
-function identityOfParent(agent: Agent): string {
-  return identityKey({
-    id: agent.id,
-    kind: agent.kind,
-    activity: "unknown",
-    placement: NO_POSITION,
-    ...(agent.displayName === undefined ? {} : { displayName: agent.displayName }),
-    ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
-    ...(agent.sourceAgentId === undefined
-      ? {}
-      : { sourceId: agent.sourceId, sourceAgentId: agent.sourceAgentId }),
-  });
 }
 
 interface Tracked {
