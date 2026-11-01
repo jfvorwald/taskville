@@ -30,6 +30,8 @@ export interface CardTarget {
   requestState: string;
   /** True when the request has left attention and the card only remembers it. */
   stale?: boolean;
+  /** True when the source guessed which agent the request belongs to. */
+  heuristic?: boolean;
 }
 
 /**
