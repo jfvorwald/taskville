@@ -14,7 +14,6 @@ export function SceneRoot() {
     <div className={styles.root} data-testid="scene-root">
       <Canvas camera={{ position: [16, 14, 16], fov: 45 }} dpr={[1, 2]}>
         <color attach="background" args={[readCssToken("--tv-scene-bg", "#11141a")]} />
-        <ambientLight intensity={1} />
         <AnchorBridge source={worldAnchors} />
         <CityRoot />
       </Canvas>
