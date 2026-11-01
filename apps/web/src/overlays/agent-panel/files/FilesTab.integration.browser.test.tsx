@@ -32,9 +32,13 @@ interface RequestRecord {
 }
 interface Feed extends RequestRecord {
   cancelled: boolean;
+  send?: (frame: { id: number; data: unknown }) => void;
 }
 let requests: RequestRecord[];
 let feeds: Feed[];
+let omitToolName: boolean;
+let reconnectStatus: number | undefined;
+let inputFailures: (number | "network")[];
 let holdInput: boolean;
 let releaseInput: (() => void) | undefined;
 
@@ -72,6 +76,7 @@ function props(selectedId: string): OverlayProps {
     settings: { get: (_key, fallback) => fallback, set: () => {} },
   };
 }
+const inputText = () => page.getByTestId("file-edits").element().querySelector("pre")?.textContent;
 const row = (path: string) => page.getByTestId("file-row").filter({ hasText: path });
 const feedFor = (agent: string, project = "spike") =>
   feeds.find(
@@ -84,6 +89,9 @@ const evidenceRequests = () => requests.filter((r) => r.url.pathname.startsWith(
 beforeEach(() => {
   requests = [];
   feeds = [];
+  omitToolName = false;
+  reconnectStatus = undefined;
+  inputFailures = [];
   holdInput = false;
   releaseInput = undefined;
   selectProject("spike");
@@ -97,9 +105,11 @@ beforeEach(() => {
     };
     requests.push(entry);
     if (/^\/v1\/agents\/[^/]+\/feed$/.test(entry.url.pathname)) {
-      const feed = { ...entry, cancelled: false };
+      const feed: Feed = { ...entry, cancelled: false };
       feeds.push(feed);
       const agent = decodeURIComponent(entry.url.pathname.split("/")[3] ?? "");
+      if (reconnectStatus && feeds.length === 2)
+        return new Response(null, { status: reconnectStatus });
       const frames =
         entry.url.searchParams.get("projectId") === "spike"
           ? recorded.frames.filter((f) => f.data.agentId === agent)
@@ -107,13 +117,23 @@ beforeEach(() => {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(
-              new TextEncoder().encode(
-                frames
-                  .map((f) => `id: ${f.id}\nevent: toolcall\ndata: ${JSON.stringify(f.data)}\n\n`)
-                  .join(""),
-              ),
-            );
+            feed.send = (f) =>
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `id: ${f.id}\nevent: toolcall\ndata: ${JSON.stringify(f.data)}\n\n`,
+                ),
+              );
+            for (const f of frames) {
+              // Synthetic omission of an optional wire field before the recorded Edit.
+              if (omitToolName && f.id === 15) {
+                const data = { ...f.data };
+                delete (data as { toolName?: string }).toolName;
+                feed.send({ ...f, data });
+              } else if (!reconnectStatus || (feeds.length === 1 ? f.id <= 17 : f.id > 17)) {
+                feed.send(f);
+              }
+            }
+            if (reconnectStatus && feeds.length === 1) controller.close();
           },
           cancel() {
             feed.cancelled = true;
@@ -126,6 +146,11 @@ beforeEach(() => {
       const id = decodeURIComponent(entry.url.pathname.slice("/v1/evidence/".length));
       const body = bodies[id as keyof typeof bodies];
       if (!body) return new Response(null, { status: 404 });
+      if (id === aInput) {
+        const failure = inputFailures.shift();
+        if (failure === "network") throw new TypeError("synthetic network failure");
+        if (failure) return new Response(null, { status: failure });
+      }
       if (holdInput && id === aInput) {
         // Deliberately deliver after abort: cleanup must also guard against late responses.
         return new Promise<Response>((resolve) => {
@@ -152,6 +177,128 @@ afterEach(() => {
 });
 
 describe("M5.07 production Files integration", () => {
+  it("accepts an omitted toolName without poisoning subsequent recorded edits", async () => {
+    omitToolName = true;
+    const store = createDataStore();
+    seed(store);
+    await render(
+      <SessionProvider value={SECRET}>
+        <AgentPanel {...props(A)} store={store} />
+      </SessionProvider>,
+    );
+    await page.getByRole("tab", { name: "Files", exact: true }).click();
+    await expect.element(row(NOTES), { timeout: 2500 }).toHaveAttribute("data-edit-count", "1");
+    await row(NOTES).click();
+    await expect.element(page.getByTestId("file-edits")).toMatchTextContent("BETA");
+    expect(feeds).toHaveLength(1);
+  });
+
+  it.each([429, 503])(
+    "reconnects after feed HTTP %s retaining cursor, session and project",
+    async (status) => {
+      reconnectStatus = status;
+      const store = createDataStore();
+      seed(store);
+      await render(
+        <SessionProvider value={SECRET}>
+          <AgentPanel {...props(A)} store={store} />
+        </SessionProvider>,
+      );
+      await page.getByRole("tab", { name: "Files", exact: true }).click();
+      await expect.poll(() => feeds.length, { timeout: 3500 }).toBe(3);
+      expect(feeds.map((f) => f.url.searchParams.get("after"))).toEqual(["0", "17", "17"]);
+      for (const req of feeds) {
+        expect(req.url.searchParams.get("projectId")).toBe("spike");
+        expect(req.headers.get("X-Taskville-Session")).toBe(SECRET);
+      }
+      await expect.element(row(NOTES)).toHaveAttribute("data-edit-count", "1");
+      await row(NOTES).click();
+      await expect.element(page.getByTestId("file-edits")).toMatchTextContent("BETA");
+      expect(page.getByText("Files feed unavailable.").elements()).toHaveLength(0);
+      for (const req of evidenceRequests())
+        expect(req.headers.get("X-Taskville-Session")).toBe(SECRET);
+    },
+  );
+
+  it.each(["network", 429, 503] as const)(
+    "retries transient evidence %s and renders the recorded body",
+    async (failure) => {
+      inputFailures = [failure, failure];
+      const store = createDataStore();
+      seed(store);
+      await render(
+        <SessionProvider value={SECRET}>
+          <AgentPanel {...props(A)} store={store} />
+        </SessionProvider>,
+      );
+      await page.getByRole("tab", { name: "Files", exact: true }).click();
+      await row(NOTES).click();
+      await expect
+        .poll(inputText, { timeout: 3000 })
+        .toBe(bodies[aInput as keyof typeof bodies].text);
+      expect(evidenceRequests().filter((r) => r.url.pathname.endsWith(aInput))).toHaveLength(3);
+    },
+  );
+
+  it("bounds evidence attempts at three and lets a later frame retry exhausted evidence", async () => {
+    inputFailures = [503, 503, 503];
+    const store = createDataStore();
+    seed(store);
+    await render(
+      <SessionProvider value={SECRET}>
+        <AgentPanel {...props(A)} store={store} />
+      </SessionProvider>,
+    );
+    await page.getByRole("tab", { name: "Files", exact: true }).click();
+    await row(NOTES).click();
+    const attempts = () => evidenceRequests().filter((r) => r.url.pathname.endsWith(aInput)).length;
+    await expect.poll(attempts, { timeout: 3000 }).toBe(3);
+    // Wait beyond the next exponential backoff too: no automatic fourth request is allowed.
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    expect(attempts()).toBe(3);
+    expect(inputText()).toBe("not reported");
+    const edit = recorded.frames.find(
+      (f) => f.data.agentId === A && f.data.toolName === "Edit" && f.data.phase === "succeeded",
+    );
+    if (!edit) throw new Error("recorded Edit missing");
+    feedFor(A)?.send?.({ ...edit, id: 32 });
+    await expect.element(page.getByTestId("file-edits")).toMatchTextContent("BETA");
+    await expect.poll(inputText).toBe(bodies[aInput as keyof typeof bodies].text);
+    expect(attempts()).toBe(4);
+    await expect.element(row(NOTES)).toHaveAttribute("data-edit-count", "1");
+  });
+
+  it.each(["selection", "project", "unmount"] as const)(
+    "cancels scheduled evidence retry on %s",
+    async (change) => {
+      inputFailures = [503];
+      const store = createDataStore();
+      seed(store);
+      const panel = (id: string) => (
+        <SessionProvider value={SECRET}>
+          <AgentPanel {...props(id)} store={store} />
+        </SessionProvider>
+      );
+      const view = await render(panel(A));
+      await page.getByRole("tab", { name: "Files", exact: true }).click();
+      await expect
+        .poll(() => evidenceRequests().filter((r) => r.url.pathname.endsWith(aInput)).length)
+        .toBe(1);
+      // Let the failed response schedule its retry before selection cleanup.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const old = evidenceRequests().find((r) => r.url.pathname.endsWith(aInput));
+      if (change === "selection") await view.rerender(panel(B));
+      else if (change === "project") {
+        selectProject("beta");
+        seed(store, "beta");
+      } else await view.unmount();
+      await expect.poll(() => old?.signal?.aborted).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      expect(evidenceRequests().filter((r) => r.url.pathname.endsWith(aInput))).toHaveLength(1);
+      if (change !== "unmount") expect(page.getByTestId("file-edits").elements()).toHaveLength(0);
+    },
+  );
+
   it("fills the default Files slot from the paired selected-project feed and evidence routes", async () => {
     const store = createDataStore();
     seed(store);
