@@ -62,6 +62,8 @@ const TRAVELLING = new Set(["arriving", "walking", "departing"]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const engine = await startEngine();
+// Aborted in finally, so a failure after the demo starts still stops its producer (roborev 5742).
+const stop = new AbortController();
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 try {
   // Launched inside the try, so a failed launch still stops the engine (roborev 5720, 5733).
@@ -176,7 +178,6 @@ try {
 
   // Moving: the demo runs long enough to cover the window plus its start-up; sample from the
   // moment all six agents are in the city.
-  const stop = new AbortController();
   let demoEnded: { code: number; output: string } | null = null;
   const demo = runDemo(home, {
     // At 120x one real second is two simulated minutes, so size the demo to
@@ -220,22 +221,13 @@ try {
     await sleep(250);
   }
   await parkPointer();
-  // Watch the labels through the idle window, so a late mover shows up in the report.
-  let polls = 0;
-  let pollsWithMovers = 0;
-  let watching = true;
-  const watcher = (async () => {
-    while (watching) {
-      polls++;
-      if ((await travelling()).moving > 0) pollsWithMovers++;
-      await sleep(250);
-    }
-  })();
+  // Check the labels just before and just after the idle window, not during it: polling the page
+  // while sampling would add renderer work to the measured idle CPU (roborev 5742).
+  const moversBefore = (await travelling()).moving;
   const idleCpuPromise = sampleCpu(idleSeconds);
   const idle = await sampleFps(idleSeconds);
   const idleCpu = await idleCpuPromise;
-  watching = false;
-  await watcher;
+  const moversAfter = (await travelling()).moving;
 
   const agents = await labels.count();
   const f = (n: number, d = 1) => n.toFixed(d);
@@ -266,7 +258,7 @@ try {
   console.log(`  browser CPU ${f(movingCpu)}% of one core (no moving CPU target)`);
   console.log(`\nIdle (${idleSeconds} s after ${settleSeconds} s settle):`);
   console.log(
-    `  agents moved during the idle window: ${pollsWithMovers === 0 ? "no" : "YES"} (${pollsWithMovers} of ${polls} label polls saw a travelling agent)`,
+    `  agents travelling at the start and end of the idle window: ${moversBefore} and ${moversAfter}${moversBefore + moversAfter === 0 ? " (still)" : " (NOT STILL)"}`,
   );
   console.log(
     `  fps ${f(idle.fps)}, target ${BUDGET.idleFps}: ${against(idle.fps, BUDGET.idleFps, "idle target")}`,
@@ -276,6 +268,7 @@ try {
     `  browser CPU ${f(idleCpu)}% of one core, target under ${BUDGET.idleCpuPercent}%: ${against(idleCpu, BUDGET.idleCpuPercent, "idle target")}`,
   );
 } finally {
+  stop.abort();
   await browser?.close().catch(() => {});
   engine.kill("SIGTERM");
 }
