@@ -237,6 +237,8 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
       });
       await runShim({ shell, input: JSON.stringify(hookPayload(9)), env });
       expect(proxy.received).toHaveLength(0);
+      // Requests from other local processes (port probes) are kept apart; none may carry the token.
+      expect(proxy.foreign.filter((r) => JSON.stringify(r).includes(TOKEN))).toEqual([]);
       expect(server.received).toHaveLength(1);
     } finally {
       await proxy.close();
