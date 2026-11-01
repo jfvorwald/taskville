@@ -148,20 +148,16 @@
   cursor: pointer;
 }
 
-/* Over the sidebar column, where the panel own toggle sits when it is the one shown. */
+/* Below the shared header so the floating toggle cannot cover camera controls at any width. */
 .floatingToggle {
   position: absolute;
-  top: 16px;
+  top: 50px;
   right: 16px;
   z-index: 6;
 }
 
-/* Narrow screens: the centered counts line reaches the right edge, so drop to the row below it. */
+/* Keep the floating toggle compact on narrow screens. */
 @media (max-width: 480px) {
-  .floatingToggle {
-    top: 50px;
-  }
-
   .floatingToggle .toggle {
     padding: 4px 10px;
     font-size: 0.75rem;
