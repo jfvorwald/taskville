@@ -1,4 +1,5 @@
 import { worldAnchors } from "../../overlays/host/index.ts";
+import { type TestHooksEnv, testHooksEnabled } from "../../testHooks.ts";
 import type { AgentView } from "../agents/index.ts";
 import { CITY_LAYOUT } from "../layout/index.ts";
 
@@ -41,8 +42,8 @@ export function fixtureAgents(): AgentView[] {
   ];
 }
 
-export function fixtureRequested(search: string): boolean {
-  return new URLSearchParams(search).get("tv-fixture") === "agents";
+export function fixtureRequested(search: string, env?: TestHooksEnv): boolean {
+  return testHooksEnabled(env) && new URLSearchParams(search).get("tv-fixture") === "agents";
 }
 
 declare global {

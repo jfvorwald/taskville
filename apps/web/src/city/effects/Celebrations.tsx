@@ -12,6 +12,7 @@ import {
 import type { StoredEnvelope } from "../../data/domain.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
+import { debugHookRequested } from "../../testHooks.ts";
 import { CITY_LAYOUT, type WorkAreaLayout } from "../layout/index.ts";
 import { agentAnchorId, usePrefersReducedMotion } from "../movement/index.ts";
 import { type Burst, createBurst } from "./burst.ts";
@@ -43,7 +44,7 @@ const HEAD_LIFT = 0.3;
 /** `?debug=celebrations` exposes a read-only list of the celebrations played, for end-to-end checks. */
 function debugEnabled(): boolean {
   try {
-    return new URLSearchParams(window.location.search).get("debug") === "celebrations";
+    return debugHookRequested(window.location.search, "celebrations");
   } catch {
     return false;
   }
@@ -263,7 +264,7 @@ export function Celebrations({
   useEffect(() => () => rig.dispose(), [rig]);
 
   useEffect(() => {
-    if (!debugEnabled()) return;
+    if (import.meta.env.VITE_TV_TEST_HOOKS !== "1" || !debugEnabled()) return;
     const w = window as unknown as { __taskvilleCelebrations?: () => unknown };
     w.__taskvilleCelebrations = () => rig.history.entries().map((p) => ({ ...p }));
     return () => {
