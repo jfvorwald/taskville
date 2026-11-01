@@ -99,6 +99,7 @@ export function bootEngine(options: BootOptions): Engine {
       hub,
       pairing: options.pairing,
       maxStreams,
+      queueLimit,
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
     });
     return {

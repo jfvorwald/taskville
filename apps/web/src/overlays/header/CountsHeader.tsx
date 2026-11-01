@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { selectProject, useCurrentProjectId } from "../../data/project.ts";
+import { DEFAULT_PROJECT_ID, selectProject, useCurrentProjectId } from "../../data/project.ts";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
 import { selectAttentionHeader } from "./attention.ts";
@@ -18,19 +18,34 @@ export function CountsHeader({ selectors }: OverlayProps) {
   const feed = useAttentionFeed();
   const currentProjectId = useCurrentProjectId();
   const { otherProjects } = selectAttentionHeader(feed, currentProjectId);
+  // The needs-you count spans every project: this project's own count, which is exact, plus the
+  // agents waiting in the others, which the chips name.
+  const needsYou = otherProjects.reduce((sum, p) => sum + p.needsYou, value.needsYou);
+  const shown = { ...value, needsYou };
+  const away = currentProjectId !== DEFAULT_PROJECT_ID;
   return (
     <div className={styles.row}>
       <p
         className={styles.counts}
         role="status"
-        aria-label={describeCounts(value)}
-        data-needs-you={value.needsYou > 0 ? "true" : undefined}
+        aria-label={describeCounts(shown)}
+        data-needs-you={needsYou > 0 ? "true" : undefined}
       >
-        {formatCounts(value)}
+        {formatCounts(shown)}
       </p>
-      {otherProjects.length > 0 ? (
+      {otherProjects.length > 0 || away ? (
         <InteractiveRegion className={styles.chips}>
           <AttentionChips otherProjects={otherProjects} onSwitch={selectProject} />
+          {away ? (
+            // Until a project switcher exists, a chip is the only way in, so there must be a way back.
+            <button
+              type="button"
+              className={styles.chip}
+              onClick={() => selectProject(DEFAULT_PROJECT_ID)}
+            >
+              Back to Unsorted
+            </button>
+          ) : null}
         </InteractiveRegion>
       ) : null}
     </div>
