@@ -119,18 +119,20 @@ export function buildModels(
       Object.hasOwn(input.teams, agent.teamId)
         ? input.teams[agent.teamId]
         : undefined;
+    const area = areaFor(table, { activity, agentType, kind: agent.kind });
     intents.push({
       id: agent.id,
       area:
         agent.kind === "lead" && team !== undefined && team.endedAt === undefined
           ? "dispatch"
-          : agent.kind === "teammate" &&
-              agent.teamId !== undefined &&
-              areaFor(table, { activity, agentType, kind: agent.kind }) === null &&
-              input.tasks !== undefined &&
-              !Object.values(input.tasks).some((t) => t.assignedAgentIds.includes(agent.id))
-            ? "dispatch"
-            : areaFor(table, { activity, agentType, kind: agent.kind }),
+          : area,
+      ...(agent.kind === "teammate" &&
+      agent.teamId !== undefined &&
+      area === null &&
+      input.tasks !== undefined &&
+      !Object.values(input.tasks).some((t) => t.assignedAgentIds.includes(agent.id))
+        ? { initialArea: "dispatch" as const }
+        : {}),
       hold: record?.level === "needs_you",
       rest,
       ...(agent.parentAgentId === undefined ? {} : { parentId: agent.parentAgentId }),
