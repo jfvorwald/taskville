@@ -4,6 +4,8 @@ export type QueueState =
   | "pending"
   | "claimed"
   | "completed"
+  | "awaiting_input"
+  | "reviewing"
   | "failed"
   | "cancelled"
   | "blocked"
@@ -35,7 +37,11 @@ export function dispatchQueue(state: Pick<ProjectState, "teams" | "tasks">, team
           ? "claimed"
           : task.status === "queued"
             ? "pending"
-            : task.status === "failed" || task.status === "cancelled" || task.status === "blocked"
+            : task.status === "failed" ||
+                task.status === "cancelled" ||
+                task.status === "blocked" ||
+                task.status === "awaiting_input" ||
+                task.status === "reviewing"
               ? task.status
               : "unknown") as QueueState,
       claimedBy: task.assignedAgentIds,

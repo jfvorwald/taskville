@@ -126,11 +126,7 @@ export function buildModels(
         agent.kind === "lead" && team !== undefined && team.endedAt === undefined
           ? "dispatch"
           : area,
-      ...(agent.kind === "teammate" &&
-      agent.teamId !== undefined &&
-      area === null &&
-      input.tasks !== undefined &&
-      !Object.values(input.tasks).some((t) => t.assignedAgentIds.includes(agent.id))
+      ...(agent.kind === "teammate" && agent.teamId !== undefined && area === null
         ? { initialArea: "dispatch" as const }
         : {}),
       hold: record?.level === "needs_you",
