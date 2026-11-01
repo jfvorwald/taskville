@@ -11,6 +11,7 @@ import {
 import { useData } from "../../data/react.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
+import { debugHookRequested } from "../../testHooks.ts";
 import { AgentsLayer } from "../agents/index.ts";
 import type { AgentLabelEntry, AgentView, Placement } from "../agents/types.ts";
 import { presentationEpoch } from "../runtime/epoch.ts";
@@ -40,7 +41,7 @@ function localStorageOrNull(): Storage | null {
 /** `?debug=movement` exposes a read-only snapshot of navigation for end-to-end checks. */
 function debugEnabled(): boolean {
   try {
-    return new URLSearchParams(window.location.search).get("debug") === "movement";
+    return debugHookRequested(window.location.search, "movement");
   } catch {
     return false;
   }
@@ -171,7 +172,7 @@ export function CityAgents({
   );
 
   useEffect(() => {
-    if (!debugEnabled()) return;
+    if (import.meta.env.VITE_TV_TEST_HOOKS !== "1" || !debugEnabled()) return;
     const w = window as unknown as { __taskvilleMovement?: () => unknown };
     w.__taskvilleMovement = () => nav.list().map((a) => ({ ...a }));
     return () => {

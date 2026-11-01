@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run --root ../.. --project @taskville/web",
     "test:browser": "vitest run --config vitest.browser.config.ts",
-    "test:e2e": "vite build && playwright test"
+    "test:e2e": "VITE_TV_TEST_HOOKS=1 vite build && playwright test"
   },
   "dependencies": {
     "@react-three/drei": "10.7.9",
