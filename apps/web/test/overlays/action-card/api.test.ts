@@ -15,7 +15,12 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("buildDecideBody", () => {
-  const base = { projectId: "proj-1", requestId: "req-1", idempotencyKey: "key-1" };
+  const base = {
+    projectId: "proj-1",
+    requestId: "req-1",
+    idempotencyKey: "key-1",
+    mode: "live",
+  } as const;
 
   it("builds an allow command with exactly the contract's keys (bodies are strict)", () => {
     expect(buildDecideBody({ ...base, behavior: "allow" })).toStrictEqual({
@@ -23,9 +28,19 @@ describe("buildDecideBody", () => {
       projectId: "proj-1",
       requestId: "req-1",
       idempotencyKey: "key-1",
+      context: { mode: "live" },
       decision: { behavior: "allow" },
     });
   });
+
+  // M4.17 L1: the engine rejects history context, so the client must say which mode it is in.
+  it.each(["live", "history"] as const)(
+    "sends `context: { mode: %j }` from the given mode",
+    (mode) => {
+      expect(buildDecideBody({ ...base, mode, behavior: "allow" }).context).toStrictEqual({ mode });
+      expect(buildDecideBody({ ...base, mode, behavior: "deny" }).context).toStrictEqual({ mode });
+    },
+  );
 
   it("builds a deny with a note as `message`, trimmed", () => {
     expect(
@@ -35,6 +50,7 @@ describe("buildDecideBody", () => {
       projectId: "proj-1",
       requestId: "req-1",
       idempotencyKey: "key-1",
+      context: { mode: "live" },
       decision: { behavior: "deny", message: "use --dry-run first" },
     });
   });
@@ -64,6 +80,7 @@ describe("buildOpenBody", () => {
         requestId: "req-1",
         sessionId: "sess-1",
         idempotencyKey: "k",
+        mode: "live",
       }),
     ).toStrictEqual({
       type: "session.open",
@@ -71,8 +88,24 @@ describe("buildOpenBody", () => {
       requestId: "req-1",
       sessionId: "sess-1",
       idempotencyKey: "k",
+      context: { mode: "live" },
     });
   });
+
+  // M4.17 L1: the engine rejects history context, so the client must say which mode it is in.
+  it.each(["live", "history"] as const)(
+    "sends `context: { mode: %j }` from the given mode",
+    (mode) => {
+      const body = buildOpenBody({
+        projectId: "proj-1",
+        requestId: "req-1",
+        sessionId: "sess-1",
+        idempotencyKey: "k",
+        mode,
+      });
+      expect(body.context).toStrictEqual({ mode });
+    },
+  );
 });
 
 describe("fetchExactInput", () => {
@@ -179,6 +212,7 @@ describe("sendCommand", () => {
     projectId: "proj-1",
     requestId: "req-1",
     idempotencyKey: "key-1",
+    mode: "live",
     behavior: "allow",
   });
 
