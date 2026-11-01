@@ -78,20 +78,24 @@ export function crewMaterial(hex: string, opacity: number): MeshStandardMaterial
 const W = 192;
 const H = 64;
 
-/** A small dark pill with `text` on it, one shared material per distinct text. */
-export function pillMaterial(text: string): SpriteMaterial {
-  let m = labelMaterials.get(text);
+/**
+ * A small dark pill with `text` on it, one shared material per distinct text and fill. `fill`
+ * (a `#rrggbb`) paints the pill that color instead, for a pill that carries an attention signal.
+ */
+export function pillMaterial(text: string, fill?: string): SpriteMaterial {
+  const key = fill === undefined ? text : `${fill}|${text}`;
+  let m = labelMaterials.get(key);
   if (m === undefined) {
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext("2d");
     if (ctx !== null) {
-      ctx.fillStyle = "rgba(20, 24, 33, 0.82)";
+      ctx.fillStyle = fill ?? "rgba(20, 24, 33, 0.82)";
       ctx.beginPath();
       ctx.roundRect(2, 2, W - 4, H - 4, H / 2 - 2);
       ctx.fill();
-      ctx.fillStyle = "#e6e9ef";
+      ctx.fillStyle = fill === undefined ? "#e6e9ef" : "#141821";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.font = "700 30px system-ui, sans-serif";
@@ -100,7 +104,7 @@ export function pillMaterial(text: string): SpriteMaterial {
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
     m = new SpriteMaterial({ map: texture, transparent: true, depthTest: false });
-    labelMaterials.set(text, m);
+    labelMaterials.set(key, m);
   }
   return m;
 }

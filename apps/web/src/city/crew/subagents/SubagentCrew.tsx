@@ -121,6 +121,7 @@ function CrewFamilyView({
   const bots = useRef(new Map<string, BotHandle>());
   const fannedAtMs = useRef<number | undefined>(undefined);
   const markerCount = useRef(0);
+  const markerHue = useRef<CrewBotTint["hue"] | undefined>(undefined);
   const live = useRef<string[]>([]);
   const phases = useRef<SubagentPhase[]>([]);
   const slots = useRef(new Map<string, number>());
@@ -218,10 +219,21 @@ function CrewFamilyView({
     const count = view.marker?.count ?? 0;
     if (marker.current !== null) {
       marker.current.visible = count > 0;
-      if (count > 0 && count !== markerCount.current) {
-        marker.current.material = pillMaterial(crewMarkerLabel(count));
+      // A hidden bot that needs you must still show: the marker takes the most urgent hue.
+      let urgent: CrewBotTint["hue"] | undefined;
+      for (const id of view.marker?.hiddenIds ?? []) {
+        const hue = tintsRef.current.get(id)?.hue;
+        if (hue === "red") urgent = "red";
+        else if (hue !== undefined && urgent === undefined) urgent = hue;
+      }
+      if (count > 0 && (count !== markerCount.current || urgent !== markerHue.current)) {
+        marker.current.material = pillMaterial(
+          crewMarkerLabel(count),
+          urgent === undefined ? undefined : TINT_HEX[urgent],
+        );
       }
       markerCount.current = count;
+      markerHue.current = urgent;
     }
     if (waiting.current !== null) {
       waiting.current.visible = parentIsWaiting(phases.current) || family.deepCount > 0;
