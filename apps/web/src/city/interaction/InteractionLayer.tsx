@@ -17,7 +17,7 @@ import { type CameraRig, cameraRig } from "./cameraRig.ts";
 import { shouldClearOnEscape } from "./escape.ts";
 import { createBuildingFader } from "./fade.ts";
 import { fixtureAgents, fixtureRequested, installFixtureProbe } from "./fixture.ts";
-import { markHoverDirtyOnCameraChange } from "./hover.ts";
+import { markHoverDirtyOnCameraChange, repickOnCameraChange } from "./hover.ts";
 import { createHullGlow } from "./hull.ts";
 import { markOccluders, viewDirection } from "./occlusion.ts";
 import { collectPickables, createPicker, ownerOf } from "./pick.ts";
@@ -240,7 +240,11 @@ function Interaction({
         () => {
           st.current.hoverDirty = true;
         },
-        () => st.current.inside,
+        () =>
+          repickOnCameraChange({
+            inside: st.current.inside,
+            dragging: st.current.down && st.current.moved,
+          }),
       ),
     [rig],
   );
