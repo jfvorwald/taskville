@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { run } from "../../cli/src/main.ts";
 import { CODES_FILE } from "./codes.ts";
 
@@ -85,6 +85,9 @@ async function runDemo(seed: number): Promise<void> {
 // colours, so on screen they stay close to these values.
 const EFFECT_COLORS = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#f78c6b", "#fff3b0"];
 
+/** Fewer new palette pixels than this is "nothing drawn"; more is "a celebration drew". */
+const MIN_NEW_PIXELS = 20;
+
 /** Width and height from a PNG's IHDR chunk. */
 function pngSize(png: Buffer): { width: number; height: number } {
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
@@ -134,6 +137,31 @@ async function newEffectPixels(during: Buffer, settled: Buffer): Promise<number>
     },
     [during.toString("base64"), settled.toString("base64"), EFFECT_COLORS],
   );
+}
+
+/**
+ * Negative control for `newEffectPixels`: two canvas frames with no celebration drawn in between,
+ * taken while the demo is still running so agents keep moving. A celebration lives at most 1.6 s and
+ * the next is at least 2 s after the last started, so the quiet window opens 1.6 s after the latest
+ * probe entry. A pair is only used if the probe shows no new entry after both frames; otherwise the
+ * pair is retaken.
+ */
+async function quietFrameCount(canvas: Locator): Promise<number> {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const before = await played();
+    const last = before[before.length - 1];
+    if (last) {
+      await page.waitForFunction((t) => performance.now() - t >= 1600, last.at, { polling: 50 });
+    }
+    const first = await canvas.screenshot();
+    const second = await canvas.screenshot();
+    if ((await played()).length !== before.length) continue; // a celebration started: retake
+    expect(pngSize(first), "canvas size is stable across the control frames").toEqual(
+      pngSize(second),
+    );
+    return newEffectPixels(second, first);
+  }
+  throw new Error("no quiet window for the negative control in 5 attempts");
 }
 
 test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it shows on the canvas", async () => {
@@ -197,7 +225,16 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
   expect(
     fresh,
     `${kind} particles are visible on the canvas while it plays (new pixels per frame: ${counts.join(", ")})`,
-  ).toBeGreaterThan(20);
+  ).toBeGreaterThan(MIN_NEW_PIXELS);
+
+  // Negative control, still while the demo runs: with no celebration drawn, the same measure must
+  // stay under the threshold, or moving agents are being counted as particles.
+  const control = await quietFrameCount(canvas);
+  console.log(`celebrations e2e: control (no celebration) new effect-coloured pixels ${control}`);
+  expect(
+    control,
+    "no celebration drawn: palette pixels that appear between two quiet frames",
+  ).toBeLessThan(MIN_NEW_PIXELS);
 
   await demo;
   const all = await played();
