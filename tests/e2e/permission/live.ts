@@ -252,45 +252,59 @@ async function terminal(engine: PermissionEngine): Promise<void> {
 // --- main --------------------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  mkdirSync(RUN, { recursive: true });
-  mkdirSync(PROJ, { recursive: true });
-  mkdirSync(HOME, { recursive: true, mode: 0o700 });
-  writeFileSync(join(PROJ, "README.md"), "# permission e2e\n");
-  const git = (...args: string[]) => spawnSync("git", args, { cwd: PROJ, stdio: "ignore" });
-  git("init", "-q");
-  git("add", "-A");
-  git("-c", "user.email=e2e@example.invalid", "-c", "user.name=e2e", "commit", "-qm", "init");
-
-  const version = spawnSync(CLAUDE, ["--version"], { encoding: "utf8" }).stdout.trim();
-  say(`Claude Code ${version}, model ${MODEL}, ${new Date().toISOString()}`);
-
-  const engine = await startPermissionEngine(90, { root: RUN, keepRoot: true });
-  const install = await cli([
-    "install",
-    "claude-code",
-    "--scope",
-    "project",
-    "--project-dir",
-    PROJ,
-    "--home",
-    HOME,
-    "--url",
-    engine.url,
-    "--yes",
-  ]);
-  say(`install: ${install.stdout.trim().split("\n").pop()}`);
-  const only = values.only?.split(",");
-  const want = (name: string) => only === undefined || only.includes(name);
-  const city = want("allow") || want("deny") ? await openCity(engine) : undefined;
+  // Started as the run goes on; the `finally` below stops whatever exists, wherever the run ends.
+  let engine: PermissionEngine | undefined;
+  let city: Awaited<ReturnType<typeof openCity>> | undefined;
   try {
+    mkdirSync(RUN, { recursive: true });
+    mkdirSync(PROJ, { recursive: true });
+    mkdirSync(HOME, { recursive: true, mode: 0o700 });
+    writeFileSync(join(PROJ, "README.md"), "# permission e2e\n");
+    const git = (...args: string[]) => spawnSync("git", args, { cwd: PROJ, stdio: "ignore" });
+    git("init", "-q");
+    git("add", "-A");
+    git("-c", "user.email=e2e@example.invalid", "-c", "user.name=e2e", "commit", "-qm", "init");
+
+    const version = spawnSync(CLAUDE, ["--version"], { encoding: "utf8" }).stdout.trim();
+    say(`Claude Code ${version}, model ${MODEL}, ${new Date().toISOString()}`);
+
+    engine = await startPermissionEngine(90, { root: RUN, keepRoot: true });
+    const install = await cli([
+      "install",
+      "claude-code",
+      "--scope",
+      "project",
+      "--project-dir",
+      PROJ,
+      "--home",
+      HOME,
+      "--url",
+      engine.url,
+      "--yes",
+    ]);
+    say(`install: ${install.stdout.trim().split("\n").pop()}`);
+    if (install.code !== 0) {
+      throw new Error(`taskville install claude-code failed (${install.code}): ${install.stderr}`);
+    }
+    const only = values.only?.split(",");
+    const want = (name: string) => only === undefined || only.includes(name);
+    if (want("allow") || want("deny")) city = await openCity(engine);
     if (city && want("allow")) await allow(engine, city.page);
     if (city && want("deny")) await deny(engine, city.page);
     // The terminal scenario needs no viewer: close the browser first.
     await city?.close();
+    city = undefined;
     if (want("terminal")) await terminal(engine);
+  } catch (error) {
+    // The run stopped early: say why in the report, and fail the exit code.
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    say(`  ERROR the run stopped early: ${message}`);
+    failures.push(`run stopped early: ${message}`);
   } finally {
+    await city?.close().catch(() => {});
     tmux("kill-server");
-    await engine.stop();
+    await engine?.stop().catch(() => {});
+    mkdirSync(RUN, { recursive: true });
     writeFileSync(join(RUN, "report.txt"), `${report.join("\n")}\n`);
   }
   if (failures.length > 0) {
