@@ -178,7 +178,9 @@ describe("session.open: a command left requested by an engine stop", () => {
     const failed = commandEvents(after.engine).find((e) => e.type === "command.failed");
     expect(failed?.payload).toMatchObject({
       commandId: STALE_ID,
-      reason: "The engine stopped before the outcome was recorded; the session may have opened",
+      reason: {
+        text: "The engine stopped before the outcome was recorded; the session may have opened",
+      },
     });
     expect(after.execFile).not.toHaveBeenCalled();
   });

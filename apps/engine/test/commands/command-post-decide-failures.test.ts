@@ -155,7 +155,7 @@ describe("service start: commands an engine stop left half done", () => {
     expect(types(events)).toEqual(["command.requested", "command.failed"]);
     expect(events[1]?.payload).toMatchObject({
       commandId: "stale-decide",
-      reason: DECIDE_UNKNOWN_REASON,
+      reason: { text: DECIDE_UNKNOWN_REASON },
     });
     expect(after.decide).not.toHaveBeenCalled();
   });
@@ -174,7 +174,7 @@ describe("service start: commands an engine stop left half done", () => {
     expect(types(events)).toEqual(["command.requested", "command.delivered", "command.failed"]);
     expect(events[2]?.payload).toMatchObject({
       commandId: "stuck-open",
-      reason: OPEN_UNKNOWN_REASON,
+      reason: { text: OPEN_UNKNOWN_REASON },
     });
     expect(after.execFile).not.toHaveBeenCalled();
   });
