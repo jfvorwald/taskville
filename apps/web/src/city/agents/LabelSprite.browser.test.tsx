@@ -51,7 +51,7 @@ describe("LabelSprite", () => {
         </Canvas>
       </div>,
     );
-    await vi.waitFor(() => expect(fills).toEqual(expect.arrayContaining(["#d8e6ff", "#8a9bc4"])));
+    await vi.waitFor(() => expect(fills).toEqual(expect.arrayContaining(["#d8e6ff", "#b8c2db"])));
 
     fills.length = 0;
     themeController.setTheme("steampunk");

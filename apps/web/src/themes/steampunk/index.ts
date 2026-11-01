@@ -9,9 +9,9 @@ const tokens: ThemeTokens = {
   "--tv-scene-bg": "#f0e6d6",
   "--tv-surface": "#f7efe2",
   "--tv-text": "#4a2f22",
-  "--tv-text-muted": "#8a6a55",
-  "--tv-accent": "#b8742a",
-  "--tv-focus": "#d9892b",
+  "--tv-text-muted": "#6a5241",
+  "--tv-accent": "#975f22",
+  "--tv-focus": "#9d631f",
   "--tv-neon": "#c8913a",
   "--tv-radius": "8px",
   "--tv-font": '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
@@ -32,9 +32,13 @@ const tokens: ThemeTokens = {
   "--tv-city-window-glow": "#ffcf7a",
 };
 
-/** Night: a dusk-brown sky, dimmer walls, warmer gaslight. */
+/** Night: a dusk-brown sky and panels, dimmer walls, warmer gaslight. */
 const night: Partial<ThemeTokens> = {
   "--tv-scene-bg": "#2b1e17",
+  "--tv-surface": "#34261d",
+  "--tv-text": "#f3e3cc",
+  "--tv-text-muted": "#d0bca6",
+  "--tv-focus": "#d9892b",
   "--tv-neon": "#ffb54d",
   "--tv-accent": "#e8a24a",
   "--tv-city-wall": "#8a6c4e",
