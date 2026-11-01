@@ -1,8 +1,10 @@
-import { Canvas } from "@react-three/fiber";
+import { Canvas, type RootState } from "@react-three/fiber";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { PROJECT } from "../../../test/data/fake-engine.ts";
+import { FADE_MS, HAND_OVER_MS, RETURN_MS } from "../../city/crew/subagents/lifecycle.ts";
+import { stateOf as attentionState } from "../../city/crew/subagents/testScene.tsx";
 import { CityRoot } from "../../city/index.tsx";
 import { type Agent, initialState, type ProjectState } from "../../data/domain.ts";
 import { dataStore } from "../../data/store.ts";
@@ -68,6 +70,96 @@ function props(): OverlayProps {
 afterEach(() => dataStore.getState().reset(PROJECT));
 
 describe("AgentList with crew subagents", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+  ])(
+    "keeps a returning crew bot selectable with current attention (needsYou=%s, collapsed=%s)",
+    async (needsYou, collapsed) => {
+      const clock = { now: 0 };
+      const now = vi.spyOn(dataStore, "now").mockImplementation(() => clock.now);
+      const boss = agent("boss", { kind: "lead" });
+      const kid = agent("kid", { kind: "subagent", parentAgentId: "boss", role: "Explore" });
+      const siblings = collapsed
+        ? ["s1", "s2", "s3"].map((id) => agent(id, { kind: "subagent", parentAgentId: "boss" }))
+        : [];
+      dataStore.getState().reset(PROJECT);
+      dataStore
+        .getState()
+        .applySnapshotState(attentionState([boss, ...siblings, kid], needsYou ? ["kid"] : []));
+      let root: RootState | undefined;
+      const screen = await render(
+        <>
+          <AgentList {...props()} />
+          <div style={{ width: 240, height: 180 }}>
+            <Canvas
+              onCreated={(state) => {
+                root = state;
+              }}
+            >
+              <CityRoot />
+            </Canvas>
+          </div>
+        </>,
+      );
+      const frames = async (count: number) => {
+        const target = (root?.gl.info.render.frame ?? 0) + count;
+        await vi.waitFor(
+          () => expect(root?.gl.info.render.frame).toBeGreaterThanOrEqual(target),
+          WAIT,
+        );
+      };
+      const bot = () => {
+        let found = false;
+        root?.scene.traverse((object) => {
+          if (object.userData.agentId === "kid") found = true;
+        });
+        return found;
+      };
+      try {
+        await expect.element(page.getByRole("row", { name: /KID/ }), WAIT).toBeInTheDocument();
+        if (needsYou) {
+          await expect
+            .element(page.getByRole("row", { name: /KID/ }))
+            .toMatchTextContent("Needs you");
+        }
+        clock.now = 10_000;
+        await frames(5);
+        expect(bot()).toBe(true);
+        if (collapsed) {
+          let hidden = false;
+          root?.scene.traverse((object) => {
+            if (object.userData.agentId === "kid" && !object.visible) hidden = true;
+          });
+          expect(hidden).toBe(true);
+        }
+        dataStore
+          .getState()
+          .applySnapshotState(stateOf([boss, ...siblings, { ...kid, finishedAt: T }], []));
+        await frames(5);
+        expect(bot()).toBe(true);
+        const rows = page.getByRole("row", { name: /KID/ }).elements();
+        expect.soft(rows).toHaveLength(1);
+        expect.soft(rows[0]?.textContent).not.toMatch(/Needs you/);
+        if (rows[0] !== undefined) {
+          (rows[0] as HTMLElement).focus();
+          await userEvent.keyboard("{Enter}");
+        }
+        expect.soft(dataStore.getState().selectedAgentId).toBe("kid");
+        clock.now += RETURN_MS + HAND_OVER_MS + FADE_MS + 1;
+        await frames(8);
+        await vi.waitFor(() => expect(bot()).toBe(false), WAIT);
+        await expect.element(page.getByRole("row", { name: /KID/ }), WAIT).not.toBeInTheDocument();
+        expect(dataStore.getState().agents).toHaveLength(siblings.length + 2);
+      } finally {
+        await screen.unmount();
+        now.mockRestore();
+      }
+    },
+    30_000,
+  );
+
   it("lists a subagent with a known parent by name, kind and status, and selects it on Enter", async () => {
     dataStore.getState().reset(PROJECT);
     dataStore

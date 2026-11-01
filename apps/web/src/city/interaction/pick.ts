@@ -31,6 +31,7 @@ function isShown(object: Object3D): boolean {
 function isPickableRoot(o: Object3D): boolean {
   return (
     typeof o.userData.agentId === "string" ||
+    Array.isArray(o.userData.crewAgentIds) ||
     o.name.startsWith(BUILDING_PREFIX) ||
     o.userData.crewControl === true
   );
