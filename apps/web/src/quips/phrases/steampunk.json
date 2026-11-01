@@ -1,0 +1,20 @@
+{
+  "needs_you": [
+    "Requesting authorization, guv'nor!",
+    "Pray, grant me leave to proceed",
+    "The cogs await your approval",
+    "A word, if you please, good sir"
+  ],
+  "trouble": [
+    "Blast! The gears have seized",
+    "Pressure's dropping, guv'nor!",
+    "A spanner in the works, I fear",
+    "The boiler is acting up again"
+  ],
+  "waiting": [
+    "Steam up and ready",
+    "Idling by the brass",
+    "Awaiting your next instruction",
+    "Wound up and ready to go"
+  ]
+}
