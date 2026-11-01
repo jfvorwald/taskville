@@ -180,7 +180,23 @@ const FRONT_BAND = 0.5;
  */
 export function validateAccents(layout: CityLayout, accents: readonly ThemeAccent[]): string[] {
   const problems: string[] = [];
+  const knownAreas: ReadonlySet<string> = new Set(layout.areas.map((a) => a.id));
+  const seen = new Set<string>();
   for (const accent of accents) {
+    if (seen.has(accent.id)) problems.push(`duplicate accent id ${accent.id}`);
+    seen.add(accent.id);
+    for (const key of ["x", "y", "z", "sx", "sy", "sz"] as const) {
+      if (!Number.isFinite(accent[key]))
+        problems.push(`accent ${accent.id} has a non-finite ${key}`);
+    }
+    for (const key of ["sx", "sy", "sz"] as const) {
+      if (accent[key] <= 0) problems.push(`accent ${accent.id} has a non-positive ${key}`);
+    }
+    if (accent.areas !== "all") {
+      for (const id of accent.areas) {
+        if (!knownAreas.has(id)) problems.push(`accent ${accent.id} targets unknown area ${id}`);
+      }
+    }
     const targets =
       accent.areas === "all"
         ? layout.areas

@@ -34,7 +34,11 @@ export function ThemedCity({ controller = themeController }: { controller?: Them
   );
   const background = tintHex(tokens["--tv-scene-bg"], theme.history.tint, amount);
   useEffect(() => {
+    const previous = scene.background;
     scene.background = new Color(background);
+    return () => {
+      scene.background = previous;
+    };
   }, [scene, background]);
 
   return (

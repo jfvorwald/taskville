@@ -63,7 +63,9 @@ export function createThemeController(options: ThemeControllerOptions): ThemeCon
   const refresh = (patch: Partial<Pick<ThemeState, "themeId" | "mode" | "history">>) => {
     const next = { ...store.getState(), ...patch };
     const def = byId.get(next.themeId) ?? first;
-    store.setState({ ...next, tokens: resolveTokens(def, next.mode) });
+    const current = store.getState();
+    const unchanged = next.themeId === current.themeId && next.mode === current.mode;
+    store.setState({ ...next, tokens: unchanged ? current.tokens : resolveTokens(def, next.mode) });
   };
 
   return {

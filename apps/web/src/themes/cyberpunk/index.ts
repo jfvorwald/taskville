@@ -47,6 +47,7 @@ const night: Partial<ThemeTokens> = {
   "--tv-city-window-glow": "#fff2c8",
 };
 
+// Duplicates ROOF_THICKNESS in buildings/parts.ts; it must change with it.
 const ROOF_THICKNESS = 0.25;
 
 /** Neon trims: a strip on each front corner and a thin line along the front roof edge. */
