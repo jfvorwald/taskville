@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import type { Group, Mesh } from "three";
+import { useAttentionMarks } from "../attention/useAttentionMarks.ts";
 import { agentColors } from "./identity.ts";
 import { LabelSprite } from "./LabelSprite.tsx";
 import { agentLabel } from "./label.ts";
@@ -47,6 +48,8 @@ export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: 
   // frame loop reads the latest props through a ref instead of re-subscribing.
   const latest = useRef(agent);
   latest.current = agent;
+
+  useAttentionMarks(root, latest, reducedMotion);
 
   useFrame((state, delta) => {
     const g = root.current;
