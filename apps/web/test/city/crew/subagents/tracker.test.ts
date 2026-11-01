@@ -60,6 +60,20 @@ describe("crew families", () => {
   });
 });
 
+describe("crew tracker and subagents with a missing parent", () => {
+  it("draws no crew bot for a subagent whose parent is not in the store (it stays a block agent)", () => {
+    // `buildModels` keeps the block view of such a subagent, so the crew layer must not draw it
+    // a second time. A subagent whose parent is present is still drawn.
+    const tracker = createCrewTracker();
+    const families = tracker.sync(
+      [agent("lead", { kind: "lead" }), sub("kid", "lead"), sub("lost", "nobody")],
+      0,
+    );
+    expect(memberIds(families)).toEqual(["kid"]);
+    expect(families.map((f) => f.parentId)).not.toContain("nobody");
+  });
+});
+
 describe("crew tracker retention", () => {
   it("keeps a finished subagent through its walk home and fade", () => {
     const tracker = createCrewTracker();
