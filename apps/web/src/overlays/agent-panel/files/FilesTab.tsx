@@ -18,7 +18,11 @@ interface RecordedCall {
   paths: Set<string>;
 }
 
-const isEdit = (call: ToolCallFrame) => call.toolName === "Edit" || call.toolName === "Write";
+export const isEdit = (call: ToolCallFrame) =>
+  call.toolName === "Edit" ||
+  call.toolName === "Write" ||
+  call.toolName === "MultiEdit" ||
+  call.toolName === "NotebookEdit";
 
 /** Fold updates without letting a completion or redelivery change a call's recorded order. */
 function filesFor(agentId: string, frames: FilesTabProps["frames"]) {

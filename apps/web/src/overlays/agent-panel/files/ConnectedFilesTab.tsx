@@ -5,7 +5,7 @@ import { useCurrentProjectId } from "../../../data/project.ts";
 import { readSseFrames } from "../../../data/sse.ts";
 import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
-import { FilesTab, type FilesTabProps } from "./FilesTab.tsx";
+import { FilesTab, type FilesTabProps, isEdit } from "./FilesTab.tsx";
 
 /** Only the default Files slot owns transport; injected tabs remain controlled. */
 export function ConnectedFilesTab({ agentId }: { agentId: string }) {
@@ -81,7 +81,7 @@ function SelectedFiles({
       }
       if (path === null) return;
       for (const call of calls) {
-        if (call.toolName !== "Edit" && call.toolName !== "Write") continue;
+        if (!isEdit(call)) continue;
         readEvidence(call);
       }
       drain();
