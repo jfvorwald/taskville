@@ -1,4 +1,5 @@
 import { ThemedCity } from "../themes/core/index.ts";
+import { useReducedMotion } from "../wiring/index.ts";
 import { InteractionLayer } from "./interaction/index.ts";
 import { DayNightLighting } from "./lighting/index.ts";
 import { CityAgents } from "./movement/index.ts";
@@ -9,11 +10,12 @@ import { CityAgents } from "./movement/index.ts";
  * on purpose: it owns the lights and the sky, and its background write must run second.
  */
 export function CityRoot() {
+  const reducedMotion = useReducedMotion();
   return (
     <>
       <ThemedCity />
       <DayNightLighting />
-      <CityAgents />
+      <CityAgents reducedMotion={reducedMotion} />
       <InteractionLayer />
     </>
   );

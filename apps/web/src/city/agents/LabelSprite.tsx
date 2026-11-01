@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CanvasTexture, SpriteMaterial, SRGBColorSpace } from "three";
-import { readCssToken } from "../../themes/index.ts";
+import { themeController } from "../../themes/index.ts";
+import { type LabelTokens, readLabelTokens, watchLabelTokens } from "../../wiring/labelTokens.ts";
 import type { AgentLabel } from "./label.ts";
 
 // The local fallback label until the world-labels slot (M3.03) takes over. Drawn as text onto a
@@ -30,20 +31,20 @@ function createGpu(): LabelGpu {
   return { canvas, texture, material };
 }
 
-function draw(gpu: LabelGpu, label: AgentLabel): void {
+function draw(gpu: LabelGpu, label: AgentLabel, tokens: LabelTokens): void {
   const ctx = gpu.canvas.getContext("2d");
   if (ctx === null) return;
-  const font = readCssToken("--tv-font", "system-ui, sans-serif");
+  const { font } = tokens;
   ctx.clearRect(0, 0, W, H);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 4;
   ctx.font = `600 24px ${font}`;
-  ctx.fillStyle = readCssToken("--tv-text", "#d7dce5");
+  ctx.fillStyle = tokens.text;
   ctx.fillText(label.name, W / 2, H * 0.32, W - 8);
   ctx.font = `20px ${font}`;
-  ctx.fillStyle = readCssToken("--tv-text-muted", "#8b94a5");
+  ctx.fillStyle = tokens.muted;
   ctx.fillText(label.status, W / 2, H * 0.74, W - 8);
   gpu.texture.needsUpdate = true;
 }
@@ -58,9 +59,21 @@ export interface LabelSpriteProps {
 
 export function LabelSprite({ label, y, inverseScale }: LabelSpriteProps) {
   const [gpu] = useState(createGpu);
+  const [tokens, setTokens] = useState(readLabelTokens);
+  useEffect(
+    () =>
+      watchLabelTokens(themeController, (next) =>
+        setTokens((prev) =>
+          prev.font === next.font && prev.text === next.text && prev.muted === next.muted
+            ? prev
+            : next,
+        ),
+      ),
+    [],
+  );
   useEffect(() => {
-    draw(gpu, label);
-  }, [gpu, label.name, label.status, label]);
+    draw(gpu, label, tokens);
+  }, [gpu, label.name, label.status, label, tokens]);
   useEffect(
     () => () => {
       gpu.texture.dispose();
