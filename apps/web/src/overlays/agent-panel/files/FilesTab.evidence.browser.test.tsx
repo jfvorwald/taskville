@@ -54,8 +54,9 @@ function seed(store: DataStore, project = "spike") {
     ),
   });
 }
-function props(selectedId: string): OverlayProps {
+function props(selectedId: string): OverlayProps & { initialTab: "files" } {
   return {
+    initialTab: "files",
     mode: "live",
     selectors: {
       counts: { subscribe: () => () => {}, getSnapshot: () => ({ active: 0, needsYou: 0 }) },
