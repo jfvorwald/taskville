@@ -7,6 +7,7 @@ import { type DataStore, dataStore } from "../../../data/store.ts";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
+import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
 import styles from "./agent-panel.module.css";
 import { currentFile, elapsedMs, formatElapsed } from "./facts.ts";
 import { familyPath, stepFamily } from "./family.ts";
@@ -30,7 +31,9 @@ const KIND_LABEL: Record<Agent["kind"], string> = {
 export interface AgentPanelProps extends OverlayProps {
   /** Defaults to the app-wide store; tests pass their own. */
   store?: DataStore;
-  /** Overrides the selected tab content. Files uses the paired feed by default. */
+  /** Initial view when the panel mounts; selection changes retain the chosen view. */
+  initialTab?: PanelTab;
+  /** Overrides the selected tab content. Live and Files use paired feeds by default. */
   renderTab?: (tab: PanelTab, agentId: string) => ReactNode;
 }
 
@@ -64,11 +67,17 @@ function isFree(event: KeyboardEvent): boolean {
  * tickets fill. It shows nothing unless the selection is an agent the store knows. In history mode
  * it is read-only: the only thing it changes is the selection.
  */
-export function AgentPanel({ mode, selection, store = dataStore, renderTab }: AgentPanelProps) {
+export function AgentPanel({
+  mode,
+  selection,
+  store = dataStore,
+  initialTab = "live",
+  renderTab,
+}: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
   const [nowMs, setNowMs] = useState(() => store.now());
-  const [chosen, setChosen] = useState<PanelTab>("live");
+  const [chosen, setChosen] = useState<PanelTab>(initialTab);
 
   useEffect(() => {
     setNowMs(store.now());
@@ -192,6 +201,10 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
         >
           {renderTab !== undefined ? (
             renderTab(active, agent.id)
+          ) : active === "live" && mode === "live" ? (
+            <ConnectedLiveTab agentId={agent.id} store={store} select={select} />
+          ) : active === "live" ? (
+            <p>Live cards are not available for this history view.</p>
           ) : active === "files" && mode === "live" ? (
             <ConnectedFilesTab agentId={agent.id} />
           ) : active === "files" ? (

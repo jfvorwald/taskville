@@ -14,6 +14,8 @@
   "dependencies": {
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.2",
+    "@tanstack/react-virtual": "3.14.24",
+    "diff": "9.0.0",
     "react": "19.3.1",
     "react-aria-components": "1.22.1",
     "react-dom": "19.3.1",
