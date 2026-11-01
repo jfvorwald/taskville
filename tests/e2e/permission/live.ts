@@ -164,10 +164,16 @@ async function openCity(engine: PermissionEngine): Promise<{ page: Page; close()
     headless: true,
     args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
   });
-  const page = await (await browser.newContext({ baseURL: engine.url })).newPage();
-  await page.goto(`/#pair=${engine.pairingCode}`);
-  await page.getByTestId("scene-root").waitFor({ timeout: 20_000 });
-  return { page, close: () => browser.close() };
+  // Once Chromium runs, a failure below must not leave it behind: the caller never gets a handle.
+  try {
+    const page = await (await browser.newContext({ baseURL: engine.url })).newPage();
+    await page.goto(`/#pair=${engine.pairingCode}`);
+    await page.getByTestId("scene-root").waitFor({ timeout: 20_000 });
+    return { page, close: () => browser.close() };
+  } catch (error) {
+    await browser.close().catch(() => {});
+    throw error;
+  }
 }
 
 /** Waits for the red agent of the live session, selects it, and returns the open card. */
