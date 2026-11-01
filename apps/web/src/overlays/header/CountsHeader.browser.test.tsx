@@ -91,6 +91,24 @@ afterEach(() => {
 });
 
 describe("CountsHeader needs-you count from the global feed", () => {
+  it("keeps historical counts recorded while the live global feed changes, then resumes live totals", async () => {
+    const c = counts({ active: 2, needsYou: 1 });
+    attentionStore.setState({
+      feed: { beta: projectOf("beta", "Beta", ["b", "c", "d"]) },
+      ready: true,
+    });
+    const screen = await render(<CountsHeader {...props(c.selector)} mode="history" />);
+    await expect.element(page.getByText("2 active · 1 needs you")).toBeVisible();
+    attentionStore.setState({
+      feed: { beta: projectOf("beta", "Beta", ["b", "c"]) },
+    });
+    await expect.element(page.getByText("2 active · 1 needs you")).toBeVisible();
+    c.set({ active: 1, needsYou: 0 });
+    await expect.element(page.getByText("1 active · 0 need you")).toBeVisible();
+    await screen.rerender(<CountsHeader {...props(c.selector)} mode="live" />);
+    await expect.element(page.getByText("1 active · 2 need you")).toBeVisible();
+  });
+
   it("sums needs-you across projects once the feed is ready, not this project's own count", async () => {
     const c = counts({ active: 3, needsYou: 1 });
     attentionStore.setState({

@@ -51,6 +51,16 @@ export type ActionCardProps = OverlayProps & {
   store?: DataStore;
   /** The fetch used for engine calls. Default: the global fetch. */
   fetch?: Fetch;
+  /**
+   * The request the recording shows, consulted only in history mode: `undefined` keeps the live
+   * path, `null` shows no card, a target shows that request read-only.
+   */
+  recordedTarget?: CardTarget | null | undefined;
+  /**
+   * The live target when the caller keeps it (so it survives a recording being shown). Default:
+   * the card reads and keeps its own from `store`.
+   */
+  liveTarget?: CardTarget | null | undefined;
 };
 
 type Fetch = typeof fetch;
@@ -165,13 +175,19 @@ export function ActionCard({
   selection,
   store = dataStore,
   fetch = defaultFetch,
+  recordedTarget,
+  liveTarget,
 }: ActionCardProps) {
   const secret = useSession();
-  const target = useCardTarget(store, selection.selectedId);
+  // A recorded card never feeds the live kept target, and a live one never shows in its place.
+  const recorded = mode === "history" && recordedTarget !== undefined;
+  const kept = liveTarget !== undefined;
+  const own = useCardTarget(store, recorded || kept ? null : selection.selectedId);
+  const target = recorded ? recordedTarget : kept ? liveTarget : own;
   if (target === null) return null;
   return (
     <CardBody
-      key={`${target.agentId}:${target.requestId}`}
+      key={`${mode}:${storeId(store)}:${target.agentId}:${target.requestId}`}
       target={target}
       mode={mode}
       store={store}
@@ -179,6 +195,45 @@ export function ActionCard({
       secret={secret}
     />
   );
+}
+
+let nextStoreId = 0;
+const storeIds = new WeakMap<DataStore, number>();
+
+/** A store's identity as a key part, so a card read from another store starts afresh. */
+function storeId(store: DataStore): number {
+  let id = storeIds.get(store);
+  if (id === undefined) {
+    id = nextStoreId;
+    nextStoreId += 1;
+    storeIds.set(store, id);
+  }
+  return id;
+}
+
+/** What a live card has done for one request: it outlives the card when a recording replaces it. */
+interface LiveDraft {
+  sent: boolean;
+  note: string;
+  retry: { signature: string; key: string } | null;
+}
+
+const drafts = new WeakMap<DataStore, Map<string, LiveDraft>>();
+
+function liveDraft(store: DataStore, projectId: string | null, requestId: string): LiveDraft {
+  let byRequest = drafts.get(store);
+  if (byRequest === undefined) {
+    byRequest = new Map();
+    drafts.set(store, byRequest);
+  }
+  // A reset of the store (another project, a fresh sync) starts every request over.
+  const key = `${store.getState().resetGeneration}:${projectId ?? ""}:${requestId}`;
+  let draft = byRequest.get(key);
+  if (draft === undefined) {
+    draft = { sent: false, note: "", retry: null };
+    byRequest.set(key, draft);
+  }
+  return draft;
 }
 
 function CardBody({
@@ -207,12 +262,17 @@ function CardBody({
   const wantsInput = !readOnly && target.answerable && projectId !== null;
 
   const [load, setLoad] = useState<Load>({ kind: wantsInput ? "loading" : "idle" });
-  const [sent, setSent] = useState(false);
+  // A recorded card never reads or writes this: only the live card has sent anything.
+  const draft = useMemo(
+    () => (readOnly ? null : liveDraft(store, projectId, requestId)),
+    [readOnly, store, projectId, requestId],
+  );
+  const [sent, setSent] = useState(draft?.sent ?? false);
   const [forced, setForced] = useState<"closed" | null>(null);
   const [notHeld, setNotHeld] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(draft?.note ?? "");
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
   const [settled, setSettled] = useState(false);
   const [scroll, setScroll] = useState({ overflow: false, atEnd: true });
@@ -220,7 +280,7 @@ function CardBody({
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const commandTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const retry = useRef<{ signature: string; key: string } | null>(null);
+  const retry = useRef<{ signature: string; key: string } | null>(draft?.retry ?? null);
   const boxRef = useRef<HTMLPreElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const focusAfterReveal = useRef<number | null>(null);
@@ -353,6 +413,7 @@ function CardBody({
   const submit = async (
     make: (idempotencyKey: string) => CommandBody,
     done: (command: CommandRecord) => Promise<void> | void,
+    decision = false,
   ) => {
     if (inFlight.current || state !== "open") return;
     inFlight.current = true;
@@ -370,6 +431,17 @@ function CardBody({
     const result = await sendCommand({ fetch, secret, body: make(key), signal: controller.signal });
     clearTimeout(commandTimer.current);
     inFlight.current = false;
+    const code = result.ok ? null : timedOut ? "timeout" : result.code;
+    // The first command may still be running (or have run), so its retry must stay a replay.
+    const unreadableSuccess =
+      !result.ok && code === "unknown" && result.status >= 200 && result.status < 300;
+    const unresolved =
+      code === "network" || code === "timeout" || code === "command_in_flight" || unreadableSuccess;
+    // What the engine answered is kept even when a recording has replaced this card meanwhile.
+    if (draft) {
+      draft.retry = result.ok || !unresolved ? null : { signature, key };
+      if (result.ok && decision && result.command.status === "delivered") draft.sent = true;
+    }
     if (!mounted.current) return;
     setBusy(false);
     if (result.ok) {
@@ -377,13 +449,8 @@ function CardBody({
       await done(result.command);
       return;
     }
-    const code = timedOut ? "timeout" : result.code;
-    // The first command may still be running (or have run), so its retry must stay a replay.
-    const unreadableSuccess = code === "unknown" && result.status >= 200 && result.status < 300;
-    const unresolved =
-      code === "network" || code === "timeout" || code === "command_in_flight" || unreadableSuccess;
     retry.current = unresolved ? { signature, key } : null;
-    fail(code);
+    fail(timedOut ? "timeout" : result.code);
   };
 
   const decide = (behavior: "allow" | "deny") => {
@@ -395,6 +462,7 @@ function CardBody({
         if (status === "delivered") setSent(true);
         else setNotice({ kind: "error", text: commandErrorMessage("unknown") });
       },
+      true,
     );
   };
 
@@ -447,6 +515,11 @@ function CardBody({
       data-readonly={readOnly ? "true" : undefined}
     >
       <h2 className={styles.title}>{visibleControls(target.agentName)}</h2>
+      {target.heuristic === true && (
+        <p className={styles.hint}>
+          Possibly needs you: the source guessed which agent this request belongs to.
+        </p>
+      )}
       <dl className={styles.facts}>
         <dt>Project</dt>
         <dd>{projectId === null ? null : visibleControls(projectId)}</dd>
@@ -476,9 +549,12 @@ function CardBody({
       </p>
 
       {readOnly ? (
-        <InputBox boxRef={boxRef}>
-          {visibleControls(target.inputPreview ?? "No input recorded.")}
-        </InputBox>
+        <>
+          <p className={styles.hint}>Recorded preview</p>
+          <InputBox boxRef={boxRef}>
+            {visibleControls(target.inputPreview ?? "No input recorded.")}
+          </InputBox>
+        </>
       ) : variant === "open-only" ? (
         <p className={styles.reason}>
           {state === "open" && (notHeld || load.kind === "expired")
@@ -519,7 +595,10 @@ function CardBody({
             maxLength={NOTE_MAX_CHARS}
             value={note}
             disabled={locked}
-            onChange={(event) => setNote(event.target.value)}
+            onChange={(event) => {
+              if (draft) draft.note = event.target.value;
+              setNote(event.target.value);
+            }}
           />
         </>
       )}

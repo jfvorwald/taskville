@@ -20,6 +20,90 @@ Entry format:
 
 ## Entries
 
+### L-195: Under a heavily loaded machine, browser suites flake in bulk
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #75 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** The M4 wave run had 10 browser failures across 8 files; every file passed alone. Engine memory, watcher and state tests also timed out at 5 s twice each during ticket checks.
+- **Lesson:** Run the wave suite when workers are idle; a third timeout of the same test gets a fix or quarantine ticket.
+- **Action:** Recorded in the M4 retro.
+
+### L-194: A merge policy rule is not a blocker when the owner has named the path
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #295 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** While Claude was rate limited, a Codex session treated ruleset 26292102 as a blocker and held 10 ready PRs; the owner's standing order is to merge with gh pr merge --admin through that ruleset's admin bypass.
+- **Lesson:** Check the owner's standing orders (memory) before opening a decision ticket about merging.
+- **Action:** Resolved on #295; 10 PRs merged at 15:05 EST.
+
+### L-193: biome format rewrites \u escapes into invisible literal characters
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #309 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** Formatting test files with \u escapes for invisible characters turned them into literal characters; another hand edit then broke line length and CI.
+- **Lesson:** Run biome format, then restore escapes, then run biome check on the file before committing.
+- **Action:** Awareness; seen in M4.07 and M4.17.
+
+### L-192: CI's pnpm minimumReleaseAge rejects same-day dependency releases
+- **Date:** 2026-11-01 · **Milestone:** M5 · **Ticket:** #64 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** @tanstack/react-virtual 3.14.25 (published the same day) failed --frozen-lockfile in CI.
+- **Lesson:** Pin to a release older than the policy window; never add exclusions to pass CI.
+- **Action:** Pinned 3.14.24 in M5.06.
+
+### L-191: A live permission e2e writes user config through the folder-trust dialog
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #289 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** An interactive claude session in a new folder writes a trust entry into ~/.claude.json.
+- **Lesson:** Treat live Claude Code e2e runs as user-config changes; build a replay e2e first.
+- **Action:** Decision #289; replay e2e merged in #308.
+
+### L-190: Two failed fix rounds on the same timing bug means the debugger, not a third guess
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #55 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** M4.09's cue-versus-suspend bug survived two implementer rounds; the Opus debugger replaced two park paths with one deadline in one round.
+- **Lesson:** Hand timing and virtualization bugs to the debugger after the second failed round.
+- **Action:** Applied in M4.09 and M5.06.
+
+### L-189: roborev keeps finding new valid issues each round; stop with pins, not more rounds
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #52 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** M4.03 saw new findings on 7 panel rounds; M4.09 and M5.06 behaved the same.
+- **Lesson:** After one review and one confirm round, defer remaining non-critical findings to follow-up tickets with a red-test contract.
+- **Action:** Follow-ups #285, #286, #293, #313, #314, #311, #312.
+
+### L-188: Rebuttals that contradict the architecture's literal text go to the lead
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #52 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** An implementer's rebuttal on M4.03 (session.open needs only a recorded request) survived one roborev round and returned as high.
+- **Lesson:** Implementers escalate disputes with ARCHITECTURE.md to the CTO instead of answering them with roborev respond.
+- **Action:** Applied from M4.03 on.
+
+### L-187: Copy-paste text is an execution surface
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #309 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** The action card's Open session copy-only text carried a recorded cwd into a terminal paste; a cwd with ';' ran a second command.
+- **Lesson:** Single-quote every value in text meant for a shell paste; keep display marking and copy stripping as separate character sets.
+- **Action:** Fixed in M4.17 (#310).
+
+### L-186: Re-surface owner decisions deferred 'until M4' when M4 lands
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #198 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** M4.11's cross-ticket review found that #198's latent same-user session path became live once browser sessions got the command scope; per-ticket reviews had not flagged it.
+- **Lesson:** At a milestone's security review, list every open decision whose default was 'safe until this milestone' and re-ask.
+- **Action:** Flagged at the top of the G4 summary; note on #198.
+
+### L-185: The orchestrator can perturb local-port tests
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #272 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** The shim test flake was T3 Code probing every new local listening port with GET / about every 3 s; the stand-in servers counted those probes.
+- **Lesson:** Count only the client under test (e.g. curl requests) in local-port harnesses.
+- **Action:** Fixed in M4.12 (#276).
+
+### L-184: T3 delegate_task children do not load the owner's agent definitions
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #231 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** The first M4 workers ran through T3 delegate_task; they had no role definitions or hooks. The owner asked to fix it.
+- **Lesson:** Use the native Agent tool with subagent_type and worktree isolation; verify a hook (e.g. protect-tests) is active.
+- **Action:** Switched on 2026-11-01; recorded in the run B record.
+
+### L-183: Every roborev fix made in a green phase needs a test-writer pin afterwards
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #62 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** Implementers cannot write tests (protect-tests hook), so roborev fixes landed untested on almost every M4 to M6 ticket; reviews then blocked on them, and several pins found real bugs (e.g. M6.03's lost 'Sent, unconfirmed').
+- **Lesson:** Budget a pin round after every green phase that fixed findings; list 'untested fix commits' in each report.
+- **Action:** Applied as standard practice from M4.08 on.
+
+### L-182: A ticket's fake adapter can hide the shipped default's semantics
+- **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #49 · **Recorded by:** lead (CTO session, M4.RT)
+- **What happened:** M4.08's red tests injected a fake execFile, so the real default (await exit vs launch) was never exercised; the code review caught it after the implementer rebutted roborev with 'the tests pin it'.
+- **Lesson:** Pin real adapters against harmless real programs, not only fakes.
+- **Action:** Pinned in M4.08 (#273).
+
 ### L-181: A brew upgrade of claude-code deletes the binary path that teammate spawns use
 - **Date:** 2026-10-31 · **Milestone:** M3 · **Ticket:** none · **Recorded by:** lead (CTO session)
 - **What happened:** After a brew upgrade, four M3 workers died at launch (status 127) while the Agent tool reported success.
