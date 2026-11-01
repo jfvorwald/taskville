@@ -24,8 +24,10 @@ const MAX_OPACITY = 0.95;
 
 const HUES: Record<PulseHue, string> = { red: "#e5484d", amber: "#f5a524" };
 
-const ringMaterials = new Map<string, MeshBasicMaterial>();
-const rimMaterials = new Map<string, MeshBasicMaterial>();
+// Indexed by hue and then step, so a frame looks a material up without building a key.
+type Pool = Record<PulseHue, (MeshBasicMaterial | undefined)[]>;
+const ringMaterials: Pool = { red: [], amber: [] };
+const rimMaterials: Pool = { red: [], amber: [] };
 let ring: BufferGeometry | undefined;
 
 /** The step (0..PULSE_STEPS) for an intensity in 0..1. */
@@ -34,13 +36,13 @@ export function pulseStep(intensity: number): number {
 }
 
 function pooled(
-  pool: Map<string, MeshBasicMaterial>,
+  pool: Pool,
   hue: PulseHue,
   step: number,
   side: typeof BackSide | typeof DoubleSide,
 ): MeshBasicMaterial {
-  const key = `${hue}:${step}`;
-  let m = pool.get(key);
+  const steps = pool[hue];
+  let m = steps[step];
   if (m === undefined) {
     m = new MeshBasicMaterial({
       color: HUES[hue],
@@ -49,7 +51,7 @@ function pooled(
       opacity: MIN_OPACITY + (MAX_OPACITY - MIN_OPACITY) * (step / PULSE_STEPS),
       depthWrite: false,
     });
-    pool.set(key, m);
+    steps[step] = m;
   }
   return m;
 }
@@ -123,8 +125,10 @@ export function emoteMaterial(emote: Emote): SpriteMaterial {
 /** Drops every pooled resource. For tests and a full scene teardown. */
 export function disposeAttentionResources(): void {
   for (const pool of [ringMaterials, rimMaterials]) {
-    for (const m of pool.values()) m.dispose();
-    pool.clear();
+    for (const hue of ["red", "amber"] as const) {
+      for (const m of pool[hue]) m?.dispose();
+      pool[hue].length = 0;
+    }
   }
   for (const m of emoteMaterials.values()) {
     m.map?.dispose();

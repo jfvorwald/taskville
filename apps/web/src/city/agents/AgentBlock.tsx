@@ -18,6 +18,8 @@ export interface AgentBlockProps {
   reducedMotion?: boolean;
   /** Draw the name and status as a local sprite label. False when the world-labels slot draws them. */
   localLabel?: boolean;
+  /** The clock the attention marks pulse on; the data store's `now`. Default `Date.now`. */
+  now?: () => number;
 }
 
 const STEP_EPSILON = 1e-4;
@@ -26,7 +28,12 @@ const STEP_EPSILON = 1e-4;
  * One block humanoid, built from pooled geometry. The position comes from `agent.placement`
  * (navigation owns it); the frame loop only writes transforms and flips prop visibility.
  */
-export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: AgentBlockProps) {
+export function AgentBlock({
+  agent,
+  reducedMotion = false,
+  localLabel = true,
+  now,
+}: AgentBlockProps) {
   const geo = sharedGeometries();
   const colors = agentColors(agent);
   const body = colorMaterial(colors.body);
@@ -49,7 +56,7 @@ export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: 
   const latest = useRef(agent);
   latest.current = agent;
 
-  useAttentionMarks(root, latest, reducedMotion);
+  useAttentionMarks(root, latest, reducedMotion, now);
 
   useFrame((state, delta) => {
     const g = root.current;
