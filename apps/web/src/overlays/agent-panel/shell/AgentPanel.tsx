@@ -40,7 +40,10 @@ function activityText(activity: string): string {
 }
 
 function nameOf(agent: Agent): string {
-  return agent.displayName ?? Array.from(agent.id).slice(0, ID_SHORT).join("");
+  const name = agent.displayName;
+  return name !== undefined && name.trim() !== ""
+    ? name
+    : Array.from(agent.id).slice(0, ID_SHORT).join("");
 }
 
 /**
@@ -74,6 +77,7 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
 
   const byId = state?.agents;
   const agents = useMemo(() => Object.values(byId ?? {}), [byId]);
+  const teams = state?.teams;
   const selectedId = selection.selectedId;
   const agent =
     selectedId === null || byId === undefined || !Object.hasOwn(byId, selectedId)
@@ -90,12 +94,14 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
         return;
       }
       if ((event.key !== "[" && event.key !== "]") || !isFree(event)) return;
-      const next = stepFamily(selectedId, agents, event.key === "]" ? 1 : -1);
+      // Browser and system shortcuts (Cmd+[ is back) and a held key are not a request to step.
+      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      const next = stepFamily(selectedId, agents, event.key === "]" ? 1 : -1, teams);
       if (next !== null) select(next);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [known, selectedId, agents, select]);
+  }, [known, selectedId, agents, teams, select]);
 
   if (agent === undefined || state === null) return null;
 
@@ -112,8 +118,8 @@ export function AgentPanel({ mode, selection, store = dataStore, renderTab }: Ag
       : activityText(recorded?.activity ?? "unknown");
   const elapsed = elapsedMs(agent, nowMs);
   const file = currentFile(agent.id, state.toolCalls);
-  const crumbs = familyPath(agent.id, agents);
-  const tabs = visibleTabs(agent.id, agents);
+  const crumbs = familyPath(agent.id, agents, teams);
+  const tabs = visibleTabs(agent.id, agents, teams);
   const active = tabs.includes(chosen) ? chosen : "live";
 
   return (
