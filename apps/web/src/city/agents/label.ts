@@ -31,8 +31,18 @@ export function agentLabel(v: AgentView): AgentLabel {
 
 function labelName(v: AgentView): string {
   const cleaned = clean(v.displayName ?? "");
-  if (cleaned === "") return v.id.slice(0, ID_SHORT);
-  return cleaned.length > NAME_MAX ? `${cleaned.slice(0, NAME_MAX - 3)}...` : cleaned;
+  if (cleaned === "") return cutUnits(v.id, ID_SHORT);
+  return cleaned.length > NAME_MAX ? `${cutUnits(cleaned, NAME_MAX - 3)}...` : cleaned;
+}
+
+/** The longest prefix of at most `max` UTF-16 code units that never splits a surrogate pair. */
+function cutUnits(text: string, max: number): string {
+  let out = "";
+  for (const ch of Array.from(text)) {
+    if (out.length + ch.length > max) break;
+    out += ch;
+  }
+  return out;
 }
 
 function labelStatus(v: AgentView): string {

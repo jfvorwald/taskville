@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { CanvasTexture, SpriteMaterial, SRGBColorSpace } from "three";
 import { readCssToken } from "../../themes/index.ts";
-import type { AgentLabel } from "./label.ts";
 
 // The local fallback label until the world-labels slot (M3.03) takes over. Drawn as text onto a
 // small canvas texture (never as markup), one texture and one material per agent, reused when the
@@ -30,7 +29,7 @@ function createGpu(): LabelGpu {
   return { canvas, texture, material };
 }
 
-function draw(gpu: LabelGpu, label: AgentLabel): void {
+function draw(gpu: LabelGpu, name: string, status: string): void {
   const ctx = gpu.canvas.getContext("2d");
   if (ctx === null) return;
   const font = readCssToken("--tv-font", "system-ui, sans-serif");
@@ -41,26 +40,27 @@ function draw(gpu: LabelGpu, label: AgentLabel): void {
   ctx.shadowBlur = 4;
   ctx.font = `600 24px ${font}`;
   ctx.fillStyle = readCssToken("--tv-text", "#d7dce5");
-  ctx.fillText(label.name, W / 2, H * 0.32, W - 8);
+  ctx.fillText(name, W / 2, H * 0.32, W - 8);
   ctx.font = `20px ${font}`;
   ctx.fillStyle = readCssToken("--tv-text-muted", "#8b94a5");
-  ctx.fillText(label.status, W / 2, H * 0.74, W - 8);
+  ctx.fillText(status, W / 2, H * 0.74, W - 8);
   gpu.texture.needsUpdate = true;
 }
 
 export interface LabelSpriteProps {
-  label: AgentLabel;
+  name: string;
+  status: string;
   /** Local height of the label origin above the feet. */
   y: number;
   /** Counter-scale so the label stays one size whatever the agent's size. */
   inverseScale: number;
 }
 
-export function LabelSprite({ label, y, inverseScale }: LabelSpriteProps) {
+export function LabelSprite({ name, status, y, inverseScale }: LabelSpriteProps) {
   const [gpu] = useState(createGpu);
   useEffect(() => {
-    draw(gpu, label);
-  }, [gpu, label.name, label.status, label]);
+    draw(gpu, name, status);
+  }, [gpu, name, status]);
   useEffect(
     () => () => {
       gpu.texture.dispose();

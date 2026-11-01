@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useRef } from "react";
 import { AgentBlock } from "./AgentBlock.tsx";
 import { buildLabelEntries } from "./labelEntries.ts";
 import type { AgentLabelEntry, AgentView } from "./types.ts";
@@ -15,11 +15,25 @@ export interface AgentsLayerProps {
 
 /** All block agents, mounted inside the scene's `<Canvas>`. */
 export function AgentsLayer({ agents, reducedMotion = false, onLabels }: AgentsLayerProps) {
-  const entries = useMemo(() => buildLabelEntries(agents), [agents]);
+  // A store update replaces every `AgentView`, usually with the same text. Keep the previous
+  // entries while the text is unchanged so the slot hears about real changes only.
+  const stable = useRef<readonly AgentLabelEntry[]>([]);
+  const next = buildLabelEntries(agents);
+  if (!sameText(stable.current, next)) stable.current = next;
+  const entries = stable.current;
+
+  // An inline callback is a new function each render, so it is held in a ref, not a dependency.
+  const notify = useRef(onLabels);
+  notify.current = onLabels;
   useEffect(() => {
-    onLabels?.(entries);
-    return () => onLabels?.([]);
-  }, [entries, onLabels]);
+    notify.current?.(entries);
+  }, [entries]);
+  useEffect(
+    () => () => {
+      notify.current?.([]);
+    },
+    [],
+  );
 
   return (
     <>
@@ -32,5 +46,21 @@ export function AgentsLayer({ agents, reducedMotion = false, onLabels }: AgentsL
         />
       ))}
     </>
+  );
+}
+
+function sameText(a: readonly AgentLabelEntry[], b: readonly AgentLabelEntry[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((e, i) => {
+      const o = b[i];
+      return (
+        o !== undefined &&
+        e.id === o.id &&
+        e.name === o.name &&
+        e.status === o.status &&
+        e.offsetY === o.offsetY
+      );
+    })
   );
 }

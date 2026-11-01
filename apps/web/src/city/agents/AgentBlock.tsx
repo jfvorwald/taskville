@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import type { Group, Mesh } from "three";
 import { agentColors } from "./identity.ts";
 import { LabelSprite } from "./LabelSprite.tsx";
@@ -76,7 +76,8 @@ export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: 
     if (pages.current !== null) pages.current.visible = showProp && pz.prop === "pages";
   });
 
-  const label = useMemo(() => agentLabel(agent), [agent]);
+  // Strings, not the label object: the sprite redraws only when the text really changes.
+  const { name, status } = agentLabel(agent);
 
   return (
     <group ref={root} scale={scale} userData={{ agentId: agent.id }}>
@@ -109,7 +110,9 @@ export function AgentBlock({ agent, reducedMotion = false, localLabel = true }: 
           position={[0, -0.36, 0.06]}
         />
       </group>
-      {localLabel && <LabelSprite label={label} y={LABEL_HEIGHT + 0.1} inverseScale={1 / scale} />}
+      {localLabel && (
+        <LabelSprite name={name} status={status} y={LABEL_HEIGHT + 0.1} inverseScale={1 / scale} />
+      )}
     </group>
   );
 }

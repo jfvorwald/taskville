@@ -41,6 +41,9 @@ export function agentColors(v: AgentView): AgentColors {
   return { body, trim: shift(body) };
 }
 
+const HUE_MIN = 55;
+const HUE_SPAN = 285;
+
 function fnv1a(text: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
@@ -53,7 +56,9 @@ function fnv1a(text: string): number {
 function colorFrom(text: string): string {
   const h = fnv1a(text);
   // Hue gets the high bits; saturation and lightness stay in a band that reads on every theme.
-  const hue = (h >>> 8) % 360;
+  // Red and amber mean "needs you" and "trouble" (ARCHITECTURE 2.2), so identity hues skip
+  // [345, 50] and keep a margin inside the band for rounding to hex.
+  const hue = HUE_MIN + ((h >>> 8) % HUE_SPAN);
   const sat = 55 + ((h >>> 4) & 0xf);
   const light = 48 + (h & 0xf) / 2;
   return hslToHex(hue, sat, light);
