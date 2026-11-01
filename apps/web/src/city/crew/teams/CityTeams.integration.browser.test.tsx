@@ -142,6 +142,42 @@ describe("team visuals mounted through CityRoot", () => {
     }
   }, 30_000);
 
+  it("keeps every recorded task reachable above ground in a sixteen-task Dispatch queue", async () => {
+    const s = await stage();
+    try {
+      const taskIds = [
+        TASK,
+        ...Array.from({ length: 15 }, (_, i) => `claude-code:task:integration:${i + 2}`),
+      ];
+      for (const id of taskIds.slice(1)) dataStore.getState().applyEvent(s.createTask(id));
+      const rows = () =>
+        s
+          .all()
+          .filter(
+            (o) => o.userData.teamId === TEAM && o.userData.taskId !== undefined && isDrawn(o),
+          );
+      // The current queue displays all rows. A bounded UI can traverse its controls here
+      // when introduced, retaining coverage that every recorded task can be reached.
+      await vi.waitFor(
+        () =>
+          expect(
+            rows()
+              .map((o) => o.userData.taskId)
+              .sort(),
+          ).toEqual([...taskIds].sort()),
+        WAIT,
+      );
+      for (const id of taskIds) {
+        const row = rows().find((o) => o.userData.taskId === id);
+        expect(row, `recorded task ${id} is reachable`).toBeDefined();
+        if (!row) continue;
+        expect(world(row).y, `recorded task ${id} is above ground`).toBeGreaterThan(0);
+      }
+    } finally {
+      await s.screen.unmount();
+    }
+  }, 30_000);
+
   it("updates Dispatch queue and teammate progress from the store's recorded task events", async () => {
     const s = await stage();
     try {

@@ -57,7 +57,16 @@ export function teamScenario() {
   return {
     state,
     claim: () => event("task.assigned", { agentIds: ["pip"] }, TASK),
-    work: () => event("activity.started", { activity: "testing" }),
+    work: (activity: "implementing" | "testing" = "testing") =>
+      event("activity.started", { activity }),
+    leadWork: (at = AT) => ({
+      ...event("activity.started", { activity: "researching" }),
+      agentId: "lead",
+      occurredAt: at,
+      receivedAt: at,
+    }),
+    endTeam: () => event("team.ended", { teamId: TEAM }),
+    createTask: (taskId: string) => event("task.created", { title: `Task ${taskId}` }, taskId),
     complete: () => event("task.status_changed", { status: "completed" }, TASK),
   };
 }
