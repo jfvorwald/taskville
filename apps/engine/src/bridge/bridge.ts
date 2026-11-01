@@ -20,6 +20,8 @@ export const DEFAULT_HOLD_WINDOW_MS = 90_000;
 /**
  * Requests the bridge remembers for matching a later PostToolUse (oldest forgotten first). A
  * forgotten request is never closed by a PostToolUse; it still expires at the next engine start.
+ * Forgetting one could hide that a later identical request is a duplicate, so a session that
+ * lost a request is never attributed a PostToolUse again (the ambiguity check stays safe).
  */
 export const MAX_TRACKED_REQUESTS = 1000;
 
@@ -138,6 +140,8 @@ export class PermissionBridge {
   readonly #schedule: (run: () => void, delayMs: number) => () => void;
   readonly #held = new Map<string, Held>();
   readonly #tracked = new Map<string, Tracked>();
+  /** Sessions with a forgotten request: their PostToolUse closes nothing. */
+  readonly #lossySessions = new Set<string>();
   #closed = false;
 
   constructor(options: PermissionBridgeOptions) {
@@ -259,6 +263,7 @@ export class PermissionBridge {
     const sessionId = idText(own(raw, "session_id"));
     const toolName = idText(own(raw, "tool_name"));
     if (sessionId === undefined || toolName === undefined) return;
+    if (this.#lossySessions.has(sessionId)) return;
     const key = correlationKey(
       sessionId,
       idText(own(raw, "prompt_id")),
@@ -324,8 +329,11 @@ export class PermissionBridge {
   #track(requestId: string, tracked: Tracked): void {
     this.#tracked.set(requestId, tracked);
     if (this.#tracked.size > MAX_TRACKED_REQUESTS) {
-      const [oldest] = this.#tracked.keys();
-      if (oldest !== undefined) this.#tracked.delete(oldest);
+      const [oldest] = this.#tracked;
+      if (oldest !== undefined) {
+        this.#tracked.delete(oldest[0]);
+        this.#lossySessions.add(oldest[1].sessionId);
+      }
     }
   }
 
