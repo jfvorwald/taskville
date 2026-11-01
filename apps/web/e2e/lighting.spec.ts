@@ -7,7 +7,7 @@ import { CODES_FILE } from "./codes.ts";
 
 test.use({ timezoneId: "UTC" });
 
-const codes = (): { paired: string } => JSON.parse(readFileSync(CODES_FILE, "utf8"));
+const codes = (): { lighting: string } => JSON.parse(readFileSync(CODES_FILE, "utf8"));
 
 const cases = [
   { name: "noon", at: "2026-10-31T12:00:00Z", mode: "day" },
@@ -18,7 +18,7 @@ const cases = [
 test("day, dusk and night lighting from the browser clock", async ({ page, browser }) => {
   // The pairing code is one-time: pair once, then reload at each time on the stored session.
   await page.clock.setFixedTime(new Date(cases[0].at));
-  await page.goto(`/#pair=${codes().paired}`);
+  await page.goto(`/#pair=${codes().lighting}`);
   for (const c of cases) {
     await page.clock.setFixedTime(new Date(c.at));
     await page.reload();
