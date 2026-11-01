@@ -687,8 +687,10 @@ describe("M5.06 spawn and message wording follows the recorded outcome", () => {
       await mount();
       await expect.element(cards(), { timeout: 800 }).toBeVisible();
       expect(cards().elements()).toHaveLength(1);
-      const text = cards().element().textContent ?? "";
       const labels = WORDING[tool];
+      // Metadata is published before its separately fetched evidence body.
+      await expect.element(cards()).toMatchTextContent(`${labels[outcome]} `);
+      const text = cards().element().textContent ?? "";
       expect(text).toContain(`${labels[outcome]} `);
       for (const [other, label] of Object.entries(labels))
         if (other !== outcome) expect(text, `must not read "${label}"`).not.toContain(label);

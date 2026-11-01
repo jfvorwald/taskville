@@ -27,6 +27,7 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import styles from "./live.module.css";
 
 export interface LiveTabProps {
@@ -34,7 +35,11 @@ export interface LiveTabProps {
   store: DataStore;
   select: (id: string | null) => void;
   calls: readonly ToolCallFrame[];
-  evidence: Readonly<Record<string, EvidenceResponse>>;
+  evidence:
+    | Readonly<Record<string, EvidenceResponse>>
+    | ((id: string) => EvidenceResponse | undefined);
+  /** Internal connected loader: only calls whose details are currently rendered. */
+  onVisibleCalls?: (calls: readonly ToolCallFrame[]) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
 }
@@ -206,7 +211,7 @@ const bodyOfCall = (
   evidence: LiveTabProps["evidence"],
 ) => {
   const ref = call.evidence?.[part];
-  return ref ? evidence[ref.id] : undefined;
+  return ref ? (typeof evidence === "function" ? evidence(ref.id) : evidence[ref.id]) : undefined;
 };
 const oneLine = (text: string) => text.split("\n", 1)[0].slice(0, 120);
 /** The pretty printed body of a deep value is large. It is computed once per body, not per render. */
@@ -423,6 +428,9 @@ function GroupCard({
   toggleExpanded,
   position,
   size,
+  detailPage,
+  detailPageSize,
+  onDetailPage,
 }: {
   kind: "read" | "search";
   calls: readonly ToolCallFrame[];
@@ -432,9 +440,13 @@ function GroupCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
+  detailPage: number;
+  detailPageSize: number;
+  onDetailPage: (id: string, page: number) => void;
 }) {
   const heading = useId();
   const list = useId();
+  const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
   return (
     <article
@@ -470,10 +482,30 @@ function GroupCard({
       >
         {kind === "read" ? "Expand paths" : "Expand patterns"}
       </Button>
+      {expanded && page.count > 1 ? (
+        <div>
+          <Button
+            aria-label={kind === "read" ? "Previous read details" : "Previous search details"}
+            isDisabled={page.index === 0}
+            onPress={() => onDetailPage(calls[0].toolCallId, page.index - 1)}
+          >
+            Previous
+          </Button>
+          <span role="status">{`Details page ${page.index + 1} of ${page.count}`}</span>
+          <Button
+            aria-label={kind === "read" ? "Next read details" : "Next search details"}
+            isDisabled={page.index + 1 === page.count}
+            onPress={() => onDetailPage(calls[0].toolCallId, page.index + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      ) : null}
       {expanded ? (
         <ul id={list}>
-          {calls.map((call) => {
+          {page.calls.map((call) => {
             const body = bodyOfCall(call, "input", evidence);
+            const output = bodyOfCall(call, "output", evidence);
             const input = object(bodyValue(body));
             const subject =
               kind === "read"
@@ -485,9 +517,7 @@ function GroupCard({
                 ? [
                     ...new Set([
                       ...call.filePaths,
-                      ...stringList(
-                        object(bodyValue(bodyOfCall(call, "output", evidence))).filenames,
-                      ),
+                      ...stringList(object(bodyValue(output)).filenames),
                     ]),
                   ]
                 : [];
@@ -496,6 +526,8 @@ function GroupCard({
                 {subject === undefined ? (
                   isGone(call.evidence?.input, body, evicted) ? (
                     EVICTED
+                  ) : call.evidence?.input?.status === "stored" ? (
+                    "details not loaded"
                   ) : (
                     "not reported"
                   )
@@ -504,6 +536,11 @@ function GroupCard({
                 ) : (
                   bounded(subject).text
                 )}
+                {kind === "search" && isGone(call.evidence?.output, output, evicted) ? (
+                  <span> {EVICTED}</span>
+                ) : kind === "search" && !output && call.evidence?.output?.status === "stored" ? (
+                  <span> details not loaded</span>
+                ) : null}
                 {call.phase === "succeeded" ? null : <span> ({safe(String(call.phase))})</span>}
                 {hits.map((path) => (
                   <span key={path}>
@@ -521,6 +558,12 @@ function GroupCard({
 }
 
 type Item = { key: string; kind: "call" | "read" | "search"; calls: readonly ToolCallFrame[] };
+
+function groupDetails(calls: readonly ToolCallFrame[], wanted: number, size: number) {
+  const count = Math.max(1, Math.ceil(calls.length / size));
+  const index = Math.max(0, Math.min(wanted, count - 1));
+  return { index, count, calls: calls.slice(index * size, (index + 1) * size) };
+}
 
 const RUNS = new Map<string, "read" | "search">([
   ["Read", "read"],
@@ -560,7 +603,15 @@ export function LiveTab(props: LiveTabProps) {
 
 const NONE: ReadonlySet<string> = new Set();
 
-function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: LiveTabProps) {
+function LiveFeed({
+  agentId,
+  store,
+  select,
+  calls,
+  evidence,
+  evicted = NONE,
+  onVisibleCalls,
+}: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<HTMLElement | null>(null);
@@ -570,6 +621,7 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
   // The offset the virtualizer last wrote, so its measurement corrections are not read as a reader.
   const written = useRef<number | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [detailPages, setDetailPages] = useState<ReadonlyMap<string, number>>(() => new Map());
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
   const items = useMemo(() => group(calls), [calls]);
   const focusNewest = useRef(false);
@@ -587,6 +639,44 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
     scrollMargin,
     useFlushSync: false,
   });
+  const virtualItems = virtualizer.getVirtualItems();
+  const singleCount = virtualItems.filter(({ index }) => items[index].kind === "call").length;
+  const expandedCount = virtualItems.filter(
+    ({ index }) => items[index].kind !== "call" && expanded.has(items[index].key),
+  ).length;
+  // Reserve both body parts per call and share the remaining budget across presented groups.
+  const detailPageSize = Math.max(
+    1,
+    Math.min(
+      32,
+      Math.floor(
+        (Math.floor(EVIDENCE_BODY_CAPACITY / 2) - singleCount) / Math.max(1, expandedCount),
+      ),
+    ),
+  );
+  // Report after commit, so even transient follow ranges are genuinely mounted. Collapsed
+  // groups show metadata only; their member details become requested when expanded.
+  useEffect(() => {
+    onVisibleCalls?.(
+      virtualItems.flatMap(({ index }) => {
+        const item = items[index];
+        if (item.kind === "call") return item.calls;
+        return expanded.has(item.key)
+          ? groupDetails(item.calls, detailPages.get(item.key) ?? 0, detailPageSize).calls
+          : [];
+      }),
+    );
+  });
+  const onDetailPage = useCallback((id: string, page: number) => {
+    setDetailPages((old) => new Map(old).set(id, page));
+  }, []);
+  useEffect(() => {
+    const keys = new Set(items.map((item) => item.key));
+    setDetailPages((old) => {
+      if ([...old.keys()].every((key) => keys.has(key))) return old;
+      return new Map([...old].filter(([key]) => keys.has(key)));
+    });
+  }, [items]);
   // The shell and controlled consumers already own scrolling. Include content before the list
   // in the virtualizer's coordinates rather than creating a second nested viewport.
   useLayoutEffect(() => {
@@ -752,8 +842,10 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
         {virtualizer.getVirtualItems().map((virtual) => {
           const item = items[virtual.index];
           const [call] = item.calls;
-          const inputBody = bodyOfCall(call, "input", evidence);
-          const outputBody = bodyOfCall(call, "output", evidence);
+          // GroupCard reads only its presented page. Unused gets would keep its first member hot.
+          const inputBody = item.kind === "call" ? bodyOfCall(call, "input", evidence) : undefined;
+          const outputBody =
+            item.kind === "call" ? bodyOfCall(call, "output", evidence) : undefined;
           const common = {
             expanded: expanded.has(item.key),
             toggleExpanded,
@@ -781,6 +873,9 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
                   {...{ evidence, evicted }}
                   kind={item.kind}
                   calls={item.calls}
+                  detailPage={detailPages.get(item.key) ?? 0}
+                  detailPageSize={detailPageSize}
+                  onDetailPage={onDetailPage}
                 />
               )}
             </div>
