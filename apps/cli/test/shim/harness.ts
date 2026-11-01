@@ -110,16 +110,31 @@ export interface Received {
 
 export type Mode = { kind: "status"; status: number } | { kind: "hang" };
 
-/** A stand-in engine on 127.0.0.1 that records every request. */
+/**
+ * True for a request made by curl, the shim's only HTTP client (it never sets
+ * its own User-Agent). Other local processes probe loopback listeners: an IDE
+ * such as T3 Code sends `GET /` with User-Agent `node` to every new 127.0.0.1
+ * port every few seconds (M4.12). Those probes are not the shim's traffic.
+ */
+function fromCurl(headers: IncomingHttpHeaders): boolean {
+  return headers["user-agent"]?.startsWith("curl/") ?? false;
+}
+
+/**
+ * A stand-in engine on 127.0.0.1. `received` records every request curl made,
+ * so it holds all the shim's traffic, whatever the method, path, or target;
+ * requests from other local processes go to `foreign` and are answered the same way.
+ */
 export async function startServer(initial: Mode = { kind: "status", status: 202 }) {
   const received: Received[] = [];
+  const foreign: Received[] = [];
   const hanging = new Set<() => void>();
   let mode = initial;
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
-      received.push({
+      (fromCurl(req.headers) ? received : foreign).push({
         method: req.method ?? "",
         url: req.url ?? "",
         headers: req.headers,
@@ -140,6 +155,7 @@ export async function startServer(initial: Mode = { kind: "status", status: 202 
     port,
     url: `http://127.0.0.1:${port}`,
     received,
+    foreign,
     setMode(next: Mode) {
       mode = next;
     },
