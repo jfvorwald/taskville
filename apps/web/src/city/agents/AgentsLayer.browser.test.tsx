@@ -3,7 +3,9 @@ import type { Mesh, Object3D, Scene, Sprite } from "three";
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import { emoteMaterial } from "../attention/resources.ts";
 import { AgentsLayer } from "./AgentsLayer.tsx";
+import { LABEL_HEIGHT } from "./labelEntries.ts";
 import type { AgentView } from "./types.ts";
 
 function agent(over: Partial<AgentView> & { id: string }, x: number): AgentView {
@@ -73,7 +75,8 @@ describe("AgentsLayer", () => {
       scene?.traverse((o) => {
         if (o.type === "Sprite") versions.push((o as Sprite).material.map?.version ?? 0);
       });
-      expect(versions).toHaveLength(5);
+      // Five local labels plus the one emote on the agent that needs the user.
+      expect(versions).toHaveLength(6);
       expect(versions.every((v) => v >= 1)).toBe(true);
     }, FRAME_WAIT);
     const groups: Object3D[] = [];
@@ -85,9 +88,45 @@ describe("AgentsLayer", () => {
       if (o.type === "Mesh") geometries.add((o as Mesh).geometry.uuid);
     });
     expect(groups.map((g) => g.userData.agentId)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
-    expect(sprites).toHaveLength(5);
-    // Five agents share one set of body geometries (plus the grid helper is not a Mesh).
-    expect(geometries.size).toBeLessThanOrEqual(9);
+    expect(sprites).toHaveLength(6);
+    // Only the agent with an attention record carries an emote, and it shows "!" (needs_you).
+    // The emote is the sprite marked as decoration (`isHull`); the other sprite is the label.
+    const emotesOf = (id: string): Sprite[] =>
+      (groups.find((g) => g.userData.agentId === id)?.children ?? []).filter(
+        (c): c is Sprite => c.type === "Sprite" && c.userData.isHull === true,
+      );
+    expect(emotesOf("a4")).toHaveLength(1);
+    expect(emotesOf("a4")[0]?.visible).toBe(true);
+    expect(emotesOf("a4")[0]?.material).toBe(emoteMaterial("!"));
+    for (const id of ["a1", "a2", "a3", "a5"]) expect(emotesOf(id)).toHaveLength(0);
+    // Placement, in the agent's local space (a4 is full size, so local is also world scale): the
+    // emote's top edge stops below the label anchor and below the local fallback label's bottom
+    // edge, and its centre sits above the top of the head. The numbers come from the scene and
+    // LABEL_HEIGHT; marks.ts keeps the emote size and offset private, so only the relations are
+    // pinned.
+    const a4 = groups.find((g) => g.userData.agentId === "a4");
+    const emote = emotesOf("a4")[0];
+    const label = a4?.children.find((c) => c.type === "Sprite" && c.userData.isHull !== true);
+    expect(a4?.scale.y).toBe(1);
+    expect(emote?.parent).toBe(a4);
+    expect(label).toBeDefined();
+    const headTop = Math.max(
+      ...(a4?.children ?? [])
+        .filter((c): c is Mesh => c.type === "Mesh" && c.userData.isHull !== true)
+        .map((m) => {
+          m.geometry.computeBoundingBox();
+          return m.position.y + (m.geometry.boundingBox?.max.y ?? 0);
+        }),
+    );
+    const emoteTop = (emote?.position.y ?? 0) + (emote?.scale.y ?? 0) / 2;
+    const labelBottom = (label?.position.y ?? 0) - (label?.scale.y ?? 0) / 2;
+    expect(emoteTop).toBeLessThan(LABEL_HEIGHT);
+    expect(emoteTop).toBeLessThanOrEqual(labelBottom);
+    expect(emote?.position.y).toBeGreaterThan(headTop);
+    // Five agents share one set of body geometries (plus the grid helper is not a Mesh), and the
+    // attention rim hulls reuse them. The one extra is the pooled ground-ring geometry that a4's
+    // needs_you ring adds (M4.05).
+    expect(geometries.size).toBeLessThanOrEqual(10);
     expect(groups[4]?.scale.x).toBeCloseTo(0.6);
     if (CAPTURE) {
       await page

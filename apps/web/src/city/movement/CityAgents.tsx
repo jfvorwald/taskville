@@ -207,5 +207,5 @@ export function CityAgents({
     setPruned((n) => n + 1);
   }, -1);
 
-  return <AgentsLayer agents={views} reducedMotion={reduced} onLabels={onLabels} />;
+  return <AgentsLayer agents={views} reducedMotion={reduced} onLabels={onLabels} now={store.now} />;
 }
