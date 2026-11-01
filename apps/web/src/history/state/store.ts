@@ -39,6 +39,7 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
   let disposed = false;
   let generation = 0;
   let request: AbortController | undefined;
+  let pendingPlayback = false;
   let elapsedAt = now();
   let target: number | null = null;
 
@@ -46,6 +47,7 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     generation += 1;
     request?.abort();
     request = undefined;
+    pendingPlayback = false;
   }
 
   function anchor() {
@@ -60,6 +62,7 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     const current = generation;
     const controller = new AbortController();
     request = controller;
+    pendingPlayback = playback;
     try {
       const response = await doFetch(
         `/v1/timelines/${encodeURIComponent(timelineId)}/state?at=${encodeURIComponent(at)}`,
@@ -94,7 +97,10 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       anchor();
       throw error;
     } finally {
-      if (current === generation) request = undefined;
+      if (current === generation) {
+        request = undefined;
+        pendingPlayback = false;
+      }
     }
   }
 
@@ -112,13 +118,13 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     },
     pause: () => {
       if (disposed) return;
-      cancel();
+      if (pendingPlayback) cancel();
       anchor();
       set({ playing: false });
     },
     setRate: (rate) => {
       if (disposed) return;
-      cancel();
+      if (pendingPlayback) cancel();
       anchor();
       set({ rate });
     },
