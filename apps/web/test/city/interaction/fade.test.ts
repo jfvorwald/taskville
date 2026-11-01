@@ -241,6 +241,63 @@ describe("building fader when the theme changes mid-fade", () => {
   });
 });
 
+describe("building fader when the theme changes while a building is solid", () => {
+  const options = { sites: windowSites(CITY_LAYOUT), fadedOpacity: 0.2, seconds: 0.5 };
+
+  it.each([
+    ["on the next fade-out", false],
+    ["after a solid frame", true],
+  ])("fades the next fade-out on clones of the new material, %s", (_label, solidFrameFirst) => {
+    const { root, meshes } = city();
+    const fader = createBuildingFader(options);
+    fader.bind(root);
+
+    // Fade out and back in completely: the building is solid again, the clones are kept for reuse.
+    fader.update(10, (id) => id === first);
+    const list = meshes.get(first) ?? [];
+    const oldClones = list.map((m) => m.material as Material);
+    expect(oldClones[0]).not.toBe(wall);
+    const oldDisposed = oldClones.map(watchDispose);
+    fader.update(10, () => false);
+    expect(list.map((m) => m.material)).toEqual([wall, roof]);
+
+    // The theme changes while the building is solid.
+    const themedWall = new MeshLambertMaterial({ color: "#ff00ff" });
+    const themedRoof = new MeshLambertMaterial({ color: "#00ffff" });
+    const themedDisposed = [watchDispose(themedWall), watchDispose(themedRoof)];
+    const [wallMesh, roofMesh] = list;
+    if (wallMesh === undefined || roofMesh === undefined) throw new Error("fixture");
+    wallMesh.material = themedWall;
+    roofMesh.material = themedRoof;
+    if (solidFrameFirst) {
+      fader.update(0.016, () => false);
+      expect(list.map((m) => m.material)).toEqual([themedWall, themedRoof]);
+    }
+
+    // Fade out again: the faded materials are clones of the new theme, not the old theme's.
+    fader.update(10, (id) => id === first);
+    const now = list.map((m) => m.material as MeshLambertMaterial);
+    expect(now[0]?.color.getHex()).toBe(themedWall.color.getHex());
+    expect(now[1]?.color.getHex()).toBe(themedRoof.color.getHex());
+    for (const mat of now) {
+      expect(oldClones).not.toContain(mat);
+      expect(mat.transparent).toBe(true);
+      expect(mat.opacity).toBeCloseTo(0.2);
+    }
+    expect(now[0]).not.toBe(themedWall);
+    expect(now[1]).not.toBe(themedRoof);
+    // The old clones are released; the new shared materials belong to the theme and are not.
+    for (const spy of oldDisposed) expect(spy).toHaveBeenCalled();
+    for (const spy of themedDisposed) expect(spy).not.toHaveBeenCalled();
+    expect(themedWall.opacity).toBe(1);
+    expect(themedRoof.opacity).toBe(1);
+
+    // And it still comes back to the new shared materials.
+    fader.update(10, () => false);
+    expect(list.map((m) => m.material)).toEqual([themedWall, themedRoof]);
+  });
+});
+
 describe("building fader duration at runtime (reduced motion)", () => {
   it("completes a fade in one update at zero seconds, and restores the 0.25 s fade", () => {
     const { root } = city();

@@ -69,4 +69,37 @@ describe("camera pose (turn about the vertical axis through the city center)", (
     pose.apply(cam, 0);
     expectPose(cam, home);
   });
+
+  it("ties the default pose to the camera: a fresh tracker on an already turned camera still resets", () => {
+    // CameraDriver can remount on the same camera while the rig holds a turn (the driver's tracker
+    // is per mount). The new tracker's first call sees the turned pose; it must not adopt that as
+    // the default.
+    const cam = defaultCamera();
+    const home = snapshot(cam);
+    const first = createCameraPose();
+    first.apply(cam, 0);
+    first.apply(cam, 90);
+
+    const remounted = createCameraPose();
+    remounted.apply(cam, 90);
+    expect(cam.position.x).toBeCloseTo(10, 6);
+    expect(cam.position.y).toBeCloseTo(8, 6);
+    expect(cam.position.z).toBeCloseTo(-10, 6);
+
+    remounted.apply(cam, 0);
+    expectPose(cam, home);
+  });
+
+  it("turns a remounted tracker from the original default, not from the turned pose", () => {
+    const cam = defaultCamera();
+    const home = snapshot(cam);
+    createCameraPose().apply(cam, 90);
+    const remounted = createCameraPose();
+    remounted.apply(cam, 45);
+    const direct = defaultCamera();
+    createCameraPose().apply(direct, 45);
+    expectPose(cam, snapshot(direct));
+    remounted.apply(cam, 0);
+    expectPose(cam, home);
+  });
 });
