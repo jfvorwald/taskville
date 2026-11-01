@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import { storedEnvelopeSchema } from "../../../../../packages/protocol/src/index.ts";
 import { PROJECT, SECRET } from "../../../test/data/fake-engine.ts";
 import {
   LOG,
@@ -208,6 +209,45 @@ describe("recorded timeline strip through real provider and controls", () => {
     await page.getByRole("button", { name: "Previous moment" }).click();
     await presented(7);
     expect(transport.requests.every((url) => !url.searchParams.has("agentId"))).toBe(true);
+  });
+});
+
+describe("heuristic needs-you markers are labeled as guesses", () => {
+  // Event 4 is a request the source attributed by guess; event 7 stays an observed request.
+  const guessed = LOG.map((event) =>
+    event.ingestSequence === 4
+      ? storedEnvelopeSchema.parse({ ...event, payload: { ...event.payload, heuristic: true } })
+      : event,
+  );
+  const labelAt = (sequence: number) =>
+    `${new Date(LOG[sequence - 1].receivedAt).toLocaleString()}`;
+  const byLabel = (start: RegExp, sequence: number) =>
+    page.getByRole("button", {
+      name: new RegExp(`${start.source}.*${escapePattern(labelAt(sequence))}`, "i"),
+    });
+
+  it("labels a heuristic request.opened marker 'Possibly needs you', never plain 'Needs you'", async () => {
+    await mount(guessed);
+    const guess = byLabel(/^Possibly needs you/, 4);
+    expect(guess.elements()).toHaveLength(1);
+    await expect.element(guess).toHaveAccessibleName(/Ada/);
+    expect(byLabel(/^Needs you/, 4).elements()).toHaveLength(0);
+    // A guessed marker is still a recorded moment: it seeks like any other.
+    await page.getByRole("button", { name: "Previous moment" }).click();
+    await presented(7, guessed);
+    await guess.click();
+    await presented(4, guessed);
+  });
+
+  it("keeps the plain 'Needs you' label for an observed request beside a guessed one", async () => {
+    await mount(guessed);
+    const observed = byLabel(/^Needs you/, 7);
+    expect(observed.elements()).toHaveLength(1);
+    await expect.element(observed).toHaveAccessibleName(/Bea/);
+    expect(byLabel(/^Possibly needs you/, 7).elements()).toHaveLength(0);
+    // Exactly one guessed and one observed needs-you marker in this recording.
+    expect(page.getByRole("button", { name: /^Possibly needs you/i }).elements()).toHaveLength(1);
+    expect(page.getByRole("button", { name: /^Needs you/i }).elements()).toHaveLength(1);
   });
 });
 

@@ -11,7 +11,10 @@ export const PREVIEW = "Synthetic recorded preview: read recorded.ts";
 export const EXACT = "Synthetic live exact input: CURRENT_ONLY.ts";
 
 /** Synthetic permission recording, not imported/raw telemetry or a claim of real agent work. */
-export function cardsRecording(resolution: "expired" | "answered_elsewhere" = "expired") {
+export function cardsRecording(
+  resolution: "expired" | "answered_elsewhere" = "expired",
+  heuristic = false,
+) {
   const specs = [
     {
       type: "agent.registered",
@@ -31,6 +34,8 @@ export function cardsRecording(resolution: "expired" | "answered_elsewhere" = "e
         kind: "permission",
         toolName: "Read",
         inputPreview: PREVIEW,
+        // The source guessed which agent the request belongs to (#120); otherwise it is observed.
+        ...(heuristic ? { heuristic: true } : {}),
       },
     },
     resolution === "expired"
@@ -66,8 +71,8 @@ export function cardsRecording(resolution: "expired" | "answered_elsewhere" = "e
   });
 }
 
-export function cardsEngine(resolution?: "expired" | "answered_elsewhere") {
-  const log = cardsRecording(resolution);
+export function cardsEngine(resolution?: "expired" | "answered_elsewhere", heuristic = false) {
+  const log = cardsRecording(resolution, heuristic);
   const current = [
     ...log,
     storedEnvelopeSchema.parse({

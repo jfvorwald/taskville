@@ -46,8 +46,8 @@ async function position(head: number, mode = "history") {
     .element(page.getByRole("status", { name: "Selected recording" }))
     .toHaveTextContent(`${mode}:${head}`);
 }
-async function mount(resolution?: "expired" | "answered_elsewhere") {
-  const engine = cardsEngine(resolution);
+async function mount(resolution?: "expired" | "answered_elsewhere", heuristic = false) {
+  const engine = cardsEngine(resolution, heuristic);
   // Validate prerequisites before interpreting a missing DOM card as red.
   expect(engine.stateAt(2).requests["recorded-request"]).toBeUndefined();
   expect(engine.stateAt(3).requests["recorded-request"]).toMatchObject({
@@ -55,6 +55,9 @@ async function mount(resolution?: "expired" | "answered_elsewhere") {
     inputPreview: PREVIEW,
     sessionId: "recorded-session",
   });
+  expect(engine.stateAt(3).requests["recorded-request"].heuristic).toBe(
+    heuristic ? true : undefined,
+  );
   expect(engine.stateAt(4).requests["recorded-request"].state).toBe(resolution ?? "expired");
   expect(engine.current.requests["current-request"]).toMatchObject({
     state: "open",
@@ -153,6 +156,21 @@ describe("historical sidebar composition through real provider, controls and Ove
       await expect.element(card()).toHaveAttribute("data-state", resolution);
     },
   );
+
+  it("labels a recorded request the source attributed by guess 'Possibly needs you'", async () => {
+    const engine = await mount(undefined, true);
+    await previous(3);
+    await recordedCard();
+    await expect.element(card()).toMatchTextContent("Possibly needs you");
+    noLiveReads(engine, engine.historyStart);
+  });
+
+  it("does not call an observed recorded request a guess", async () => {
+    await mount();
+    await previous(3);
+    await recordedCard();
+    expect(card().element().textContent).not.toMatch(/possibly/i);
+  });
 
   it("returning live restores only the latest current request and its ordinary held-input actions", async () => {
     const engine = await mount();
