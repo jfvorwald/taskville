@@ -88,7 +88,7 @@ async function recordedCard() {
   await expect.element(card()).toBeVisible();
   await expect.element(card()).toHaveAttribute("data-readonly", "true");
   for (const fact of ["Recorded Ada", PROJECT, "recorded-session", "Read", PREVIEW])
-    await expect.element(card()).toHaveTextContent(fact);
+    await expect.element(card()).toMatchTextContent(fact);
   // Scope command exclusions to the card; presentation navigation elsewhere is allowed.
   expect(card().element().querySelectorAll("button, textarea, input")).toHaveLength(0);
   expect(card().element().textContent).not.toContain(EXACT);
@@ -162,9 +162,9 @@ describe("historical sidebar composition through real provider, controls and Ove
     const since = engine.calls.length;
     await userEvent.keyboard("l");
     await position(6, "live");
-    await expect.element(card()).toHaveTextContent("Current Ada");
-    await expect.element(card()).toHaveTextContent("current-session");
-    await expect.element(card()).toHaveTextContent(EXACT);
+    await expect.element(card()).toMatchTextContent("Current Ada");
+    await expect.element(card()).toMatchTextContent("current-session");
+    await expect.element(card()).toMatchTextContent(EXACT);
     expect(card().element().textContent).not.toContain(PREVIEW);
     expect(card().element().getAttribute("data-readonly")).not.toBe("true");
     for (const name of ["Allow once", "Deny", "Open session"]) {
