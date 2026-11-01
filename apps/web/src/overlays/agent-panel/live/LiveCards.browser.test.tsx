@@ -639,3 +639,59 @@ describe("M5.06 reviewed evidence recovery", () => {
     expect(card(NOTES).element().querySelector("img")).toBeNull();
   });
 });
+
+// Observe, don't invent: a spawn or a send is only claimed when the recorded phase succeeded and the
+// recorded output does not say `success: false`. Every other state says what was (not) recorded.
+describe("M5.06 spawn and message wording follows the recorded outcome", () => {
+  const WORDING = {
+    Agent: {
+      done: "Spawned",
+      failed: "Spawn failed for",
+      pending: "Spawning",
+      unfinished: "No result recorded for spawn of",
+    },
+    SendMessage: {
+      done: "Sent message to",
+      failed: "Message failed to",
+      pending: "Sending message to",
+      unfinished: "No result recorded for message to",
+    },
+  } as const;
+  const INPUT = {
+    Agent: { description: "tidy", prompt: "tidy the notes", subagent_type: "general-purpose" },
+    SendMessage: { to: B, recipient: B, recipient_kind: "agent_id", message: "ready" },
+  } as const;
+  type Outcome = keyof (typeof WORDING)["Agent"];
+  const cases: [Outcome, ToolCallFrame["phase"], string, unknown][] = [
+    ["done", "succeeded", "a succeeded call with a recorded success:true", { success: true }],
+    ["done", "succeeded", "a succeeded call with a result that omits success", { ok: 1 }],
+    ["done", "succeeded", "a succeeded call with no recorded output", undefined],
+    [
+      "failed",
+      "succeeded",
+      "a succeeded call whose recorded output says success:false",
+      { success: false },
+    ],
+    ["failed", "failed", "a failed call with no recorded output", undefined],
+    ["failed", "failed", "a failed call even when its output says success:true", { success: true }],
+    ["pending", "running", "a running call", undefined],
+    ["unfinished", "unfinished", "an unfinished call", undefined],
+  ];
+  const tools = ["Agent", "SendMessage"] as const;
+
+  it.each(tools.flatMap((tool) => cases.map((c) => [tool, ...c] as const)))(
+    "%s: %s wording for %s (%s)",
+    async (tool, outcome, phase, _name, output) => {
+      const frame = synthetic(tool, `wording-${tool}-${outcome}-${phase}`, INPUT[tool], output);
+      frame.data.phase = phase;
+      await mount();
+      await expect.element(cards(), { timeout: 800 }).toBeVisible();
+      expect(cards().elements()).toHaveLength(1);
+      const text = cards().element().textContent ?? "";
+      const labels = WORDING[tool];
+      expect(text).toContain(`${labels[outcome]} `);
+      for (const [other, label] of Object.entries(labels))
+        if (other !== outcome) expect(text, `must not read "${label}"`).not.toContain(label);
+    },
+  );
+});
