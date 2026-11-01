@@ -15,6 +15,7 @@ import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
 import { CITY_LAYOUT, type WorkAreaLayout } from "../layout/index.ts";
 import { agentAnchorId, usePrefersReducedMotion } from "../movement/index.ts";
 import { type Burst, createBurst } from "./burst.ts";
+import { createPlayedHistory } from "./history.ts";
 import { SPARKLE_RADIUS, sparkleAnchor } from "./placement.ts";
 import type { Celebration } from "./triggers.ts";
 import { CONFETTI_DURATION_MS, CONFETTI_MAX_PARTICLES, createCelebrations } from "./triggers.ts";
@@ -122,17 +123,21 @@ function createRig(anchors: AnchorSource) {
   let shimmerAt = Number.NEGATIVE_INFINITY;
 
   const sparkleGeometry = starGeometry();
-  const sparkleMaterial = new MeshBasicMaterial({ color: "#ffd166", side: DoubleSide });
+  const sparkleMaterial = new MeshBasicMaterial({
+    color: "#ffd166",
+    side: DoubleSide,
+    toneMapped: false,
+  });
   const sparkle = new Mesh(sparkleGeometry, sparkleMaterial);
   sparkle.visible = false;
   group.add(sparkle);
   let sparkleAt = Number.NEGATIVE_INFINITY;
 
-  /** Appended at play time only, so the debug probe costs nothing per frame. */
-  const played: { kind: string; at: number }[] = [];
+  /** Appended at play time only, so the debug probe costs nothing per frame. Bounded. */
+  const history = createPlayedHistory();
 
   const showSparkle = (x: number, y: number, z: number, nowMs: number) => {
-    played.push({ kind: "sparkle", at: nowMs });
+    history.push({ kind: "sparkle", at: nowMs });
     sparkle.position.set(x, y, z);
     sparkle.visible = true;
     sparkleAt = nowMs;
@@ -143,14 +148,14 @@ function createRig(anchors: AnchorSource) {
 
   return {
     group,
-    played: (): ReadonlyArray<{ kind: string; at: number }> => played,
+    history,
     play(c: Celebration, event: StoredEnvelope, nowMs: number) {
       switch (c.kind) {
         case "confetti": {
           const p = head(c.agentId);
           if (p) {
             confetti.emit(p[0], p[1] + HEAD_LIFT, p[2], c.particles, nowMs);
-            played.push({ kind: "confetti", at: nowMs });
+            history.push({ kind: "confetti", at: nowMs });
           }
           return;
         }
@@ -165,12 +170,12 @@ function createRig(anchors: AnchorSource) {
               HIGH_FIVE_PARTICLES,
               nowMs,
             );
-            played.push({ kind: "high-five", at: nowMs });
+            history.push({ kind: "high-five", at: nowMs });
           }
           return;
         }
         case "merge-burst":
-          played.push({ kind: "merge-burst", at: nowMs });
+          history.push({ kind: "merge-burst", at: nowMs });
           merge.emit(
             archives.footprint.cx,
             archives.height + ROOF_THICKNESS + 0.5,
@@ -181,7 +186,7 @@ function createRig(anchors: AnchorSource) {
           return;
         case "shimmer":
           shimmerAt = nowMs;
-          played.push({ kind: "shimmer", at: nowMs });
+          history.push({ kind: "shimmer", at: nowMs });
           return;
         case "sparkle": {
           // The reduced-motion icon sits where the full celebration would have played.
@@ -244,7 +249,7 @@ export function Celebrations({
   useEffect(() => {
     if (!debugEnabled()) return;
     const w = window as unknown as { __taskvilleCelebrations?: () => unknown };
-    w.__taskvilleCelebrations = () => rig.played().map((p) => ({ ...p }));
+    w.__taskvilleCelebrations = () => rig.history.entries().map((p) => ({ ...p }));
     return () => {
       delete w.__taskvilleCelebrations;
     };

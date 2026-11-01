@@ -38,7 +38,11 @@ export function createBurst(options: BurstOptions): Burst {
   const { capacity, lifetimeMs, speed, size, gravity, colors } = options;
   const pool = createParticlePool({ capacity, lifetimeMs });
   const geometry = new BoxGeometry(1, 1, 1);
-  const material = new MeshBasicMaterial({ transparent: true, depthWrite: false });
+  const material = new MeshBasicMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
   const mesh = new InstancedMesh(geometry, material, capacity);
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);
   mesh.frustumCulled = false;
