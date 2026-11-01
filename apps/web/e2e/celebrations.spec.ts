@@ -88,20 +88,35 @@ const EFFECT_COLORS = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#f78c6b", "#
 /** Fewer new palette pixels than this is "nothing drawn"; more is "a celebration drew". */
 const MIN_NEW_PIXELS = 20;
 
+/** A celebration must beat the quiet-frame control by at least this factor. */
+const CONTROL_MARGIN = 3;
+
+/** Per-channel tolerance for "this pixel is a palette colour now" (particles are unlit, exact). */
+const TIGHT_TOLERANCE = 6;
+
+/** RGB sum-of-differences tolerance for "this pixel already looked like a palette colour" (settled). */
+const LOOSE_TOLERANCE = 45;
+
+interface Fresh {
+  count: number;
+  /** Up to 10 matched pixels, for diagnosing false positives. */
+  samples: { x: number; y: number; rgb: string }[];
+}
+
 /** Width and height from a PNG's IHDR chunk. */
 function pngSize(png: Buffer): { width: number; height: number } {
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
 }
 
 /**
- * Pixels that are effect-coloured in `during` but not in `settled`, counted in the browser. `settled`
- * is the same canvas after the celebration ended, so the agents are already drawn in both frames and
- * only the particles are new. Matching on the particle palette (not on any change) keeps agent
- * movement between the two frames from counting.
+ * Pixels that are tightly effect-coloured in `during` (each channel within TIGHT_TOLERANCE of a
+ * palette colour) and were not loosely palette-coloured (RGB sum within LOOSE_TOLERANCE) at the same
+ * position in `settled`, counted in the browser. `settled` is the same canvas after the celebration
+ * ended, so agents and scenery are already drawn in both frames and only the particles are new.
  */
-async function newEffectPixels(during: Buffer, settled: Buffer): Promise<number> {
+async function newEffectPixels(during: Buffer, settled: Buffer): Promise<Fresh> {
   return page.evaluate(
-    async ([x, y, palette]) => {
+    async ([x, y, palette, tight, loose]) => {
       const load = async (b64: string) => {
         const img = new Image();
         img.src = `data:image/png;base64,${b64}`;
@@ -115,27 +130,45 @@ async function newEffectPixels(during: Buffer, settled: Buffer): Promise<number>
         return ctx.getImageData(0, 0, c.width, c.height);
       };
       const [p, q] = [await load(x as string), await load(y as string)];
-      if (p.width !== q.width || p.height !== q.height) return Number.NaN;
+      if (p.width !== q.width || p.height !== q.height) throw new Error("frame sizes differ");
       const colors = (palette as string[]).map((h) => [
         Number.parseInt(h.slice(1, 3), 16),
         Number.parseInt(h.slice(3, 5), 16),
         Number.parseInt(h.slice(5, 7), 16),
       ]);
-      const isEffect = (d: Uint8ClampedArray, i: number) =>
-        colors.some(
-          (c) =>
-            Math.abs((d[i] ?? 0) - (c[0] ?? 0)) +
-              Math.abs((d[i + 1] ?? 0) - (c[1] ?? 0)) +
-              Math.abs((d[i + 2] ?? 0) - (c[2] ?? 0)) <=
-            45,
-        );
-      let n = 0;
+      const diff = (d: Uint8ClampedArray, i: number, c: number[]) => [
+        Math.abs((d[i] ?? 0) - (c[0] ?? 0)),
+        Math.abs((d[i + 1] ?? 0) - (c[1] ?? 0)),
+        Math.abs((d[i + 2] ?? 0) - (c[2] ?? 0)),
+      ];
+      const isTight = (d: Uint8ClampedArray, i: number) =>
+        colors.some((c) => diff(d, i, c).every((v) => v <= (tight as number)));
+      const isLoose = (d: Uint8ClampedArray, i: number) =>
+        colors.some((c) => diff(d, i, c).reduce((a, v) => a + v, 0) <= (loose as number));
+      let count = 0;
+      const samples: { x: number; y: number; rgb: string }[] = [];
       for (let i = 0; i < p.data.length; i += 4) {
-        if (isEffect(p.data, i) && !isEffect(q.data, i)) n += 1;
+        if (isTight(p.data, i) && !isLoose(q.data, i)) {
+          count += 1;
+          if (samples.length < 10) {
+            const px = i / 4;
+            samples.push({
+              x: px % p.width,
+              y: Math.floor(px / p.width),
+              rgb: `${p.data[i]},${p.data[i + 1]},${p.data[i + 2]}`,
+            });
+          }
+        }
       }
-      return n;
+      return { count, samples };
     },
-    [during.toString("base64"), settled.toString("base64"), EFFECT_COLORS],
+    [
+      during.toString("base64"),
+      settled.toString("base64"),
+      EFFECT_COLORS,
+      TIGHT_TOLERANCE,
+      LOOSE_TOLERANCE,
+    ],
   );
 }
 
@@ -146,7 +179,7 @@ async function newEffectPixels(during: Buffer, settled: Buffer): Promise<number>
  * probe entry. A pair is only used if the probe shows no new entry after both frames; otherwise the
  * pair is retaken.
  */
-async function quietFrameCount(canvas: Locator): Promise<number> {
+async function quietFrameCount(canvas: Locator): Promise<Fresh> {
   for (let attempt = 1; attempt <= 5; attempt++) {
     const before = await played();
     const last = before[before.length - 1];
@@ -210,11 +243,8 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
   // Only particle-coloured pixels that the settled frame lacks: agents, buildings and their
   // movement are in both frames, so a pass means the effect itself drew.
   const counts: number[] = [];
-  for (const f of frames) counts.push(await newEffectPixels(f, settled));
+  for (const f of frames) counts.push((await newEffectPixels(f, settled)).count);
   const fresh = Math.max(...counts);
-  console.log(
-    `celebrations e2e: ${kind} new effect-coloured pixels per frame ${counts.join(", ")} (best ${fresh})`,
-  );
 
   const dir = process.env.E2E_SCREENSHOT_DIR;
   if (dir) {
@@ -222,19 +252,29 @@ test("the demo plays confetti or a high-five, spaced at least 2 s apart, and it 
     writeFileSync(`${dir}/${kind}.png`, frames[counts.indexOf(fresh)] ?? (frames[0] as Buffer));
   }
 
+  // Negative control, still while the demo runs: with no celebration drawn, the same measure
+  // (same matcher) must stay under the threshold, or moving agents are being counted as particles.
+  const control = await quietFrameCount(canvas);
+  const summary = `during per frame ${counts.join(", ")} (best ${fresh}), control ${control.count}, threshold ${MIN_NEW_PIXELS}, margin x${CONTROL_MARGIN}`;
+  console.log(`celebrations e2e: ${kind} ${summary}`);
+  if (control.count >= MIN_NEW_PIXELS) {
+    console.log(
+      `celebrations e2e: control false-positive samples ${JSON.stringify(control.samples)}`,
+    );
+  }
+
+  expect(
+    control.count,
+    `no celebration drawn: palette pixels between two quiet frames; ${summary}`,
+  ).toBeLessThan(MIN_NEW_PIXELS);
   expect(
     fresh,
-    `${kind} particles are visible on the canvas while it plays (new pixels per frame: ${counts.join(", ")})`,
+    `${kind} particles are visible on the canvas while it plays; ${summary}`,
   ).toBeGreaterThan(MIN_NEW_PIXELS);
-
-  // Negative control, still while the demo runs: with no celebration drawn, the same measure must
-  // stay under the threshold, or moving agents are being counted as particles.
-  const control = await quietFrameCount(canvas);
-  console.log(`celebrations e2e: control (no celebration) new effect-coloured pixels ${control}`);
   expect(
-    control,
-    "no celebration drawn: palette pixels that appear between two quiet frames",
-  ).toBeLessThan(MIN_NEW_PIXELS);
+    fresh,
+    `${kind} particles clearly exceed the control (>= max(${MIN_NEW_PIXELS}, ${CONTROL_MARGIN} x control)); ${summary}`,
+  ).toBeGreaterThanOrEqual(Math.max(MIN_NEW_PIXELS, CONTROL_MARGIN * control.count));
 
   await demo;
   const all = await played();
