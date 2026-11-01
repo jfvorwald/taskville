@@ -1,0 +1,35 @@
+/*
+ * Design tokens as CSS custom properties. A theme (src/themes) publishes one token set; the DOM
+ * reads these through var(), and the 3D scene reads the same values with readCssToken().
+ * These defaults are the calm scaffold palette, not a theme.
+ */
+:root {
+  color-scheme: dark;
+  --tv-scene-bg: #11141a;
+  --tv-surface: #1a1f29;
+  --tv-text: #d7dce5;
+  --tv-text-muted: #8b94a5;
+  --tv-accent: #6ea8d9;
+  --tv-focus: #f2c14e;
+  --tv-radius: 8px;
+  --tv-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--tv-scene-bg);
+  color: var(--tv-text);
+  font-family: var(--tv-font);
+}

@@ -1,4 +1,3 @@
-import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
@@ -17,6 +16,7 @@ import {
   requireOrigin,
   requireScope,
 } from "./middleware.ts";
+import { staticFiles } from "./static.ts";
 
 export type { AppEnv } from "./middleware.ts";
 export { requireScope } from "./middleware.ts";
@@ -117,9 +117,9 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
   app.get("/v1/commands/:id", requireScope("command"), notYet);
 
   if (options.staticDir !== undefined) {
-    const files = serveStatic<AppEnv>({ root: options.staticDir });
+    const files = staticFiles(options.staticDir);
     // API and health paths are never served from the static directory.
-    app.get("*", (c, next) => (isApiPath(c.req.path) ? next() : files(c, next)));
+    app.use("*", (c, next) => (isApiPath(c.req.path) ? next() : files(c, next)));
   }
 
   app.notFound((c) => apiError(c, 404, "not_found", "Not found"));

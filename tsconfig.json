@@ -9,5 +9,6 @@
     "scripts/*/test",
     "tests/perf",
     "*.ts"
-  ]
+  ],
+  "exclude": ["apps/web"]
 }
