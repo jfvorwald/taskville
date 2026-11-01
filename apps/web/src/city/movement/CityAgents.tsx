@@ -215,7 +215,7 @@ export function CityAgents({
   return (
     <>
       <AgentsLayer agents={views} reducedMotion={reduced} onLabels={onLabels} now={store.now} />
-      <TeamDecorations views={models?.views ?? []} store={store} />
+      <TeamDecorations views={models?.views ?? []} store={store} reducedMotion={reduced} />
     </>
   );
 }

@@ -1,16 +1,17 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { BoxGeometry, type Group } from "three";
 import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { LabelSprite } from "../../agents/LabelSprite.tsx";
 import { colorMaterial } from "../../agents/resources.ts";
 import type { AgentView } from "../../agents/types.ts";
-import { areaFor, createPose, workPose } from "../../agents/workLoop.ts";
+import { areaFor, createPose, LOOP_SECONDS, workPose } from "../../agents/workLoop.ts";
 import { CITY_LAYOUT } from "../../layout/index.ts";
 import { teamAccessories } from "./accessories.ts";
 import { teamScarfColor } from "./color.ts";
 import { teammateIdle } from "./idle.ts";
+import { QUEUE_PAGE_SIZE as PAGE_SIZE, useQueuePage } from "./pages.ts";
 import { dispatchQueue, type QueueState, teamProgress } from "./queue.ts";
 
 const STATUS_COLOR: Record<QueueState, string> = {
@@ -25,7 +26,9 @@ function AgentDecoration({
   hat,
   store,
   geometry,
+  reducedMotion,
 }: {
+  reducedMotion: boolean;
   view: AgentView;
   hat: boolean;
   store: DataStore;
@@ -54,7 +57,8 @@ function AgentDecoration({
   useFrame((frame) => {
     if (root.current === null) return;
     const p = view.placement;
-    const bob = workPose(areaFor(view.activity), frame.clock.elapsedTime, pose.current).bob;
+    const seconds = reducedMotion ? LOOP_SECONDS * 0.25 : frame.clock.elapsedTime;
+    const bob = workPose(areaFor(view.activity), seconds, pose.current).bob;
     root.current.position.set(p.x, p.y + bob, p.z);
     root.current.rotation.y = p.heading;
     const idle = teammateIdle(idleInput, store.now());
@@ -93,7 +97,9 @@ function AgentDecoration({
 export function TeamDecorations({
   views,
   store,
+  reducedMotion = false,
 }: {
+  reducedMotion?: boolean;
   views: readonly AgentView[];
   store: DataStore;
 }) {
@@ -112,6 +118,7 @@ export function TeamDecorations({
             key={a.agentId}
             view={view}
             hat={a.hardHat}
+            reducedMotion={reducedMotion}
             store={store}
             geometry={geometry}
           />
@@ -127,6 +134,7 @@ export function TeamDecorations({
             <TeamQueue
               key={team.id}
               teamId={team.id}
+              store={store}
               name={team.name ?? "Team tasks"}
               queue={queue}
               progress={progress}
@@ -145,9 +153,8 @@ export function TeamDecorations({
   );
 }
 
-const PAGE_SIZE = 6;
-
 function TeamQueue({
+  store,
   teamId,
   name,
   queue,
@@ -157,6 +164,7 @@ function TeamQueue({
   position,
   rowZ,
 }: {
+  store: DataStore;
   teamId: string;
   name: string;
   queue: ReturnType<typeof dispatchQueue>;
@@ -166,11 +174,8 @@ function TeamQueue({
   position: [number, number, number];
   rowZ: number;
 }) {
-  const [page, setPage] = useState(0);
+  const { page, move } = useQueuePage(store, teamId);
   const lastPage = Math.max(0, Math.ceil(queue.length / PAGE_SIZE) - 1);
-  // Adjust during render so a shrinking snapshot cannot leave a blank page or
-  // restore an obsolete offset when the queue grows again. The team key resets it.
-  if (page > lastPage) setPage(lastPage);
   return (
     <group position={position}>
       <LabelSprite
@@ -231,7 +236,7 @@ function TeamQueue({
             userData={{ teamId, queuePageDirection: direction }}
             onClick={(event) => {
               event.stopPropagation();
-              setPage((current) => Math.max(0, Math.min(lastPage, current + (next ? 1 : -1))));
+              move(next ? 1 : -1);
             }}
           >
             <mesh
