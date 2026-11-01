@@ -1,6 +1,6 @@
-import type { Attention } from "@taskville/protocol";
 import type { AudioBackend, Cue } from "../../src/audio/backend.ts";
 import type { SoundSettings } from "../../src/audio/settings.ts";
+import type { Attention } from "../../src/data/domain.ts";
 import type { Selector } from "../../src/overlays/host/types.ts";
 
 // Test doubles for the soundscape. No real AudioContext anywhere: the backend records what it was
@@ -11,7 +11,8 @@ export type BackendCall =
   | { op: "setVolume"; volume: number }
   | { op: "playCue"; cue: Cue }
   | { op: "startLoop"; themeId: string; asset: unknown }
-  | { op: "stopLoop" };
+  | { op: "stopLoop" }
+  | { op: "silence" };
 
 export function fakeBackend() {
   const calls: BackendCall[] = [];
@@ -31,9 +32,14 @@ export function fakeBackend() {
     stopLoop() {
       calls.push({ op: "stopLoop" });
     },
+    silence() {
+      calls.push({ op: "silence" });
+    },
   };
   const cues = (cue?: Cue) =>
     calls.filter((c) => c.op === "playCue" && (cue === undefined || c.cue === cue));
+  /** How many times the backend was told to cut a ringing cue. */
+  const silences = () => calls.filter((c) => c.op === "silence");
   const loops = () =>
     calls.filter((c): c is Extract<BackendCall, { op: "startLoop" }> => c.op === "startLoop");
   /** The loop playing now: the last startLoop with no stopLoop after it. */
@@ -52,7 +58,7 @@ export function fakeBackend() {
     }
     return undefined;
   };
-  return { backend, calls, cues, loops, playingLoop, lastVolume };
+  return { backend, calls, cues, silences, loops, playingLoop, lastVolume };
 }
 
 export function fakeSettings(initial: Partial<SoundSettings> = {}) {

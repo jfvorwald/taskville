@@ -235,6 +235,41 @@ describe("master volume, mute and chime-only", () => {
     expect(s.cues()).toEqual([]);
   });
 
+  // roborev 5915: a chime rings for over a second, so muting or turning sound off must cut it.
+  it("cuts a ringing chime when muted", async () => {
+    const s = await enabled();
+    s.soundscape.update([needsYou("a1")]);
+    expect(s.cues("chime")).toHaveLength(1);
+    expect(s.silences()).toHaveLength(0);
+
+    s.settings.patch({ muted: true });
+    expect(s.silences()).toHaveLength(1);
+    const ops = s.calls.map((c) => c.op);
+    expect(ops.lastIndexOf("silence")).toBeGreaterThan(ops.lastIndexOf("playCue"));
+  });
+
+  it("does not cut anything on a setting that is not muting", async () => {
+    const s = await enabled();
+    s.settings.patch({ volume: 0.3 });
+    s.settings.patch({ chimeOnly: true });
+    s.settings.patch({ muted: true });
+    s.settings.patch({ muted: false });
+    expect(s.silences()).toHaveLength(1); // only the mute itself
+  });
+
+  it("cuts a ringing chime when sound is turned off", async () => {
+    const s = await enabled();
+    s.soundscape.update([needsYou("a1")]);
+    s.soundscape.disable();
+    expect(s.silences()).toHaveLength(1);
+  });
+
+  it("does not cut anything when disable() is called while sound was never enabled", () => {
+    const s = setup();
+    s.soundscape.disable();
+    expect(s.silences()).toHaveLength(0);
+  });
+
   it("resumes the ambient loop when unmuted", async () => {
     const s = await enabled();
     s.settings.patch({ muted: true });
@@ -329,6 +364,35 @@ describe("per-theme ambient loop, lazy-loaded after enable", () => {
     await settle();
     expect(fake.playingLoop()).toBe("steampunk");
     expect(fake.loops().map((c) => c.themeId)).not.toContain("cyberpunk");
+  });
+
+  // roborev 5915: switching away and back while the other theme loads must not let that load
+  // replace the loop that never stopped playing.
+  it("does not start another theme's late load after switching back to the playing theme", async () => {
+    const fake = fakeBackend();
+    const loader = fakeLoader();
+    const soundscape = createSoundscape({
+      backend: fake.backend,
+      settings: fakeSettings(),
+      loadLoop: loader.loadLoop,
+      theme: "cyberpunk",
+    });
+    const enabling = soundscape.enable();
+    await settle();
+    loader.resolve("cyberpunk");
+    await enabling;
+    await settle();
+    expect(fake.playingLoop()).toBe("cyberpunk");
+
+    soundscape.setTheme("steampunk"); // starts loading, slowly
+    await settle();
+    soundscape.setTheme("cyberpunk"); // back on the loop that is still playing
+    await settle();
+    loader.resolve("steampunk"); // the slow load lands now
+    await settle();
+
+    expect(fake.playingLoop()).toBe("cyberpunk");
+    expect(fake.loops().map((c) => c.themeId)).not.toContain("steampunk");
   });
 
   it("remembers the theme chosen before enable", async () => {
