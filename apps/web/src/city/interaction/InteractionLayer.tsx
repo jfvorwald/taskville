@@ -17,6 +17,7 @@ import { type CameraRig, cameraRig } from "./cameraRig.ts";
 import { shouldClearOnEscape } from "./escape.ts";
 import { createBuildingFader } from "./fade.ts";
 import { fixtureAgents, fixtureRequested, installFixtureProbe } from "./fixture.ts";
+import { markHoverDirtyOnCameraChange } from "./hover.ts";
 import { createHullGlow } from "./hull.ts";
 import { markOccluders, viewDirection } from "./occlusion.ts";
 import { collectPickables, createPicker, ownerOf } from "./pick.ts";
@@ -225,6 +226,14 @@ function Interaction({
       st.current.retry = 0;
     });
   }, [store]);
+
+  useEffect(
+    () =>
+      markHoverDirtyOnCameraChange(rig, () => {
+        st.current.hoverDirty = true;
+      }),
+    [rig],
+  );
 
   const isFaded = useRef<(id: string) => boolean>(() => false);
   isFaded.current = (id: string) =>

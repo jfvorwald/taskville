@@ -401,11 +401,30 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
   // Spawning.
 
   function spawnPoint(w: Walker, parentId: string | undefined): Waypoint {
+    const taken = (at: { x: number; z: number }) => {
+      for (const o of walkers.values()) {
+        if (o !== w && !o.view.gone && dist(o.view, at) < spacing * 1.5) return true;
+      }
+      return false;
+    };
     const parent = parentId === undefined ? undefined : walkers.get(parentId);
     const parentSlot = parent?.view.slotId;
     if (parentSlot != null) {
       const s = layout.slots.find((x) => x.id === parentSlot);
-      if (s) return point(s.anchorId);
+      if (s) {
+        const anchor = point(s.anchorId);
+        // With nowhere to walk, siblings would stay stacked on the anchor: stand beside it instead.
+        if (targetOf(w) !== null || !taken(anchor)) return anchor;
+        for (let k = 0; k < SPAWN_RING; k++) {
+          const a = (k / SPAWN_RING) * 2 * Math.PI;
+          const at = {
+            x: anchor.x + Math.cos(a) * spacing * 2,
+            z: anchor.z + Math.sin(a) * spacing * 2,
+          };
+          if (!taken(at)) return { ...at, node: s.anchorId, free: true };
+        }
+        return anchor;
+      }
     }
     // The plaza point nearest its destination that nobody is standing on.
     const t = targetOf(w);
@@ -416,12 +435,6 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         cost: t === null ? i : (findPath(layout, node, t.node)?.length ?? Number.POSITIVE_INFINITY),
       }))
       .sort((a, b) => a.cost - b.cost || a.i - b.i);
-    const taken = (at: { x: number; z: number }) => {
-      for (const o of walkers.values()) {
-        if (o !== w && !o.view.gone && dist(o.view, at) < spacing * 1.5) return true;
-      }
-      return false;
-    };
     const free = ranked.find((r) => !safeOwner.has(r.node) && !taken(pos(r.node)));
     if (free) return point(free.node);
     // Every plaza point is taken: a free spot on a ring inside the plaza, joined to its center.
