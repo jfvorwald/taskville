@@ -79,6 +79,15 @@ describe("subagents too deep for a bot", () => {
   });
 });
 
+it("drops a finished counted-only descendant without retaining an invisible lifecycle", () => {
+  const tracker = createCrewTracker();
+  const chain = [LEAD, sub("a", "lead"), sub("b", "a"), sub("c", "b")];
+  tracker.sync(chain, 0);
+  tracker.sync([...chain.slice(0, 3), sub("c", "b", { finishedAt: T })], 1000);
+  expect(tracker.frame("c", 1000)).toBeUndefined();
+  expect(tracker.frame("b", 1000)).toBeDefined();
+});
+
 describe("subagents that name each other as parent", () => {
   it("leaves a pair out of every family, so each is drawn only once, as a block agent", () => {
     const families = createCrewTracker().sync(
