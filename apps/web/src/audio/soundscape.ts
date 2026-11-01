@@ -9,6 +9,9 @@ import type { Readable, SoundSettings } from "./settings.ts";
 /** Recorded events remembered so one delivered twice sounds once. */
 const SEEN_EVENT_LIMIT = 256;
 
+/** How long a cue takes to ring out, before a context it woke is parked again. */
+const CUE_TAIL_MS = 2000;
+
 export interface SoundscapeOptions {
   backend: AudioBackend;
   settings: Readable<SoundSettings>;
@@ -65,6 +68,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
   let failed: string | null = null;
   /** The context is suspended: nothing could sound, so it was parked until a loop is wanted. */
   let parked = false;
+  let repark: ReturnType<typeof setTimeout> | undefined;
 
   const silenced = () => !enabled || history || settings.getSnapshot().muted;
 
@@ -79,6 +83,18 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     if (parked) return;
     parked = true;
     backend.suspend?.();
+  }
+
+  /** A cue wakes a parked context; once it has rung out and no loop is wanted, park it again. */
+  function sound(cue: "chime" | "tick" | "pop") {
+    backend.playCue(cue);
+    if (!parked) return;
+    parked = false;
+    clearTimeout(repark);
+    repark = setTimeout(() => {
+      const s = settings.getSnapshot();
+      if (enabled && (s.muted || s.chimeOnly)) park();
+    }, CUE_TAIL_MS);
   }
 
   function syncLoop() {
@@ -188,11 +204,11 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       let entered = false;
       for (const id of now) if (!red.has(id)) entered = true;
       red = now;
-      if (entered && !silenced()) backend.playCue("chime");
+      if (entered && !silenced()) sound("chime");
     },
 
     chime() {
-      if (!silenced()) backend.playCue("chime");
+      if (!silenced()) sound("chime");
     },
 
     handleEvent(event) {
@@ -215,7 +231,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
       }
       const { muted, chimeOnly } = settings.getSnapshot();
       if (muted || chimeOnly) return;
-      backend.playCue(cue);
+      sound(cue);
     },
 
     setTheme(themeId) {

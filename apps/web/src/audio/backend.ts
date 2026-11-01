@@ -67,6 +67,8 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
   let parkToken = 0;
   /** When the loop fade-out in progress ends, on the context clock. */
   let fadingUntil = 0;
+  /** Bumped by silence() and suspend(), so a cue still waiting on a resume is dropped. */
+  let cueEpoch = 0;
 
   function enqueue(step: () => Promise<void>): Promise<void> {
     // With nothing ahead of it the step starts at once: resume() must be asked for inside the
@@ -176,6 +178,7 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
     },
 
     silence() {
+      cueEpoch += 1;
       if (!ctx || !master || !cueBus) return;
       // Fade the ringing bus out and swap in a fresh one for the cues that follow.
       const old = cueBus;
@@ -187,11 +190,15 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
 
     playCue(cue) {
       if (!ctx || !cueBus) return;
+      // A cue needs the context running to its end, so a suspend still waiting is dropped.
+      parkToken += 1;
       if (inflight > 0 || ctx.state === "suspended") {
         // Parked or parking: wake the context first and sound the cue once its clock runs again.
-        parkToken += 1;
+        const epoch = cueEpoch;
         enqueue(wake).then(
-          () => sound(cue),
+          () => {
+            if (epoch === cueEpoch) sound(cue);
+          },
           () => {},
         );
         return;
@@ -203,6 +210,7 @@ export function createWebAudioBackend(options: WebAudioBackendOptions = {}): Aud
       if (!ctx) return;
       // A suspended clock is frozen, so the rate-limit times taken from it mean nothing after.
       lastCueAt.clear();
+      cueEpoch += 1;
       parkToken += 1;
       const mine = parkToken;
       const context = ctx;
