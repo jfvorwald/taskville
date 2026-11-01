@@ -190,7 +190,6 @@ function CrewFamilyView({
 
   // Private presentation metadata, read by InteractionLayer without changing actual agent IDs.
   const representHidden = (id: string, bot: BotHandle, representative: Object3D | null) => {
-    if (byId.get(id)?.finishedAt !== undefined) representative = null;
     for (let object = representative; object !== null; object = object.parent) {
       if (!object.visible) {
         representative = null;
@@ -198,10 +197,12 @@ function CrewFamilyView({
       }
     }
     if (representative?.parent === null) representative = null;
-    bot.root.userData.crewRepresentative = representative;
-    if (representative === null) anchors.removeAnchor(agentAnchorId(id));
+    // Finishing suppresses this agent's fallback, but its running descendants still inherit it.
+    const ownRepresentative = byId.get(id)?.finishedAt === undefined ? representative : null;
+    bot.root.userData.crewRepresentative = ownRepresentative;
+    if (ownRepresentative === null) anchors.removeAnchor(agentAnchorId(id));
     else {
-      representative.getWorldPosition(markerPosition);
+      ownRepresentative.getWorldPosition(markerPosition);
       const point = anchorPoint.current;
       point[0] = markerPosition.x;
       point[1] = markerPosition.y;
