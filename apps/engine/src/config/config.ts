@@ -14,7 +14,7 @@ export const DEFAULT_PORT = 4807;
  */
 export const DEFAULT_HOLD_WINDOW_SECONDS = 90;
 export const HOOK_TIMEOUT_MARGIN_SECONDS = 5;
-export const MAX_HOLD_WINDOW_SECONDS = 600;
+export const MAX_HOLD_WINDOW_SECONDS = 300;
 export const UNSORTED_PROJECT_ID = "unsorted";
 
 /** City work areas (ARCHITECTURE.md 2.1, 8.3). */
