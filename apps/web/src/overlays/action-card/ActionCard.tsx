@@ -239,7 +239,12 @@ function CardBody({
     return () => clearInterval(timer);
   }, [store]);
 
-  useEffect(() => {
+  // Clear the previous input and approval state before a replacement can be painted.
+  useLayoutEffect(() => {
+    setLoad({ kind: wantsInput ? "loading" : "idle" });
+    setRevealed(new Set());
+    setSettled(false);
+    focusAfterReveal.current = null;
     if (!wantsInput) return;
     let cancelled = false;
     const controller = new AbortController();
@@ -284,7 +289,7 @@ function CardBody({
   }, [load]);
   const text = shown?.text ?? null;
   const spans = shown?.spans ?? [];
-  const unrevealed = spans.length - revealed.size;
+  const unrevealed = spans.filter((_, index) => !revealed.has(index)).length;
   const lineCount = text === null ? 0 : text.split("\n").length;
 
   // Does the input box overflow, and has it been scrolled to the end?
