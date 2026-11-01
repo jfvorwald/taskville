@@ -18,7 +18,11 @@ it("keeps an implementing lead's body pose and hat offset stationary under CityA
   store.getState().reset(PROJECT);
   store.getState().applySnapshotState(scenario.state);
   const work = scenario.leadWork();
-  store.getState().applyEvent({ ...work, payload: { activity: "implementing" } });
+  store.getState().applyEvent({
+    ...work,
+    type: "activity.started",
+    payload: { activity: "implementing" },
+  });
   expect(store.getState().state?.activity.lead?.activity).toBe("implementing");
   let root: RootState | undefined;
   const screen = await render(
