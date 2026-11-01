@@ -130,7 +130,10 @@ function action(
       ? ["Spawned", "Spawn failed for", "Spawning"]
       : ["Sent message to", "Message failed to", "Sending message to"];
   if (phase === "succeeded") return output.success === false ? failed : done;
-  return phase === "failed" ? failed : pending;
+  if (phase === "failed") return failed;
+  return phase === "running"
+    ? pending
+    : `No result recorded for ${tool === "Agent" ? "spawn of" : "message to"}`;
 }
 
 function ToolCard({
