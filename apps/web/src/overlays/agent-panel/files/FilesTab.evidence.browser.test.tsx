@@ -314,3 +314,47 @@ describe("M5.07 selected-file evidence budget", () => {
     expect(page.getByTestId("file-edits").elements()).toHaveLength(0);
   });
 });
+
+// These names are explicit synthetic variants, not claimed raw telemetry from the recording.
+describe("panel6262 default production edit-tool evidence", () => {
+  it.each(["MultiEdit", "NotebookEdit"])(
+    "%s fetches selected recorded evidence through the default Files transport",
+    async (toolName) => {
+      backlog(4);
+      for (const frame of frames) frame.data.toolName = toolName;
+      const gap = structuredClone(frames[0]);
+      gap.id = 5;
+      gap.data.toolCallId = "variant-gap";
+      gap.data.evidence = { input: null, output: null };
+      frames.push(gap, { ...structuredClone(frames[0]), id: 6 });
+      await openFiles();
+      await turn();
+      expect(requests, "file selection still gates evidence").toHaveLength(0);
+      await row(NOTES).click();
+      // Assert transport independently of counts/details. A presentation-only fix remains red here.
+      await expect
+        .poll(() => requests.map((r) => r.id).sort(), { timeout: 1000 })
+        .toEqual([...new Set(idsFor(NOTES))].sort());
+      expect(maximum).toBeLessThanOrEqual(4);
+      for (const request of requests) request.release();
+      await expect
+        .poll(detailBodies)
+        .toEqual([
+          recordedInput,
+          recordedOutput,
+          recordedInput,
+          recordedOutput,
+          "not reported",
+          "not reported",
+        ]);
+      await expect.element(row(NOTES)).toHaveAttribute("data-edit-count", "3");
+      expect(
+        Array.from(page.getByTestId("file-edits").element().querySelectorAll("article"), (e) =>
+          e.getAttribute("data-tool-call-id"),
+        ),
+      ).toEqual(["recorded-edit-0", "recorded-edit-2", "variant-gap"]);
+      expect(requests.every((r) => idsFor(NOTES).includes(r.id))).toBe(true);
+      expect(requests).toHaveLength(4);
+    },
+  );
+});

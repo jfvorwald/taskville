@@ -220,3 +220,65 @@ describe("M5.07 Files tab", () => {
     expect(detail().element().querySelectorAll("[data-line-number]")).toHaveLength(0);
   });
 });
+
+// Synthetic tool variants of the route-verified Edit fixture, not observed MultiEdit/NotebookEdit telemetry.
+describe("panel6262 adapter-supported edit tools", () => {
+  it.each(["MultiEdit", "NotebookEdit"])(
+    "%s counts once per file and preserves recorded edit detail order and missing bodies",
+    async (toolName) => {
+      const first = editFrame(40, "variant-first", NOTES, {
+        toolName,
+        filePaths: [NOTES, HELLO, NOTES],
+      });
+      const second = editFrame(41, "variant-second", NOTES, { toolName });
+      const gap = editFrame(43, "variant-gap", NOTES, {
+        toolName,
+        evidence: { input: null, output: null },
+      });
+      const bodies: Record<string, EvidenceResponse> = {};
+      for (const frame of [first, second]) {
+        for (const part of ["input", "output"] as const) {
+          const ref = frame.data.evidence[part];
+          if (!ref) throw new Error("recorded body missing");
+          const id = `${frame.data.toolCallId}-${part}`;
+          bodies[id] = { ...evidence[ref.id], id, toolCallId: frame.data.toolCallId };
+          frame.data.evidence = { ...frame.data.evidence, [part]: { id, status: "stored" } };
+        }
+      }
+      const feed = [
+        { ...first, data: { ...first.data, phase: "running" as const } },
+        second,
+        { ...first, id: 42 },
+        gap,
+        { ...second, id: 44 },
+        editFrame(45, "read-control", "read-only.ts", { toolName: "Read" }),
+        editFrame(46, "bash-control", "bash.ts", { toolName: "Bash" }),
+      ];
+      await render(<FilesTab agentId={A} frames={feed} evidence={bodies} />);
+      await expect.element(row(NOTES)).toBeVisible();
+      expect.soft(rows()).toEqual([
+        ["bash.ts", "0"],
+        ["read-only.ts", "0"],
+        [NOTES, "3"],
+        [HELLO, "1"],
+      ]);
+      await row(NOTES).click();
+      expect.soft(ids()).toEqual(["variant-first", "variant-second", "variant-gap"]);
+      expect
+        .soft(Array.from(detail().element().querySelectorAll("h4"), (e) => e.textContent))
+        .toEqual(Array(3).fill(`${toolName}: succeeded`));
+      expect
+        .soft(Array.from(detail().element().querySelectorAll("pre"), (e) => e.textContent))
+        .toEqual([
+          bodies["variant-first-input"].text,
+          bodies["variant-first-output"].text,
+          bodies["variant-second-input"].text,
+          bodies["variant-second-output"].text,
+          "not reported",
+          "not reported",
+        ]);
+      await row(HELLO).click();
+      expect.soft(ids()).toEqual(["variant-first"]);
+    },
+  );
+});
