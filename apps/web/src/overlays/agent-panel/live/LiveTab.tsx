@@ -116,13 +116,21 @@ function targetAgent(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-/** Claim a spawn or a send only once the recorded phase says it succeeded. */
-function action(tool: "Agent" | "SendMessage", phase: ToolCallFrame["phase"]) {
+/**
+ * Claim a spawn or a send only once the recorded phase says it succeeded and the recorded result
+ * does not say otherwise (a delivered hook can still carry `success: false`).
+ */
+function action(
+  tool: "Agent" | "SendMessage",
+  phase: ToolCallFrame["phase"],
+  output: Record<string, unknown>,
+) {
   const [done, failed, pending] =
     tool === "Agent"
       ? ["Spawned", "Spawn failed for", "Spawning"]
       : ["Sent message to", "Message failed to", "Sending message to"];
-  return phase === "succeeded" ? done : phase === "failed" ? failed : pending;
+  if (phase === "succeeded") return output.success === false ? failed : done;
+  return phase === "failed" ? failed : pending;
 }
 
 function ToolCard({
@@ -255,7 +263,7 @@ function ToolCard({
       ) : tool === "Agent" || tool === "SendMessage" ? (
         <>
           <p>
-            {action(tool, call.phase)}{" "}
+            {action(tool, call.phase, output)}{" "}
             {target ? (
               <Button onPress={() => select(target.id)}>
                 {safe(target.displayName ?? target.id)}
