@@ -19,21 +19,23 @@ export function AgentLabels({ anchors }: OverlayProps) {
   );
   return (
     <AnchorLayer source={anchors} gap={4} margin={48}>
-      {rows.map((r) => (
-        <Anchored key={r.id} id={r.id} anchorId={agentAnchorId(r.id)} priority={r.urgent ? 9 : 0}>
-          <div
-            className={styles.label}
-            data-testid="agent-label"
-            data-agent-id={r.id}
-            data-state={r.state}
-            data-urgent={r.urgent ? "true" : undefined}
-          >
-            <span className={styles.name}>{r.name}</span>
-            <span className={styles.status}>{r.status}</span>
-            {r.onTheWay && <span className={styles.onTheWay}>on the way</span>}
-          </div>
-        </Anchored>
-      ))}
+      {rows
+        .filter((r) => r.kind === undefined)
+        .map((r) => (
+          <Anchored key={r.id} id={r.id} anchorId={agentAnchorId(r.id)} priority={r.urgent ? 9 : 0}>
+            <div
+              className={styles.label}
+              data-testid="agent-label"
+              data-agent-id={r.id}
+              data-state={r.state}
+              data-urgent={r.urgent ? "true" : undefined}
+            >
+              <span className={styles.name}>{r.name}</span>
+              <span className={styles.status}>{r.status}</span>
+              {r.onTheWay && <span className={styles.onTheWay}>on the way</span>}
+            </div>
+          </Anchored>
+        ))}
     </AnchorLayer>
   );
 }

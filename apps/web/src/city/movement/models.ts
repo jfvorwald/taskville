@@ -25,6 +25,8 @@ export interface ModelInput {
 
 export interface Models {
   readonly views: AgentView[];
+  /** Views of the subagents the crew layer draws: not drawn as block agents, still listed. */
+  readonly crew: AgentView[];
   readonly intents: NavIntent[];
 }
 
@@ -60,7 +62,8 @@ export function identityOf(agent: Agent): string {
 /**
  * Views and intents for every agent that has not finished, in the store's order. Finished agents
  * are left out, so navigation walks them out. A subagent with a known parent gets an intent but no
- * view: the crew layer (`crew/subagents`) is its only drawing. `placementFor` must return the same object for an
+ * view: the crew layer (`crew/subagents`) is its only drawing, and its view goes in `crew` so
+ * the agent list can still name it. `placementFor` must return the same object for an
  * id every time: navigation mutates it in place and the bots read it each frame.
  */
 export function buildModels(
@@ -86,6 +89,7 @@ export function buildModels(
   };
 
   const views: AgentView[] = [];
+  const crew: AgentView[] = [];
   const intents: NavIntent[] = [];
   for (const agent of input.agents) {
     if (agent.finishedAt !== undefined) continue;
@@ -97,22 +101,22 @@ export function buildModels(
     // A subagent whose parent is known is drawn by the crew layer (M5.02), so it has an intent
     // but no block-agent view. One without a recorded parent has no door to walk out of and
     // stays a block agent.
-    if (agent.kind !== "subagent" || parent === undefined) {
-      views.push({
-        id: agent.id,
-        kind: agent.kind,
-        activity,
-        depth: depthOf(agent),
-        placement: placementFor(agent.id),
-        ...(agent.displayName === undefined ? {} : { displayName: agent.displayName }),
-        sourceId: agent.sourceId,
-        ...(agent.sourceAgentId === undefined ? {} : { sourceAgentId: agent.sourceAgentId }),
-        ...(agentType === undefined ? {} : { agentType }),
-        ...(parent === undefined ? {} : { parentIdentity: identityOf(parent) }),
-        ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
-        ...(attention === undefined ? {} : { attention }),
-      });
-    }
+    const view: AgentView = {
+      id: agent.id,
+      kind: agent.kind,
+      activity,
+      depth: depthOf(agent),
+      placement: placementFor(agent.id),
+      ...(agent.displayName === undefined ? {} : { displayName: agent.displayName }),
+      sourceId: agent.sourceId,
+      ...(agent.sourceAgentId === undefined ? {} : { sourceAgentId: agent.sourceAgentId }),
+      ...(agentType === undefined ? {} : { agentType }),
+      ...(parent === undefined ? {} : { parentIdentity: identityOf(parent) }),
+      ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
+      ...(attention === undefined ? {} : { attention }),
+    };
+    if (agent.kind !== "subagent" || parent === undefined) views.push(view);
+    else crew.push(view);
     const rest: RestState =
       record?.level === "waiting" || activity === "waiting"
         ? "waiting"
@@ -140,7 +144,7 @@ export function buildModels(
       ...(agent.parentAgentId === undefined ? {} : { parentId: agent.parentAgentId }),
     });
   }
-  return { views, intents };
+  return { views, crew, intents };
 }
 
 /** Header counts: agents still in the city, and agents waiting on the user. */

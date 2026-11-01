@@ -77,6 +77,9 @@ export function createCrewTracker(): CrewTracker {
 
       for (const agent of agents) {
         if (agent.kind !== "subagent" || agent.parentAgentId === undefined) continue;
+        // A parent that is not in the store leaves nothing to walk out of: the subagent stays a
+        // block agent (`buildModels`), so it is not drawn a second time here.
+        if (!byId.has(agent.parentAgentId)) continue;
         const finished = agent.finishedAt !== undefined;
         let state = states.get(agent.id);
         if (state === undefined) {
@@ -95,7 +98,13 @@ export function createCrewTracker(): CrewTracker {
         const seen = new Set([agent.id]);
         for (let hops = 0; hops < MAX_HOPS; hops++) {
           const up = byId.get(lineage[lineage.length - 1] as string);
-          if (up?.kind !== "subagent" || up.parentAgentId === undefined || seen.has(up.id)) break;
+          if (
+            up?.kind !== "subagent" ||
+            up.parentAgentId === undefined ||
+            !byId.has(up.parentAgentId) ||
+            seen.has(up.id)
+          )
+            break;
           seen.add(up.id);
           lineage.push(up.parentAgentId);
         }

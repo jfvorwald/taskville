@@ -18,7 +18,7 @@ import { TeamDecorations } from "../crew/teams/TeamDecorations.tsx";
 import { presentationEpoch } from "../runtime/epoch.ts";
 import { rebuildPresentation } from "../runtime/rebuild.ts";
 import { agentAnchorId } from "./AgentLabels.tsx";
-import { type LabelStore, labelRows, movementLabels } from "./labels.ts";
+import { crewLabelEntries, type LabelStore, labelRows, movementLabels } from "./labels.ts";
 import { buildModels } from "./models.ts";
 import { createNavigator, type Navigator, type PresentationState } from "./navigator.ts";
 import { loadActivityAreas, usePrefersReducedMotion } from "./settings.ts";
@@ -124,12 +124,23 @@ export function CityAgents({
 
   const entries = useRef<readonly AgentLabelEntry[]>([]);
   const offsets = useRef(new Map<string, number>());
+  // Subagents the crew layer draws: no block agent, so no entry from `AgentsLayer`; the agent
+  // list still names them.
+  const crewEntries = useRef<readonly AgentLabelEntry[]>([]);
+  const crewIds = useRef<ReadonlySet<string>>(new Set());
   const urgent = useRef<ReadonlySet<string>>(new Set());
   const shown = useRef(new Map<string, { state: PresentationState; onTheWay: boolean }>());
   const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
 
   const publishLabels = useCallback(() => {
-    labels.set(labelRows(entries.current, (id) => nav.get(id), urgent.current));
+    labels.set(
+      labelRows(
+        [...entries.current, ...crewEntries.current],
+        (id) => nav.get(id),
+        urgent.current,
+        crewIds.current,
+      ),
+    );
   }, [labels, nav]);
 
   const publishPositions = useCallback(() => {
@@ -161,8 +172,12 @@ export function CityAgents({
     if (models === null) return;
     nav.sync(models.intents, { place: !placedOnce.current });
     placedOnce.current = true;
+    crewEntries.current = crewLabelEntries(models.crew);
+    crewIds.current = new Set(models.crew.map((v) => v.id));
     urgent.current = new Set(
-      models.views.filter((v) => v.attention?.level === "needs_you").map((v) => v.id),
+      [...models.views, ...models.crew]
+        .filter((v) => v.attention?.level === "needs_you")
+        .map((v) => v.id),
     );
     publishPositions();
     publishLabels();
