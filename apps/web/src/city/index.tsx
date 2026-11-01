@@ -1,3 +1,4 @@
+import { useData } from "../data/react.ts";
 import { type DataStore, dataStore } from "../data/store.ts";
 import { ThemedCity } from "../themes/core/index.ts";
 import { useReducedMotion } from "../wiring/index.ts";
@@ -21,12 +22,16 @@ export function CityRoot({
   historyTime?: number | null;
 }) {
   const reducedMotion = useReducedMotion();
+  const historySequence = useData(
+    (state) => (mode === "history" ? state.state?.head : undefined),
+    store,
+  );
   return (
     <>
       <ThemedCity />
       <DayNightLighting />
       <CityAgents
-        key={mode === "history" ? `history:${historyTime}` : "live"}
+        key={mode === "history" ? `history:${historySequence}:${historyTime}` : "live"}
         store={store}
         reducedMotion={reducedMotion}
       />

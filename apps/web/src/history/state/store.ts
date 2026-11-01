@@ -62,12 +62,21 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     pendingPlayback = false;
   }
 
-  function anchor() {
-    elapsedAt = now();
-    target = exact
-      ? (positions?.find((moment) => moment.sequence === store.getState().state?.head)?.elapsed ??
-        null)
-      : store.getState().time;
+  function anchor(resetPosition = false) {
+    const elapsed = now();
+    if (exact && !resetPosition && target !== null) {
+      if (store.getState().playing) {
+        target += Math.max(0, elapsed - elapsedAt) * store.getState().rate;
+        const end = positions?.at(-1)?.elapsed;
+        if (end !== undefined) target = Math.min(target, end);
+      }
+    } else {
+      target = exact
+        ? (positions?.find((moment) => moment.sequence === store.getState().state?.head)?.elapsed ??
+          null)
+        : store.getState().time;
+    }
+    elapsedAt = elapsed;
   }
 
   async function seek(time: number, playback = false, sequence?: number): Promise<void> {
@@ -112,7 +121,7 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       }
       exact = sequence !== undefined;
       store.setState({ mode: "history", state, time });
-      if (!playback) anchor();
+      if (!playback) anchor(true);
     } catch (error) {
       if (current !== generation || disposed) return;
       anchor();
