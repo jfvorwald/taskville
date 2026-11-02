@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { stateHash } from "@taskville/domain/hash";
+import { sha256Hex, stateHash } from "@taskville/domain/hash";
 import {
   initialState,
   type ProjectState,
@@ -119,14 +119,14 @@ const sequences = () => rows().map((r) => r.sequence);
 const multiplesUpTo = (n: number) =>
   Array.from({ length: Math.floor(n / 500) }, (_, i) => (i + 1) * 500);
 
-function expectTrusted(version: number, head: number) {
+function expectTrusted(version: number, head: number, reducer = domainReducer) {
   for (const row of rows()) {
     expect(row.reducer_version).toBe(version);
     expect(row.sequence).toBeGreaterThanOrEqual(1);
     expect(row.sequence).toBeLessThanOrEqual(head);
     const state = JSON.parse(row.state_json) as ProjectState;
     expect(row.state_hash).toBe(stateHash(version, state));
-    expect(state).toEqual(fullReplay(domainReducer, row.sequence));
+    expect(state).toEqual(fullReplay(reducer, row.sequence));
   }
 }
 
@@ -217,7 +217,7 @@ describe("a reducer version change", () => {
     expect(counter.applied).toBeGreaterThanOrEqual(1250 - 500);
     expect(rows().every((r) => r.reducer_version === REDUCER_VERSION + 1)).toBe(true);
     expect(sequences()).toEqual(multiplesUpTo(LOG_LENGTH));
-    expectTrusted(REDUCER_VERSION + 1, LOG_LENGTH);
+    expectTrusted(REDUCER_VERSION + 1, LOG_LENGTH, next);
   });
 
   it("old-version checkpoints are not trusted even when their hash is self-consistent", () => {
@@ -300,7 +300,7 @@ describe("the log keeps growing", () => {
     const all = dayEvents().slice(0, LOG_LENGTH + 400);
     storage().transaction((tx) => {
       for (const event of all.slice(LOG_LENGTH))
-        tx.appendEvent(event, `hash-${event.ingestSequence}`);
+        tx.appendEvent(event, sha256Hex(`hash-${event.ingestSequence}`));
     });
     const full = (() => {
       let state = domainReducer.initial(PROJECT);
