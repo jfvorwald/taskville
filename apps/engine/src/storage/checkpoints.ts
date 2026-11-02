@@ -1,5 +1,11 @@
 import type { Database } from "./sqlite.ts";
 
+/** Events between checkpoints (ARCHITECTURE.md 7.4). */
+export const CHECKPOINT_INTERVAL = 500;
+
+/** The longest cache upkeep waits, in total, for another connection's write lock. */
+export const UPKEEP_WAIT_MS = 250;
+
 /** One stored checkpoint: the reducer state after events 1..sequence. */
 export interface CheckpointRow {
   sequence: number;
@@ -11,10 +17,12 @@ export interface CheckpointRow {
 /**
  * The `checkpoints` table (ARCHITECTURE.md 7.4): disposable caches of reducer state, never read
  * as truth. The caller decides whether a row is trustworthy; this class only stores, lists, and
- * deletes. Writes run in their own transaction.
+ * deletes. Writes run in their own transaction, or in the caller's if one is open (the ingest
+ * commit).
  */
 export class SqliteCheckpoints {
   readonly #db: Database;
+  #remaining: number | undefined;
 
   constructor(db: Database) {
     this.#db = db;
@@ -85,15 +93,53 @@ export class SqliteCheckpoints {
     });
   }
 
-  #write<T>(fn: () => T): T {
-    this.#db.exec("BEGIN IMMEDIATE");
+  /**
+   * Runs `fn` with every write inside it drawing on one shared lock-wait budget of `ms`: a write
+   * waits at most what is left (the connection's busy timeout is lowered for it and restored
+   * after), time spent waiting is subtracted, and a write throws at once when nothing is left.
+   * The engine's default busy timeout is untouched for every other writer.
+   */
+  withWaitBudget<T>(ms: number, fn: () => T): T {
+    const previous = this.#remaining;
+    this.#remaining = ms;
     try {
-      const result = fn();
-      this.#db.exec("COMMIT");
-      return result;
-    } catch (error) {
-      if (this.#db.isTransaction) this.#db.exec("ROLLBACK");
-      throw error;
+      return fn();
+    } finally {
+      this.#remaining = previous;
     }
+  }
+
+  #write<T>(fn: () => T): T {
+    // Inside the caller's transaction (the ingest commit) the lock is already held.
+    if (this.#db.isTransaction) return fn();
+    const restore = this.#limitWait();
+    try {
+      const began = performance.now();
+      try {
+        this.#db.exec("BEGIN IMMEDIATE");
+      } finally {
+        if (this.#remaining !== undefined) this.#remaining -= performance.now() - began;
+      }
+      try {
+        const result = fn();
+        this.#db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        if (this.#db.isTransaction) this.#db.exec("ROLLBACK");
+        throw error;
+      }
+    } finally {
+      restore();
+    }
+  }
+
+  /** Lowers the busy timeout to the remaining budget, if there is one; returns the undo. */
+  #limitWait(): () => void {
+    if (this.#remaining === undefined) return () => {};
+    const left = Math.floor(this.#remaining);
+    if (left <= 0) throw new Error("checkpoint upkeep skipped: wait budget spent");
+    const previous = Number(this.#db.prepare("PRAGMA busy_timeout").get()?.timeout);
+    this.#db.exec(`PRAGMA busy_timeout = ${left}`);
+    return () => this.#db.exec(`PRAGMA busy_timeout = ${previous}`);
   }
 }

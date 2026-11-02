@@ -1,18 +1,24 @@
 import { canonicalJson, sha256Hex, stateHash } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { domainReducer } from "../ingest/index.ts";
-import type { CheckpointRow, ProjectionReducer, Storage } from "../storage/index.ts";
+import {
+  CHECKPOINT_INTERVAL,
+  type CheckpointRow,
+  type ProjectionReducer,
+  type Storage,
+  UPKEEP_WAIT_MS,
+} from "../storage/index.ts";
 
 // Replay checkpoints (ARCHITECTURE.md 7.4; constitution II and VI). A checkpoint is the reducer
 // state after the first N events, kept every CHECKPOINT_INTERVAL events so a seek replays at most
 // that many. Checkpoints are disposable caches: any that is not provably right is ignored and
 // rebuilt, and the result always equals a full replay.
 //
-// Write policy: lazy. Ingest is untouched (the hot path pays nothing); the first read of a
-// position writes the checkpoints it passes over, so later seeks anywhere before it are cheap.
+// Write policy: eager on ingest commit (the pipeline writes one whenever the head crosses a
+// multiple of the interval), plus lazy on read to backfill logs that predate checkpoints, a
+// reducer-version change, or a pruned row.
 
-/** Events between checkpoints. */
-export const CHECKPOINT_INTERVAL = 500;
+export { CHECKPOINT_INTERVAL };
 
 export interface StateAtOptions {
   reducer?: ProjectionReducer<ProjectState>;
@@ -53,13 +59,24 @@ export function stateAtSequence(
   upTo: number,
   options: StateAtOptions = {},
 ): ProjectState {
+  return storage
+    .checkpoints()
+    .withWaitBudget(UPKEEP_WAIT_MS, () => stateAt(storage, projectId, upTo, options));
+}
+
+function stateAt(
+  storage: Storage,
+  projectId: string,
+  upTo: number,
+  options: StateAtOptions,
+): ProjectState {
   const reducer = options.reducer ?? domainReducer;
   const interval = options.interval ?? CHECKPOINT_INTERVAL;
   const cache = storage.checkpoints();
   const head = storage.head(projectId) ?? 0;
 
   // Cache upkeep needs the write lock; if another connection holds it the read still succeeds
-  // from the log, so upkeep is best effort and a skipped prune only costs a recheck next time.
+  // from the log, so upkeep is best effort; every step shares the one wait budget set by the caller.
   attempt(() => cache.prune(projectId, reducer.version, head));
   const stored = new Set(cache.sequences(projectId));
 

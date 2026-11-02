@@ -71,6 +71,14 @@ export interface ProjectionWrite {
   state: unknown;
 }
 
+export interface CheckpointWrite {
+  projectId: string;
+  /** The ingest sequence the state is after. */
+  sequence: number;
+  reducerVersion: number;
+  state: unknown;
+}
+
 export interface StoredEventRecord {
   eventId: string;
   ingestSequence: number;
@@ -110,6 +118,8 @@ export interface StorageTransaction extends StorageReads {
   appendEvent(envelope: StoredEnvelope, contentHash: string): void;
   /** Writes the project's projection and returns its stateHash. */
   writeProjection(projection: ProjectionWrite): string;
+  /** Writes a replay checkpoint: the state after events 1..sequence (a disposable cache). */
+  writeCheckpoint(checkpoint: CheckpointWrite): void;
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -306,6 +316,18 @@ export class Storage implements StorageReads {
       writeProjection: (projection) => {
         live();
         return this.#writeProjection(projection);
+      },
+      writeCheckpoint: (checkpoint) => {
+        live();
+        const json = canonicalJson(checkpoint.state);
+        this.checkpoints().put(checkpoint.projectId, [
+          {
+            sequence: checkpoint.sequence,
+            reducerVersion: checkpoint.reducerVersion,
+            stateHash: `${checkpoint.reducerVersion}:${sha256Hex(json)}`,
+            stateJson: json,
+          },
+        ]);
       },
     };
     this.#db.exec("BEGIN IMMEDIATE");

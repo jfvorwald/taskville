@@ -16,6 +16,7 @@ import { performance } from "node:perf_hooks";
 import { PairingStore } from "../../apps/engine/src/auth/pairing.ts";
 import { createApp } from "../../apps/engine/src/http/app.ts";
 import { bootEngine } from "../../apps/engine/src/stream/index.ts";
+import { stateAtSequence } from "../../apps/engine/src/timelines/checkpoints.ts";
 import {
   AFTER_DAY,
   CALM,
@@ -55,6 +56,10 @@ try {
   seedLog(engine.storage, events);
   const seedMs = performance.now() - seedStart;
   const head = events.length;
+  // Untimed warm-up. Production writes a checkpoint on every ingest commit that crosses a multiple
+  // of 500 (eager); this harness seeds through seedLog and bypasses ingest, so one read at the
+  // head writes the same checkpoints before the timed runs.
+  stateAtSequence(engine.storage, DAY_PROJECT, head);
 
   console.log(
     `# Timeline seek (${new Date().toISOString()}), Node ${process.version}, ${paceName} day, ${head} events (seeded in ${seedMs.toFixed(0)} ms), ${runs} runs per position`,
