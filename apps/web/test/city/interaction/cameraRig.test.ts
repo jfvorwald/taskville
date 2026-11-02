@@ -58,3 +58,34 @@ describe("camera rig", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+// Round 3 (S3): the pan added to the rig for the Crew tab's camera ease.
+describe("camera rig pan", () => {
+  it("pans by a world offset, accumulating, leaving turn and zoom alone", () => {
+    const rig = createCameraRig();
+    rig.orbitBy(30);
+    rig.panBy(2, -1);
+    rig.panBy(1, 1);
+    expect(rig.getSnapshot()).toMatchObject({ azimuthOffset: 30, zoom: 1, panX: 3, panZ: 0 });
+  });
+
+  it("is not the default view after only a pan, and reset clears it", () => {
+    const rig = createCameraRig();
+    rig.panBy(1, 0);
+    expect(rig.isDefault()).toBe(false);
+    const listener = vi.fn();
+    rig.subscribe(listener);
+    rig.reset();
+    expect(rig.isDefault()).toBe(true);
+    expect(rig.getSnapshot()).toEqual(DEFAULT_VIEW);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not notify for a zero pan", () => {
+    const rig = createCameraRig();
+    const listener = vi.fn();
+    rig.subscribe(listener);
+    rig.panBy(0, 0);
+    expect(listener).not.toHaveBeenCalled();
+  });
+});

@@ -43,7 +43,7 @@ export function CameraDriver({ rig = cameraRig }: { rig?: CameraRig }) {
       cam.updateProjectionMatrix();
     }
 
-    pose.current.apply(cam, v.azimuthOffset);
+    pose.current.apply(cam, v.azimuthOffset, v.panX, v.panZ);
   });
   return null;
 }
