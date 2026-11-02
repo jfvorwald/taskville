@@ -1,4 +1,11 @@
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { highlightStore } from "../../../city/crew/highlight/highlightStore.ts";
 import { shouldClearOnEscape } from "../../../city/interaction/escape.ts";
@@ -7,6 +14,8 @@ import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
+import { getSettingsStore } from "../../settings/store.ts";
+import { displayPath } from "../code/displayPath.ts";
 import { CrewTab } from "../crew/CrewTab.tsx";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
 import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
@@ -78,6 +87,12 @@ export function AgentPanel({
 }: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
+  const settings = getSettingsStore();
+  const { privacyMode } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
   const [nowMs, setNowMs] = useState(() => store.now());
   const [chosen, setChosen] = useState<PanelTab>(initialTab);
 
@@ -186,7 +201,7 @@ export function AgentPanel({
         </p>
         {file === null ? null : (
           <p className={styles.file} data-testid="agent-panel-file">
-            {file}
+            {displayPath(file, { privacy: privacyMode })}
           </p>
         )}
       </header>

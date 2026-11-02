@@ -27,6 +27,7 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { displayPath } from "../code/displayPath.ts";
 import { ExpandableCode } from "../code/ExpandableCode.tsx";
 import { buildEditorLink } from "../code/editorLink.ts";
 import type { CodeHighlighter } from "../code/highlighter.ts";
@@ -148,10 +149,12 @@ const isLinkablePath = (path: string) =>
   !path.includes("[REDACTED") &&
   !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 
-function Path({ path }: { path: string }) {
-  const shown = safe(path);
+function Path({ path, privacy = false }: { path: string; privacy?: boolean }) {
+  const bounded = displayPath(path, { privacy });
+  const shown = safe(bounded);
   // A path with a hidden or reordering character is shown with markers, as text and not a link.
-  const href = isLinkablePath(path) ? buildEditorLink(path) : null;
+  // Under privacy a path that was hidden or shortened is never a link.
+  const href = bounded === path && isLinkablePath(path) ? buildEditorLink(path) : null;
   return href ? (
     <a href={href} rel="noopener noreferrer">
       {shown}
@@ -509,7 +512,7 @@ function HiddenToolCard({
           Path:{" "}
           {call.filePaths.map((path) => (
             <span key={path}>
-              <Path path={path} />{" "}
+              <Path path={path} privacy />{" "}
             </span>
           ))}
         </p>
