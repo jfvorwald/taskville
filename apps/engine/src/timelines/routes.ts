@@ -1,20 +1,16 @@
-import {
-  type ProjectState,
-  projectStateHash,
-  REDUCER_VERSION,
-  replay,
-} from "@taskville/domain/reducer";
+import { type ProjectState, projectStateHash, REDUCER_VERSION } from "@taskville/domain/reducer";
 import { attention } from "@taskville/domain/selectors";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { Context, Hono } from "hono";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
 import type { Storage } from "../storage/index.ts";
+import { stateAtSequence } from "./checkpoints.ts";
 import { type Position, parsePosition } from "./position.ts";
 
 // Timeline reads (ARCHITECTURE.md 7.3 and 7.4, contracts/http-api.md "Timelines"): the live
 // recording of a project, read at any position by replaying its event log. Read routes only;
-// nothing here writes, and nothing here can reach the command service.
+// the only write is the disposable checkpoint cache, and nothing here can reach the command service.
 
 const LIVE_PREFIX = "live:";
 const DEFAULT_LIMIT = 200;
@@ -56,15 +52,6 @@ function eventAt(
 ): StoredEnvelope | undefined {
   for (const event of storage.events(projectId, sequence - 1)) return event;
   return undefined;
-}
-
-/** The events with sequence 1 to `last`, in order. */
-function* eventsUpTo(storage: Storage, projectId: string, last: number) {
-  if (last === 0) return;
-  for (const event of storage.events(projectId)) {
-    yield event;
-    if (event.ingestSequence >= last) return;
-  }
 }
 
 /**
@@ -183,7 +170,7 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     // At the head the stored projection is the replay already done, if it is current.
     const stored = at === head ? storage.projection<ProjectState>(projectId) : undefined;
     const reuse = stored?.reducerVersion === REDUCER_VERSION && stored.head === at;
-    const state = reuse ? stored.state : replay(projectId, eventsUpTo(storage, projectId, at));
+    const state = reuse ? stored.state : stateAtSequence(storage, projectId, at);
     return c.json({
       timelineId,
       at,

@@ -1,6 +1,7 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { PairingRecords } from "../auth/pairing.ts";
+import { SqliteCheckpoints } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import { secureDatabaseFiles } from "./file-mode.ts";
 import { currentSchemaVersion, migrate } from "./migrations.ts";
@@ -70,6 +71,14 @@ export interface ProjectionWrite {
   state: unknown;
 }
 
+export interface CheckpointWrite {
+  projectId: string;
+  /** The ingest sequence the state is after. */
+  sequence: number;
+  reducerVersion: number;
+  state: unknown;
+}
+
 export interface StoredEventRecord {
   eventId: string;
   ingestSequence: number;
@@ -109,6 +118,8 @@ export interface StorageTransaction extends StorageReads {
   appendEvent(envelope: StoredEnvelope, contentHash: string): void;
   /** Writes the project's projection and returns its stateHash. */
   writeProjection(projection: ProjectionWrite): string;
+  /** Writes a replay checkpoint: the state after events 1..sequence (a disposable cache). */
+  writeCheckpoint(checkpoint: CheckpointWrite): void;
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -191,6 +202,7 @@ export class Storage implements StorageReads {
   readonly #now: () => Date;
   readonly #stmt: Statements;
   #pairings: SqlitePairingRecords | undefined;
+  #checkpoints: SqliteCheckpoints | undefined;
 
   constructor(db: Database, now: () => Date) {
     this.#db = db;
@@ -305,6 +317,18 @@ export class Storage implements StorageReads {
         live();
         return this.#writeProjection(projection);
       },
+      writeCheckpoint: (checkpoint) => {
+        live();
+        const json = canonicalJson(checkpoint.state);
+        this.checkpoints().put(checkpoint.projectId, [
+          {
+            sequence: checkpoint.sequence,
+            reducerVersion: checkpoint.reducerVersion,
+            stateHash: `${checkpoint.reducerVersion}:${sha256Hex(json)}`,
+            stateJson: json,
+          },
+        ]);
+      },
     };
     this.#db.exec("BEGIN IMMEDIATE");
     try {
@@ -328,6 +352,12 @@ export class Storage implements StorageReads {
   pairingRecords(): PairingRecords {
     this.#pairings ??= new SqlitePairingRecords(this.#db, this.#now);
     return this.#pairings;
+  }
+
+  /** The replay checkpoint cache (disposable; ARCHITECTURE.md 7.4). */
+  checkpoints(): SqliteCheckpoints {
+    this.#checkpoints ??= new SqliteCheckpoints(this.#db);
+    return this.#checkpoints;
   }
 
   close(): void {

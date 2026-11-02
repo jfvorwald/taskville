@@ -17,6 +17,7 @@ import {
 } from "@taskville/protocol";
 import type { Logger } from "pino";
 import {
+  CHECKPOINT_INTERVAL,
   clientContentHash,
   type ProjectionReducer,
   type Storage,
@@ -227,6 +228,15 @@ export class IngestPipeline {
     tx.appendEvent(stored, contentHash);
     projectWork.state = this.#reducer.apply(projectWork.state, stored);
     projectWork.head = stored.ingestSequence;
+    // Replay checkpoint (ARCHITECTURE.md 7.4), in the same commit: the state is already in hand.
+    if (stored.ingestSequence % CHECKPOINT_INTERVAL === 0) {
+      tx.writeCheckpoint({
+        projectId,
+        sequence: stored.ingestSequence,
+        reducerVersion: this.#reducer.version,
+        state: projectWork.state,
+      });
+    }
     return {
       result: {
         sourceEventId: event.sourceEventId,
