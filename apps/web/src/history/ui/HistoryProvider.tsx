@@ -90,6 +90,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     let recorded: StoredEnvelope[] = [];
     let presentedSequence: number | null = null;
     let explicitSeek = false;
+    let seekGeneration = 0;
     let fidelity = EMPTY_FIDELITY_FRAME;
     function resetFidelity(sequence: number | null = null) {
       fidelity = {
@@ -110,6 +111,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     }
     function cancel() {
       generation += 1;
+      seekGeneration += 1;
+      explicitSeek = false;
       clearInterval(timer);
       timer = undefined;
       moments = [];
@@ -133,20 +136,20 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       if (!active || !controller || !range || !Number.isSafeInteger(sequence)) return;
       const moment = moments.find((item) => item.sequence === sequence);
       if (!moment) return;
+      const seekToken = ++seekGeneration;
       explicitSeek = true;
-      resetFidelity(sequence);
-      publish({ fidelity });
       controller.getState().pause();
       const requestGeneration = generation;
       void controller
         .getState()
         .seekSequence(moment.sequence, moment.time)
         .catch(() => {
-          if (requestGeneration === generation)
+          if (requestGeneration === generation && seekToken === seekGeneration)
             publish({ error: "Could not load recorded state." });
         })
         .finally(() => {
-          if (requestGeneration === generation) explicitSeek = false;
+          if (requestGeneration === generation && seekToken === seekGeneration)
+            explicitSeek = false;
         });
     }
     async function enter() {
@@ -303,7 +306,6 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           moments.at(-1)?.time !== last
         )
           throw new Error("events");
-        resetFidelity(lastSequence);
         explicitSeek = true;
         controller = createHistoryStore({
           liveStore: dataStore,
@@ -334,7 +336,10 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           // The live subscription below owns project/reset cancellation.
           if (state.mode === "history" && state.state && state.time !== null) {
             const sequence = state.state.head;
-            if (
+            if (explicitSeek && state.state !== before.state) {
+              // The requested position becomes the baseline only when its read succeeds.
+              resetFidelity(sequence);
+            } else if (
               !explicitSeek &&
               before.playing &&
               presentedSequence !== null &&
@@ -370,7 +375,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
         await controller.getState().seekSequence(lastSequence, last);
-        explicitSeek = false;
+        if (active && requestGeneration === generation) explicitSeek = false;
       } catch {
         if (active && requestGeneration === generation) {
           cancel();
