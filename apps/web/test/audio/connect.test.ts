@@ -204,13 +204,24 @@ describe("the chime follows the global attention feed", () => {
     expect(r.cues("chime")).toHaveLength(0);
   });
 
-  it("plays no chime in history mode", async () => {
-    const r = await live();
+  it("keeps replay silent in history while chiming once for a new global live entry", async () => {
+    const r = await live(feedOf(project("alpha", needsYou("a1"))));
     r.theme.setState({ history: true });
 
-    r.snapshot(feedOf(project("beta", needsYou("b1"))));
+    // Recorded city attention and events are replay, never global live alerts (ARCHITECTURE 3).
+    r.soundscape.update([needsYou("recorded-agent")]);
+    r.emit(taskCompleted("recorded-agent"));
+    r.emit(handoff("recorded-agent", "recorded-recipient"));
+    expect(r.cues()).toHaveLength(0);
 
-    expect(r.cues("chime")).toHaveLength(0);
+    // The existing global connection still observes a new agent in another project.
+    r.snapshot(feedOf(project("alpha", needsYou("a1")), project("beta", needsYou("b1"))));
+    expect(r.cues("chime")).toHaveLength(1);
+
+    r.snapshot(feedOf(project("alpha", needsYou("a1")), project("beta", needsYou("b1"))));
+    expect(r.cues("chime")).toHaveLength(1);
+    expect(r.cues("tick")).toHaveLength(0);
+    expect(r.cues("pop")).toHaveLength(0);
   });
 });
 

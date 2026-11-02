@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-199: Ambient controls must account for changing host height
+- **Date:** 2026-11-01 · **Milestone:** M6 · **Ticket:** #77 · **Recorded by:** CTO (Sol)
+- **What happened:** An isolated Back to live test missed the existing header. A fixed offset cleared the default header but failed after global project chips wrapped.
+- **Lesson:** Test the real host with changing content, including actual click reachability; position dependent controls from the rendered host bounds.
+- **Action:** PR324 adds full SceneRoot default/wrapped-header and single-audio-connection coverage. Source dacc4a1, panel6549 and specialist reviews pass; main integration awaits #295.
+
 ### L-198: Current owner instructions govern restricted merges
 - **Date:** 2026-11-01 · **Milestone:** M5 · **Ticket:** #295 · **Recorded by:** CTO (Sol)
 - **What happened:** L-194 records an earlier assistant's claim about a standing admin-bypass order. The current owner authorization explicitly says to record enforced merge restrictions and continue independent work.
