@@ -98,8 +98,6 @@ const distanceFromBottom = (node: HTMLElement) =>
   node.scrollHeight - node.clientHeight - node.scrollTop;
 const EVICTED = "details no longer stored";
 const CODE_HIDDEN = "Code hidden by the privacy setting";
-/** Tools whose input carries code or file content. Under privacy their bodies are never shown. */
-const CODE_TOOLS: ReadonlySet<string> = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"]);
 /** The language id Shiki gets for a path: its extension, or plain text. */
 const languageOf = (path: string | undefined) =>
   /\.([A-Za-z0-9]+)$/.exec(path ?? "")?.[1] ?? "text";
@@ -141,15 +139,26 @@ function parseBody(body: EvidenceResponse): unknown {
   }
 }
 
+/**
+ * A path may become an editor link only when showing it changes nothing: no secret to mask (or already masked), no
+ * hidden or reordering character, no control character. Every editor link goes through this.
+ */
+const isLinkablePath = (path: string) =>
+  safe(path) === path &&
+  !path.includes("[REDACTED") &&
+  !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+
 function Path({ path }: { path: string }) {
   const shown = safe(path);
   // A path with a hidden or reordering character is shown with markers, as text and not a link.
-  const href =
-    shown === path &&
-    !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
-      ? buildEditorLink(path)
-      : null;
-  return href ? <a href={href}>{shown}</a> : <span>{shown}</span>;
+  const href = isLinkablePath(path) ? buildEditorLink(path) : null;
+  return href ? (
+    <a href={href} rel="noopener noreferrer">
+      {shown}
+    </a>
+  ) : (
+    <span>{shown}</span>
+  );
 }
 
 /** Resolve recorded identities only, never names or a guessed destination. */
@@ -232,7 +241,7 @@ const oneLine = (text: string) => text.split("\n", 1)[0].slice(0, 120);
 const pretty = (value: unknown) =>
   typeof value === "string" || value === undefined ? value : JSON.stringify(value, null, 2);
 
-const ToolCard = memo(function ToolCard({
+const OpenToolCard = memo(function OpenToolCard({
   call,
   inputBody,
   outputBody,
@@ -244,7 +253,6 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded,
   position,
   size,
-  privacy,
   highlighter,
   editorTemplate,
 }: {
@@ -259,7 +267,6 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
-  privacy: boolean;
   highlighter: CodeHighlighter | undefined;
   editorTemplate: string | undefined;
 }) {
@@ -355,9 +362,7 @@ const ToolCard = memo(function ToolCard({
             : "not reported"}
         </p>
       ) : null}
-      {privacy && CODE_TOOLS.has(tool) ? (
-        <p>{CODE_HIDDEN}</p>
-      ) : tool === "Edit" ? (
+      {tool === "Edit" ? (
         <div>
           <p>Edit fragment</p>
           {edit ? (
@@ -387,7 +392,9 @@ const ToolCard = memo(function ToolCard({
                 language={languageOf(subjectPath)}
                 privacy={false}
                 {...codeProps}
-                {...(subjectPath === undefined ? {} : { path: subjectPath })}
+                {...(subjectPath === undefined || !isLinkablePath(subjectPath)
+                  ? {}
+                  : { path: subjectPath })}
               />
             </>
           ) : (
@@ -404,7 +411,9 @@ const ToolCard = memo(function ToolCard({
               language={languageOf(subjectPath)}
               privacy={false}
               {...codeProps}
-              {...(subjectPath === undefined ? {} : { path: subjectPath })}
+              {...(subjectPath === undefined || !isLinkablePath(subjectPath)
+                ? {}
+                : { path: subjectPath })}
             />
           )}
         </>
@@ -464,6 +473,62 @@ const ToolCard = memo(function ToolCard({
   );
 });
 
+/**
+ * What a card shows under the privacy setting, for every tool: the heading (tool name), status,
+ * timing and the recorded paths, and the hidden note. Nothing from an input or output body is
+ * read, so a tool the renderer has never heard of cannot leak either.
+ */
+function HiddenToolCard({
+  call,
+  position,
+  size,
+}: {
+  call: ToolCallFrame;
+  position: number;
+  size: number;
+}) {
+  const heading = useId();
+  const tool = typeof call.toolName === "string" ? call.toolName : "not reported";
+  return (
+    <article
+      className={styles.card}
+      aria-labelledby={heading}
+      aria-posinset={position}
+      aria-setsize={size}
+      tabIndex={-1}
+    >
+      <h3 id={heading}>{safe(tool)}</h3>
+      <p>
+        Status: {safe(string(call.phase) ?? "unknown")}. Timing:{" "}
+        {typeof call.durationMs === "number" && Number.isFinite(call.durationMs)
+          ? `${call.durationMs} ms`
+          : "not reported"}
+      </p>
+      {call.filePaths.length ? (
+        <p>
+          Path:{" "}
+          {call.filePaths.map((path) => (
+            <span key={path}>
+              <Path path={path} />{" "}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      <p>{CODE_HIDDEN}</p>
+    </article>
+  );
+}
+
+type ToolCardProps = Parameters<typeof OpenToolCard>[0] & { privacy: boolean };
+/** Privacy is one early branch: a hidden card never reaches the code that reads bodies. */
+function ToolCard({ privacy, ...props }: ToolCardProps) {
+  return privacy ? (
+    <HiddenToolCard call={props.call} position={props.position} size={props.size} />
+  ) : (
+    <OpenToolCard {...props} />
+  );
+}
+
 /** A run of Read calls or of Search calls: one card that expands to the files or the patterns. */
 function GroupCard({
   kind,
@@ -477,6 +542,7 @@ function GroupCard({
   detailPage,
   detailPageSize,
   onDetailPage,
+  privacy,
 }: {
   kind: "read" | "search";
   calls: readonly ToolCallFrame[];
@@ -489,11 +555,28 @@ function GroupCard({
   detailPage: number;
   detailPageSize: number;
   onDetailPage: (id: string, page: number) => void;
+  privacy: boolean;
 }) {
   const heading = useId();
   const list = useId();
   const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
+  if (privacy) {
+    return (
+      <article
+        className={styles.card}
+        aria-labelledby={heading}
+        aria-posinset={position}
+        aria-setsize={size}
+        tabIndex={-1}
+      >
+        <h3 id={heading}>
+          {kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`}
+        </h3>
+        <p>{CODE_HIDDEN}</p>
+      </article>
+    );
+  }
   return (
     <article
       className={styles.card}
@@ -934,6 +1017,7 @@ function LiveFeed({
                   detailPage={detailPages.get(item.key) ?? 0}
                   detailPageSize={detailPageSize}
                   onDetailPage={onDetailPage}
+                  privacy={privacy}
                 />
               )}
             </div>

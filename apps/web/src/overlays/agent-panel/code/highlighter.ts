@@ -1,3 +1,5 @@
+import { isShikiLanguage } from "./languages.ts";
+
 export interface HighlightToken {
   content: string;
   color?: string;
@@ -13,6 +15,9 @@ export interface CodeHighlighter {
   /** How many times the backend was loaded. */
   readonly loadCount: number;
 }
+
+/** A body with a line longer than this is shown plain: minified text would stall the tokenizer. */
+export const MAX_LINE = 2000;
 
 const plainLines = (text: string): HighlightToken[][] =>
   text.split("\n").map((line) => [{ content: line }]);
@@ -30,6 +35,7 @@ export function createCodeHighlighter(load: () => Promise<HighlightBackend>): Co
       return loadCount;
     },
     async highlight(text, language) {
+      if (text.split("\n").some((line) => line.length > MAX_LINE)) return plainLines(text);
       try {
         if (!loading) {
           loadCount += 1;
@@ -48,7 +54,19 @@ export function createCodeHighlighter(load: () => Promise<HighlightBackend>): Co
   };
 }
 
-/** The app-wide highlighter. Shiki is a separate chunk, fetched on the first expanded card. */
-export const sharedHighlighter: CodeHighlighter = createCodeHighlighter(async () =>
+const lazyShiki = createCodeHighlighter(async () =>
   (await import("./shikiBackend.ts")).createShikiBackend(),
 );
+
+/**
+ * The app-wide highlighter. Shiki is a separate chunk, fetched on the first expanded card in a
+ * language it has a grammar for; plain text, lock files and unknown extensions never fetch it.
+ */
+export const sharedHighlighter: CodeHighlighter = {
+  get loadCount() {
+    return lazyShiki.loadCount;
+  },
+  async highlight(text, language) {
+    return isShikiLanguage(language) ? lazyShiki.highlight(text, language) : plainLines(text);
+  },
+};

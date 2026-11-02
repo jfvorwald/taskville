@@ -16,9 +16,21 @@ const CAP = 20_000;
 /** Only a plain hex color is applied to a token. Anything else is ignored. */
 const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
+const INVISIBLE_CHARS =
+  "[\\u00AD\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]";
+const INVISIBLE = new RegExp(INVISIBLE_CHARS);
+const INVISIBLE_ALL = new RegExp(INVISIBLE_CHARS, "g");
+
 /** Masked first, then hidden and reordering characters shown as <U+XXXX>, then bounded. */
 function sanitize(text: string) {
-  const shown = visibleControls(redactText(text).text);
+  let masked = redactText(text);
+  if (INVISIBLE.test(text)) {
+    // A secret split by zero-width characters would slip past the masker. If stripping them
+    // reveals one, show the masked stripped text instead.
+    const stripped = redactText(text.replace(INVISIBLE_ALL, ""));
+    if (stripped.spans.length > masked.spans.length) masked = stripped;
+  }
+  const shown = visibleControls(masked.text);
   return shown.length > CAP
     ? { text: shown.slice(0, CAP), truncated: true }
     : { text: shown, truncated: false };

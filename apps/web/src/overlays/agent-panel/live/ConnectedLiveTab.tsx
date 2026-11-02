@@ -32,7 +32,13 @@ class PairingBoundary extends Component<{ children: ReactNode }, { unavailable: 
   }
 }
 
-export function ConnectedLiveTab(props: Omit<LiveTabProps, "calls" | "evidence">) {
+/** The connected tab decides privacy and highlighting itself; a caller cannot set either. */
+export type ConnectedLiveTabProps = Omit<
+  LiveTabProps,
+  "calls" | "evidence" | "privacy" | "highlighter"
+>;
+
+export function ConnectedLiveTab(props: ConnectedLiveTabProps) {
   const settings = getSettingsStore();
   const { privacyMode } = useSyncExternalStore(
     settings.subscribe,
@@ -41,7 +47,7 @@ export function ConnectedLiveTab(props: Omit<LiveTabProps, "calls" | "evidence">
   );
   return (
     <PairingBoundary>
-      <PairedLive privacy={privacyMode} highlighter={sharedHighlighter} {...props} />
+      <PairedLive {...props} privacy={privacyMode} highlighter={sharedHighlighter} />
     </PairingBoundary>
   );
 }
