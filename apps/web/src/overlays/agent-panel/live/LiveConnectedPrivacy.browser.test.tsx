@@ -35,13 +35,13 @@ beforeEach(() => {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
-            calls.forEach((c, i) =>
+            calls.forEach((c, i) => {
               controller.enqueue(
                 new TextEncoder().encode(
                   `id: ${i + 1}\nevent: toolcall\ndata: ${JSON.stringify(c)}\n\n`,
                 ),
-              ),
-            );
+              );
+            });
           },
         }),
         { headers: { "Content-Type": "text/event-stream" } },
