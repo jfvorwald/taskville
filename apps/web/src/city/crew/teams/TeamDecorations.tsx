@@ -8,6 +8,7 @@ import { colorMaterial } from "../../agents/resources.ts";
 import type { AgentView } from "../../agents/types.ts";
 import { areaFor, createPose, LOOP_SECONDS, workPose } from "../../agents/workLoop.ts";
 import { CITY_LAYOUT } from "../../layout/index.ts";
+import { TeamAttribution } from "../attention/TeamAttribution.tsx";
 import { teamAccessories } from "./accessories.ts";
 import { teamScarfColor } from "./color.ts";
 import { teammateIdle } from "./idle.ts";
@@ -111,6 +112,7 @@ export function TeamDecorations({
   if (state === null || dispatch === undefined) return null;
   return (
     <>
+      <TeamAttribution views={views} store={store} />
       {accessories.map((a) => {
         const view = views.find((v) => v.id === a.agentId);
         return view === undefined ? null : (

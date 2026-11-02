@@ -39,6 +39,48 @@ export interface CrewAttribution {
   readonly forLabels: Readonly<Record<string, ForLabel>>;
 }
 
-export function crewAttribution(_input: CrewAttributionInput): CrewAttribution {
-  return { red: [], dots: {}, forLabels: {} };
+/** "for: pip (Bash)" is the adapter's reason text; the card shows only "for: pip". */
+const FOR_REASON = /^(for: .+?)(?: \([^()]*\))?$/;
+const FALLBACK_LABEL = "for: a teammate";
+
+const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+export function crewAttribution(input: CrewAttributionInput): CrewAttribution {
+  const red = new Set<string>();
+  const dots = new Map<string, Set<string>>();
+  const forLabels: Record<string, ForLabel> = {};
+
+  const dot = (wearerId: string, redId: string): void => {
+    if (wearerId === redId) return;
+    const set = dots.get(wearerId) ?? new Set<string>();
+    set.add(redId);
+    dots.set(wearerId, set);
+  };
+
+  for (const record of input.attention) {
+    if (record.level !== "needs_you") continue;
+    const agent = input.agents[record.agentId];
+    if (agent === undefined) continue; // nothing is guessed about an agent we do not know
+    red.add(agent.id);
+
+    if (record.heuristic === true && agent.kind === "lead") {
+      const match = FOR_REASON.exec(record.reason?.text ?? "");
+      forLabels[agent.id] = { text: match?.[1] ?? FALLBACK_LABEL, heuristic: true };
+    }
+
+    // Walk the recorded links only: parentAgentId, then the team lead. The seen set stops a cycle.
+    const seen = new Set<string>();
+    let node: AttributionAgent | undefined = agent;
+    while (node !== undefined && !seen.has(node.id)) {
+      seen.add(node.id);
+      const leadId = node.teamId === undefined ? undefined : input.teams[node.teamId]?.leadAgentId;
+      if (leadId !== undefined && input.agents[leadId] !== undefined) dot(leadId, agent.id);
+      node = node.parentAgentId === undefined ? undefined : input.agents[node.parentAgentId];
+      if (node !== undefined) dot(node.id, agent.id);
+    }
+  }
+
+  const sortedDots: Record<string, readonly string[]> = {};
+  for (const [wearer, ids] of dots) sortedDots[wearer] = [...ids].sort(byText);
+  return { red: [...red].sort(byText), dots: sortedDots, forLabels };
 }

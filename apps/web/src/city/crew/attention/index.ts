@@ -5,3 +5,4 @@ export {
   crewAttribution,
   type ForLabel,
 } from "./attribution.ts";
+export { TeamAttribution } from "./TeamAttribution.tsx";
