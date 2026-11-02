@@ -1,5 +1,6 @@
 // Engine storage: SQLite event log, projects, projections, and pairings
 // (ARCHITECTURE.md 7.4, specs/001 data-model.md).
+export { type CheckpointRow, SqliteCheckpoints } from "./checkpoints.ts";
 export { StorageError } from "./errors.ts";
 export { LATEST_SCHEMA_VERSION } from "./migrations.ts";
 export { SqlitePairingRecords } from "./pairings.ts";

@@ -4,6 +4,7 @@ import type { PairingRecords } from "../auth/pairing.ts";
 import { StorageError } from "./errors.ts";
 import { secureDatabaseFiles } from "./file-mode.ts";
 import { currentSchemaVersion, migrate } from "./migrations.ts";
+import { SqliteCheckpoints } from "./checkpoints.ts";
 import { SqlitePairingRecords } from "./pairings.ts";
 import { Database, type Statement } from "./sqlite.ts";
 
@@ -191,6 +192,7 @@ export class Storage implements StorageReads {
   readonly #now: () => Date;
   readonly #stmt: Statements;
   #pairings: SqlitePairingRecords | undefined;
+  #checkpoints: SqliteCheckpoints | undefined;
 
   constructor(db: Database, now: () => Date) {
     this.#db = db;
@@ -328,6 +330,12 @@ export class Storage implements StorageReads {
   pairingRecords(): PairingRecords {
     this.#pairings ??= new SqlitePairingRecords(this.#db, this.#now);
     return this.#pairings;
+  }
+
+  /** The replay checkpoint cache (disposable; ARCHITECTURE.md 7.4). */
+  checkpoints(): SqliteCheckpoints {
+    this.#checkpoints ??= new SqliteCheckpoints(this.#db);
+    return this.#checkpoints;
   }
 
   close(): void {
