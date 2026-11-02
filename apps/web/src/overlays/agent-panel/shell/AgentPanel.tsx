@@ -4,6 +4,7 @@ import { shouldClearOnEscape } from "../../../city/interaction/escape.ts";
 import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
+import { HowDidWeGetHere } from "../../../history/ui/how-did-we.tsx";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
@@ -181,6 +182,7 @@ export function AgentPanel({
           </p>
         )}
       </header>
+      <HowDidWeGetHere agentId={agent.id} mode={mode} store={store} />
       <Tabs
         className={styles.tabs}
         selectedKey={active}

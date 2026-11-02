@@ -6,6 +6,7 @@ import { SESSION_HEADER } from "../../pairing/pair.ts";
 import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
+import { currentTaskId } from "./how-did-we.tsx";
 
 export interface RecordedMoment {
   readonly sequence: number;
@@ -32,6 +33,7 @@ interface Presentation {
   pending: boolean;
   error: string | null;
   enter(): void;
+  enterTask(agentId: string, taskId: string): void;
   seek(time: number): void;
   exit(): void;
 }
@@ -55,6 +57,7 @@ const fallback: Presentation = {
   pending: false,
   error: null,
   enter() {},
+  enterTask() {},
   seek() {},
   exit() {},
 };
@@ -123,13 +126,15 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             publish({ error: "Could not load recorded state." });
         });
     }
-    async function enter() {
+    async function enter(target?: { agentId: string; taskId: string }) {
       if (
         !active ||
         value.pending ||
         value.mode === "history" ||
         dataStore.getState().projectId !== projectId
       )
+        return;
+      if (target && currentTaskId(dataStore.getState().state, target.agentId) !== target.taskId)
         return;
       cancel();
       const requestGeneration = generation;
@@ -174,6 +179,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         const cursors = new Set<string>();
         const eventIds = new Set<string>();
         let expected = firstSequence;
+        let taskStart: { sequence: number; time: number } | undefined;
         // The head projection may prune retired agents; the loaded log still records them.
         const agents = new Map<
           string,
@@ -218,6 +224,13 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             )
               throw new Error("events");
             eventIds.add(event.eventId);
+            if (
+              target &&
+              !taskStart &&
+              event.type === "task.created" &&
+              event.taskId === target.taskId
+            )
+              taskStart = { sequence: event.ingestSequence, time };
             if (event.agentId) {
               const before = agents.get(event.agentId);
               if (!before) agents.set(event.agentId, { id: event.agentId, name: event.agentId });
@@ -276,6 +289,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           moments.at(-1)?.time !== last
         )
           throw new Error("events");
+        if (target && !taskStart) throw new Error("task creation unavailable");
         controller = createHistoryStore({
           liveStore: dataStore,
           timelineId: timeline.id,
@@ -325,7 +339,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           moments,
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
-        await controller.getState().seekSequence(lastSequence, last);
+        await controller
+          .getState()
+          .seekSequence(taskStart?.sequence ?? lastSequence, taskStart?.time ?? last);
       } catch {
         if (active && requestGeneration === generation) {
           cancel();
@@ -337,6 +353,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       ...fallback,
       enter: () => {
         void enter();
+      },
+      enterTask: (agentId, taskId) => {
+        void enter({ agentId, taskId });
       },
       seek,
       play: () => controller?.getState().play(),
