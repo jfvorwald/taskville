@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-201: Recorded UI success does not establish producer support
+- **Date:** 2026-11-01 · **Milestone:** M6 · **Ticket:** #78 · **Recorded by:** CTO (Sol)
+- **What happened:** A valid synthetic activity carried a task ID, while current Claude Code activity mapping does not. The UI worked for that fixture but remained unavailable for the primary source.
+- **Lesson:** Check producer-to-domain provenance before claiming acceptance; missing relationships must stay unknown rather than guessed.
+- **Action:** #325 D3 and #78 hold full acceptance. PR326 preserves the explicit-task path and missing-creation handling; adapter scope has not been expanded silently.
+
+### L-200: Commit presentation baselines with successful state changes
+- **Date:** 2026-11-01 · **Milestone:** M6 · **Ticket:** #74 · **Recorded by:** CTO (Sol)
+- **What happened:** A failed seek seeded effect history from an undisplayed target; an older seek completion could also clear a newer seek's suppression.
+- **Lesson:** Keep the displayed baseline until the read succeeds and fence each seek independently. Exercise actual renderer output on failed and overlapping reads.
+- **Action:** PR327 source97fe8a8 adds both regressions, atomic baseline publication and per-seek tokens; panel6576 and independent reviews PASS. Main integration awaits #295.
+
 ### L-199: Ambient controls must account for changing host height
 - **Date:** 2026-11-01 · **Milestone:** M6 · **Ticket:** #77 · **Recorded by:** CTO (Sol)
 - **What happened:** An isolated Back to live test missed the existing header. A fixed offset cleared the default header but failed after global project chips wrapped.
