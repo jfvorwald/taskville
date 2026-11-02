@@ -34,8 +34,8 @@ const log = [
   storedEnvelopeSchema.parse({
     ...event,
     ingestSequence: i + 1,
-    occurredAt: new Date(START + [0, 500, 60_000][i]).toISOString(),
-    receivedAt: new Date(START + [0, 500, 60_000][i]).toISOString(),
+    occurredAt: new Date(START + [0, 500, 600_000][i]).toISOString(),
+    receivedAt: new Date(START + [0, 500, 600_000][i]).toISOString(),
   }),
 );
 const cleanups: Array<() => Promise<void>> = [];
@@ -61,12 +61,12 @@ function click(name: string) {
     (page.getByRole("button", { name, exact: true }).element() as HTMLButtonElement).click(),
   );
 }
-async function mount() {
-  const transport = timelineEngine(log);
+async function mount(recording = log) {
+  const transport = timelineEngine(recording);
   vi.stubGlobal("fetch", transport.fetcher);
   selectProject(PROJECT);
   dataStore.getState().reset(PROJECT);
-  dataStore.getState().applySnapshotState(stateAt(1, log));
+  dataStore.getState().applySnapshotState(stateAt(1, recording));
   getSettingsStore().set("reducedMotion", "off");
   let scene: Scene | undefined;
   const view = await render(
@@ -83,12 +83,12 @@ async function mount() {
   cleanups.push(() => view.unmount());
   // Read the actual rig mesh, not a replacement component or trigger helper. The only 60-slot
   // instanced burst in the city is Celebrations' Archives merge burst (40/14/60 rig capacities).
-  const merges = () => {
+  const merges = (capacity = 60) => {
     const found: InstancedMesh[] = [];
     scene?.traverse((object) => {
       if (
         (object as InstancedMesh).isInstancedMesh === true &&
-        (object as InstancedMesh).count === 60
+        (object as InstancedMesh).count === capacity
       )
         found.push(object as InstancedMesh);
     });
@@ -96,7 +96,7 @@ async function mount() {
   };
   await expect.poll(() => merges().length).toBe(1);
   expect(merges()[0].visible).toBe(false);
-  return { visible: () => merges()[0]?.visible, transport };
+  return { visible: (capacity = 60) => merges(capacity)[0]?.visible, transport };
 }
 
 it("a real live merge starts the mounted City's drawn effect (positive renderer/event control)", async () => {
@@ -122,8 +122,8 @@ it("a live merge cannot start a drawn celebration while the City presents histor
   expect(visible(), "LIVE merge leaked into the recorded city").toBe(false);
 });
 
-it.each([1, 10])(
-  "crossing a recorded merge at %ix starts the mounted replay effect",
+it.each([1, 10, 60, 600])(
+  "crossing a recorded merge at %ix obeys production replay suppression",
   async (rate) => {
     const { visible, transport } = await mount();
     click("History");
@@ -146,6 +146,41 @@ it.each([1, 10])(
     await position(2, rate);
     expect(transport.requests.some((url) => url.searchParams.get("at") === "2")).toBe(true);
     expect(dataStore.getState().state?.head).toBe(1);
-    await expect.poll(() => visible()).toBe(true);
+    if (rate <= 10) await expect.poll(() => visible()).toBe(true);
+    else {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      expect(visible()).toBe(false);
+    }
   },
 );
+
+it("a recorded completion draws after the keyed agents republish their real anchors", async () => {
+  const agentId = log[0].agentId;
+  expect(agentId).toBeDefined();
+  const completion = log.map((event, index) =>
+    index === 1
+      ? storedEnvelopeSchema.parse({
+          ...event,
+          type: "task.status_changed",
+          agentId,
+          taskId: "fidelity-completed-task",
+          payload: { status: "completed" },
+        })
+      : event,
+  );
+  const { visible } = await mount(completion);
+  click("History");
+  await position(3);
+  click("Previous moment");
+  await position(2);
+  click("Previous moment");
+  await position(1);
+  expect(visible(40)).toBe(false);
+  click("Play");
+  await position(2);
+  await expect.poll(() => worldAnchors.getAnchor(`agent:${agentId}`)).toBeDefined();
+  expect(dataStore.getState().state?.head).toBe(1);
+  await expect.poll(() => visible(40)).toBe(true);
+});
