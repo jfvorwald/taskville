@@ -94,6 +94,33 @@ it("keeps the pill separate from the real header and receives one live chime in 
     await vi.waitFor(() => expect(audio.cues).toEqual(["chime"]));
     feed("already", "new-live");
     expect(audio.cues).toEqual(["chime"]);
+    act(() =>
+      attentionStore.setState({
+        ready: true,
+        feed: Object.fromEntries(
+          Array.from({ length: 6 }, (_, i) => [
+            `other-${i}`,
+            {
+              projectId: `other-${i}`,
+              name: `Workspace ${i} needs live attention`,
+              attention: [needsYou(`agent-${i}`)],
+            },
+          ]),
+        ),
+      }),
+    );
+    await expect.element(pill).toHaveAccessibleName("Back to live · 6 needs you");
+    await expect
+      .poll(() => header?.getBoundingClientRect().bottom)
+      .toBeGreaterThan(bounds?.bottom ?? 0);
+    await expect
+      .poll(
+        () =>
+          pill.element().getBoundingClientRect().top -
+          (header?.getBoundingClientRect().bottom ?? 0),
+      )
+      .toBeGreaterThanOrEqual(8);
+    expect(audio.cues).toEqual(["chime", "chime"]);
     await pill.click();
     await expect
       .element(page.getByRole("slider", { name: "Timeline time" }))
