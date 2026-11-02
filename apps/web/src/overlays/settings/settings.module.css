@@ -147,3 +147,19 @@
   background: var(--tv-accent);
   cursor: pointer;
 }
+
+/* OverlayRoot measures the complete header, including wrapped project chips. */
+.floatingToggle {
+  position: absolute;
+  top: var(--tv-floating-settings-top, 50px);
+  right: 16px;
+  z-index: 6;
+}
+
+/* Keep the floating toggle compact on narrow screens. */
+@media (max-width: 480px) {
+  .floatingToggle .toggle {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+  }
+}
