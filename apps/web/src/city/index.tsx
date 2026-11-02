@@ -49,7 +49,7 @@ export function CityRoot({
         store={store}
         reducedMotion={reducedMotion || mode === "history"}
       />
-      <CrewHighlight store={store} />
+      <CrewHighlight store={store} reducedMotion={reducedMotion} />
       <Celebrations
         key={`${mode}:${mode === "history" ? presentation.fidelity.epoch : "live"}`}
         store={store}

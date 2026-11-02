@@ -15,6 +15,7 @@ import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { agentColors } from "../../agents/identity.ts";
 import type { AgentView } from "../../agents/types.ts";
+import { type CameraRig, cameraRig } from "../../interaction/cameraRig.ts";
 import { selectionStore } from "../../interaction/selection.ts";
 import { easeCameraTo, highlightState } from "./highlightState.ts";
 import { type HighlightStore, highlightStore } from "./highlightStore.ts";
@@ -60,12 +61,17 @@ function agentGroups(scene: Object3D): Map<string, Object3D> {
 
 /** The faded copies this component made. Only these are ever disposed; pooled materials are not. */
 const fades = new WeakSet<Material>();
+/** One faded copy per source material, so a material swapped back every frame is not cloned again. */
+const fadeOf = new Map<Material, Material>();
 /** The material a dimmed mesh had before its faded copy went on. */
 const originals = new WeakMap<Mesh, Material | Material[]>();
 
 function fade(m: Material): Material {
   if (fades.has(m)) return m;
+  const known = fadeOf.get(m);
+  if (known !== undefined) return known;
   const copy = m.clone();
+  fadeOf.set(m, copy);
   copy.transparent = true;
   copy.opacity = DIM_OPACITY;
   fades.add(copy);
@@ -91,9 +97,14 @@ function setDim(group: Object3D, dim: boolean) {
       const original = originals.get(mesh);
       if (original !== undefined) mesh.material = original;
       originals.delete(mesh);
-      for (const m of list) m.dispose();
     }
   });
+}
+
+/** Disposes every faded copy; called once nothing is dimmed, so no mesh still shows one. */
+function disposeFades() {
+  for (const copy of fadeOf.values()) copy.dispose();
+  fadeOf.clear();
 }
 
 /** Where the object is in the scene, whatever group it sits in. */
@@ -109,9 +120,15 @@ function worldOf(o: Object3D): Vector3 {
 export function CrewHighlight({
   store = dataStore,
   inputs = highlightStore,
+  rig = cameraRig,
+  reducedMotion = false,
 }: {
   store?: DataStore;
   inputs?: HighlightStore;
+  /** The rig the city's CameraDriver reads; a pick pans it, so an orbited camera still follows. */
+  rig?: CameraRig;
+  /** No bounce, and the camera moves in one step. */
+  reducedMotion?: boolean;
 }) {
   const { openAgentId, hoveredId } = useSyncExternalStore(
     inputs.subscribe,
@@ -162,6 +179,7 @@ export function CrewHighlight({
     () => () => {
       for (const group of agentGroups(scene).values()) setDim(group, false);
       dimmed.current.clear();
+      disposeFades();
     },
     [scene],
   );
@@ -183,6 +201,7 @@ export function CrewHighlight({
       setDim(g, true);
       dimmed.current.add(id);
     }
+    if (dimmed.current.size === 0) disposeFades();
     // One bounce each time the pointer arrives on a different bot, relative to where the bot's
     // own system put it this frame (it may or may not rewrite the height every frame).
     const now = performance.now();
@@ -191,7 +210,7 @@ export function CrewHighlight({
       bounce.id = state.bounceId;
       bounce.start = now;
     }
-    const lift = bounce.id === null ? 0 : bounceLift(now - bounce.start);
+    const lift = bounce.id === null || reducedMotion ? 0 : bounceLift(now - bounce.start);
     const g = bounce.id === null ? undefined : groups.get(bounce.id);
     if (bounce.lifted !== null) {
       const prev = groups.get(bounce.lifted.id);
@@ -225,10 +244,10 @@ export function CrewHighlight({
       const next = easeCameraTo({ ...at, zoom: camera.zoom }, goal);
       const dx = next.x - at.x;
       const dz = next.z - at.z;
-      const k = Math.min(1, delta * EASE_PER_SECOND);
-      camera.position.x += dx * k;
-      camera.position.z += dz * k;
-      if (Math.abs(dx) + Math.abs(dz) < SETTLED) target.current = null;
+      const k = reducedMotion ? 1 : Math.min(1, delta * EASE_PER_SECOND);
+      // Through the rig, so CameraDriver keeps turn and zoom and applies the move itself.
+      rig.panBy(dx * k, dz * k);
+      if (reducedMotion || Math.abs(dx) + Math.abs(dz) < SETTLED) target.current = null;
     }
   });
 
@@ -255,6 +274,12 @@ export function CrewHighlight({
   );
 }
 
+/** Whether the object and every ancestor are visible. */
+function isShown(o: Object3D): boolean {
+  for (let at: Object3D | null = o; at !== null; at = at.parent) if (!at.visible) return false;
+  return true;
+}
+
 function FollowRing({
   id,
   geometry,
@@ -267,8 +292,11 @@ function FollowRing({
   const mesh = useRef<Mesh>(null);
   const scene = useThree((s) => s.scene);
   useFrame(() => {
+    if (mesh.current === null) return;
     const at = agentGroups(scene).get(id);
-    if (at !== undefined && mesh.current !== null) {
+    // No visible bot (finished and gone, or hidden behind a crew marker): no ring.
+    mesh.current.visible = at !== undefined && isShown(at);
+    if (at !== undefined) {
       const world = worldOf(at);
       mesh.current.position.set(world.x, RING_Y, world.z);
     }

@@ -2,12 +2,12 @@ import { useMemo } from "react";
 import type { Agent } from "../../../data/domain.ts";
 import type { FamilyTeams } from "../shell/family.ts";
 import styles from "./crew.module.css";
-import { crewRows } from "./crewRows.ts";
+import { type CrewActivity, crewRows } from "./crewRows.ts";
 
 export interface CrewTabProps {
   parentId: string;
   agents: Readonly<Record<string, Agent>>;
-  activity: Readonly<Record<string, { activity: string } | undefined>>;
+  activity: Readonly<Record<string, CrewActivity | undefined>>;
   results?: Readonly<Record<string, string>> | undefined;
   nowMs: number;
   teams?: FamilyTeams | undefined;

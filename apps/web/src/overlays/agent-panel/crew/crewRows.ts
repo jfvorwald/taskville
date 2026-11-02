@@ -5,7 +5,13 @@ import { type FamilyTeams, familyOrder, familyPath } from "../shell/family.ts";
 const ID_SHORT = 8;
 const NOT_REPORTED = "not reported";
 
-export type CrewStatus = "active" | "idle" | "finished";
+export type CrewStatus = "active" | "idle" | "unknown" | "finished";
+
+/** A recorded activity; a heuristic one is a guess (constitution IV). */
+export interface CrewActivity {
+  activity: string;
+  heuristic?: boolean | undefined;
+}
 
 export interface CrewRow {
   id: string;
@@ -21,7 +27,7 @@ export interface CrewRow {
 export interface CrewRowsInput {
   parentId: string;
   agents: Readonly<Record<string, Agent>>;
-  activity: Readonly<Record<string, { activity: string } | undefined>>;
+  activity: Readonly<Record<string, CrewActivity | undefined>>;
   /** The recorded result summary of a finished agent, by agent id. */
   results?: Readonly<Record<string, string>> | undefined;
   nowMs: number;
@@ -66,15 +72,29 @@ export function crewRows({
     const agent = agents[id];
     if (agent === undefined) return [];
     const finished = agent.finishedAt !== undefined;
-    const current = Object.hasOwn(activity, id) ? activity[id]?.activity : undefined;
+    const entry = Object.hasOwn(activity, id) ? activity[id] : undefined;
+    const current = entry?.activity;
+    const status: CrewStatus = finished
+      ? "finished"
+      : current === undefined || current === "unknown"
+        ? "unknown"
+        : current === "idle"
+          ? "idle"
+          : "active";
+    const label =
+      current === undefined
+        ? null
+        : entry?.heuristic === true
+          ? `Possibly ${activityText(current).toLowerCase()}`
+          : activityText(current);
     const elapsed = elapsedMs(agent, nowMs);
     const result = results !== undefined && Object.hasOwn(results, id) ? results[id] : undefined;
     return [
       {
         id,
         name: nameOf(agent),
-        status: finished ? "finished" : current === "idle" ? "idle" : "active",
-        activity: finished || current === undefined ? null : activityText(current),
+        status,
+        activity: finished ? null : label,
         elapsedMs: elapsed,
         elapsedLabel: elapsed === null ? "" : formatElapsed(elapsed),
         summary: finished ? (result ?? NOT_REPORTED) : null,

@@ -10,7 +10,7 @@ export interface CameraPose {
    * and whenever the offset is zero (it is read, not recomputed); a turned pose is always computed
    * from it, so repeated calls do not accumulate.
    */
-  apply(camera: OrthographicCamera, azimuthOffset: number): void;
+  apply(camera: OrthographicCamera, azimuthOffset: number, panX?: number, panZ?: number): void;
 }
 
 interface DefaultPose {
@@ -37,14 +37,14 @@ export function createCameraPose(): CameraPose {
   const turn = new Quaternion();
 
   return {
-    apply(cam, azimuthOffset) {
+    apply(cam, azimuthOffset, panX = 0, panZ = 0) {
       let pose = poses.get(cam);
       if (pose === undefined) {
         pose = { x: 0, y: 0, z: 0, q: new Quaternion(), turned: false };
         capture(cam, pose);
         poses.set(cam, pose);
       }
-      if (azimuthOffset === 0) {
+      if (azimuthOffset === 0 && panX === 0 && panZ === 0) {
         // Default pose: put it back if we had turned it, then follow whatever the camera is.
         if (pose.turned) {
           cam.position.set(pose.x, pose.y, pose.z);
@@ -57,7 +57,12 @@ export function createCameraPose(): CameraPose {
       const a = rad(azimuthOffset);
       const sin = Math.sin(a);
       const cos = Math.cos(a);
-      cam.position.set(pose.x * cos + pose.z * sin, pose.y, -pose.x * sin + pose.z * cos);
+      // The pan slides the view over the ground in world axes, after the turn.
+      cam.position.set(
+        pose.x * cos + pose.z * sin + panX,
+        pose.y,
+        -pose.x * sin + pose.z * cos + panZ,
+      );
       turn.setFromAxisAngle(UP, a);
       cam.quaternion.copy(turn).multiply(pose.q);
       pose.turned = true;
