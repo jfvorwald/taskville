@@ -1,15 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import { LiveTab } from "../live/LiveTab.tsx";
-import {
-  AGENT,
-  articles,
-  build,
-  type CallSpec,
-  paint,
-  seedStore,
-  slot,
-} from "../live/liveKit.tsx";
+import { AGENT, articles, build, type CallSpec, paint, seedStore, slot } from "../live/liveKit.tsx";
 
 // M5.23 red round 2 (roborev 6653, LiveTab.tsx:576; ARCHITECTURE 2.10): under Hide code a grouped
 // Read or Search card keeps its count and the recorded file names, each through displayPath (a

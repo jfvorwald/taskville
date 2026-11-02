@@ -39,7 +39,7 @@ describe("Files tab row identity under privacy", () => {
     expect(document.activeElement?.textContent).toContain("alpha-end.ts");
     await userEvent.keyboard("{Enter}");
     const heading = page.getByTestId("file-edits").getByRole("heading", { level: 3 });
-    await expect.element(heading).toHaveTextContent("alpha-end.ts");
+    await expect.poll(() => heading.query()?.textContent ?? "").toContain("alpha-end.ts");
     expect(heading.element().textContent).not.toContain("bravo-end.ts");
     expect(heading.element().textContent).not.toContain("charlie-end.ts");
 
