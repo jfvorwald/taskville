@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-199: Ambient controls must account for changing host height
+- **Date:** 2026-11-01 · **Milestone:** M6 · **Ticket:** #77 · **Recorded by:** CTO (Sol)
+- **What happened:** An isolated Back to live test missed the existing header. A fixed offset cleared the default header but failed after global project chips wrapped.
+- **Lesson:** Test the real host with changing content, including actual click reachability; position dependent controls from the rendered host bounds.
+- **Action:** PR324 adds full SceneRoot default/wrapped-header and single-audio-connection coverage. Source dacc4a1, panel6549 and specialist reviews pass; main integration awaits #295.
+
+### L-198: Current owner instructions govern restricted merges
+- **Date:** 2026-11-01 · **Milestone:** M5 · **Ticket:** #295 · **Recorded by:** CTO (Sol)
+- **What happened:** L-194 records an earlier assistant's claim about a standing admin-bypass order. The current owner authorization explicitly says to record enforced merge restrictions and continue independent work.
+- **Lesson:** An older assistant-authored claim does not override the current owner instruction. Record normal merge refusals and use only currently authorized paths. This supplements L-194 for the present run.
+- **Action:** #295 remains open for blocked main merges. PR322 used a normal merge into M5.02; no protection/configuration changes or admin bypass.
+
+### L-197: Review approval follows the exact source tree
+- **Date:** 2026-11-01 · **Milestone:** M5 · **Ticket:** #314 · **Recorded by:** CTO (Sol)
+- **What happened:** Independent source reviews passed while a later required panel still found a collapsed-completion lifecycle gap. Older-head CI notifications also arrived after source corrections.
+- **Lesson:** Preserve every concrete finding until code and regressions resolve it. Associate approvals and CI with exact commits, and recheck substantive follow-ups.
+- **Action:** PR322 records source fcc7638, panel6532, bounded specialist rechecks and exact final-head CI. Broader browser timing failure and isolated retry remain reported.
+
+### L-196: Accessible rows must follow represented lifecycle
+- **Date:** 2026-11-01 · **Milestone:** M5 · **Ticket:** #314 · **Recorded by:** CTO (Sol)
+- **What happened:** A finished bot stayed represented by a crew marker while premature anchor removal dropped its keyboard row. Cached attention also left closed requests labeled Needs you.
+- **Lesson:** Retain the actual agent's marker and accessible row until its tracked return/fade ends, while deriving status from current attention.
+- **Action:** Fixed and regression-tested in PR322, merged into parent M5.02. Issue#314 remains open pending main integration.
+
 ### L-195: Under a heavily loaded machine, browser suites flake in bulk
 - **Date:** 2026-11-01 · **Milestone:** M4 · **Ticket:** #75 · **Recorded by:** lead (CTO session, M4.RT)
 - **What happened:** The M4 wave run had 10 browser failures across 8 files; every file passed alone. Engine memory, watcher and state tests also timed out at 5 s twice each during ticket checks.
