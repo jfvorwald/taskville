@@ -565,6 +565,8 @@ function GroupCard({
   const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
   if (privacy) {
+    // Only the recorded file names, each bounded; never a pattern or a body.
+    const names = [...new Set(calls.flatMap((call) => call.filePaths))];
     return (
       <article
         className={styles.card}
@@ -576,6 +578,16 @@ function GroupCard({
         <h3 id={heading}>
           {kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`}
         </h3>
+        {names.length ? (
+          <p>
+            Path:{" "}
+            {names.map((path) => (
+              <span key={path}>
+                <Path path={path} privacy />{" "}
+              </span>
+            ))}
+          </p>
+        ) : null}
         <p>{CODE_HIDDEN}</p>
       </article>
     );

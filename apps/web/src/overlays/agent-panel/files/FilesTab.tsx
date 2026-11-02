@@ -119,7 +119,7 @@ function AgentFiles({
         {files.map((item, index) => {
           const count = item.edits.filter((call) => call.data.phase === "succeeded").length;
           return (
-            <li key={privacy ? `file-${index}` : item.path}>
+            <li key={item.path}>
               <Button
                 className={styles.row}
                 data-testid="file-row"
