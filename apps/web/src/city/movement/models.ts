@@ -3,6 +3,7 @@ import type { AgentCounts } from "../../overlays/host/types.ts";
 import { identityKey } from "../agents/identity.ts";
 import type { AgentView, AttentionView, Placement } from "../agents/types.ts";
 import { troubleDetail } from "../attention/detail.ts";
+import { crewLineage } from "../crew/subagents/generation.ts";
 import { type ActivityAreaTable, areaFor } from "./areas.ts";
 import type { NavIntent, RestState } from "./navigator.ts";
 
@@ -25,6 +26,8 @@ export interface ModelInput {
 
 export interface Models {
   readonly views: AgentView[];
+  /** Views of the subagents the crew layer draws: not drawn as block agents, still listed. */
+  readonly crew: AgentView[];
   readonly intents: NavIntent[];
 }
 
@@ -43,7 +46,7 @@ function attentionView(record: Attention | undefined): AttentionView | undefined
   };
 }
 
-function identityOf(agent: Agent): string {
+export function identityOf(agent: Agent): string {
   return identityKey({
     id: agent.id,
     kind: agent.kind,
@@ -59,7 +62,9 @@ function identityOf(agent: Agent): string {
 
 /**
  * Views and intents for every agent that has not finished, in the store's order. Finished agents
- * are left out, so navigation walks them out. `placementFor` must return the same object for an
+ * are left out, so navigation walks them out. A subagent with a known parent gets an intent but no
+ * view: the crew layer (`crew/subagents`) is its only drawing, and its view goes in `crew` so
+ * the agent list can still name it. `placementFor` must return the same object for an
  * id every time: navigation mutates it in place and the bots read it each frame.
  */
 export function buildModels(
@@ -85,6 +90,7 @@ export function buildModels(
   };
 
   const views: AgentView[] = [];
+  const crew: AgentView[] = [];
   const intents: NavIntent[] = [];
   for (const agent of input.agents) {
     if (agent.finishedAt !== undefined) continue;
@@ -93,7 +99,10 @@ export function buildModels(
     const attention = attentionView(record);
     const parent = agent.parentAgentId === undefined ? undefined : byId.get(agent.parentAgentId);
     const agentType = agent.kind === "subagent" ? agent.role : undefined;
-    views.push({
+    // A subagent whose parent is known is drawn by the crew layer (M5.02), so it has an intent
+    // but no block-agent view. One without a recorded parent has no door to walk out of and
+    // stays a block agent.
+    const view: AgentView = {
       id: agent.id,
       kind: agent.kind,
       activity,
@@ -106,7 +115,10 @@ export function buildModels(
       ...(parent === undefined ? {} : { parentIdentity: identityOf(parent) }),
       ...(agent.teamId === undefined ? {} : { teamId: agent.teamId }),
       ...(attention === undefined ? {} : { attention }),
-    });
+    };
+    if (agent.kind !== "subagent" || parent === undefined || crewLineage(agent, byId) === undefined)
+      views.push(view);
+    else crew.push(view);
     const rest: RestState =
       record?.level === "waiting" || activity === "waiting"
         ? "waiting"
@@ -134,7 +146,7 @@ export function buildModels(
       ...(agent.parentAgentId === undefined ? {} : { parentId: agent.parentAgentId }),
     });
   }
-  return { views, intents };
+  return { views, crew, intents };
 }
 
 /** Header counts: agents still in the city, and agents waiting on the user. */

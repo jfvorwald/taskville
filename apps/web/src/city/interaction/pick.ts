@@ -29,7 +29,19 @@ function isShown(object: Object3D): boolean {
 }
 
 function isPickableRoot(o: Object3D): boolean {
-  return typeof o.userData.agentId === "string" || o.name.startsWith(BUILDING_PREFIX);
+  return (
+    typeof o.userData.agentId === "string" ||
+    Array.isArray(o.userData.crewAgentIds) ||
+    o.name.startsWith(BUILDING_PREFIX) ||
+    o.userData.crewControl === true
+  );
+}
+
+function controlOf(object: Object3D): Object3D | null {
+  for (let o: Object3D | null = object; o !== null; o = o.parent) {
+    if (o.userData.crewControl === true) return o;
+  }
+  return null;
 }
 
 function walk(o: Object3D, depth: number, out: Object3D[]): void {
@@ -53,6 +65,8 @@ export function collectPickables(root: Object3D, out: Object3D[]): Object3D[] {
 }
 
 export interface Picker {
+  /** Nonselecting control hit by the last pick. Shares the selection raycast. */
+  readonly control: Object3D | null;
   /**
    * The selection id under normalized device coordinates (-1..1, y up), nearest first, or null.
    * `hidden` lets the caller look through things (faded buildings).
@@ -71,8 +85,10 @@ export function createPicker(): Picker {
   const raycaster = new Raycaster();
   const ndc = new Vector2();
   const hits: Intersection[] = [];
-  return {
+  const picker = {
+    control: null as Object3D | null,
     pick(ndcX, ndcY, camera, pickables, hidden) {
+      picker.control = null;
       ndc.set(ndcX, ndcY);
       raycaster.setFromCamera(ndc, camera);
       hits.length = 0;
@@ -80,6 +96,11 @@ export function createPicker(): Picker {
       let found: string | null = null;
       for (const hit of hits) {
         if (!isShown(hit.object)) continue;
+        const control = controlOf(hit.object);
+        if (control !== null) {
+          picker.control = control;
+          break;
+        }
         const id = ownerOf(hit.object);
         if (id === null) continue;
         if (hidden?.(id)) continue;
@@ -89,5 +110,6 @@ export function createPicker(): Picker {
       hits.length = 0;
       return found;
     },
-  };
+  } satisfies Picker;
+  return picker;
 }

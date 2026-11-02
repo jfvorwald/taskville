@@ -1,0 +1,22 @@
+{
+  "source": "5df1f07d35402f18ecfbedd092181b54b9dcc5d7",
+  "reviewedSource": "fcc7638a583dd63dde3cd3c166f1a736cf5709ff",
+  "build": "normal production client, VITE_TV_TEST_HOOKS=0",
+  "seed": 7,
+  "pace": "lively",
+  "speed": 4,
+  "durationMs": 160000,
+  "summary": {
+    "steps": 74,
+    "events": 99,
+    "accepted": 99,
+    "duplicate": 0,
+    "lastAtMs": 157948
+  },
+  "subagents": 2,
+  "finished": 2,
+  "afterProducerWaitMs": 5500,
+  "viewport": "1280x800",
+  "clip": "M5.02-subagent-demo-5df1f07.webm",
+  "limitations": "Demo clip only; not performance, cross-browser, camera packing, or full wave acceptance"
+}

@@ -47,7 +47,10 @@ export function AgentList({ selection, store }: OverlayProps & { store?: DataSto
             data-agent-id={row.id}
             data-urgent={row.urgent ? "true" : undefined}
           >
-            <span className={styles.name}>{row.name}</span>
+            <span className={styles.name}>
+              {row.name}
+              {row.kind !== undefined && <span className={styles.kind}> {row.kind}</span>}
+            </span>
             <span className={styles.status}>{row.detail}</span>
           </GridListItem>
         )}
