@@ -25,9 +25,11 @@ vi.mock("@taskville/domain/reducer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@taskville/domain/reducer")>();
   return {
     ...actual,
-    replay: (...args: Parameters<typeof actual.replay>) => {
+    // The route replays through the reducer's `reduce` (via stateAtSequence, M6.08), so a replay
+    // is observed as reduce calls rather than as a call to `replay`.
+    reduce: (...args: Parameters<typeof actual.reduce>) => {
       replayCalls.count += 1;
-      return actual.replay(...args);
+      return actual.reduce(...args);
     },
   };
 });

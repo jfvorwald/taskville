@@ -1,0 +1,13 @@
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.row { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--tv-accent); border-radius: var(--tv-radius); }
+.row[data-collapsed="true"] { opacity: 0.7; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.dot[data-status="active"] { background: green; }
+.dot[data-status="idle"] { background: orange; }
+.dot[data-status="unknown"] { background: transparent; border: 2px dotted gray; box-sizing: border-box; }
+.dot[data-status="finished"] { background: gray; }
+.name { all: unset; cursor: pointer; font-weight: 600; }
+.name:focus-visible { outline: 2px solid var(--tv-accent); }
+.elapsed { font-variant-numeric: tabular-nums; }
+.activity, .summary { grid-column: 2 / -1; overflow-wrap: anywhere; }
+.empty { margin: 0; }
