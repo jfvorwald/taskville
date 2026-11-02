@@ -1,8 +1,4 @@
-import {
-  type ProjectState,
-  projectStateHash,
-  REDUCER_VERSION,
-} from "@taskville/domain/reducer";
+import { type ProjectState, projectStateHash, REDUCER_VERSION } from "@taskville/domain/reducer";
 import { attention } from "@taskville/domain/selectors";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { Context, Hono } from "hono";

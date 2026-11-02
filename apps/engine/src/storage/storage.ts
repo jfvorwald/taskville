@@ -1,10 +1,10 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { PairingRecords } from "../auth/pairing.ts";
+import { SqliteCheckpoints } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import { secureDatabaseFiles } from "./file-mode.ts";
 import { currentSchemaVersion, migrate } from "./migrations.ts";
-import { SqliteCheckpoints } from "./checkpoints.ts";
 import { SqlitePairingRecords } from "./pairings.ts";
 import { Database, type Statement } from "./sqlite.ts";
 

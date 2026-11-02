@@ -26,16 +26,15 @@ export class SqliteCheckpoints {
    * number removed.
    */
   prune(projectId: string, reducerVersion: number, head: number): number {
-    return this.#write(
-      () =>
-        Number(
-          this.#db
-            .prepare(
-              `DELETE FROM checkpoints WHERE project_id = ? AND (reducer_version != ?
+    return this.#write(() =>
+      Number(
+        this.#db
+          .prepare(
+            `DELETE FROM checkpoints WHERE project_id = ? AND (reducer_version != ?
                  OR sequence > ? OR NOT json_valid(state_json) OR json_type(state_json) != 'object')`,
-            )
-            .run(projectId, reducerVersion, head).changes,
-        ),
+          )
+          .run(projectId, reducerVersion, head).changes,
+      ),
     );
   }
 
