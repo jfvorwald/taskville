@@ -1,12 +1,15 @@
+import { useEffect } from "react";
 import { useData } from "../../../data/react.ts";
 import { currentFile } from "../../../overlays/agent-panel/shell/facts.ts";
-import { AnchorLayer } from "../../../overlays/host/AnchorLayer.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../../overlays/host/types.ts";
 import { useSelection } from "../../interaction/index.ts";
-import { FileScreen } from "./FileScreen.tsx";
+import { fileScreenStore } from "./fileScreenStore.ts";
 
-/** The selected agent's file screen, in the world-labels slot. */
-export function ConnectedFileScreen({ anchors }: OverlayProps) {
+/**
+ * Publishes the selected agent's current file for the file screen. It draws nothing itself: the
+ * agent labels layer renders the screen, so one collision layer places it with the name tags.
+ */
+export function ConnectedFileScreen(_props: OverlayProps) {
   const { selectedId } = useSelection();
   const toolCalls = useData((s) => s.state?.toolCalls);
   const agents = useData((s) => s.state?.agents);
@@ -14,14 +17,12 @@ export function ConnectedFileScreen({ anchors }: OverlayProps) {
     selectedId !== null && agents !== undefined && Object.hasOwn(agents, selectedId)
       ? selectedId
       : null;
-  return (
-    <AnchorLayer source={anchors} gap={4} margin={48}>
-      <FileScreen
-        agentId={agentId}
-        path={agentId !== null && toolCalls ? currentFile(agentId, toolCalls) : null}
-      />
-    </AnchorLayer>
-  );
+  const path = agentId !== null && toolCalls ? currentFile(agentId, toolCalls) : null;
+  useEffect(() => {
+    fileScreenStore.set({ agentId, path });
+    return () => fileScreenStore.set({ agentId: null, path: null });
+  }, [agentId, path]);
+  return null;
 }
 
 export const fileScreenOverlay: OverlayDefinition = {

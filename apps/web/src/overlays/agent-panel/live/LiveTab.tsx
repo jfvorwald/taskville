@@ -27,7 +27,9 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { ExpandableCode } from "../code/ExpandableCode.tsx";
 import { buildEditorLink } from "../code/editorLink.ts";
+import type { CodeHighlighter } from "../code/highlighter.ts";
 import { EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import styles from "./live.module.css";
 
@@ -45,6 +47,10 @@ export interface LiveTabProps {
   evicted?: ReadonlySet<string>;
   /** Hide code bodies (Edit fragments, Write content). Default false. */
   privacy?: boolean;
+  /** Highlights expanded code bodies. Defaults to the shared lazy Shiki one. */
+  highlighter?: CodeHighlighter;
+  /** Editor link template with one {path}. Defaults to the VS Code one. */
+  editorTemplate?: string;
 }
 type Evicted = ReadonlySet<string>;
 /** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
@@ -92,6 +98,11 @@ const distanceFromBottom = (node: HTMLElement) =>
   node.scrollHeight - node.clientHeight - node.scrollTop;
 const EVICTED = "details no longer stored";
 const CODE_HIDDEN = "Code hidden by the privacy setting";
+/** Tools whose input carries code or file content. Under privacy their bodies are never shown. */
+const CODE_TOOLS: ReadonlySet<string> = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"]);
+/** The language id Shiki gets for a path: its extension, or plain text. */
+const languageOf = (path: string | undefined) =>
+  /\.([A-Za-z0-9]+)$/.exec(path ?? "")?.[1] ?? "text";
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -234,6 +245,8 @@ const ToolCard = memo(function ToolCard({
   position,
   size,
   privacy,
+  highlighter,
+  editorTemplate,
 }: {
   call: ToolCallFrame;
   inputBody: EvidenceResponse | undefined;
@@ -247,6 +260,8 @@ const ToolCard = memo(function ToolCard({
   position: number;
   size: number;
   privacy: boolean;
+  highlighter: CodeHighlighter | undefined;
+  editorTemplate: string | undefined;
 }) {
   const heading = useId();
   const expand = useId();
@@ -306,6 +321,10 @@ const ToolCard = memo(function ToolCard({
   // The subject path is in the heading, as the editor link. The rest are listed once, below.
   const otherPaths = paths.filter((path) => path !== subjectPath);
   const phase = string(call.phase) ?? "unknown";
+  const codeProps = {
+    ...(highlighter ? { highlighter } : {}),
+    ...(editorTemplate === undefined ? {} : { editorTemplate }),
+  };
   return (
     <article
       className={styles.card}
@@ -336,12 +355,12 @@ const ToolCard = memo(function ToolCard({
             : "not reported"}
         </p>
       ) : null}
-      {tool === "Edit" ? (
+      {privacy && CODE_TOOLS.has(tool) ? (
+        <p>{CODE_HIDDEN}</p>
+      ) : tool === "Edit" ? (
         <div>
           <p>Edit fragment</p>
-          {privacy ? (
-            <p>{CODE_HIDDEN}</p>
-          ) : edit ? (
+          {edit ? (
             <>
               {fragment ? (
                 fragment.map((part) =>
@@ -362,17 +381,33 @@ const ToolCard = memo(function ToolCard({
                 </>
               )}
               {edit.before.truncated || edit.after.truncated ? <p>{TRUNCATED}</p> : null}
+              <ExpandableCode
+                label={`Edit ${safe(subjectPath ?? "")}`}
+                text={edit.after.text}
+                language={languageOf(subjectPath)}
+                privacy={false}
+                {...codeProps}
+                {...(subjectPath === undefined ? {} : { path: subjectPath })}
+              />
             </>
           ) : (
             <p>Input: {missingInput}</p>
           )}
         </div>
       ) : tool === "Write" ? (
-        privacy ? (
-          <p>{CODE_HIDDEN}</p>
-        ) : (
+        <>
           <Bounded text={string(input.content) ?? inputText ?? missingInput} />
-        )
+          {string(input.content) === undefined ? null : (
+            <ExpandableCode
+              label={`Write ${safe(subjectPath ?? "")}`}
+              text={string(input.content) as string}
+              language={languageOf(subjectPath)}
+              privacy={false}
+              {...codeProps}
+              {...(subjectPath === undefined ? {} : { path: subjectPath })}
+            />
+          )}
+        </>
       ) : tool === "Bash" ? (
         <>
           <Bounded as="p" text={command ?? missingInput} />
@@ -623,6 +658,8 @@ function LiveFeed({
   evicted = NONE,
   onVisibleCalls,
   privacy = false,
+  highlighter,
+  editorTemplate,
 }: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
@@ -875,7 +912,16 @@ function LiveFeed({
               {item.kind === "call" ? (
                 <ToolCard
                   {...common}
-                  {...{ call, inputBody, outputBody, agents, select, privacy }}
+                  {...{
+                    call,
+                    inputBody,
+                    outputBody,
+                    agents,
+                    select,
+                    privacy,
+                    highlighter,
+                    editorTemplate,
+                  }}
                   inputGone={isGone(call.evidence?.input, inputBody, evicted)}
                   outputGone={isGone(call.evidence?.output, outputBody, evicted)}
                 />

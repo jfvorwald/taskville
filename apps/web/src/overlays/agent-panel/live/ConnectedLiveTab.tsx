@@ -14,6 +14,7 @@ import { readSseFrames } from "../../../data/sse.ts";
 import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
 import { getSettingsStore } from "../../settings/store.ts";
+import { sharedHighlighter } from "../code/highlighter.ts";
 import { createEvidenceBodyCache } from "./evidenceCache.ts";
 import { LiveTab, type LiveTabProps } from "./LiveTab.tsx";
 
@@ -40,7 +41,7 @@ export function ConnectedLiveTab(props: Omit<LiveTabProps, "calls" | "evidence">
   );
   return (
     <PairingBoundary>
-      <PairedLive privacy={privacyMode} {...props} />
+      <PairedLive privacy={privacyMode} highlighter={sharedHighlighter} {...props} />
     </PairingBoundary>
   );
 }
