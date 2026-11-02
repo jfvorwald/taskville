@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "react-aria-components";
 import type { EvidenceRef, EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
+import { displayPath } from "../code/displayPath.ts";
 import styles from "./files.module.css";
 
 export interface FilesTabProps {
@@ -108,24 +109,26 @@ function AgentFiles({
     onSelectionChange?.(file?.path ?? null, file?.edits.map((call) => call.data) ?? []);
   }, [file, onSelectionChange]);
 
+  const shownPath = file === undefined ? "" : displayPath(file.path, { privacy });
+
   if (files.length === 0) return <p>No files reported for this agent.</p>;
 
   return (
     <div className={styles.files}>
       <ul className={styles.list} aria-label="Files touched this session">
-        {files.map((item) => {
+        {files.map((item, index) => {
           const count = item.edits.filter((call) => call.data.phase === "succeeded").length;
           return (
             <li key={item.path}>
               <Button
                 className={styles.row}
                 data-testid="file-row"
-                data-file-path={item.path}
+                data-file-path={privacy ? `file-${index}` : item.path}
                 data-edit-count={count}
                 aria-pressed={item.path === selected}
                 onPress={() => setSelected(item.path)}
               >
-                <span>{item.path}</span>
+                <span>{displayPath(item.path, { privacy })}</span>
                 <span>
                   {count} {count === 1 ? "edit" : "edits"}
                 </span>
@@ -137,10 +140,10 @@ function AgentFiles({
       {file === undefined ? null : (
         <section
           data-testid="file-edits"
-          data-file-path={file.path}
-          aria-label={`Edits to ${file.path}`}
+          data-file-path={privacy ? `file-${files.indexOf(file)}` : file.path}
+          aria-label={`Edits to ${shownPath}`}
         >
-          <h3 className={styles.path}>{file.path}</h3>
+          <h3 className={styles.path}>{shownPath}</h3>
           {file.edits.length === 0 ? <p>No edits reported.</p> : null}
           {file.edits.map(({ data }) => (
             <article key={data.toolCallId} data-tool-call-id={data.toolCallId}>
