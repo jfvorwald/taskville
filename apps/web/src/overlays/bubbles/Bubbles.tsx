@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { agentAnchorId } from "../../city/movement/index.ts";
+import { SILENT_THRESHOLD_MS } from "../../data/domain.ts";
 import { useData } from "../../data/react.ts";
-import { dataStore } from "../../data/store.ts";
+import { type DataStore, dataStore } from "../../data/store.ts";
+import { quipElapsedMs } from "../../quips/schedule.ts";
 import { useTheme } from "../../themes/core/react.ts";
 import { useReducedMotion } from "../../wiring/index.ts";
 import { Anchored, AnchorLayer } from "../host/index.ts";
@@ -23,6 +25,7 @@ const ANCHOR_MARGIN = 48;
 interface Shown {
   key: string;
   bubble: Bubble;
+  elapsedMs: number | undefined;
 }
 
 const NONE: readonly Shown[] = [];
@@ -33,7 +36,8 @@ const same = (a: readonly Shown[], b: readonly Shown[]) =>
     (x, i) =>
       x.key === b[i].key &&
       x.bubble.line === b[i].bubble.line &&
-      x.bubble.fact === b[i].bubble.fact,
+      x.bubble.fact === b[i].bubble.fact &&
+      x.elapsedMs === b[i].elapsedMs,
   );
 
 /**
@@ -44,23 +48,37 @@ function useBubbles(
   anchors: AnchorSource,
   selectedAgentId: string | null,
   theme: string,
+  store: DataStore,
+  history: boolean,
 ): readonly Shown[] {
-  const records = useData((s) => s.attention);
-  const requests = useData((s) => s.state?.requests);
+  const records = useData((s) => s.attention, store);
+  const requests = useData((s) => s.state?.requests, store);
   const [bubbles, setBubbles] = useState(NONE);
   useEffect(() => {
     const update = () => {
-      const now = dataStore.now();
+      const now = store.now();
       // Agents the layer would hide must not use up one of the three bubbles.
       const candidates = bubbleCandidates(records, requests ?? {}, now, selectedAgentId).filter(
         (c) =>
           anchors.project(agentAnchorId(c.agentId), { margin: ANCHOR_MARGIN })?.visible === true,
       );
       const eventIds = new Map(candidates.map((c) => [c.agentId, c.eventId]));
-      const next = selectBubbles(candidates, { selectedAgentId, now, theme }).map((bubble) => ({
-        key: `${bubble.agentId}:${eventIds.get(bubble.agentId)}`,
-        bubble,
-      }));
+      const next = selectBubbles(candidates, { selectedAgentId, now, theme }).map((bubble) => {
+        const candidate = candidates.find((item) => item.agentId === bubble.agentId);
+        const record = records.find(
+          (item) =>
+            item.agentId === bubble.agentId &&
+            (item.requestId ?? `${item.kind}@${item.since}`) === candidate?.eventId,
+        );
+        const sinceMs =
+          (candidate?.sinceMs ?? now) + (record?.kind === "silent" ? SILENT_THRESHOLD_MS : 0);
+        return {
+          key: `${bubble.agentId}:${eventIds.get(bubble.agentId)}`,
+          bubble,
+          elapsedMs:
+            history && candidate ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0) : undefined,
+        };
+      });
       setBubbles((prev) => (same(prev, next) ? prev : next));
     };
     update();
@@ -79,7 +97,7 @@ function useBubbles(
       clearTimeout(settle);
       unsubscribe();
     };
-  }, [anchors, records, requests, selectedAgentId, theme]);
+  }, [anchors, records, requests, selectedAgentId, theme, store, history]);
   return bubbles;
 }
 
@@ -87,13 +105,18 @@ function useBubbles(
  * Speech bubbles over agents that are stuck: a themed one-liner, plus the tool name for a
  * permission wait. Text is always a React text child.
  */
-export function Bubbles({ anchors, selection }: OverlayProps) {
+export function Bubbles({
+  mode,
+  anchors,
+  selection,
+  store = dataStore,
+}: OverlayProps & { store?: DataStore }) {
   const theme = useTheme((s) => s.themeId);
   const reducedMotion = useReducedMotion();
-  const bubbles = useBubbles(anchors, selection.selectedId, theme);
+  const bubbles = useBubbles(anchors, selection.selectedId, theme, store, mode === "history");
   return (
     <AnchorLayer source={anchors} gap={4} margin={ANCHOR_MARGIN}>
-      {bubbles.map(({ key, bubble: b }) => (
+      {bubbles.map(({ key, bubble: b, elapsedMs }) => (
         <Anchored
           key={key}
           id={`bubble:${key}`}
@@ -102,6 +125,11 @@ export function Bubbles({ anchors, selection }: OverlayProps) {
         >
           <div
             className={styles.bubble}
+            style={
+              elapsedMs !== undefined
+                ? { animationPlayState: "paused", animationDelay: `-${elapsedMs}ms` }
+                : undefined
+            }
             data-testid="quip-bubble"
             data-agent-id={b.agentId}
             data-level={b.level}
@@ -119,6 +147,6 @@ export function Bubbles({ anchors, selection }: OverlayProps) {
 export const bubblesOverlay: OverlayDefinition = {
   id: "bubbles",
   slot: "bubbles",
-  modes: ["live"],
+  modes: ["live", "history"],
   Component: Bubbles,
 };
