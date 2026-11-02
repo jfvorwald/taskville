@@ -1,6 +1,7 @@
 import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { bundledLanguages } from "shiki/langs";
+import { bundledThemes } from "shiki/themes";
 import type { HighlightBackend } from "./highlighter.ts";
 
 const THEME = "github-dark";
@@ -12,7 +13,7 @@ const THEME = "github-dark";
  */
 export async function createShikiBackend(): Promise<HighlightBackend> {
   const shiki = await createHighlighterCore({
-    themes: [import("shiki/themes/github-dark")],
+    themes: [bundledThemes[THEME]],
     langs: [],
     engine: createJavaScriptRegexEngine(),
   });

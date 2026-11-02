@@ -27,6 +27,7 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { buildEditorLink } from "../code/editorLink.ts";
 import { EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import styles from "./live.module.css";
 
@@ -42,6 +43,8 @@ export interface LiveTabProps {
   onVisibleCalls?: (calls: readonly ToolCallFrame[]) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
+  /** Hide code bodies (Edit fragments, Write content). Default false. */
+  privacy?: boolean;
 }
 type Evicted = ReadonlySet<string>;
 /** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
@@ -88,6 +91,7 @@ const FOLLOW_THRESHOLD = 8;
 const distanceFromBottom = (node: HTMLElement) =>
   node.scrollHeight - node.clientHeight - node.scrollTop;
 const EVICTED = "details no longer stored";
+const CODE_HIDDEN = "Code hidden by the privacy setting";
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -129,13 +133,12 @@ function parseBody(body: EvidenceResponse): unknown {
 function Path({ path }: { path: string }) {
   const shown = safe(path);
   // A path with a hidden or reordering character is shown with markers, as text and not a link.
-  return path.startsWith("/") &&
+  const href =
     shown === path &&
-    !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ? (
-    <a href={`vscode://file${path.split("/").map(encodeURIComponent).join("/")}`}>{shown}</a>
-  ) : (
-    <span>{shown}</span>
-  );
+    !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+      ? buildEditorLink(path)
+      : null;
+  return href ? <a href={href}>{shown}</a> : <span>{shown}</span>;
 }
 
 /** Resolve recorded identities only, never names or a guessed destination. */
@@ -230,6 +233,7 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded,
   position,
   size,
+  privacy,
 }: {
   call: ToolCallFrame;
   inputBody: EvidenceResponse | undefined;
@@ -242,6 +246,7 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
+  privacy: boolean;
 }) {
   const heading = useId();
   const expand = useId();
@@ -334,7 +339,9 @@ const ToolCard = memo(function ToolCard({
       {tool === "Edit" ? (
         <div>
           <p>Edit fragment</p>
-          {edit ? (
+          {privacy ? (
+            <p>{CODE_HIDDEN}</p>
+          ) : edit ? (
             <>
               {fragment ? (
                 fragment.map((part) =>
@@ -361,7 +368,11 @@ const ToolCard = memo(function ToolCard({
           )}
         </div>
       ) : tool === "Write" ? (
-        <Bounded text={string(input.content) ?? inputText ?? missingInput} />
+        privacy ? (
+          <p>{CODE_HIDDEN}</p>
+        ) : (
+          <Bounded text={string(input.content) ?? inputText ?? missingInput} />
+        )
       ) : tool === "Bash" ? (
         <>
           <Bounded as="p" text={command ?? missingInput} />
@@ -611,6 +622,7 @@ function LiveFeed({
   evidence,
   evicted = NONE,
   onVisibleCalls,
+  privacy = false,
 }: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
@@ -863,7 +875,7 @@ function LiveFeed({
               {item.kind === "call" ? (
                 <ToolCard
                   {...common}
-                  {...{ call, inputBody, outputBody, agents, select }}
+                  {...{ call, inputBody, outputBody, agents, select, privacy }}
                   inputGone={isGone(call.evidence?.input, inputBody, evicted)}
                   outputGone={isGone(call.evidence?.output, outputBody, evicted)}
                 />

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSoundscape } from "../audio/index.ts";
+import { fileScreenOverlay } from "../city/crew/file-screen/ConnectedFileScreen.tsx";
 import { cameraControlsOverlay, useSelection } from "../city/interaction/index.ts";
 import { selectionStore } from "../city/interaction/selection.ts";
 import { agentLabelsOverlay, countsSelector } from "../city/movement/index.ts";
@@ -45,6 +46,7 @@ import {
 const registry = createOverlayRegistry([
   countsHeaderOverlay,
   agentLabelsOverlay,
+  fileScreenOverlay,
   cameraControlsOverlay,
   themedSettingsOverlay,
   presentedAgentListOverlay,
@@ -55,6 +57,7 @@ const registry = createOverlayRegistry([
 const ENABLED = [
   "counts-header",
   "agent-labels",
+  "file-screen",
   "camera-controls",
   "settings-panel",
   "agent-list",
