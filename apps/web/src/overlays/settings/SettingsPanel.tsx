@@ -33,8 +33,7 @@ export interface SettingsPanelProps extends OverlayProps {
 }
 
 /**
- * The settings sidebar: theme, day or night, reduced motion, sound, and a placeholder for code
- * privacy. Values live in the settings store (local to this viewer), not in the engine.
+ * The settings sidebar: theme, day or night, reduced motion, sound, and hiding code bodies. Values live in the settings store (local to this viewer), not in the engine.
  */
 export function SettingsPanel({
   store = getSettingsStore(),
@@ -125,17 +124,16 @@ export function SettingsPanel({
           >
             Desktop notifications
           </Switch>
-          <Switch
-            className={styles.switch}
-            isDisabled
-            aria-label="Hide code in the city"
-            aria-describedby="settings-hide-code-note"
-          >
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={values.privacyMode}
+              aria-checked={values.privacyMode}
+              onChange={(event) => store.set("privacyMode", event.target.checked)}
+            />
             Hide code in the city
-            <span id="settings-hide-code-note" className={styles.note}>
-              Coming later
-            </span>
-          </Switch>
+          </label>
         </div>
       ) : null}
     </InteractiveRegion>

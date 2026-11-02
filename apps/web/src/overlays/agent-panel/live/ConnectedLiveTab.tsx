@@ -1,10 +1,20 @@
-import { Component, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Component,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
 import { useCurrentProjectId } from "../../../data/project.ts";
 import { readSseFrames } from "../../../data/sse.ts";
 import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
+import { getSettingsStore } from "../../settings/store.ts";
+import { sharedHighlighter } from "../code/highlighter.ts";
 import { createEvidenceBodyCache } from "./evidenceCache.ts";
 import { LiveTab, type LiveTabProps } from "./LiveTab.tsx";
 
@@ -22,10 +32,22 @@ class PairingBoundary extends Component<{ children: ReactNode }, { unavailable: 
   }
 }
 
-export function ConnectedLiveTab(props: Omit<LiveTabProps, "calls" | "evidence">) {
+/** The connected tab decides privacy and highlighting itself; a caller cannot set either. */
+export type ConnectedLiveTabProps = Omit<
+  LiveTabProps,
+  "calls" | "evidence" | "privacy" | "highlighter"
+>;
+
+export function ConnectedLiveTab(props: ConnectedLiveTabProps) {
+  const settings = getSettingsStore();
+  const { privacyMode } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
   return (
     <PairingBoundary>
-      <PairedLive {...props} />
+      <PairedLive {...props} privacy={privacyMode} highlighter={sharedHighlighter} />
     </PairingBoundary>
   );
 }

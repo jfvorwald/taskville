@@ -27,6 +27,9 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { ExpandableCode } from "../code/ExpandableCode.tsx";
+import { buildEditorLink } from "../code/editorLink.ts";
+import type { CodeHighlighter } from "../code/highlighter.ts";
 import { EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import styles from "./live.module.css";
 
@@ -42,6 +45,12 @@ export interface LiveTabProps {
   onVisibleCalls?: (calls: readonly ToolCallFrame[]) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
+  /** Hide code bodies (Edit fragments, Write content). Default false. */
+  privacy?: boolean;
+  /** Highlights expanded code bodies. Defaults to the shared lazy Shiki one. */
+  highlighter?: CodeHighlighter;
+  /** Editor link template with one {path}. Defaults to the VS Code one. */
+  editorTemplate?: string;
 }
 type Evicted = ReadonlySet<string>;
 /** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
@@ -88,6 +97,10 @@ const FOLLOW_THRESHOLD = 8;
 const distanceFromBottom = (node: HTMLElement) =>
   node.scrollHeight - node.clientHeight - node.scrollTop;
 const EVICTED = "details no longer stored";
+const CODE_HIDDEN = "Code hidden by the privacy setting";
+/** The language id Shiki gets for a path: its extension, or plain text. */
+const languageOf = (path: string | undefined) =>
+  /\.([A-Za-z0-9]+)$/.exec(path ?? "")?.[1] ?? "text";
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -126,13 +139,23 @@ function parseBody(body: EvidenceResponse): unknown {
   }
 }
 
+/**
+ * A path may become an editor link only when showing it changes nothing: no secret to mask (or already masked), no
+ * hidden or reordering character, no control character. Every editor link goes through this.
+ */
+const isLinkablePath = (path: string) =>
+  safe(path) === path &&
+  !path.includes("[REDACTED") &&
+  !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+
 function Path({ path }: { path: string }) {
   const shown = safe(path);
   // A path with a hidden or reordering character is shown with markers, as text and not a link.
-  return path.startsWith("/") &&
-    shown === path &&
-    !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ? (
-    <a href={`vscode://file${path.split("/").map(encodeURIComponent).join("/")}`}>{shown}</a>
+  const href = isLinkablePath(path) ? buildEditorLink(path) : null;
+  return href ? (
+    <a href={href} rel="noopener noreferrer">
+      {shown}
+    </a>
   ) : (
     <span>{shown}</span>
   );
@@ -218,7 +241,7 @@ const oneLine = (text: string) => text.split("\n", 1)[0].slice(0, 120);
 const pretty = (value: unknown) =>
   typeof value === "string" || value === undefined ? value : JSON.stringify(value, null, 2);
 
-const ToolCard = memo(function ToolCard({
+const OpenToolCard = memo(function OpenToolCard({
   call,
   inputBody,
   outputBody,
@@ -230,6 +253,8 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded,
   position,
   size,
+  highlighter,
+  editorTemplate,
 }: {
   call: ToolCallFrame;
   inputBody: EvidenceResponse | undefined;
@@ -242,6 +267,8 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
+  highlighter: CodeHighlighter | undefined;
+  editorTemplate: string | undefined;
 }) {
   const heading = useId();
   const expand = useId();
@@ -301,6 +328,10 @@ const ToolCard = memo(function ToolCard({
   // The subject path is in the heading, as the editor link. The rest are listed once, below.
   const otherPaths = paths.filter((path) => path !== subjectPath);
   const phase = string(call.phase) ?? "unknown";
+  const codeProps = {
+    ...(highlighter ? { highlighter } : {}),
+    ...(editorTemplate === undefined ? {} : { editorTemplate }),
+  };
   return (
     <article
       className={styles.card}
@@ -355,13 +386,37 @@ const ToolCard = memo(function ToolCard({
                 </>
               )}
               {edit.before.truncated || edit.after.truncated ? <p>{TRUNCATED}</p> : null}
+              <ExpandableCode
+                label={`Edit ${safe(subjectPath ?? "")}`}
+                text={edit.after.text}
+                language={languageOf(subjectPath)}
+                privacy={false}
+                {...codeProps}
+                {...(subjectPath === undefined || !isLinkablePath(subjectPath)
+                  ? {}
+                  : { path: subjectPath })}
+              />
             </>
           ) : (
             <p>Input: {missingInput}</p>
           )}
         </div>
       ) : tool === "Write" ? (
-        <Bounded text={string(input.content) ?? inputText ?? missingInput} />
+        <>
+          <Bounded text={string(input.content) ?? inputText ?? missingInput} />
+          {string(input.content) === undefined ? null : (
+            <ExpandableCode
+              label={`Write ${safe(subjectPath ?? "")}`}
+              text={string(input.content) as string}
+              language={languageOf(subjectPath)}
+              privacy={false}
+              {...codeProps}
+              {...(subjectPath === undefined || !isLinkablePath(subjectPath)
+                ? {}
+                : { path: subjectPath })}
+            />
+          )}
+        </>
       ) : tool === "Bash" ? (
         <>
           <Bounded as="p" text={command ?? missingInput} />
@@ -418,6 +473,62 @@ const ToolCard = memo(function ToolCard({
   );
 });
 
+/**
+ * What a card shows under the privacy setting, for every tool: the heading (tool name), status,
+ * timing and the recorded paths, and the hidden note. Nothing from an input or output body is
+ * read, so a tool the renderer has never heard of cannot leak either.
+ */
+function HiddenToolCard({
+  call,
+  position,
+  size,
+}: {
+  call: ToolCallFrame;
+  position: number;
+  size: number;
+}) {
+  const heading = useId();
+  const tool = typeof call.toolName === "string" ? call.toolName : "not reported";
+  return (
+    <article
+      className={styles.card}
+      aria-labelledby={heading}
+      aria-posinset={position}
+      aria-setsize={size}
+      tabIndex={-1}
+    >
+      <h3 id={heading}>{safe(tool)}</h3>
+      <p>
+        Status: {safe(string(call.phase) ?? "unknown")}. Timing:{" "}
+        {typeof call.durationMs === "number" && Number.isFinite(call.durationMs)
+          ? `${call.durationMs} ms`
+          : "not reported"}
+      </p>
+      {call.filePaths.length ? (
+        <p>
+          Path:{" "}
+          {call.filePaths.map((path) => (
+            <span key={path}>
+              <Path path={path} />{" "}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      <p>{CODE_HIDDEN}</p>
+    </article>
+  );
+}
+
+type ToolCardProps = Parameters<typeof OpenToolCard>[0] & { privacy: boolean };
+/** Privacy is one early branch: a hidden card never reaches the code that reads bodies. */
+function ToolCard({ privacy, ...props }: ToolCardProps) {
+  return privacy ? (
+    <HiddenToolCard call={props.call} position={props.position} size={props.size} />
+  ) : (
+    <OpenToolCard {...props} />
+  );
+}
+
 /** A run of Read calls or of Search calls: one card that expands to the files or the patterns. */
 function GroupCard({
   kind,
@@ -431,6 +542,7 @@ function GroupCard({
   detailPage,
   detailPageSize,
   onDetailPage,
+  privacy,
 }: {
   kind: "read" | "search";
   calls: readonly ToolCallFrame[];
@@ -443,11 +555,28 @@ function GroupCard({
   detailPage: number;
   detailPageSize: number;
   onDetailPage: (id: string, page: number) => void;
+  privacy: boolean;
 }) {
   const heading = useId();
   const list = useId();
   const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
+  if (privacy) {
+    return (
+      <article
+        className={styles.card}
+        aria-labelledby={heading}
+        aria-posinset={position}
+        aria-setsize={size}
+        tabIndex={-1}
+      >
+        <h3 id={heading}>
+          {kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`}
+        </h3>
+        <p>{CODE_HIDDEN}</p>
+      </article>
+    );
+  }
   return (
     <article
       className={styles.card}
@@ -611,6 +740,9 @@ function LiveFeed({
   evidence,
   evicted = NONE,
   onVisibleCalls,
+  privacy = false,
+  highlighter,
+  editorTemplate,
 }: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
@@ -863,7 +995,16 @@ function LiveFeed({
               {item.kind === "call" ? (
                 <ToolCard
                   {...common}
-                  {...{ call, inputBody, outputBody, agents, select }}
+                  {...{
+                    call,
+                    inputBody,
+                    outputBody,
+                    agents,
+                    select,
+                    privacy,
+                    highlighter,
+                    editorTemplate,
+                  }}
                   inputGone={isGone(call.evidence?.input, inputBody, evicted)}
                   outputGone={isGone(call.evidence?.output, outputBody, evicted)}
                 />
@@ -876,6 +1017,7 @@ function LiveFeed({
                   detailPage={detailPages.get(item.key) ?? 0}
                   detailPageSize={detailPageSize}
                   onDetailPage={onDetailPage}
+                  privacy={privacy}
                 />
               )}
             </div>

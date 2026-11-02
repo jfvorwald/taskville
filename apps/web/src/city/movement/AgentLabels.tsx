@@ -1,11 +1,13 @@
 import { useSyncExternalStore } from "react";
 import { Anchored, AnchorLayer } from "../../overlays/host/index.ts";
 import type { OverlayDefinition, OverlayProps } from "../../overlays/host/types.ts";
+import { FileScreen } from "../crew/file-screen/FileScreen.tsx";
+import { fileScreenStore } from "../crew/file-screen/fileScreenStore.ts";
+import { agentAnchorId } from "./anchorId.ts";
 import styles from "./labels.module.css";
 import { movementLabels } from "./labels.ts";
 
-/** World anchor id of an agent's label point (above its head). The city publishes it. */
-export const agentAnchorId = (id: string) => `agent:${id}`;
+export { agentAnchorId };
 
 /**
  * Agent name tags in the world-labels slot. The status is the recorded state, shown at once even
@@ -16,6 +18,11 @@ export function AgentLabels({ anchors }: OverlayProps) {
     movementLabels.subscribe,
     movementLabels.getSnapshot,
     movementLabels.getSnapshot,
+  );
+  const screen = useSyncExternalStore(
+    fileScreenStore.subscribe,
+    fileScreenStore.getSnapshot,
+    fileScreenStore.getSnapshot,
   );
   return (
     <AnchorLayer source={anchors} gap={4} margin={48}>
@@ -36,6 +43,7 @@ export function AgentLabels({ anchors }: OverlayProps) {
             </div>
           </Anchored>
         ))}
+      <FileScreen agentId={screen.agentId} path={screen.path} />
     </AnchorLayer>
   );
 }

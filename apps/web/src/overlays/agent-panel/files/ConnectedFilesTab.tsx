@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
 import { useCurrentProjectId } from "../../../data/project.ts";
 import { readSseFrames } from "../../../data/sse.ts";
 import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
+import { getSettingsStore } from "../../settings/store.ts";
 import { FilesTab, type FilesTabProps, isEdit } from "./FilesTab.tsx";
 
 /** Only the default Files slot owns transport; injected tabs remain controlled. */
@@ -25,6 +26,12 @@ function SelectedFiles({
   agentId: string;
   secret: string;
 }) {
+  const settings = getSettingsStore();
+  const { privacyMode } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
   const [frames, setFrames] = useState<FilesTabProps["frames"]>([]);
   const [evidence, setEvidence] = useState<Record<string, EvidenceResponse>>({});
   const [unavailable, setUnavailable] = useState(false);
@@ -207,6 +214,7 @@ function SelectedFiles({
         agentId={agentId}
         frames={frames}
         evidence={evidence}
+        privacy={privacyMode}
         onSelectionChange={onSelectionChange}
       />
     </>

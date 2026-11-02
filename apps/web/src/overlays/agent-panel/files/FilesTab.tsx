@@ -8,6 +8,8 @@ export interface FilesTabProps {
   agentId: string;
   frames: readonly { id: number; data: ToolCallFrame }[];
   evidence?: Readonly<Record<string, EvidenceResponse>>;
+  /** Hide recorded code bodies (the Hide code setting). File names and counts stay. */
+  privacy?: boolean;
   onSelectionChange?: (path: string | null, calls: readonly ToolCallFrame[]) => void;
 }
 
@@ -64,10 +66,13 @@ function filesFor(agentId: string, frames: FilesTabProps["frames"]) {
 function EvidenceBody({
   reference,
   evidence,
+  privacy,
 }: {
   reference: EvidenceRef | null;
   evidence: FilesTabProps["evidence"];
+  privacy: boolean;
 }) {
+  if (privacy) return <p>Code hidden by the privacy setting</p>;
   const body =
     reference?.status === "stored" && evidence && Object.hasOwn(evidence, reference.id)
       ? evidence[reference.id]
@@ -85,7 +90,13 @@ export function FilesTab(props: FilesTabProps) {
   return <AgentFiles key={props.agentId} {...props} />;
 }
 
-function AgentFiles({ agentId, frames, evidence, onSelectionChange }: FilesTabProps) {
+function AgentFiles({
+  agentId,
+  frames,
+  evidence,
+  onSelectionChange,
+  privacy = false,
+}: FilesTabProps) {
   const files = useMemo(() => filesFor(agentId, frames), [agentId, frames]);
   const [selected, setSelected] = useState<string | null>(null);
   const file = files.find((item) => item.path === selected);
@@ -137,9 +148,13 @@ function AgentFiles({ agentId, frames, evidence, onSelectionChange }: FilesTabPr
                 {data.toolName}: {data.phase}
               </h4>
               <p>Input</p>
-              <EvidenceBody reference={data.evidence.input} evidence={evidence} />
+              <EvidenceBody reference={data.evidence.input} evidence={evidence} privacy={privacy} />
               <p>Output</p>
-              <EvidenceBody reference={data.evidence.output} evidence={evidence} />
+              <EvidenceBody
+                reference={data.evidence.output}
+                evidence={evidence}
+                privacy={privacy}
+              />
             </article>
           ))}
         </section>
