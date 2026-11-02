@@ -84,3 +84,16 @@ export function crewAttribution(input: CrewAttributionInput): CrewAttribution {
   for (const [wearer, ids] of dots) sortedDots[wearer] = [...ids].sort(byText);
   return { red: [...red].sort(byText), dots: sortedDots, forLabels };
 }
+
+/**
+ * RED STUB (round 2, roborev 6596): the red ids the lead's own dot stands for. Keeps every red id
+ * that reaches the lead through a teammate (the teammate itself, or its subagents at any depth);
+ * drops red agents that sit directly under the lead, because SubagentCrew already dots those.
+ */
+export function leadDotTargets(
+  _out: CrewAttribution,
+  _agents: Readonly<Record<string, AttributionAgent>>,
+  _leadId: string,
+): readonly string[] {
+  return [];
+}
