@@ -103,15 +103,16 @@ describe("writeProjection hash", () => {
     try {
       addProject(storage, "demo");
       const pipeline = new IngestPipeline({ storage });
-      for (const step of generateDemo({
-        seed: 9,
-        pace: LIVELY,
-        projectId: "demo",
-        durationMs: 1_800_000,
-      })) {
-        pipeline.ingest([...step.events]);
-      }
+      // One batch, so one projection write of the final state (#318). Ingesting step by step
+      // made 892 writes, each serializing and hashing the whole growing state; that was about
+      // 90% of the test's time and timed out at 5 s on a loaded machine. Same events, same state.
+      const events = [
+        ...generateDemo({ seed: 9, pace: LIVELY, projectId: "demo", durationMs: 1_800_000 }),
+      ].flatMap((step) => [...step.events]);
+      pipeline.ingest(events);
       const stored = storage.projection("demo");
+      // Still a large state: over a thousand events, about 38 KB of state JSON.
+      expect(stored?.head).toBeGreaterThan(1_000);
       expect(stored?.stateHash).toBe(stateHash(domainReducer.version, stored?.state));
     } finally {
       storage.close();
