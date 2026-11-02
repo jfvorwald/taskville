@@ -92,18 +92,29 @@ describe("chime() on the live path", () => {
     expect(s.cues("chime")).toHaveLength(1);
   });
 
-  it("plays nothing before enable, in history mode, or after disable", async () => {
+  it("allows trusted live chimes in history, keeps replay silent, and guards enable/disable", async () => {
     const before = manual();
     before.soundscape.chime();
     expect(before.cues()).toEqual([]);
 
     const s = await enabled();
     s.soundscape.setHistory(true);
+    s.soundscape.update([needsYou("recorded-agent")]);
+    s.soundscape.handleEvent(taskCompleted("recorded-agent"));
+    s.soundscape.handleEvent(handoff("recorded-agent", "recorded-recipient"));
+    expect(s.cues()).toEqual([]);
+
+    // ARCHITECTURE 2.8/3 and decision #323: this path carries global LIVE attention, not replay.
     s.soundscape.chime();
+    // Soft so the disabled control also executes while this live-history contract is red.
+    expect.soft(s.cues("chime")).toHaveLength(1);
+    expect(s.cues("tick")).toHaveLength(0);
+    expect(s.cues("pop")).toHaveLength(0);
+    const cuesBeforeDisable = s.cues();
     s.soundscape.setHistory(false);
     s.soundscape.disable();
     s.soundscape.chime();
-    expect(s.cues()).toEqual([]);
+    expect(s.cues()).toEqual(cuesBeforeDisable);
   });
 });
 
