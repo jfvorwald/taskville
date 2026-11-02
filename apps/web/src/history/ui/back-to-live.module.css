@@ -1,0 +1,28 @@
+.pill {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: calc(100vw - 32px);
+  padding: 8px 16px;
+  border: 1px solid var(--tv-text-muted, #8b949e);
+  border-radius: 999px;
+  background: var(--tv-surface, #18212b);
+  color: var(--tv-text, #e6edf3);
+  font: inherit;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.pill[data-needs-you="true"] {
+  color: #e13d4e;
+  border-color: currentColor;
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--tv-focus, #79c0ff);
+  outline-offset: 2px;
+}
