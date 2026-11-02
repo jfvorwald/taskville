@@ -90,14 +90,18 @@ export function replay(
   name: string,
   options: {
     upTo?: number;
+    /** Hooks appended after the fixture's own (after `upTo`), for shapes the recordings lack. */
+    extra?: Hook[];
     bridge?: (hook: Hook, state: ProjectState) => { agent: Agent; tool: string } | undefined;
   } = {},
 ): Replay {
   let state = initialState("proj-attention");
   let sequence = 0;
   let now = BASE_MS;
-  for (const hook of readFixture(name)) {
-    if (options.upTo !== undefined && hook.seq > options.upTo) break;
+  const hooks = readFixture(name).filter(
+    (h) => options.upTo === undefined || h.seq <= options.upTo,
+  );
+  for (const hook of [...hooks, ...(options.extra ?? [])]) {
     const at = new Date(BASE_MS + Math.round(hook.offsetMs)).toISOString();
     const mapped = mapClaudeCodeHook(hook.input, {
       projectId: "proj-attention",
