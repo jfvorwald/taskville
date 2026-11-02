@@ -9,6 +9,7 @@ export {
 export { CityAgents, type CityAgentsProps } from "./CityAgents.tsx";
 export {
   createLabelStore,
+  crewLabelEntries,
   type LabelStore,
   labelRows,
   type MovementLabel,

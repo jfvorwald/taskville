@@ -13,12 +13,14 @@ import { type DataStore, dataStore } from "../../data/store.ts";
 import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
 import { debugHookRequested } from "../../testHooks.ts";
 import { AgentsLayer } from "../agents/index.ts";
+import { agentLabel } from "../agents/label.ts";
 import type { AgentLabelEntry, AgentView, Placement } from "../agents/types.ts";
+import { troubleDetail } from "../attention/detail.ts";
 import { TeamDecorations } from "../crew/teams/TeamDecorations.tsx";
 import { presentationEpoch } from "../runtime/epoch.ts";
 import { rebuildPresentation } from "../runtime/rebuild.ts";
 import { agentAnchorId } from "./AgentLabels.tsx";
-import { type LabelStore, labelRows, movementLabels } from "./labels.ts";
+import { crewLabelEntries, type LabelStore, labelRows, movementLabels } from "./labels.ts";
 import { buildModels } from "./models.ts";
 import { createNavigator, type Navigator, type PresentationState } from "./navigator.ts";
 import { loadActivityAreas, usePrefersReducedMotion } from "./settings.ts";
@@ -118,23 +120,39 @@ export function CityAgents({
       live.add(v.id);
       lastViews.current.set(v.id, v);
     }
+    // A subagent that gained a known parent is the crew layer's now: its old block view goes.
+    for (const v of models.crew) lastViews.current.delete(v.id);
     const leaving = [...lastViews.current.values()].filter((v) => !live.has(v.id));
     return [...models.views, ...leaving];
   }, [models, pruned]);
 
   const entries = useRef<readonly AgentLabelEntry[]>([]);
   const offsets = useRef(new Map<string, number>());
+  // Subagents the crew layer draws: no block agent, so no entry from `AgentsLayer`; the agent
+  // list still names them.
+  const crewEntries = useRef<readonly AgentLabelEntry[]>([]);
+  const crewIds = useRef<ReadonlySet<string>>(new Set());
+  const activeCrewIds = useRef<ReadonlySet<string>>(new Set());
   const urgent = useRef<ReadonlySet<string>>(new Set());
   const shown = useRef(new Map<string, { state: PresentationState; onTheWay: boolean }>());
   const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
 
   const publishLabels = useCallback(() => {
-    labels.set(labelRows(entries.current, (id) => nav.get(id), urgent.current));
+    labels.set(
+      labelRows(
+        [...entries.current, ...crewEntries.current],
+        (id) => nav.get(id),
+        urgent.current,
+        crewIds.current,
+      ),
+    );
   }, [labels, nav]);
 
   const publishPositions = useCallback(() => {
     const point = anchorPoint.current;
     for (const a of nav.list()) {
+      // Crew has navigation intents too, but its visible bots own their anchors.
+      if (!lastViews.current.has(a.id)) continue;
       const p = placementFor(a.id);
       p.x = a.x;
       p.z = a.z;
@@ -161,16 +179,44 @@ export function CityAgents({
     if (models === null) return;
     nav.sync(models.intents, { place: !placedOnce.current });
     placedOnce.current = true;
+    activeCrewIds.current = new Set(models.crew.map((v) => v.id));
+    // Crew owns its return/fade clock. Keep its last list row while its drawn anchor exists.
+    const retained = crewEntries.current
+      .filter(
+        (entry) =>
+          !activeCrewIds.current.has(entry.id) &&
+          state?.agents[entry.id]?.finishedAt !== undefined &&
+          anchors.getAnchor(agentAnchorId(entry.id)) !== undefined,
+      )
+      .map((entry) => {
+        const record = attention.find((item) => item.agentId === entry.id);
+        if (record === undefined) return { ...entry, status: "Completed" };
+        const detail = troubleDetail(record);
+        const current = agentLabel({
+          id: entry.id,
+          kind: "subagent",
+          activity: "unknown",
+          placement: entry.anchor,
+          attention: {
+            level: record.level,
+            heuristic: record.heuristic,
+            ...(detail === undefined ? {} : { detail: detail.text }),
+          },
+        });
+        return { ...entry, status: `Completed; ${current.status}` };
+      });
+    crewEntries.current = [...crewLabelEntries(models.crew), ...retained];
+    crewIds.current = new Set(crewEntries.current.map((entry) => entry.id));
     urgent.current = new Set(
-      models.views.filter((v) => v.attention?.level === "needs_you").map((v) => v.id),
+      attention.filter((record) => record.level === "needs_you").map((record) => record.agentId),
     );
     publishPositions();
     publishLabels();
-  }, [models, nav, publishPositions, publishLabels]);
+  }, [models, nav, publishPositions, publishLabels, anchors, state, attention]);
 
   useEffect(
     () => () => {
-      anchors.replaceAnchors("agent:", {});
+      for (const id of lastViews.current.keys()) anchors.removeAnchor(agentAnchorId(id));
       labels.set([]);
     },
     [anchors, labels],
@@ -189,6 +235,26 @@ export function CityAgents({
   useFrame((frame) => {
     nav.tick(frame.clock.elapsedTime * 1000);
     publishPositions();
+    // A clock-only fade can remove a crew anchor without another domain event.
+    let crewGone = false;
+    for (const entry of crewEntries.current) {
+      if (
+        !activeCrewIds.current.has(entry.id) &&
+        anchors.getAnchor(agentAnchorId(entry.id)) === undefined
+      ) {
+        crewGone = true;
+        break;
+      }
+    }
+    if (crewGone) {
+      crewEntries.current = crewEntries.current.filter(
+        (entry) =>
+          activeCrewIds.current.has(entry.id) ||
+          anchors.getAnchor(agentAnchorId(entry.id)) !== undefined,
+      );
+      crewIds.current = new Set(crewEntries.current.map((entry) => entry.id));
+      publishLabels();
+    }
     let changed = false;
     let gone = false;
     for (const a of nav.list()) {
@@ -203,10 +269,11 @@ export function CityAgents({
     if (!gone) return;
     for (const a of nav.list()) {
       if (!a.gone) continue;
+      const ownedAnchor = lastViews.current.has(a.id);
       lastViews.current.delete(a.id);
       placements.current.delete(a.id);
       shown.current.delete(a.id);
-      anchors.removeAnchor(agentAnchorId(a.id));
+      if (ownedAnchor) anchors.removeAnchor(agentAnchorId(a.id));
     }
     nav.prune();
     setPruned((n) => n + 1);
