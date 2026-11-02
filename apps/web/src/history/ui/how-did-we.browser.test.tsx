@@ -89,9 +89,9 @@ function Composition() {
   );
 }
 
-function engine() {
-  const live = new FakeEngine(log);
-  const timeline = timelineEngine(log);
+function engine(recording = log) {
+  const live = new FakeEngine(recording);
+  const timeline = timelineEngine(recording);
   const calls: Array<{ url: URL; method: string }> = [];
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(String(input), location.origin);
@@ -142,8 +142,8 @@ async function position(sequence: number, mode = "history") {
     .element(page.getByRole("status", { name: "Task history position" }))
     .toHaveTextContent(`${mode}:${sequence}`);
 }
-async function mount(agentId = ADA) {
-  const transport = engine();
+async function mount(agentId = ADA, recording = log) {
+  const transport = engine(recording);
   vi.stubGlobal("fetch", transport.fetcher);
   selectProject(PROJECT);
   const view = await render(
@@ -156,7 +156,7 @@ async function mount(agentId = ADA) {
   cleanups.push(() => view.unmount());
   await position(HEAD, "live");
   await expect.poll(() => dataStore.getState().connection).toBe("live");
-  expect(dataStore.getState().state).toEqual(stateAt(HEAD, log));
+  expect(dataStore.getState().state).toEqual(stateAt(HEAD, recording));
   act(() => selectionStore.select(agentId));
   await expect.element(page.getByTestId("agent-panel")).toHaveAttribute("data-agent-id", agentId);
   await expect
@@ -247,6 +247,35 @@ describe("selected agent task history through production sidebar", () => {
         ?.searchParams.get("at"),
     ).toBe(String(START));
     expect(transport.calls.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("stays live with an honest error when current task activity has no recorded creation", async () => {
+    const incomplete = log.map((event) => {
+      if (event.ingestSequence !== START) return event;
+      const { taskId: _taskId, ...rest } = event;
+      return storedEnvelopeSchema.parse({ ...rest, type: "agent.connected", payload: {} });
+    });
+    const expectedLive = stateAt(HEAD, incomplete);
+    expect(expectedLive.activity[ADA]).toMatchObject({ taskId: TASK, heuristic: false });
+    expect(expectedLive.tasks[TASK]?.createdAt).toBeUndefined();
+    expect(incomplete.some((event) => event.type === "task.created" && event.taskId === TASK)).toBe(
+      false,
+    );
+    const transport = await mount(ADA, incomplete);
+    await expect.element(panelEntry()).toBeVisible();
+    await panelEntry().click();
+    await expect
+      .element(page.getByRole("status").filter({ hasText: "Could not load recording." }))
+      .toBeVisible();
+    await position(HEAD, "live");
+    expect(dataStore.getState().state).toEqual(expectedLive);
+    expect(selectionStore.getSnapshot()).toBe(ADA);
+    expect(transport.timeline.requests.some((url) => url.pathname.endsWith("/events"))).toBe(true);
+    expect(transport.timeline.requests.some((url) => url.pathname.endsWith("/state"))).toBe(false);
+    expect(transport.calls.every(({ method }) => method === "GET")).toBe(true);
+    // An incomplete task does not poison ordinary history entry or redirect it to another task.
+    await userEvent.keyboard("h");
+    await position(HEAD);
   });
 
   it("does not guess a history jump for an active selected agent with no recorded current task", async () => {
