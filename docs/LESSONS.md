@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-205: Privacy as a deny-list leaks whatever it does not name
+- **Date:** 2026-11-02 · **Milestone:** M5 · **Ticket:** #71 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Hide code first gated Edit and Write, then MultiEdit and NotebookEdit; each review round found another content-bearing path (Files tab, Bash stdout, Grep output, unknown tools, a crafted file_path).
+- **Lesson:** A privacy control is one early branch that renders only known-safe fields, with a test that feeds unknown tool names and hostile inputs.
+- **Action:** PR #331 round 4 made privacy deny-by-default; the remaining path channel is #338.
+
+### L-204: Frame effects lose to frame callbacks registered later
+- **Date:** 2026-11-02 · **Milestone:** M5 · **Ticket:** #66 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** CrewHighlight's hover lift and dimming were erased every frame by SubagentCrew and AgentBlock callbacks that registered after it (any agent that spawns after load). Hand-made test groups hid it.
+- **Lesson:** Effects layered over another system's per-frame writes apply at draw time, and their tests mount the real owning system after the effect.
+- **Action:** PR #329 wraps the renderer's render; CrewHighlight.order tests pin both orders. Wrapper hardening is #337.
+
+### L-203: Review findings need a test-writer round when the implementer cannot write tests
+- **Date:** 2026-11-02 · **Milestone:** M5 · **Ticket:** #66, #67, #71 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** The implementer's protect-tests hook (now enforced through Agent-tool workers) blocked test-first fixes for roborev findings, so each finding cost a test-writer round and a green round.
+- **Lesson:** Batch every finding from a panel into one red round, and route to the test-writer immediately instead of letting the implementer stall.
+- **Action:** Lead briefs after a failed panel name all findings for the test-writer at once.
+
+### L-202: An open decision ticket outranks an old memory, until the owner answers
+- **Date:** 2026-11-02 · **Milestone:** M5 · **Ticket:** #295 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** A saved standing order said to admin-merge reviewed PRs, while #295 and L-198 recorded that the run-B lead declined. The lead asked the owner, who chose admin merge; nine reviewed PRs merged the same day.
+- **Lesson:** When a saved permission conflicts with an open decision, ask once with the evidence and record the answer on the ticket.
+- **Action:** #295 closed with the owner's answer; the merge memory notes the reconfirmation.
+
 ### L-201: Recorded UI success does not establish producer support
 - **Date:** 2026-11-01 · **Milestone:** M6 · **Ticket:** #78 · **Recorded by:** CTO (Sol)
 - **What happened:** A valid synthetic activity carried a task ID, while current Claude Code activity mapping does not. The UI worked for that fixture but remained unavailable for the primary source.
