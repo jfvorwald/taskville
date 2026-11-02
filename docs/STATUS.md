@@ -2,7 +2,7 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-01, 16:20 EST. **Main:** 912e2dd. **State:** M4 complete to its gate; G4 [#75](https://github.com/jfvorwald/taskville/issues/75) awaits owner review (left open; the owner has not reviewed it). M5 and M6 continue under the owner's M4 to M6 authorization (T3 Code, experiment #231 run B).
+**Updated:** 2026-11-02 00:00 UTC. **Main:** 33baf17. **State:** M4 complete to G4 #75, still open awaiting human review. M5/M6 remain in progress under the owner authorization. M5.02 feature branch contains child PR322; this is not main or milestone acceptance.
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
@@ -32,9 +32,10 @@ Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with
 
 ## In progress: M5 Crews and code feed and M6 History
 
-- Merged: M5.01 #56 (#291), M5.03 #58 (#301), M5.05 #59 (#292), M5.07 #65 (#303), M5.16 #296 (#298), M6.01 #60 (#282), M6.02 #68 (#300).
-- In review or fix rounds: M5.02 #57 (subagent visuals), M5.06 #64 (Live tab, PR #307 draft), M6.03 #73 (history UI, PR #306 draft).
-- Not started: M5.04, M5.08 to M5.13, M6.04 to M6.07; follow-ups #279 (M6.08), #281 (M5.14), #285 (M5.15), #311 (M6.09), #312 (M6.10), #313 (M5.17), #314 (M5.18), #315 (M5.19, P0 regression).
+- Merged on main: M5.01 #56 (#291), M5.03 #58 (#301), M5.05 #59 (#292), M5.06 #64 (#307), M5.07 #65 (#303), M5.16 #296 (#298), M6.01 #60 (#282), M6.02 #68 (#300), M6.03 #73 (#306). Live GitHub states for #307/#306 verified during this integration.
+- M5.02 #57: parent PR321 remains draft. Child PR322 merged normally into M5.02 at5df1f07, with exact source/test equality to reviewed fcc7638. Final source gate4,259 and web1,434 pass; focused lifecycle browser14 pass. Broader browser51 pass/1frame-wait failure, unchanged isolated file1pass. Panel6532 and independent source reviews pass. Required 45.92-second seed7 demo clip recorded with99accepted events/two subagents and two finishes; final parent panel6535 and exact head67c41c9 CI PASS. Normal main merge refused by base policy;#295 blocks#57/#314. Parent main integration is not accepted.
+- Open roadmap work, verified from GitHub: M5.04 #63, M5.08 #66, M5.09 #71, M5.10 #67, M5.11 #72, M5.12 #104, M5.13 #175; M6.04 #77, M6.05 #78, M6.06 #74, M6.07 #79; retros #99/#100 and owner gates #76/#80. Open follow-ups #279, #281, #285, #311, #312 and #318 remain.
+- Reviewed branches M5.02 #57/PR321, M5.17 #313/PR320 and M5.19 #315/PR319 were blocked by normal main merge policy; #295 remains open. M5.18 #314 source is integrated into the parent feature branch; its issue remains open until the main stack integrates. No admin bypass or repository configuration change was used.
 - Performance: the M3 budget shortfall (#268) stays open and unmet; lively-day seeks miss 300 ms (#279).
 
 ## Done in wave 2 (M3 Live city)
