@@ -1,10 +1,12 @@
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { storedEnvelopeSchema } from "../../../../../packages/protocol/src/index.ts";
+import type { StoredEnvelope } from "../../data/domain.ts";
 import { useCurrentProjectId } from "../../data/project.ts";
 import { createDataStore, type DataStore, dataStore } from "../../data/store.ts";
 import { SESSION_HEADER } from "../../pairing/pair.ts";
 import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
+import { EMPTY_FIDELITY_FRAME, type FidelityFrame } from "../fidelity/frame.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
 
 export interface RecordedMoment {
@@ -17,6 +19,7 @@ export interface RecordedMoment {
 }
 
 interface Presentation {
+  readonly fidelity: FidelityFrame;
   moments: readonly RecordedMoment[];
   agents: readonly { id: string; name: string }[];
   mode: "live" | "history";
@@ -46,6 +49,7 @@ const live = {
 };
 const fallback: Presentation = {
   ...live,
+  fidelity: EMPTY_FIDELITY_FRAME,
   sequence: null,
   playing: false,
   rate: 1,
@@ -66,6 +70,7 @@ export function useHistoryPresentation(): Presentation {
 
 /** Owns replay resources in an effect, including StrictMode's setup/cleanup cycle. */
 export function HistoryProvider({ children }: { children: ReactNode }) {
+  const epoch = useRef(0);
   const projectId = useCurrentProjectId();
   const secret = useSession();
   const [current, setCurrent] = useState<{
@@ -82,6 +87,20 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     let replayTime = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
     let moments: RecordedMoment[] = [];
+    let recorded: StoredEnvelope[] = [];
+    let presentedSequence: number | null = null;
+    let explicitSeek = false;
+    let seekGeneration = 0;
+    let fidelity = EMPTY_FIDELITY_FRAME;
+    function resetFidelity(sequence: number | null = null) {
+      fidelity = {
+        epoch: ++epoch.current,
+        revision: 0,
+        events: [],
+        baseline: sequence === null ? [] : recorded.slice(0, sequence),
+      };
+      presentedSequence = null;
+    }
     const snapshot = createDataStore({ now: () => replayTime });
     snapshot.getState().reset(projectId);
     let value: Presentation;
@@ -92,9 +111,13 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     }
     function cancel() {
       generation += 1;
+      seekGeneration += 1;
+      explicitSeek = false;
       clearInterval(timer);
       timer = undefined;
       moments = [];
+      recorded = [];
+      resetFidelity();
       metadata?.abort();
       metadata = undefined;
       unsubscribeHistory?.();
@@ -106,21 +129,27 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     function exit() {
       cancel();
       themeController.setHistory(false);
-      publish({ ...live, pending: false, error: null });
+      publish({ ...live, fidelity, pending: false, error: null });
     }
     function seek(sequence: number) {
       const range = value.range;
       if (!active || !controller || !range || !Number.isSafeInteger(sequence)) return;
       const moment = moments.find((item) => item.sequence === sequence);
       if (!moment) return;
+      const seekToken = ++seekGeneration;
+      explicitSeek = true;
       controller.getState().pause();
       const requestGeneration = generation;
       void controller
         .getState()
         .seekSequence(moment.sequence, moment.time)
         .catch(() => {
-          if (requestGeneration === generation)
+          if (requestGeneration === generation && seekToken === seekGeneration)
             publish({ error: "Could not load recorded state." });
+        })
+        .finally(() => {
+          if (requestGeneration === generation && seekToken === seekGeneration)
+            explicitSeek = false;
         });
     }
     async function enter() {
@@ -218,6 +247,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             )
               throw new Error("events");
             eventIds.add(event.eventId);
+            recorded.push(event);
             if (event.agentId) {
               const before = agents.get(event.agentId);
               if (!before) agents.set(event.agentId, { id: event.agentId, name: event.agentId });
@@ -276,6 +306,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           moments.at(-1)?.time !== last
         )
           throw new Error("events");
+        explicitSeek = true;
         controller = createHistoryStore({
           liveStore: dataStore,
           timelineId: timeline.id,
@@ -284,7 +315,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           now: () => Date.now(),
           moments,
         });
-        unsubscribeHistory = controller.subscribe((state) => {
+        unsubscribeHistory = controller.subscribe((state, before) => {
           clearInterval(timer);
           timer = undefined;
           if (state.playing && state.mode === "history") {
@@ -304,12 +335,30 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           // Live notifications during the initial seek must not clear its range or pending flag.
           // The live subscription below owns project/reset cancellation.
           if (state.mode === "history" && state.state && state.time !== null) {
+            const sequence = state.state.head;
+            if (explicitSeek && state.state !== before.state) {
+              // The requested position becomes the baseline only when its read succeeds.
+              resetFidelity(sequence);
+            } else if (
+              !explicitSeek &&
+              before.playing &&
+              presentedSequence !== null &&
+              sequence > presentedSequence
+            ) {
+              fidelity = {
+                ...fidelity,
+                revision: fidelity.revision + 1,
+                events: recorded.slice(presentedSequence, sequence),
+              };
+            }
+            presentedSequence = sequence;
             replayTime = state.time;
             snapshot.getState().applySnapshotState(state.state);
             snapshot.getState().refreshAttention();
             themeController.setHistory(true);
             publish({
               mode: "history",
+              fidelity,
               store: snapshot,
               time: state.time,
               sequence: state.state.head,
@@ -326,10 +375,11 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
         await controller.getState().seekSequence(lastSequence, last);
+        if (active && requestGeneration === generation) explicitSeek = false;
       } catch {
         if (active && requestGeneration === generation) {
           cancel();
-          publish({ ...live, pending: false, error: "Could not load recording." });
+          publish({ ...live, fidelity, pending: false, error: "Could not load recording." });
         }
       }
     }

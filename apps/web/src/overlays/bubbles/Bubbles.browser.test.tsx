@@ -266,16 +266,16 @@ describe("Bubbles overlay tool fact", () => {
 });
 
 describe("Bubbles overlay mode", () => {
-  it("is registered for live mode only, so history mode never shows a bubble", () => {
+  it("is registered for live and history modes, so both resolve the same bubbles overlay", () => {
     expect(bubblesOverlay.slot).toBe("bubbles");
-    expect(bubblesOverlay.modes).toEqual(["live"]);
+    expect(bubblesOverlay.modes).toEqual(["live", "history"]);
     const live = resolveActiveOverlays([bubblesOverlay], { mode: "live", enabled: ["bubbles"] });
     const history = resolveActiveOverlays([bubblesOverlay], {
       mode: "history",
       enabled: ["bubbles"],
     });
     expect(live.bubbles).toEqual([bubblesOverlay]);
-    expect(history.bubbles).toEqual([]);
+    expect(history.bubbles).toEqual([bubblesOverlay]);
   });
 });
 
