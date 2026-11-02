@@ -1,11 +1,13 @@
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import { highlightStore } from "../../../city/crew/highlight/highlightStore.ts";
 import { shouldClearOnEscape } from "../../../city/interaction/escape.ts";
 import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
+import { CrewTab } from "../crew/CrewTab.tsx";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
 import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
 import styles from "./agent-panel.module.css";
@@ -113,6 +115,13 @@ export function AgentPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [known, selectedId, agents, teams, select]);
 
+  const openId = known && chosen === "crew" ? agent.id : null;
+  // The city dims everyone outside the family while this agent's Crew tab is open.
+  useEffect(() => {
+    highlightStore.open(openId);
+    return () => highlightStore.open(null);
+  }, [openId]);
+
   if (agent === undefined || state === null) return null;
 
   const urgent = attention.find((a) => a.agentId === agent.id && a.level === "needs_you");
@@ -209,6 +218,17 @@ export function AgentPanel({
             <ConnectedFilesTab agentId={agent.id} />
           ) : active === "files" ? (
             <p>Files are not available for this history view.</p>
+          ) : active === "crew" ? (
+            // The finished result summary is not in the store yet, so finished rows say "not reported".
+            <CrewTab
+              parentId={agent.id}
+              agents={state.agents}
+              activity={state.activity}
+              nowMs={nowMs}
+              teams={teams}
+              onSelect={select}
+              onHover={(id) => highlightStore.hover(id)}
+            />
           ) : null}
         </TabPanel>
       </Tabs>
