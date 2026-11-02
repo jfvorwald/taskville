@@ -34,13 +34,13 @@ export interface Soundscape {
   /** A recorded event: a tick on completion, a pop on handoff. Late and imported ones are silent. */
   handleEvent(event: StoredEnvelope): void;
   setTheme(themeId: string): void;
-  /** In history mode attention and events are replays, so nothing sounds. */
+  /** In history mode update() and handleEvent() are replays and stay silent. */
   setHistory(history: boolean): void;
 }
 
 /** A soundscape that can also chime on demand, for a caller that decides itself who entered. */
 export interface ChimingSoundscape extends Soundscape {
-  /** One needs-you chime, unless sound is off, muted, or in history mode. */
+  /** One trusted global live needs-you chime, even in history, unless sound is off or muted. */
   chime(): void;
 }
 
@@ -233,7 +233,7 @@ export function createSoundscape(options: SoundscapeOptions): ChimingSoundscape 
     },
 
     chime() {
-      if (!silenced()) sound("chime");
+      if (enabled && !settings.getSnapshot().muted) sound("chime");
     },
 
     handleEvent(event) {

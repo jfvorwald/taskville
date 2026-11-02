@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReplayRate } from "../state/store.ts";
+import { BackToLive } from "./back-to-live.tsx";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
 import { HistoryTimeline } from "./HistoryTimeline.tsx";
 import styles from "./history.module.css";
@@ -44,6 +45,7 @@ export function HistoryControls() {
   }, [history]);
   return (
     <>
+      <BackToLive />
       <div className={styles.header}>
         <button
           type="button"
