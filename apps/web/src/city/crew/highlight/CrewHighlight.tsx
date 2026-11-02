@@ -21,7 +21,13 @@ import { type HighlightStore, highlightStore } from "./highlightStore.ts";
 
 const DIM_OPACITY = 0.25;
 const BOUNCE_HEIGHT = 0.25;
-const BOUNCE_HZ = 2;
+const BOUNCE_MS = 450;
+
+/** One hop: up and back down over BOUNCE_MS, then nothing. */
+function bounceLift(elapsedMs: number): number {
+  if (elapsedMs < 0 || elapsedMs >= BOUNCE_MS) return 0;
+  return Math.sin((elapsedMs / BOUNCE_MS) * Math.PI) * BOUNCE_HEIGHT;
+}
 const EASE_PER_SECOND = 6;
 const SETTLED = 0.01;
 const RING_Y = 0.02;
@@ -52,30 +58,47 @@ function agentGroups(scene: Object3D): Map<string, Object3D> {
   return found;
 }
 
-const ORIGINAL = Symbol("originalMaterial");
-type Dimmable = Mesh & { [ORIGINAL]?: Material | Material[] };
+/** The faded copies this component made. Only these are ever disposed; pooled materials are not. */
+const fades = new WeakSet<Material>();
+/** The material a dimmed mesh had before its faded copy went on. */
+const originals = new WeakMap<Mesh, Material | Material[]>();
 
-/** Swaps a faded copy of each mesh's material in, and puts the original back. */
+function fade(m: Material): Material {
+  if (fades.has(m)) return m;
+  const copy = m.clone();
+  copy.transparent = true;
+  copy.opacity = DIM_OPACITY;
+  fades.add(copy);
+  return copy;
+}
+
+/**
+ * Puts a faded copy of each mesh's material on, and the original back. Another system may swap a
+ * mesh's material while it is dimmed, so dimming is re-applied every frame: a material that is
+ * not one of ours is taken as the new original and faded again.
+ */
 function setDim(group: Object3D, dim: boolean) {
   group.traverse((o) => {
-    const mesh = o as Dimmable;
-    if (!(mesh as Mesh).isMesh) return;
-    if (dim && mesh[ORIGINAL] === undefined) {
-      mesh[ORIGINAL] = mesh.material;
-      const fade = (m: Material) => {
-        const copy = m.clone();
-        copy.transparent = true;
-        copy.opacity = DIM_OPACITY;
-        return copy;
-      };
-      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(fade) : fade(mesh.material);
-    } else if (!dim && mesh[ORIGINAL] !== undefined) {
-      const faded = mesh.material;
-      mesh.material = mesh[ORIGINAL];
-      delete mesh[ORIGINAL];
-      for (const m of Array.isArray(faded) ? faded : [faded]) m.dispose();
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    const current = mesh.material;
+    const list = Array.isArray(current) ? current : [current];
+    const ours = list.every((m) => fades.has(m));
+    if (dim && !ours) {
+      originals.set(mesh, current);
+      mesh.material = Array.isArray(current) ? current.map(fade) : fade(current);
+    } else if (!dim && ours) {
+      const original = originals.get(mesh);
+      if (original !== undefined) mesh.material = original;
+      originals.delete(mesh);
+      for (const m of list) m.dispose();
     }
   });
+}
+
+/** Where the object is in the scene, whatever group it sits in. */
+function worldOf(o: Object3D): Vector3 {
+  return o.getWorldPosition(new Vector3());
 }
 
 /**
@@ -113,6 +136,11 @@ export function CrewHighlight({
     return agentColors(viewOf(parent, grand)).trim;
   }, [state.parentId, agents]);
   const target = useRef<{ x: number; z: number } | null>(null);
+  const bounced = useRef<{
+    id: string | null;
+    start: number;
+    lifted: { id: string; by: number; y: number } | null;
+  }>({ id: null, start: 0, lifted: null });
 
   // A pick inside the family eases the camera to that bot (zoom is never touched).
   useEffect(() => {
@@ -123,7 +151,10 @@ export function CrewHighlight({
       last = id;
       if (id === null || !state.familyIds.includes(id)) return;
       const at = agentGroups(scene).get(id);
-      if (at !== undefined) target.current = { x: at.position.x, z: at.position.z };
+      if (at !== undefined) {
+        const world = worldOf(at);
+        target.current = { x: world.x, z: world.z };
+      }
     });
   }, [scene, state.familyIds]);
 
@@ -145,18 +176,32 @@ export function CrewHighlight({
       if (g !== undefined) setDim(g, false);
       dimmed.current.delete(id);
     }
+    // Every frame, not once: a system that swaps a bot's material is dimmed again.
     for (const id of want) {
       const g = groups.get(id);
-      if (g === undefined || dimmed.current.has(id)) continue;
+      if (g === undefined) continue;
       setDim(g, true);
       dimmed.current.add(id);
     }
-    if (state.bounceId !== null) {
-      const g = groups.get(state.bounceId);
-      if (g !== undefined) {
-        const phase = performance.now() * 0.001 * Math.PI * BOUNCE_HZ;
-        g.position.y += Math.abs(Math.sin(phase)) * BOUNCE_HEIGHT;
-      }
+    // One bounce each time the pointer arrives on a different bot, relative to where the bot's
+    // own system put it this frame (it may or may not rewrite the height every frame).
+    const now = performance.now();
+    const bounce = bounced.current;
+    if (bounce.id !== state.bounceId) {
+      bounce.id = state.bounceId;
+      bounce.start = now;
+    }
+    const lift = bounce.id === null ? 0 : bounceLift(now - bounce.start);
+    const g = bounce.id === null ? undefined : groups.get(bounce.id);
+    if (bounce.lifted !== null) {
+      const prev = groups.get(bounce.lifted.id);
+      if (prev !== undefined && prev.position.y === bounce.lifted.y)
+        prev.position.y -= bounce.lifted.by;
+      bounce.lifted = null;
+    }
+    if (g !== undefined && lift > 0) {
+      g.position.y += lift;
+      bounce.lifted = { id: bounce.id as string, by: lift, y: g.position.y };
     }
     // Tethers follow the bots, so their end points are rewritten each frame.
     for (const [key, line] of lines.current) {
@@ -168,7 +213,7 @@ export function CrewHighlight({
         geometry: BufferGeometry;
         computeLineDistances(): void;
       };
-      segments.geometry.setFromPoints([a.position, b.position]);
+      segments.geometry.setFromPoints([worldOf(a), worldOf(b)]);
       segments.computeLineDistances();
     }
     const goal = target.current;
@@ -224,7 +269,8 @@ function FollowRing({
   useFrame(() => {
     const at = agentGroups(scene).get(id);
     if (at !== undefined && mesh.current !== null) {
-      mesh.current.position.set(at.position.x, RING_Y, at.position.z);
+      const world = worldOf(at);
+      mesh.current.position.set(world.x, RING_Y, world.z);
     }
   });
   return (
