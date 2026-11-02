@@ -48,12 +48,17 @@ export function quipSchedule(input: QuipScheduleInput & { count: number }): Quip
  * scan is at most 24 h of gaps (about 1,900 draws) however old `sinceMs` is.
  */
 export function quipVisibleAt(input: QuipScheduleInput, nowMs: number): boolean {
-  if (nowMs - input.sinceMs >= QUIP_MAX_AGE_MS) return false;
+  return quipElapsedMs(input, nowMs) !== null;
+}
+
+/** Progress within the same seeded visible window, or null outside a window. */
+export function quipElapsedMs(input: QuipScheduleInput, nowMs: number): number | null {
+  if (nowMs - input.sinceMs >= QUIP_MAX_AGE_MS) return null;
   const nextGap = gaps(input);
   let startMs = input.sinceMs;
   while (startMs <= nowMs) {
-    if (nowMs < startMs + QUIP_VISIBLE_MS) return true;
+    if (nowMs < startMs + QUIP_VISIBLE_MS) return nowMs - startMs;
     startMs += nextGap();
   }
-  return false;
+  return null;
 }

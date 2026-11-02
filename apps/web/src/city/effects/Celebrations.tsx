@@ -301,16 +301,24 @@ export function Celebrations({
   }, [mode, store, celebrations, rig]);
 
   // A remounted consumer seeds from its position but never redraws a retained crossing.
-  const consumed = useRef(fidelity?.revision ?? 0);
-  useEffect(() => {
-    if (mode !== "history" || !fidelity || consumed.current === fidelity.revision) return;
-    consumed.current = fidelity.revision;
-    for (const event of fidelity.events) {
-      celebrations.handle(event, (c) => rig.play(c, event, performance.now()));
+  const consumed = useRef({ epoch: fidelity?.epoch, revision: fidelity?.revision ?? 0 });
+  useFrame((frame) => {
+    // CityAgents republishes anchors at priority -1. Consume crossings afterward, so the
+    // previous keyed agents' cleanup cannot turn a valid completion into a lost burst.
+    if (
+      mode === "history" &&
+      fidelity &&
+      (consumed.current.epoch !== fidelity.epoch || consumed.current.revision !== fidelity.revision)
+    ) {
+      consumed.current.epoch = fidelity.epoch;
+      consumed.current.revision = fidelity.revision;
+      celebrations.setSpeed(rate);
+      for (const event of fidelity.events) {
+        celebrations.handle(event, (c) => rig.play(c, event, performance.now()));
+      }
     }
-  }, [mode, fidelity, celebrations, rig]);
-
-  useFrame((frame) => rig.update(performance.now(), frame.camera));
+    rig.update(performance.now(), frame.camera);
+  });
 
   return <primitive object={rig.group} />;
 }
