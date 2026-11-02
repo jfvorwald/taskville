@@ -84,7 +84,7 @@ export function crewRows({
     const label =
       current === undefined
         ? null
-        : entry?.heuristic === true
+        : entry?.heuristic === true && current !== "unknown"
           ? `Possibly ${activityText(current).toLowerCase()}`
           : activityText(current);
     const elapsed = elapsedMs(agent, nowMs);

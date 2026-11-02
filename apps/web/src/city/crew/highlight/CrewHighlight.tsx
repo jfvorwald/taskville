@@ -50,13 +50,25 @@ function viewOf(agent: Agent, parent: Agent | undefined): AgentView {
   };
 }
 
-function agentGroups(scene: Object3D): Map<string, Object3D> {
-  const found = new Map<string, Object3D>();
+type Groups = Map<string, Object3D>;
+
+function agentGroups(scene: Object3D): Groups {
+  const found: Groups = new Map();
   scene.traverse((o) => {
     const id = o.userData?.agentId;
     if (typeof id === "string") found.set(id, o);
   });
   return found;
+}
+
+/** The id-to-group map, walked at most once per frame however many rings and tethers ask. */
+const frameGroups = new WeakMap<Object3D, { stamp: number; groups: Groups }>();
+function groupsOf(scene: Object3D, stamp: number): Groups {
+  const known = frameGroups.get(scene);
+  if (known !== undefined && known.stamp === stamp) return known.groups;
+  const groups = agentGroups(scene);
+  frameGroups.set(scene, { stamp, groups });
+  return groups;
 }
 
 /** The faded copies this component made. Only these are ever disposed; pooled materials are not. */
@@ -73,6 +85,7 @@ function fade(m: Material): Material {
   const copy = m.clone();
   fadeOf.set(m, copy);
   copy.transparent = true;
+  copy.depthWrite = false;
   copy.opacity = DIM_OPACITY;
   fades.add(copy);
   return copy;
@@ -80,8 +93,8 @@ function fade(m: Material): Material {
 
 /**
  * Puts a faded copy of each mesh's material on, and the original back. Another system may swap a
- * mesh's material while it is dimmed, so dimming is re-applied every frame: a material that is
- * not one of ours is taken as the new original and faded again.
+ * mesh's material while it is dimmed, so dimming is re-applied every frame and again just before
+ * each draw: a material that is not one of ours is taken as the new original and faded again.
  */
 function setDim(group: Object3D, dim: boolean) {
   group.traverse((o) => {
@@ -112,10 +125,20 @@ function worldOf(o: Object3D): Vector3 {
   return o.getWorldPosition(new Vector3());
 }
 
+interface Lifted {
+  id: string;
+  by: number;
+  y: number;
+}
+
 /**
  * While a Crew tab is open: dims every bot outside the family, outlines the family on the ground
  * in the parent's trim color, draws dotted tethers parent to child, bounces the hovered bot, and
  * eases the camera to a family member the user picks without changing zoom. Renders in the scene.
+ *
+ * Other layers (SubagentCrew, AgentBlock) rewrite a bot's height and materials in their own frame
+ * callbacks, in whatever order they registered. So the dim and the lift are applied in the frame
+ * callback and again just before each draw, by wrapping the renderer's `render`.
  */
 export function CrewHighlight({
   store = dataStore,
@@ -143,8 +166,8 @@ export function CrewHighlight({
     [openAgentId, hoveredId, agents, teams],
   );
   const scene = useThree((s) => s.scene);
+  const gl = useThree((s) => s.gl);
   const dimmed = useRef(new Set<string>());
-  const lines = useRef(new Map<string, Object3D>());
   const ring = useMemo(() => new RingGeometry(0.45, 0.55, 32).rotateX(-Math.PI / 2), []);
   const trim = useMemo(() => {
     const parent = state.parentId === null ? undefined : agents?.[state.parentId];
@@ -153,11 +176,13 @@ export function CrewHighlight({
     return agentColors(viewOf(parent, grand)).trim;
   }, [state.parentId, agents]);
   const target = useRef<{ x: number; z: number } | null>(null);
-  const bounced = useRef<{
-    id: string | null;
-    start: number;
-    lifted: { id: string; by: number; y: number } | null;
-  }>({ id: null, start: 0, lifted: null });
+  const bounce = useRef<{ id: string | null; start: number; lifted: Lifted | null }>({
+    id: null,
+    start: 0,
+    lifted: null,
+  });
+  const latest = useRef({ state, reducedMotion });
+  latest.current = { state, reducedMotion };
 
   // A pick inside the family eases the camera to that bot (zoom is never touched).
   useEffect(() => {
@@ -175,26 +200,28 @@ export function CrewHighlight({
     });
   }, [scene, state.familyIds]);
 
+  // Reset (or any return to the default view) during an ease ends it.
   useEffect(
-    () => () => {
-      for (const group of agentGroups(scene).values()) setDim(group, false);
-      dimmed.current.clear();
-      disposeFades();
-    },
-    [scene],
+    () =>
+      rig.subscribe(() => {
+        if (rig.isDefault()) target.current = null;
+      }),
+    [rig],
   );
 
-  const focus = useMemo(() => new Vector3(), []);
-  useFrame(({ camera }, delta) => {
-    const groups = agentGroups(scene);
-    const want = new Set(state.dimmedIds);
+  // Brings the dim and the lift up to date on the given bots. Safe to call any number of times a
+  // frame: the lift is taken off where it was left (if the bot's own system did not already
+  // overwrite it) before it is put on again.
+  const sync = useRef((_groups: Groups) => {});
+  sync.current = (groups) => {
+    const now = latest.current.state;
+    const want = new Set(now.dimmedIds);
     for (const id of [...dimmed.current]) {
       if (want.has(id)) continue;
       const g = groups.get(id);
       if (g !== undefined) setDim(g, false);
       dimmed.current.delete(id);
     }
-    // Every frame, not once: a system that swaps a bot's material is dimmed again.
     for (const id of want) {
       const g = groups.get(id);
       if (g === undefined) continue;
@@ -202,39 +229,55 @@ export function CrewHighlight({
       dimmed.current.add(id);
     }
     if (dimmed.current.size === 0) disposeFades();
-    // One bounce each time the pointer arrives on a different bot, relative to where the bot's
-    // own system put it this frame (it may or may not rewrite the height every frame).
-    const now = performance.now();
-    const bounce = bounced.current;
-    if (bounce.id !== state.bounceId) {
-      bounce.id = state.bounceId;
-      bounce.start = now;
+
+    // One bounce each time the pointer arrives on a different bot.
+    const clock = performance.now();
+    const b = bounce.current;
+    if (b.id !== now.bounceId) {
+      b.id = now.bounceId;
+      b.start = clock;
     }
-    const lift = bounce.id === null || reducedMotion ? 0 : bounceLift(now - bounce.start);
-    const g = bounce.id === null ? undefined : groups.get(bounce.id);
-    if (bounce.lifted !== null) {
-      const prev = groups.get(bounce.lifted.id);
-      if (prev !== undefined && prev.position.y === bounce.lifted.y)
-        prev.position.y -= bounce.lifted.by;
-      bounce.lifted = null;
+    const lift = b.id === null || latest.current.reducedMotion ? 0 : bounceLift(clock - b.start);
+    if (b.lifted !== null) {
+      const prev = groups.get(b.lifted.id);
+      if (prev !== undefined && prev.position.y === b.lifted.y) prev.position.y -= b.lifted.by;
+      b.lifted = null;
     }
-    if (g !== undefined && lift > 0) {
+    const g = b.id === null ? undefined : groups.get(b.id);
+    if (b.id !== null && g !== undefined && lift > 0) {
       g.position.y += lift;
-      bounce.lifted = { id: bounce.id as string, by: lift, y: g.position.y };
+      b.lifted = { id: b.id, by: lift, y: g.position.y };
     }
-    // Tethers follow the bots, so their end points are rewritten each frame.
-    for (const [key, line] of lines.current) {
-      const [from, to] = key.split("|");
-      const a = from === undefined ? undefined : groups.get(from);
-      const b = to === undefined ? undefined : groups.get(to);
-      if (a === undefined || b === undefined) continue;
-      const segments = line as unknown as {
-        geometry: BufferGeometry;
-        computeLineDistances(): void;
-      };
-      segments.geometry.setFromPoints([worldOf(a), worldOf(b)]);
-      segments.computeLineDistances();
-    }
+  };
+  // Nothing to dim, lift or undo: the frame and the draw then cost nothing.
+  const idleRef = useRef<() => boolean>(() => true);
+  idleRef.current = () =>
+    !latest.current.state.active &&
+    dimmed.current.size === 0 &&
+    bounce.current.id === null &&
+    bounce.current.lifted === null;
+
+  // Just before each draw, after every frame callback has run: put the dim and the lift back.
+  useEffect(() => {
+    const draw = gl.render;
+    gl.render = (renderScene, camera) => {
+      if (!idleRef.current()) sync.current(agentGroups(renderScene));
+      draw.call(gl, renderScene, camera);
+    };
+    return () => {
+      gl.render = draw;
+      for (const group of agentGroups(scene).values()) setDim(group, false);
+      dimmed.current.clear();
+      disposeFades();
+    };
+  }, [gl, scene]);
+
+  const focus = useMemo(() => new Vector3(), []);
+  useFrame(({ camera, clock, invalidate }, delta) => {
+    if (target.current === null && idleRef.current()) return;
+    if (!idleRef.current()) sync.current(groupsOf(scene, clock.elapsedTime));
+    // The hop and the dim need a draw per frame while they run, even on demand rendering.
+    if (bounce.current.lifted !== null) invalidate();
     const goal = target.current;
     if (goal !== null && (camera as OrthographicCamera).isOrthographicCamera === true) {
       // Where the camera looks on the ground: its position slid along its view direction to y = 0.
@@ -259,16 +302,7 @@ export function CrewHighlight({
         <FollowRing key={id} id={id} geometry={ring} color={color} />
       ))}
       {state.tethers.map((t) => (
-        <lineSegments
-          key={`${t.from}|${t.to}`}
-          ref={(o) => {
-            if (o === null) lines.current.delete(`${t.from}|${t.to}`);
-            else lines.current.set(`${t.from}|${t.to}`, o);
-          }}
-        >
-          <bufferGeometry />
-          <lineDashedMaterial color={color} dashSize={0.15} gapSize={0.15} />
-        </lineSegments>
+        <Tether key={`${t.from}>${t.to}`} from={t.from} to={t.to} color={color} />
       ))}
     </group>
   );
@@ -291,9 +325,9 @@ function FollowRing({
 }) {
   const mesh = useRef<Mesh>(null);
   const scene = useThree((s) => s.scene);
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (mesh.current === null) return;
-    const at = agentGroups(scene).get(id);
+    const at = groupsOf(scene, clock.elapsedTime).get(id);
     // No visible bot (finished and gone, or hidden behind a crew marker): no ring.
     mesh.current.visible = at !== undefined && isShown(at);
     if (at !== undefined) {
@@ -305,5 +339,37 @@ function FollowRing({
     <mesh ref={mesh} geometry={geometry}>
       <meshBasicMaterial color={color} />
     </mesh>
+  );
+}
+
+/** A dotted line parent to child. Its end points are rewritten only when a bot has moved. */
+function Tether({ from, to, color }: { from: string; to: string; color: Color }) {
+  const line = useRef<Object3D>(null);
+  const ends = useRef<{ a: Vector3; b: Vector3 } | null>(null);
+  const scene = useThree((s) => s.scene);
+  useFrame(({ clock }) => {
+    const segments = line.current as unknown as {
+      geometry: BufferGeometry;
+      computeLineDistances(): void;
+    } | null;
+    if (segments === null) return;
+    const groups = groupsOf(scene, clock.elapsedTime);
+    const a = groups.get(from);
+    const b = groups.get(to);
+    if (a === undefined || b === undefined) return;
+    const pa = worldOf(a);
+    const pb = worldOf(b);
+    const last = ends.current;
+    if (last?.a.equals(pa) && last.b.equals(pb)) return;
+    ends.current = { a: pa, b: pb };
+    segments.geometry.setFromPoints([pa, pb]);
+    segments.computeLineDistances();
+  });
+  return (
+    // The geometry is rewritten each frame and its bounding sphere is not, so it is never culled.
+    <lineSegments ref={line} frustumCulled={false}>
+      <bufferGeometry />
+      <lineDashedMaterial color={color} dashSize={0.15} gapSize={0.15} />
+    </lineSegments>
   );
 }
