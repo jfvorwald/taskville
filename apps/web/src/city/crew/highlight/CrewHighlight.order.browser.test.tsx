@@ -127,19 +127,39 @@ async function mount(order: "highlight-first" | "crew-first") {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+async function frames(w: Awaited<ReturnType<typeof mount>>, n: number) {
+  const target = (w.seen.dim.d1 as boolean[]).length + n;
+  await vi.waitFor(
+    () => expect((w.seen.dim.d1 as boolean[]).length).toBeGreaterThanOrEqual(target),
+    {
+      timeout: 30_000,
+    },
+  );
+}
+
 async function expectHighlighted(w: Awaited<ReturnType<typeof mount>>) {
   // Resting height of c1, from before the highlight.
   const rest = Math.min(...(w.seen.y.c1 as number[]));
   w.clear();
   w.inputs.open("lead");
-  w.inputs.hover("c1");
-  await wait(700);
-  const lifted = Math.max(...(w.seen.y.c1 as number[]));
+  // The hop is one 450 ms bounce per arrival, so a starved machine could draw no frame during it.
+  // Hover again (after a few drawn frames) until frames were drawn during a hop, bounded by count.
+  let lifted = rest;
+  for (let attempt = 0; attempt < 10 && !(lifted > rest + 0.05); attempt++) {
+    w.inputs.hover(null);
+    await frames(w, 3);
+    w.inputs.hover("c1");
+    await frames(w, 40);
+    lifted = Math.max(...(w.seen.y.c1 as number[]));
+  }
   expect.soft(lifted).toBeGreaterThan(rest + 0.05);
-  // Settled frames: the outsider is drawn faded every time, not only on frames where the
-  // highlight happened to run last.
-  const settled = (w.seen.dim.d1 as boolean[]).slice(10);
-  expect(settled.length).toBeGreaterThan(10);
+  // Settled frames: the last 20 drawn frames show the outsider faded every time, not only on
+  // frames where the highlight happened to run last.
+  await frames(w, 25);
+  const dim = w.seen.dim.d1 as boolean[];
+  const settled = dim.slice(-20);
+  expect(settled).toHaveLength(20);
   expect.soft(settled.every(Boolean)).toBe(true);
   // A family member is never faded.
   expect((w.seen.dim.c1 as boolean[]).some(Boolean)).toBe(false);
@@ -154,7 +174,6 @@ describe("highlight survives frame-callback order (B1)", () => {
     const w = await mount("crew-first");
     await w.remountCrew();
     await vi.waitFor(() => expect(w.seen.y.c1?.length).toBeGreaterThan(5), FRAME_WAIT);
-    await wait(200);
     await expectHighlighted(w);
   });
 });

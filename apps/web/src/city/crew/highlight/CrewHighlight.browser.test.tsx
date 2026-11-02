@@ -180,22 +180,40 @@ describe("reduced motion", () => {
     const h = await mount({ reducedMotion: true });
     h.inputs.open("L");
     h.inputs.hover("c1");
+    // Judge over drawn frames, not wall-clock time: 60 frames after the hover, the bounce window
+    // (450 ms) has been drawn through on any machine fast enough to finish the run.
+    const seen = h.focusLog.length;
     let max = 0;
-    for (let i = 0; i < 40; i++) {
-      await wait(16);
-      max = Math.max(max, h.groups.c1?.position.y ?? 0);
-    }
+    await vi.waitFor(
+      () => {
+        max = Math.max(max, h.groups.c1?.position.y ?? 0);
+        expect(h.focusLog.length).toBeGreaterThanOrEqual(seen + 60);
+      },
+      { timeout: 30_000, interval: 5 },
+    );
     expect(max).toBe(0);
   });
 
   it("(guard, passes today) still bounces a hovered bot when motion is allowed", async () => {
     const h = await mount();
     h.inputs.open("L");
-    h.inputs.hover("c1");
+    // A hop lasts 450 ms; if no frame was drawn during it, arrive again until one was.
     let max = 0;
-    for (let i = 0; i < 40; i++) {
-      await wait(16);
-      max = Math.max(max, h.groups.c1?.position.y ?? 0);
+    for (let attempt = 0; attempt < 10 && !(max > 0.01); attempt++) {
+      h.inputs.hover(null);
+      const start = h.focusLog.length;
+      await vi.waitFor(() => expect(h.focusLog.length).toBeGreaterThanOrEqual(start + 3), {
+        timeout: 30_000,
+      });
+      h.inputs.hover("c1");
+      const after = h.focusLog.length;
+      await vi.waitFor(
+        () => {
+          max = Math.max(max, h.groups.c1?.position.y ?? 0);
+          expect(h.focusLog.length).toBeGreaterThanOrEqual(after + 40);
+        },
+        { timeout: 30_000, interval: 5 },
+      );
     }
     expect(max).toBeGreaterThan(0.01);
   });
