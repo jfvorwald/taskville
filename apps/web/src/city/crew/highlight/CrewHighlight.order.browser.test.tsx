@@ -165,12 +165,18 @@ async function expectHighlighted(w: Awaited<ReturnType<typeof mount>>) {
   expect((w.seen.dim.c1 as boolean[]).some(Boolean)).toBe(false);
 }
 
+// The frame waits above allow up to 30 s each on a starved machine; the enclosing test timeout must
+// cover them, or the browser default (15 s) cuts the test off first (roborev 6645).
+const SLOW_TEST_MS = 120_000;
+
 describe("highlight survives frame-callback order (B1)", () => {
-  it("when SubagentCrew registers after CrewHighlight", async () => {
+  it("when SubagentCrew registers after CrewHighlight", { timeout: SLOW_TEST_MS }, async () => {
     await expectHighlighted(await mount("highlight-first"));
   });
 
-  it("when SubagentCrew remounts after CrewHighlight (history mode key change)", async () => {
+  it("when SubagentCrew remounts after CrewHighlight (history mode key change)", {
+    timeout: SLOW_TEST_MS,
+  }, async () => {
     const w = await mount("crew-first");
     await w.remountCrew();
     await vi.waitFor(() => expect(w.seen.y.c1?.length).toBeGreaterThan(5), FRAME_WAIT);

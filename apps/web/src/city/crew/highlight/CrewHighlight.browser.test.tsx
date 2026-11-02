@@ -176,7 +176,9 @@ describe("reduced motion", () => {
     expect(between).toEqual([]);
   });
 
-  it("never lifts a hovered bot", async () => {
+  // Frame-count waits allow up to 30 s each on a starved machine; the enclosing test timeout must
+  // cover them, or the browser default (15 s) cuts the test off first (roborev 6645).
+  it("never lifts a hovered bot", { timeout: 120_000 }, async () => {
     const h = await mount({ reducedMotion: true });
     h.inputs.open("L");
     h.inputs.hover("c1");
@@ -194,7 +196,9 @@ describe("reduced motion", () => {
     expect(max).toBe(0);
   });
 
-  it("(guard, passes today) still bounces a hovered bot when motion is allowed", async () => {
+  it("(guard, passes today) still bounces a hovered bot when motion is allowed", {
+    timeout: 120_000,
+  }, async () => {
     const h = await mount();
     h.inputs.open("L");
     // A hop lasts 450 ms; if no frame was drawn during it, arrive again until one was.
