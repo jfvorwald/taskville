@@ -46,6 +46,11 @@
   font-weight: 600;
 }
 
+.kind {
+  color: var(--tv-text-muted);
+  font-size: 0.75rem;
+}
+
 .status {
   color: var(--tv-text-muted);
 }
