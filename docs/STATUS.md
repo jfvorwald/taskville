@@ -45,10 +45,11 @@ Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with
 | M5.10 #67 stuck attribution for crews | #328 | roborev 6596 and 6619 fixed; confirming review PASS; follow-up #334; [report](tasks/M5.10.md) |
 | M5.20 #318 flaky large-state memory test | #335 | root cause: 892 per-step ingests; batch ingest, 79 ms idle, 933 ms under 40 busy loops; panel 6640 PASS; [report](tasks/M5.20.md) |
 | M5.08 #66 crew tab and family highlight | #329 | render-time highlight (B1), rig ground pan, reduced motion; confirming review PASS after two roborev panels and three fix rounds; result summary pending decision #333; follow-up #337; clip NOT RUN; [report](tasks/M5.08.md) |
-| M5.09 #71 code rendering, editor links, privacy mode | #331 | shiki 4.5.0 lazy (JS regex engine), text-only rendering, editor links, deny-by-default privacy; security confirmation PASS; action card under privacy is decision #336; crafted-path residual is #338 (P1); [report](tasks/M5.09.md) |
+| M5.23 #338 privacy: bound and gate recorded paths (P1 security) | #339 | displayPath rule in hidden cards, Files tab and panel header; rows keyed by path; panel 6653 fixed; re-review 6660 non-leak mediums deferred to #341; [report](tasks/M5.23.md) |
+| M5.09 #71 code rendering, editor links, privacy mode | #331 | shiki 4.5.0 lazy (JS regex engine), text-only rendering, editor links, deny-by-default privacy; security confirmation PASS; action card under privacy is decision #336; crafted-path residual fixed in M5.23 #339; [report](tasks/M5.09.md) |
 
 - Draft: M6.05 #78 (PR #326), required panel 6555 failed on a valid attribution finding; owner decision #325 limits it to producers with explicit task IDs.
-- Not started: M5.04 #63, M5.11 #72, M5.12 #104, M5.13 #175, M6.07 #79, M6.09 #311, M6.10 #312, M5.14 #281, M5.15 #285; follow-ups #332, #334, #337; #338 (P1 security) in progress as M5.23, PR #339; retros #99, #100; gates #76, #80.
+- Not started: M5.04 #63, M5.11 #72, M5.12 #104, M5.13 #175, M6.07 #79, M6.09 #311, M6.10 #312, M5.14 #281, M5.15 #285; follow-ups #332, #334, #337, #341; retros #99, #100; gates #76, #80.
 - Performance: #268 (web budget) stays open; lively-day seeks now meet 300 ms with checkpoints (#279), existing logs need the boot backfill in #332.
 - Workers this session: Claude Agent-tool specialists (test-writer and implementer at definition defaults, Sonnet; code-reviewer, security-reviewer and debugger at their defaults), in lead-made worktrees under `.worktrees/`. Confirming reviews after the two-panel roborev cap were independent code-reviewer and security-reviewer passes.
 
