@@ -137,6 +137,13 @@ describe("crewRows honesty about activity", () => {
     });
   });
 
+  it("never says 'Possibly unknown' for a heuristic unknown", () => {
+    expect(rowsWith({ activity: "unknown", heuristic: true })).toMatchObject({
+      status: "unknown",
+      activity: "Unknown",
+    });
+  });
+
   it("keeps an unknown activity unknown", () => {
     expect(rowsWith({ activity: "unknown", heuristic: false })).toMatchObject({
       status: "unknown",

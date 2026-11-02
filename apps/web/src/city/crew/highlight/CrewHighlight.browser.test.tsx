@@ -264,3 +264,31 @@ describe("family rings", () => {
     expect(shown(ring)).toBe(false);
   });
 });
+
+// Round 3, S2: a tether must not be frustum-culled. Its geometry is rewritten each frame and its
+// bounding sphere is never recomputed, so after the camera pans to a child it would vanish.
+// S1: with no Crew tab open the highlight is idle: it must not walk the scene every frame.
+describe("tethers and idle cost", () => {
+  it("never frustum-culls a tether", async () => {
+    const h = await mount();
+    h.inputs.open("L");
+    await wait(200);
+    const lines: Object3D[] = [];
+    h.scene.getObjectByName("crew-highlight")?.traverse((o) => {
+      if ((o as { isLineSegments?: boolean }).isLineSegments === true) lines.push(o);
+    });
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.every((l) => l.frustumCulled === false)).toBe(true);
+  });
+
+  it("does not traverse the scene each frame while no Crew tab is open", async () => {
+    const h = await mount();
+    const traverse = vi.spyOn(h.scene, "traverse");
+    await wait(400);
+    expect(traverse).not.toHaveBeenCalled();
+    // And it still works once a tab opens (guard, passes today).
+    h.inputs.open("L");
+    await wait(200);
+    expect(traverse).toHaveBeenCalled();
+  });
+});
