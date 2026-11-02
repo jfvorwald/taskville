@@ -27,6 +27,6 @@ describe("fileScreenLabel", () => {
   });
 
   it("is plain text: markup stays literal", () => {
-    expect(fileScreenLabel("/a/<b>x</b>.ts")).toBe("<b>x</b>.ts");
+    expect(fileScreenLabel("/a/<b>x<b>.ts")).toBe("<b>x<b>.ts");
   });
 });
