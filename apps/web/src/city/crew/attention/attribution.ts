@@ -65,7 +65,8 @@ export function crewAttribution(input: CrewAttributionInput): CrewAttribution {
 
     if (record.heuristic === true && agent.kind === "lead") {
       const match = FOR_REASON.exec(record.reason?.text ?? "");
-      forLabels[agent.id] = { text: match?.[1] ?? FALLBACK_LABEL, heuristic: true };
+      // The first needs-you record wins, the order the action card uses.
+      forLabels[agent.id] ??= { text: match?.[1] ?? FALLBACK_LABEL, heuristic: true };
     }
 
     // Walk the recorded links only: parentAgentId, then the team lead. The seen set stops a cycle.
