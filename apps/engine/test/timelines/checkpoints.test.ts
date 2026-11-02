@@ -12,7 +12,16 @@ import { domainReducer } from "../../src/ingest/index.ts";
 import { openStorage, type ProjectionReducer } from "../../src/storage/index.ts";
 import { stateAtSequence } from "../../src/timelines/checkpoints.ts";
 import { seedLog } from "./day-log.ts";
-import { bootInProcess, dayEvents, type Engine, getJson, useDbPath } from "./helpers.ts";
+import {
+  addProject,
+  bootInProcess,
+  dayEvents,
+  type Engine,
+  getJson,
+  ingest,
+  input,
+  useDbPath,
+} from "./helpers.ts";
 
 // Replay checkpoints (M6.08, ARCHITECTURE.md 7.4; constitution II and VI). RED phase tests.
 //
@@ -333,4 +342,70 @@ describe("the log keeps growing", () => {
     expect(stateAtSequence(storage(), PROJECT, LOG_LENGTH + 400)).toEqual(full);
     expect(sequences()).toEqual(multiplesUpTo(LOG_LENGTH + 400));
   });
+});
+
+// Red round 2 (lead decisions): eager writes on ingest commit, and a bounded wait on a write lock.
+//
+// - Ingest commits write a trusted checkpoint whenever the project head crosses a multiple of 500,
+//   with no read involved (inside one batch too: a batch that crosses 500 and 1,000 leaves both).
+// - Cache upkeep is best effort and waits at most 250 ms for a foreign write lock, then skips the
+//   write. A read at 1,250 does at most two upkeep steps (prune, then write), so the whole read
+//   finishes well under the 5 s busy timeout; asserted here as under 750 ms.
+describe("eager checkpoints on ingest commit", () => {
+  const ingested = (project: string, count: number) =>
+    Array.from({ length: count }, (_, i) => input(`eager-${i}`, { projectId: project }));
+  const rowsOf = (project: string): Row[] =>
+    db()
+      .prepare(
+        "SELECT sequence, reducer_version, state_hash, state_json FROM checkpoints WHERE project_id = ? ORDER BY sequence",
+      )
+      .all(project) as unknown as Row[];
+
+  function expectTrustedRows(project: string, sequencesWanted: number[]) {
+    const stored = [...storage().events(project)];
+    expect(rowsOf(project).map((r) => r.sequence)).toEqual(sequencesWanted);
+    for (const row of rowsOf(project)) {
+      let state = domainReducer.initial(project);
+      for (const event of stored.slice(0, row.sequence)) state = domainReducer.apply(state, event);
+      expect(row.reducer_version).toBe(REDUCER_VERSION);
+      expect(row.state_hash).toBe(stateHash(REDUCER_VERSION, state));
+      expect(JSON.parse(row.state_json)).toEqual(state);
+    }
+  }
+
+  it("leaves checkpoints at 500 and 1000 after ingesting 1,100 events in small batches, with no reads", async () => {
+    addProject(storage(), "grown"); // sequence 1 is project.created
+    const all = ingested("grown", 1100);
+    for (let i = 0; i < all.length; i += 150) await ingest(app, all.slice(i, i + 150));
+    expect(storage().head("grown")).toBe(1101);
+    expectTrustedRows("grown", [500, 1000]);
+  });
+
+  it("a single batch that crosses two multiples leaves both", async () => {
+    addProject(storage(), "burst");
+    await ingest(app, ingested("burst", 1100));
+    expectTrustedRows("burst", [500, 1000]);
+  });
+
+  it("a head that has not reached 500 leaves none", async () => {
+    addProject(storage(), "quiet");
+    await ingest(app, ingested("quiet", 300));
+    expect(rowsOf("quiet")).toEqual([]);
+  });
+});
+
+describe("a foreign write lock", () => {
+  it("delays a state read by well under the 5 s busy timeout, and the state is still right", () => {
+    // The engine's own storage uses the default 5 s busy timeout. Reads are allowed under WAL.
+    db().exec("BEGIN IMMEDIATE");
+    try {
+      const started = performance.now();
+      const state = stateAtSequence(storage(), PROJECT, 1250);
+      const elapsed = performance.now() - started;
+      expect(state).toEqual(fullReplay(domainReducer, 1250));
+      expect(elapsed).toBeLessThan(750);
+    } finally {
+      db().exec("ROLLBACK");
+    }
+  }, 30_000);
 });
