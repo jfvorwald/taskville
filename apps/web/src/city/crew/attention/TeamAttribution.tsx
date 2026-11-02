@@ -7,7 +7,7 @@ import { LabelSprite } from "../../agents/LabelSprite.tsx";
 import { colorMaterial } from "../../agents/resources.ts";
 import type { AgentView } from "../../agents/types.ts";
 import { crewGeometries } from "../subagents/resources.ts";
-import { crewAttribution } from "./attribution.ts";
+import { crewAttribution, leadDotTargets } from "./attribution.ts";
 
 // M5.10: what a team lead wears when someone on its team needs you (ARCHITECTURE 2.9, #120). The
 // red state itself is the existing M4 mark on the attributed agent, and a subagent's parent dot
@@ -69,10 +69,8 @@ export function TeamAttribution({
       {views
         .filter((v) => v.kind === "lead")
         .map((v) => {
-          // Subagent dots are SubagentCrew's; the lead's dot here is for stuck teammates.
-          const mates = (out.dots[v.id] ?? []).filter(
-            (id) => state.agents[id]?.kind === "teammate",
-          );
+          // SubagentCrew dots a lead's own subagents; the lead's dot here is for the teammate side.
+          const mates = leadDotTargets(out, state.agents, v.id);
           const label = out.forLabels[v.id]?.text;
           return mates.length === 0 && label === undefined ? null : (
             <LeadMarks key={v.id} view={v} dot={mates.length > 0} label={label} />

@@ -86,14 +86,26 @@ export function crewAttribution(input: CrewAttributionInput): CrewAttribution {
 }
 
 /**
- * RED STUB (round 2, roborev 6596): the red ids the lead's own dot stands for. Keeps every red id
- * that reaches the lead through a teammate (the teammate itself, or its subagents at any depth);
- * drops red agents that sit directly under the lead, because SubagentCrew already dots those.
+ * The red ids the lead's own dot stands for (roborev 6596). Keeps every red id that reaches the
+ * lead through a teammate (the teammate itself, or its subagents at any depth); drops red agents
+ * that sit directly under the lead, because SubagentCrew already dots those.
  */
 export function leadDotTargets(
-  _out: CrewAttribution,
-  _agents: Readonly<Record<string, AttributionAgent>>,
-  _leadId: string,
+  out: CrewAttribution,
+  agents: Readonly<Record<string, AttributionAgent>>,
+  leadId: string,
 ): readonly string[] {
-  return [];
+  const viaTeammate = (id: string): boolean => {
+    const seen = new Set<string>();
+    for (
+      let node: AttributionAgent | undefined = agents[id];
+      node !== undefined && !seen.has(node.id);
+      node = node.parentAgentId === undefined ? undefined : agents[node.parentAgentId]
+    ) {
+      if (node.kind === "teammate") return true;
+      seen.add(node.id);
+    }
+    return false;
+  };
+  return (out.dots[leadId] ?? []).filter(viaTeammate);
 }
