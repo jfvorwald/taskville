@@ -115,6 +115,40 @@ describe("crewRows", () => {
   });
 });
 
+// Red round 2 (roborev 6611 finding 1, constitution IV): the activity entry is read whole.
+//   activity input entries are { activity: string; heuristic?: boolean }.
+//   A heuristic activity is a guess, so the label says so, the same words as the panel header:
+//   "Possibly testing". An "unknown" activity, and a child with no recorded activity at all, is
+//   status "unknown" (a new CrewStatus; rendered data-status="unknown"), never "active".
+//   The label for unknown is "Unknown"; for no entry it is null.
+describe("crewRows honesty about activity", () => {
+  const rowsWith = (entry: unknown) =>
+    crewRows({ parentId: "L", agents, activity: { a: entry } as never, nowMs: NOW }).find(
+      (r) => r.id === "a",
+    );
+
+  it("labels a heuristic activity as a guess and keeps its status", () => {
+    expect(rowsWith({ activity: "testing", heuristic: true })).toMatchObject({
+      status: "active",
+      activity: "Possibly testing",
+    });
+    expect(rowsWith({ activity: "testing", heuristic: false })).toMatchObject({
+      activity: "Testing",
+    });
+  });
+
+  it("keeps an unknown activity unknown", () => {
+    expect(rowsWith({ activity: "unknown", heuristic: false })).toMatchObject({
+      status: "unknown",
+      activity: "Unknown",
+    });
+  });
+
+  it("does not call a child with no recorded activity active", () => {
+    expect(rowsWith(undefined)).toMatchObject({ status: "unknown", activity: null });
+  });
+});
+
 function setup(over: Record<string, unknown> = {}) {
   const onSelect = vi.fn();
   const onHover = vi.fn();
@@ -177,5 +211,24 @@ describe("CrewTab", () => {
   it("shows an empty state when the parent has no crew", async () => {
     setup({ parentId: "a" });
     await expect.element(page.getByTestId("crew-empty")).toBeVisible();
+  });
+});
+
+describe("CrewTab honesty about activity", () => {
+  it("shows a guess as a guess and an unknown as unknown", async () => {
+    setup({
+      activity: {
+        a: { activity: "testing", heuristic: true },
+        b: { activity: "unknown", heuristic: false },
+        c: { activity: "idle" },
+      },
+    });
+    await expect.element(page.getByText("Possibly testing")).toBeVisible();
+    const rows = page.getByTestId("crew-row").elements();
+    expect(rows.map((e) => e.getAttribute("data-status"))).toEqual([
+      "unknown",
+      "active",
+      "finished",
+    ]);
   });
 });
