@@ -11,6 +11,7 @@ import {
 } from "three";
 import type { StoredEnvelope } from "../../data/domain.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
+import type { FidelityFrame } from "../../history/fidelity/frame.ts";
 import { type AnchorSource, worldAnchors } from "../../overlays/host/index.ts";
 import { debugHookRequested } from "../../testHooks.ts";
 import { CITY_LAYOUT, type WorkAreaLayout } from "../layout/index.ts";
@@ -23,6 +24,9 @@ import { CONFETTI_DURATION_MS, CONFETTI_MAX_PARTICLES, createCelebrations } from
 
 export interface CelebrationsProps {
   store?: DataStore;
+  mode?: "live" | "history";
+  fidelity?: FidelityFrame;
+  rate?: number;
   anchors?: AnchorSource;
   /** Overrides the system preference (the settings panel will pass its own). */
   reducedMotion?: boolean;
@@ -254,13 +258,19 @@ export function createRig(anchors: AnchorSource) {
  */
 export function Celebrations({
   store = dataStore,
+  mode = "live",
+  fidelity,
+  rate = 1,
   anchors = worldAnchors,
   reducedMotion,
 }: CelebrationsProps) {
   const prefersReduced = usePrefersReducedMotion();
   const reduced = reducedMotion ?? prefersReduced;
 
-  const rig = useMemo(() => createRig(anchors), [anchors]);
+  const epoch = fidelity?.epoch;
+  // A different presented store or seek epoch must not retain a live or earlier replay burst.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: store/mode/epoch fence the rig
+  const rig = useMemo(() => createRig(anchors), [anchors, store, mode, epoch]);
   useEffect(() => () => rig.dispose(), [rig]);
 
   useEffect(() => {
@@ -272,23 +282,33 @@ export function Celebrations({
     };
   }, [rig]);
 
-  const celebrationsRef = useRef<ReturnType<typeof createCelebrations> | null>(null);
-  if (celebrationsRef.current === null) {
-    celebrationsRef.current = createCelebrations({
-      now: () => performance.now(),
-      reducedMotion: reduced,
-    });
-  }
-  const celebrations = celebrationsRef.current;
+  const baseline = fidelity?.baseline;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger state resets with its rig
+  const celebrations = useMemo(() => {
+    const rules = createCelebrations({ now: () => performance.now() });
+    // Seed stateful triggers (tests red before green) without drawing or rate limiting a burst.
+    for (const event of baseline ?? []) rules.handle(event, () => false);
+    return rules;
+  }, [baseline, rig]);
   useEffect(() => celebrations.setReducedMotion(reduced), [celebrations, reduced]);
+  useEffect(() => celebrations.setSpeed(rate), [celebrations, rate]);
 
-  useEffect(
-    () =>
-      store.onEvent((event) => {
-        celebrations.handle(event, (c) => rig.play(c, event, performance.now()));
-      }),
-    [store, celebrations, rig],
-  );
+  useEffect(() => {
+    if (mode !== "live") return;
+    return store.onEvent((event) => {
+      celebrations.handle(event, (c) => rig.play(c, event, performance.now()));
+    });
+  }, [mode, store, celebrations, rig]);
+
+  // A remounted consumer seeds from its position but never redraws a retained crossing.
+  const consumed = useRef(fidelity?.revision ?? 0);
+  useEffect(() => {
+    if (mode !== "history" || !fidelity || consumed.current === fidelity.revision) return;
+    consumed.current = fidelity.revision;
+    for (const event of fidelity.events) {
+      celebrations.handle(event, (c) => rig.play(c, event, performance.now()));
+    }
+  }, [mode, fidelity, celebrations, rig]);
 
   useFrame((frame) => rig.update(performance.now(), frame.camera));
 

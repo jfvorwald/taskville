@@ -11,12 +11,12 @@ import {
   presentedActionCardOverlay,
   presentedAgentListOverlay,
   presentedAgentPanelOverlay,
+  presentedBubblesOverlay,
   useRecordedTarget,
 } from "../history/ui/PresentedSidebar.tsx";
 import { themedSettingsOverlay } from "../wiring/index.ts";
 import { ACTION_CARD_ID, useCardTarget } from "./action-card/index.ts";
 import { AGENT_PANEL_ID } from "./agent-panel/shell/index.ts";
-import { bubblesOverlay } from "./bubbles/index.ts";
 import {
   countsHeaderOverlay,
   useAttentionSync,
@@ -42,7 +42,7 @@ const registry = createOverlayRegistry([
   cameraControlsOverlay,
   themedSettingsOverlay,
   presentedAgentListOverlay,
-  bubblesOverlay,
+  presentedBubblesOverlay,
   presentedAgentPanelOverlay,
   presentedActionCardOverlay,
 ]);

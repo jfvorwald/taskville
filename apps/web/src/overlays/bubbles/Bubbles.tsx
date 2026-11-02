@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { agentAnchorId } from "../../city/movement/index.ts";
 import { useData } from "../../data/react.ts";
-import { dataStore } from "../../data/store.ts";
+import { type DataStore, dataStore } from "../../data/store.ts";
 import { useTheme } from "../../themes/core/react.ts";
 import { useReducedMotion } from "../../wiring/index.ts";
 import { Anchored, AnchorLayer } from "../host/index.ts";
@@ -44,13 +44,14 @@ function useBubbles(
   anchors: AnchorSource,
   selectedAgentId: string | null,
   theme: string,
+  store: DataStore,
 ): readonly Shown[] {
-  const records = useData((s) => s.attention);
-  const requests = useData((s) => s.state?.requests);
+  const records = useData((s) => s.attention, store);
+  const requests = useData((s) => s.state?.requests, store);
   const [bubbles, setBubbles] = useState(NONE);
   useEffect(() => {
     const update = () => {
-      const now = dataStore.now();
+      const now = store.now();
       // Agents the layer would hide must not use up one of the three bubbles.
       const candidates = bubbleCandidates(records, requests ?? {}, now, selectedAgentId).filter(
         (c) =>
@@ -79,7 +80,7 @@ function useBubbles(
       clearTimeout(settle);
       unsubscribe();
     };
-  }, [anchors, records, requests, selectedAgentId, theme]);
+  }, [anchors, records, requests, selectedAgentId, theme, store]);
   return bubbles;
 }
 
@@ -87,10 +88,14 @@ function useBubbles(
  * Speech bubbles over agents that are stuck: a themed one-liner, plus the tool name for a
  * permission wait. Text is always a React text child.
  */
-export function Bubbles({ anchors, selection }: OverlayProps) {
+export function Bubbles({
+  anchors,
+  selection,
+  store = dataStore,
+}: OverlayProps & { store?: DataStore }) {
   const theme = useTheme((s) => s.themeId);
   const reducedMotion = useReducedMotion();
-  const bubbles = useBubbles(anchors, selection.selectedId, theme);
+  const bubbles = useBubbles(anchors, selection.selectedId, theme, store);
   return (
     <AnchorLayer source={anchors} gap={4} margin={ANCHOR_MARGIN}>
       {bubbles.map(({ key, bubble: b }) => (
@@ -119,6 +124,6 @@ export function Bubbles({ anchors, selection }: OverlayProps) {
 export const bubblesOverlay: OverlayDefinition = {
   id: "bubbles",
   slot: "bubbles",
-  modes: ["live"],
+  modes: ["live", "history"],
   Component: Bubbles,
 };
