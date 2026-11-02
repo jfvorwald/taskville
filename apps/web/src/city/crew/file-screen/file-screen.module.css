@@ -1,3 +1,7 @@
+.lift {
+  padding-bottom: 48px;
+}
+
 .screen {
   padding: 2px 8px;
   border-radius: var(--tv-radius);

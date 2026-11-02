@@ -18,8 +18,11 @@ export function FileScreen({ agentId, path }: FileScreenProps) {
   if (agentId === null) return null;
   return (
     <Anchored id="file-screen" anchorId={agentAnchorId(agentId)} priority={-1}>
-      <div className={styles.screen} data-testid="file-screen">
-        {fileScreenLabel(path)}
+      {/* The name tag is in another anchor layer at the same point, so lift clear of it. */}
+      <div className={styles.lift}>
+        <div className={styles.screen} data-testid="file-screen">
+          {fileScreenLabel(path)}
+        </div>
       </div>
     </Anchored>
   );
