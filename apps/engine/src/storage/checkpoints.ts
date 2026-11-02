@@ -22,8 +22,9 @@ export class SqliteCheckpoints {
 
   /**
    * Drops rows that cannot be used for `reducerVersion` against a log of `head` events: another
-   * version, a sequence outside 1..head, or state text that is not a JSON object. Returns the
-   * number removed.
+   * version, a sequence outside 1..head, or state text that does not start like a JSON object
+   * (constant time per row; a row is parsed and hash-checked only when a seek would use it).
+   * Returns the number removed.
    */
   prune(projectId: string, reducerVersion: number, head: number): number {
     return this.#write(() =>
@@ -31,7 +32,7 @@ export class SqliteCheckpoints {
         this.#db
           .prepare(
             `DELETE FROM checkpoints WHERE project_id = ? AND (reducer_version != ?
-                 OR sequence > ? OR NOT json_valid(state_json) OR json_type(state_json) != 'object')`,
+                 OR sequence > ? OR substr(state_json, 1, 1) != '{')`,
           )
           .run(projectId, reducerVersion, head).changes,
       ),

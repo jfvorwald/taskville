@@ -9,7 +9,7 @@ import {
 import type { StoredEnvelope } from "@taskville/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
-import type { ProjectionReducer } from "../../src/storage/index.ts";
+import { openStorage, type ProjectionReducer } from "../../src/storage/index.ts";
 import { stateAtSequence } from "../../src/timelines/checkpoints.ts";
 import { seedLog } from "./day-log.ts";
 import { bootInProcess, dayEvents, type Engine, getJson, useDbPath } from "./helpers.ts";
@@ -293,6 +293,29 @@ describe("corrupt or stale checkpoints", () => {
     expectTrusted(REDUCER_VERSION, 2250);
   });
 });
+
+describe("a locked database", () => {
+  it("still answers from the log when another connection holds the write lock", () => {
+    stateAtSequence(storage(), PROJECT, LOG_LENGTH);
+    update_(db(), "state_json", "null", 2500);
+    const impatient = openStorage(dbPath(), { busyTimeoutMs: 20 });
+    db().exec("BEGIN IMMEDIATE");
+    try {
+      // Pruning the bad row and writing the missing ones both need the lock; neither may fail the read.
+      expect(stateAtSequence(impatient, PROJECT, 1250)).toEqual(fullReplay(domainReducer, 1250));
+      expect(stateAtSequence(impatient, PROJECT, 0)).toEqual(fullReplay(domainReducer, 0));
+    } finally {
+      db().exec("ROLLBACK");
+      impatient.close();
+    }
+  });
+});
+
+function update_(conn: DatabaseSync, column: string, value: string, sequence: number) {
+  conn
+    .prepare(`UPDATE checkpoints SET ${column} = ? WHERE project_id = ? AND sequence = ?`)
+    .run(value, PROJECT, sequence);
+}
 
 describe("the log keeps growing", () => {
   it("checkpoints made earlier stay valid for later positions", () => {

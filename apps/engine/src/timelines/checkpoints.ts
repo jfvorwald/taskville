@@ -33,6 +33,15 @@ function trusted(
   }
 }
 
+/** Runs cache upkeep; a cache that cannot be written (a busy database) costs speed, never correctness. */
+function attempt(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    // Disposable cache: ignore.
+  }
+}
+
 /**
  * The project state after events 1..`upTo` (0 is the initial state; callers clamp to the head).
  * Loads the nearest trusted checkpoint at or before `upTo`, applies the events after it, and
@@ -49,7 +58,9 @@ export function stateAtSequence(
   const cache = storage.checkpoints();
   const head = storage.head(projectId) ?? 0;
 
-  cache.prune(projectId, reducer.version, head);
+  // Cache upkeep needs the write lock; if another connection holds it the read still succeeds
+  // from the log, so upkeep is best effort and a skipped prune only costs a recheck next time.
+  attempt(() => cache.prune(projectId, reducer.version, head));
   const stored = new Set(cache.sequences(projectId));
 
   let state = reducer.initial(projectId);
@@ -63,7 +74,7 @@ export function stateAtSequence(
       base = sequence;
       break;
     }
-    cache.delete(projectId, sequence);
+    attempt(() => cache.delete(projectId, sequence));
     stored.delete(sequence);
   }
 
@@ -85,10 +96,6 @@ export function stateAtSequence(
       if (sequence >= upTo) break;
     }
   }
-  try {
-    cache.put(projectId, fresh);
-  } catch {
-    // A cache that cannot be written (a busy database) costs speed, never correctness.
-  }
+  attempt(() => cache.put(projectId, fresh));
   return state;
 }
