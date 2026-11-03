@@ -5,8 +5,8 @@ import { eventStream } from "./events.ts";
 
 // M5.25 red (decision #333 D1): `agent.finished` carries an optional `summary`; the reducer keeps
 // it on the Agent as `resultSummary`, redacted and capped so the store never holds an unbounded or
-// secret-bearing string. Cap: REASON_MAX_CHARS (280) Unicode code points. Redaction: the adapters'
-// `redactText` rule (a recognised token becomes a `[REDACTED:<kind>]` marker).
+// secret-bearing string. Cap: REASON_MAX_CHARS (280) Unicode code points. Redaction is not the
+// reducer's job: ingest masks every agent.finished payload field once (apps/engine/src/ingest/normalize.ts).
 
 const CAP = REASON_MAX_CHARS;
 
@@ -41,14 +41,10 @@ describe("agent.finished result summary (M5.25)", () => {
     expect(Object.hasOwn(state.agents.a1 ?? {}, "resultSummary")).toBe(false);
   });
 
-  it("redacts a secret-looking token in the summary", () => {
-    const token = `ghp_${"aB3dE5gH7jK9mN1pQ3rS5tU7vW9xY1zA3bC5".slice(0, 36)}`;
-    const state = finishedWith({ summary: `Deployed using ${token} as the credential.` });
-    const summary = state.agents.a1?.resultSummary;
-    expect(summary).toBeDefined();
-    expect(summary).not.toContain(token);
-    expect(summary).toContain("[REDACTED:");
-    expect(summary).toContain("Deployed using");
+  it("passes an already-masked summary through unchanged", () => {
+    // Redaction point is ingest (apps/engine/src/ingest/normalize.ts); the reducer keeps the masked text.
+    const masked = "Deployed using [REDACTED:github-token] as the credential.";
+    expect(finishedWith({ summary: masked }).agents.a1?.resultSummary).toBe(masked);
   });
 
   it("caps an over-long summary at the code point limit", () => {
