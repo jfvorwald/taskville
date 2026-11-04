@@ -15,7 +15,7 @@ import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
 import { getSettingsStore } from "../../settings/store.ts";
 import { sharedHighlighter } from "../code/highlighter.ts";
-import { createEvidenceBodyCache } from "./evidenceCache.ts";
+import { createEvidenceBodyCache, EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import { LiveTab, type LiveTabProps } from "./LiveTab.tsx";
 
 const BOTH = ["input", "output"] as const;
@@ -105,6 +105,10 @@ function SelectedLive({
     let retry: ReturnType<typeof setTimeout> | undefined;
     const requested = new Map<string, object>();
     let wanted = new Map<string, object>();
+    // Search outputs granted so far and the bodies other calls have claimed. Together they stay
+    // within the body cache, so a scrolling reader cannot cycle through it and refetch.
+    let granted = new Set<string>();
+    let claimed = new Set<string>();
     // A backlog can be thousands of calls. Accumulate in place, indexed by toolCallId, and publish
     // one copy per flush instead of copying the whole list for every frame and every body.
     let list: ToolCallFrame[] = [];
@@ -210,9 +214,23 @@ function SelectedLive({
     }
     visibleReader.current = (visible, outputOnly) => {
       const next = new Map<string, object>();
+      for (const call of visible) {
+        for (const part of BOTH) {
+          const ref = call.evidence[part];
+          if (ref?.status === "stored" && typeof ref.id === "string") claimed.add(ref.id);
+        }
+      }
+      const allowed = outputOnly.filter((call) => {
+        const ref = call.evidence.output;
+        if (ref?.status !== "stored" || typeof ref.id !== "string") return false;
+        if (granted.has(ref.id)) return true;
+        if (granted.size + claimed.size >= EVIDENCE_BODY_CAPACITY) return false;
+        granted.add(ref.id);
+        return true;
+      });
       const wants = [
         ...visible.map((call) => [call, BOTH] as const),
-        ...outputOnly.map((call) => [call, OUTPUT] as const),
+        ...allowed.map((call) => [call, OUTPUT] as const),
       ];
       for (const [call, parts] of wants) {
         for (const part of parts) {
@@ -266,6 +284,8 @@ function SelectedLive({
             index = new Map();
             bodies.clear();
             wanted.clear();
+            granted = new Set();
+            claimed = new Set();
             gone = new Set();
             dirty = { calls: false, bodies: false, gone: false };
             setCalls([]);

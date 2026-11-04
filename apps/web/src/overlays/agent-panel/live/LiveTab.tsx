@@ -582,14 +582,11 @@ function GroupCard({
       ),
     ];
     const names = all.slice(0, detailPageSize);
-    // Search calls past the cap are never loaded, so their hits are unknown. Report them as a count of searches, never as filenames.
+    // A search call counts as not loaded unless its output body is present now (past the cap,
+    // beyond the shared budget, evicted, failed or pending). Their hits are unknown, so report
+    // a count of searches, never filenames.
     const unloaded =
-      kind === "search"
-        ? calls
-            .slice(detailPageSize)
-            .filter((call) => !bodyOfCall(call, "output", evidence) && !call.filePaths.length)
-            .length
-        : 0;
+      kind === "search" ? calls.filter((call) => !bodyOfCall(call, "output", evidence)).length : 0;
     const more = all.length - names.length;
     return (
       <article
@@ -613,7 +610,9 @@ function GroupCard({
             {more > 0 ? `and ${more} more` : null}
           </p>
         ) : null}
-        {unloaded > 0 ? <p>{`results of ${unloaded} more searches not loaded`}</p> : null}
+        {unloaded > 0 ? (
+          <p>{`results of ${unloaded} more ${unloaded === 1 ? "search" : "searches"} not loaded`}</p>
+        ) : null}
         <p>{CODE_HIDDEN}</p>
       </article>
     );
@@ -766,6 +765,22 @@ function group(calls: readonly ToolCallFrame[]): Item[] {
   return items;
 }
 
+/**
+ * One shared output budget for every visible privacy Search group: what the body cache holds after
+ * standalone calls take their input and output bodies, at most 32 per group, filled in order.
+ */
+function privacyOutputs(visible: readonly Item[], standalone: number): ToolCallFrame[] {
+  let left = Math.max(0, EVIDENCE_BODY_CAPACITY - 2 * standalone);
+  const wanted: ToolCallFrame[] = [];
+  for (const item of visible) {
+    if (item.kind !== "search") continue;
+    const take = item.calls.slice(0, Math.min(32, left));
+    left -= take.length;
+    wanted.push(...take);
+  }
+  return wanted;
+}
+
 export function LiveTab(props: LiveTabProps) {
   const projectId = useData((s) => s.state?.projectId, props.store);
   return <LiveFeed key={JSON.stringify([projectId, props.agentId])} {...props} />;
@@ -840,10 +855,10 @@ function LiveFeed({
           : [];
       }),
       privacy
-        ? virtualItems.flatMap(({ index }) => {
-            const item = items[index];
-            return item.kind === "search" ? item.calls.slice(0, detailPageSize) : [];
-          })
+        ? privacyOutputs(
+            virtualItems.map(({ index }) => items[index]),
+            singleCount,
+          )
         : [],
     );
   });
