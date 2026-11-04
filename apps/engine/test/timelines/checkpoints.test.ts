@@ -7,7 +7,7 @@ import {
   reduce,
 } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
 import { openStorage, type ProjectionReducer } from "../../src/storage/index.ts";
 import { stateAtSequence } from "../../src/timelines/checkpoints.ts";
@@ -97,6 +97,11 @@ interface Row {
   state_json: string;
 }
 
+// Every test here folds a 2,600-event log at least once, and a loaded machine (load average 20 to
+// 140 in a parallel `pnpm check`) stretches a fold from tens of ms to seconds. The 5 s default
+// flaked (L-206); a test with a bigger share sets its own.
+vi.setConfig({ testTimeout: 60_000 });
+
 const dbPath = useDbPath();
 let engine: Engine | undefined;
 let app: ReturnType<typeof bootInProcess>["app"];
@@ -167,7 +172,7 @@ describe("checkpoint equivalence", () => {
     for (const at of [...edges, ...random]) {
       expect(stateAtSequence(storage(), PROJECT, at)).toEqual(fullReplay(domainReducer, at));
     }
-  });
+  }, 120_000); // 28 positions, each also replayed in full (up to 2,600 events); a loaded machine is slow
 
   it("writes a trusted checkpoint at every multiple of 500 up to the position read", () => {
     stateAtSequence(storage(), PROJECT, 1250);
@@ -397,15 +402,32 @@ describe("eager checkpoints on ingest commit", () => {
 describe("a foreign write lock", () => {
   it("delays a state read by well under the 5 s busy timeout, and the state is still right", () => {
     // The engine's own storage uses the default 5 s busy timeout. Reads are allowed under WAL.
-    db().exec("BEGIN IMMEDIATE");
-    try {
+    // Elapsed time includes the fold, which machine load stretches, so the lock's cost is the
+    // fastest locked read minus the fastest unlocked one. The cache is emptied before the lock is
+    // taken (a delete inside the lock would be invisible to the storage connection), so every
+    // read has rows to write and, when locked, has to wait for the lock to do it.
+    const read = () => {
+      db().exec("DELETE FROM checkpoints");
+      return { run: () => stateAtSequence(storage(), PROJECT, 1250) };
+    };
+    const time = (run: () => ProjectState) => {
       const started = performance.now();
-      const state = stateAtSequence(storage(), PROJECT, 1250);
-      const elapsed = performance.now() - started;
-      expect(state).toEqual(fullReplay(domainReducer, 1250));
-      expect(elapsed).toBeLessThan(750);
-    } finally {
-      db().exec("ROLLBACK");
+      const state = run();
+      return { state, ms: performance.now() - started };
+    };
+    const baseline = Math.min(...[1, 2, 3].map(() => time(read().run).ms));
+    const lockedRuns: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const { run } = read();
+      db().exec("BEGIN IMMEDIATE");
+      try {
+        const { state, ms } = time(run);
+        expect(state).toEqual(fullReplay(domainReducer, 1250));
+        lockedRuns.push(ms);
+      } finally {
+        db().exec("ROLLBACK");
+      }
     }
-  }, 30_000);
+    expect(Math.min(...lockedRuns) - baseline).toBeLessThan(750);
+  }, 90_000);
 });
