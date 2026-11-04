@@ -43,7 +43,11 @@ export interface LiveTabProps {
     | Readonly<Record<string, EvidenceResponse>>
     | ((id: string) => EvidenceResponse | undefined);
   /** Internal connected loader: only calls whose details are currently rendered. */
-  onVisibleCalls?: (calls: readonly ToolCallFrame[]) => void;
+  onVisibleCalls?: (
+    calls: readonly ToolCallFrame[],
+    /** Privacy only: calls of visible Search groups whose output part alone is needed. */
+    outputOnly?: readonly ToolCallFrame[],
+  ) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
   /** Hide code bodies (Edit fragments, Write content). Default false. */
@@ -565,8 +569,25 @@ function GroupCard({
   const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
   if (privacy) {
-    // Only the recorded file names, each bounded; never a pattern or a body.
-    const names = [...new Set(calls.flatMap((call) => call.filePaths))];
+    // Only file names, each bounded and capped like the open cards; never a pattern, a matched
+    // line or a body. A search also contributes the hit filenames its loaded result lists.
+    const all = [
+      ...new Set(
+        calls.flatMap((call) => [
+          ...call.filePaths,
+          ...(kind === "search"
+            ? stringList(object(bodyValue(bodyOfCall(call, "output", evidence))).filenames)
+            : []),
+        ]),
+      ),
+    ];
+    const names = all.slice(0, detailPageSize);
+    // A search call counts as not loaded unless its output body is present now (past the cap,
+    // beyond the shared budget, evicted, failed or pending). Their hits are unknown, so report
+    // a count of searches, never filenames.
+    const unloaded =
+      kind === "search" ? calls.filter((call) => !bodyOfCall(call, "output", evidence)).length : 0;
+    const more = all.length - names.length;
     return (
       <article
         className={styles.card}
@@ -586,7 +607,11 @@ function GroupCard({
                 <Path path={path} privacy />{" "}
               </span>
             ))}
+            {more > 0 ? `and ${more} more` : null}
           </p>
+        ) : null}
+        {unloaded > 0 ? (
+          <p>{`results of ${unloaded} more ${unloaded === 1 ? "search" : "searches"} not loaded`}</p>
         ) : null}
         <p>{CODE_HIDDEN}</p>
       </article>
@@ -740,6 +765,22 @@ function group(calls: readonly ToolCallFrame[]): Item[] {
   return items;
 }
 
+/**
+ * One shared output budget for every visible privacy Search group: what the body cache holds after
+ * standalone calls take their input and output bodies, at most 32 per group, filled in order.
+ */
+function privacyOutputs(visible: readonly Item[], standalone: number): ToolCallFrame[] {
+  let left = Math.max(0, EVIDENCE_BODY_CAPACITY - 2 * standalone);
+  const wanted: ToolCallFrame[] = [];
+  for (const item of visible) {
+    if (item.kind !== "search") continue;
+    const take = item.calls.slice(0, Math.min(32, left));
+    left -= take.length;
+    wanted.push(...take);
+  }
+  return wanted;
+}
+
 export function LiveTab(props: LiveTabProps) {
   const projectId = useData((s) => s.state?.projectId, props.store);
   return <LiveFeed key={JSON.stringify([projectId, props.agentId])} {...props} />;
@@ -808,10 +849,17 @@ function LiveFeed({
       virtualItems.flatMap(({ index }) => {
         const item = items[index];
         if (item.kind === "call") return item.calls;
-        return expanded.has(item.key)
+        // Under privacy a group card renders no details, so no part of it is needed in full.
+        return !privacy && expanded.has(item.key)
           ? groupDetails(item.calls, detailPages.get(item.key) ?? 0, detailPageSize).calls
           : [];
       }),
+      privacy
+        ? privacyOutputs(
+            virtualItems.map(({ index }) => items[index]),
+            singleCount,
+          )
+        : [],
     );
   });
   const onDetailPage = useCallback((id: string, page: number) => {

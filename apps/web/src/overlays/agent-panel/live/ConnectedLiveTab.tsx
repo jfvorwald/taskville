@@ -15,8 +15,11 @@ import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
 import { getSettingsStore } from "../../settings/store.ts";
 import { sharedHighlighter } from "../code/highlighter.ts";
-import { createEvidenceBodyCache } from "./evidenceCache.ts";
+import { createEvidenceBodyCache, EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import { LiveTab, type LiveTabProps } from "./LiveTab.tsx";
+
+const BOTH = ["input", "output"] as const;
+const OUTPUT = ["output"] as const;
 
 class PairingBoundary extends Component<{ children: ReactNode }, { unavailable: boolean }> {
   override state = { unavailable: false };
@@ -73,10 +76,15 @@ function SelectedLive({
   const [calls, setCalls] = useState<ToolCallFrame[]>([]);
   const [bodies] = useState(createEvidenceBodyCache);
   const [, setBodyVersion] = useState(0);
-  const visibleReader = useRef<(calls: readonly ToolCallFrame[]) => void>(() => {});
-  const onVisibleCalls = useCallback((calls: readonly ToolCallFrame[]) => {
-    visibleReader.current(calls);
-  }, []);
+  const visibleReader = useRef<
+    (calls: readonly ToolCallFrame[], outputOnly: readonly ToolCallFrame[]) => void
+  >(() => {});
+  const onVisibleCalls = useCallback(
+    (calls: readonly ToolCallFrame[], outputOnly: readonly ToolCallFrame[] = []) => {
+      visibleReader.current(calls, outputOnly);
+    },
+    [],
+  );
   const [evicted, setEvicted] = useState<ReadonlySet<string>>(() => new Set());
   const [unavailable, setUnavailable] = useState(false);
   const { agentId } = props;
@@ -130,10 +138,10 @@ function SelectedLive({
         });
       }
     }
-    function readEvidence(call: ToolCallFrame) {
+    function readEvidence(call: ToolCallFrame, parts: readonly ("input" | "output")[]) {
       const started = generation;
       const bodySignal = bodyController.signal;
-      for (const part of ["input", "output"] as const) {
+      for (const part of parts) {
         const ref = call.evidence[part];
         if (ref?.status !== "stored" || typeof ref.id !== "string") continue;
         const key = JSON.stringify([ref.id, call.toolCallId, part]);
@@ -200,10 +208,32 @@ function SelectedLive({
       }
       drain();
     }
-    visibleReader.current = (visible) => {
+    visibleReader.current = (visible, outputOnly) => {
       const next = new Map<string, object>();
+      // The bodies this window's other calls claim and the search outputs granted in it. Together
+      // they fit the body cache; a window the reader has left releases its share.
+      const claimed = new Set<string>();
+      const granted = new Set<string>();
       for (const call of visible) {
-        for (const part of ["input", "output"] as const) {
+        for (const part of BOTH) {
+          const ref = call.evidence[part];
+          if (ref?.status === "stored" && typeof ref.id === "string") claimed.add(ref.id);
+        }
+      }
+      const allowed = outputOnly.filter((call) => {
+        const ref = call.evidence.output;
+        if (ref?.status !== "stored" || typeof ref.id !== "string") return false;
+        if (granted.has(ref.id)) return true;
+        if (granted.size + claimed.size >= EVIDENCE_BODY_CAPACITY) return false;
+        granted.add(ref.id);
+        return true;
+      });
+      const wants = [
+        ...visible.map((call) => [call, BOTH] as const),
+        ...allowed.map((call) => [call, OUTPUT] as const),
+      ];
+      for (const [call, parts] of wants) {
+        for (const part of parts) {
           const ref = call.evidence[part];
           if (ref?.status !== "stored" || typeof ref.id !== "string") continue;
           const key = JSON.stringify([ref.id, call.toolCallId, part]);
@@ -216,7 +246,7 @@ function SelectedLive({
       for (let at = queue.length - 1; at >= 0; at--) {
         if (!wanted.has(queue[at].key)) queue.splice(at, 1);
       }
-      for (const call of visible) readEvidence(call);
+      for (const [call, parts] of wants) readEvidence(call, parts);
     };
     async function stream() {
       try {
