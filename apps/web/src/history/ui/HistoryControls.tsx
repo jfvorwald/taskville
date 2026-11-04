@@ -37,11 +37,13 @@ export function HistoryControls() {
         (history.mode === "history" || history.pending)
       ) {
         event.preventDefault();
+        // Escape only returns to live: stop it before the panel and city listeners clear the selection.
+        if (key === "escape") event.stopPropagation();
         history.exit();
       }
     }
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
+    window.addEventListener("keydown", keydown, true);
+    return () => window.removeEventListener("keydown", keydown, true);
   }, [history]);
   return (
     <>
