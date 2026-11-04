@@ -138,6 +138,10 @@ export function AgentPanel({
   }, [openId]);
 
   if (agent === undefined || state === null) return null;
+  const results: Record<string, string> = {};
+  for (const a of Object.values(state.agents)) {
+    if (a.resultSummary !== undefined) results[a.id] = a.resultSummary;
+  }
 
   const urgent = attention.find((a) => a.agentId === agent.id && a.level === "needs_you");
   const needsYou = urgent !== undefined;
@@ -234,11 +238,11 @@ export function AgentPanel({
           ) : active === "files" ? (
             <p>Files are not available for this history view.</p>
           ) : active === "crew" ? (
-            // The finished result summary is not in the store yet, so finished rows say "not reported".
             <CrewTab
               parentId={agent.id}
               agents={state.agents}
               activity={state.activity}
+              results={results}
               nowMs={nowMs}
               teams={teams}
               onSelect={select}
