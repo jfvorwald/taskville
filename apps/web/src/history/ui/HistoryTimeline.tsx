@@ -17,6 +17,9 @@ export function HistoryTimeline() {
   const next = moments.find((moment) => moment.sequence > sequence);
   const names = new Map(history.agents.map((agent) => [agent.id, agent.name]));
   const range = history.range;
+  const crew = history.crew.filter(
+    (run) => !selected || run.parentId === selected || run.agentId === selected,
+  );
   const first = history.range?.first ?? 1;
   const span = Math.max(1, (history.range?.last ?? first) - first);
   const days = new Map<string, number>();
@@ -62,8 +65,8 @@ export function HistoryTimeline() {
           ))}
         </svg>
         {range &&
-          [...new Set(history.crew.map((run) => run.parentId))].map((parentId) => (
-            <CrewBars key={parentId} runs={history.crew} parentId={parentId} range={range} />
+          [...new Set(crew.map((run) => run.parentId))].map((parentId) => (
+            <CrewBars key={parentId} runs={crew} parentId={parentId} range={range} />
           ))}
         <div className={styles.markers}>
           {moments
