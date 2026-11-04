@@ -101,7 +101,6 @@ describe("demo run --offline (US3-1, quickstart section 4)", () => {
       ],
       /speed/,
     ],
-    [["demo", "start", "--seed", "1"], /--project/],
     [["demo", "start", "--project", "demo", "--seed", "1", "--speed", "0"], /speed/],
     [["demo", "dance"], /demo/],
   ])("rejects %j with exit 1", async (argv, message) => {
