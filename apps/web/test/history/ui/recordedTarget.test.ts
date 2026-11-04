@@ -110,3 +110,37 @@ describe("recordedCardTarget", () => {
     ).toBeNull();
   });
 });
+
+// M6.10 (#312): the lookup is bounded by the log's size, not walked per playback tick. Work is
+// counted as moment reads (integer-indexed gets), never as wall-clock time.
+describe("recordedCardTarget work bound", () => {
+  it("reads a bounded number of moments for a head deep in a large recording", () => {
+    const N = 30_000;
+    const requests: Request[] = [];
+    const list: ReturnType<typeof moment>[] = [];
+    for (let seq = 1; seq <= N; seq += 1) {
+      if (seq % 3 === 0) {
+        const id = `r-${seq}`;
+        requests.push(request(id, ADA));
+        list.push(moment(seq, ADA, id));
+      } else {
+        list.push(moment(seq, BEA));
+      }
+    }
+    let reads = 0;
+    const counted = new Proxy(list, {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const head = 20_000; // the nearest ADA request at or before the head is sequence 19_998
+    const target = recordedCardTarget({
+      state: stateWith(head, requests),
+      moments: counted,
+      selectedId: ADA,
+    });
+    expect(target?.requestId).toBe("r-19998");
+    expect(reads).toBeLessThan(200);
+  });
+});
