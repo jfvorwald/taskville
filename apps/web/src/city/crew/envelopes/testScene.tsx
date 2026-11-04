@@ -34,7 +34,12 @@ const teammate = (id: string, displayName: string): Agent =>
     consecutiveToolFailures: 0,
   }) as Agent;
 
-export async function mount() {
+export interface MountOptions {
+  /** An opaque box named like a city building, standing between the camera and the envelopes. */
+  occluder?: boolean;
+}
+
+export async function mount(options: MountOptions = {}) {
   const clock = { now: 0 };
   const store = createDataStore({ now: () => clock.now });
   const agents = [teammate("pip", "Pip"), teammate("bo", "Bo")];
@@ -57,6 +62,14 @@ export async function mount() {
           captured = s;
         }}
       >
+        {options.occluder === true && (
+          <group name="building-test-wall" position={[0, 2, 3]}>
+            <mesh>
+              <boxGeometry args={[8, 8, 0.5]} />
+              <meshBasicMaterial color="#556" />
+            </mesh>
+          </group>
+        )}
         <InteractionLayer store={selection} rig={createCameraRig()} reducedMotion />
         <EnvelopeLayer
           store={store}

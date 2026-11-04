@@ -172,3 +172,45 @@ describe("createEnvelopeLog", () => {
     expect(log.live(0)).toHaveLength(7);
   });
 });
+
+describe("recipient resolution is scoped to the sender's team", () => {
+  const member = (id: string, teamId: string, extra: Partial<Agent> = {}) =>
+    agent(id, "Pip", { teamId, sourceAgentId: `src-${id}`, ...extra });
+  const teams = {
+    "lead-a": agent("lead-a", "Lead A", { kind: "lead", teamId: "team-a" }),
+    "pip-a": member("pip-a", "team-a"),
+    "bo-a": agent("bo-a", "Bo", { teamId: "team-a" }),
+    "lead-b": agent("lead-b", "Lead B", { kind: "lead", teamId: "team-b" }),
+    "pip-b": member("pip-b", "team-b"),
+    "bo-b": agent("bo-b", "Bo", { teamId: "team-b" }),
+  };
+
+  it("sends to the same-named teammate in the sender's own team", () => {
+    expect(envelopeFor(message("bo-a", "pip"), teams, 0)?.toAgentId).toBe("pip-a");
+    expect(envelopeFor(message("bo-b", "pip"), teams, 0)?.toAgentId).toBe("pip-b");
+  });
+
+  it("prefers the sender's recorded source over a same-named teammate from another source", () => {
+    const sources = {
+      "bo-x": agent("bo-x", "Bo", { teamId: "team-a", sourceId: "claude-code" }),
+      "pip-y": agent("pip-y", "Pip", { teamId: "team-a", sourceId: "other-source" }),
+      "pip-x": agent("pip-x", "Pip", { teamId: "team-a", sourceId: "claude-code" }),
+    };
+    expect(envelopeFor(message("bo-x", "pip"), sources, 0)?.toAgentId).toBe("pip-x");
+  });
+
+  it("leaves a recipient unresolved when two teammates in the sender's team share the name", () => {
+    const twins = {
+      ...teams,
+      "pip-a2": member("pip-a2", "team-a"),
+    };
+    const made = envelopeFor(message("bo-a", "pip"), twins, 0);
+    expect(made?.toAgentId).toBeNull();
+    expect(made?.to).toBe("pip");
+  });
+
+  it("leaves a sender with no team unresolved when the name is held by several teams", () => {
+    const loner = { ...teams, solo: agent("solo", "Solo") };
+    expect(envelopeFor(message("solo", "pip"), loner, 0)?.toAgentId).toBeNull();
+  });
+});

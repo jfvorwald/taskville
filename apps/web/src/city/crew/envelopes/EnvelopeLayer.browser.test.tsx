@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { message, stored } from "./envelopeFixtures.ts";
 import { ENVELOPE_FLIGHT_MS } from "./envelopes.ts";
-import { FRAME_WAIT, mount } from "./testScene.tsx";
+import { FRAME_WAIT, type MountOptions, mount } from "./testScene.tsx";
 
 // M5.04 red: the envelope in a real scene, with real pointer events. A message event makes one
 // paper envelope fly from the sender to the recipient; hovering shows who wrote to whom;
@@ -11,8 +11,8 @@ import { FRAME_WAIT, mount } from "./testScene.tsx";
 
 const tooltip = () => document.querySelector('[role="tooltip"]');
 
-async function inFlight() {
-  const scene = await mount();
+async function inFlight(options: MountOptions = {}) {
+  const scene = await mount(options);
   const event = message("pip", "bo", "hi bo");
   scene.store.getState().applyEvent(event);
   scene.clock.now = ENVELOPE_FLIGHT_MS / 2;
@@ -84,6 +84,25 @@ describe("teammate message envelopes in the city", () => {
       });
       await vi.waitFor(() => expect(scene.selection.getSnapshot()).toBe("pip"), FRAME_WAIT);
       expect(scene.feedFocus.getSnapshot()).toEqual({ agentId: "pip", eventId: event.eventId });
+    } finally {
+      await scene.unmount();
+    }
+  }, 60_000);
+
+  it("cannot be hovered or clicked from behind an opaque building", async () => {
+    const { scene } = await inFlight({ occluder: true });
+    try {
+      const canvas = scene.root().gl.domElement;
+      const at = scene.onCanvas(scene.envelopes()[0] as Object3D);
+      scene.selection.select("bo");
+      await userEvent.hover(canvas, { position: at });
+      await scene.frames(3);
+      expect(tooltip()).toBeNull();
+
+      await userEvent.click(canvas, { position: at });
+      await scene.frames(3);
+      expect(scene.selection.getSnapshot()).not.toBe("pip");
+      expect(scene.feedFocus.getSnapshot()).toBeNull();
     } finally {
       await scene.unmount();
     }

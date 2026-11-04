@@ -14,6 +14,7 @@ export function stored(
   type: StoredEnvelope["type"],
   agentId: string,
   payload: Record<string, unknown>,
+  occurredAt: string = AT,
 ): StoredEnvelope {
   seq++;
   return storedEnvelopeSchemas[type].parse({
@@ -24,7 +25,7 @@ export function stored(
     eventId: `00000000-0000-4000-8000-${seq.toString(16).padStart(12, "0")}`,
     type,
     payload,
-    occurredAt: AT,
+    occurredAt,
     receivedAt: AT,
     ingestSequence: seq,
     evidenceIds: [],
@@ -34,9 +35,15 @@ export function stored(
   }) as StoredEnvelope;
 }
 
-export const message = (from: string, to: string, summary?: string): StoredEnvelope =>
-  stored("team.message", from, {
-    to,
-    kind: "message",
-    ...(summary === undefined ? {} : { summary }),
-  });
+export const message = (
+  from: string,
+  to: string,
+  summary?: string,
+  occurredAt: string = AT,
+): StoredEnvelope =>
+  stored(
+    "team.message",
+    from,
+    { to, kind: "message", ...(summary === undefined ? {} : { summary }) },
+    occurredAt,
+  );
