@@ -1,7 +1,7 @@
-import { StatementSync } from "node:sqlite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { SseReader } from "../stream/helpers.ts";
 import { ingestRaw, SPIKE_CWD, type ToolCallFrame, useHarness } from "./helpers.ts";
+import { countRows } from "./subset-rows.ts";
 
 // M5.14 (#281): an index of events by agent, so a feed open, a crew request and agent-to-project
 // resolution read the events of that agent and not the project's whole log. Work is COUNTED, never
@@ -25,52 +25,7 @@ const BOUND = 40;
 
 type H = Awaited<ReturnType<typeof start>>;
 
-const reads = (sql: string): boolean => /envelope_json|\bfrom\s+events\b/i.test(sql);
-
-const restores: (() => void)[] = [];
-afterEach(() => {
-  for (const restore of restores.splice(0)) restore();
-});
-
-/** Counts event rows read through the SQLite statements while `during` runs. */
-async function countEventRows(during: () => Promise<void>): Promise<number> {
-  let rows = 0;
-  const proto = StatementSync.prototype;
-  const iterate = proto.iterate;
-  const all = proto.all;
-  const get = proto.get;
-  const spies = [
-    vi.spyOn(proto, "iterate").mockImplementation(function (this: StatementSync, ...args) {
-      const it = iterate.apply(this, args as never) as Iterable<unknown>;
-      if (!reads(this.sourceSQL)) return it as never;
-      return (function* () {
-        for (const row of it) {
-          rows++;
-          yield row;
-        }
-      })() as never;
-    }),
-    vi.spyOn(proto, "all").mockImplementation(function (this: StatementSync, ...args) {
-      const out = all.apply(this, args as never);
-      if (reads(this.sourceSQL)) rows += out.length;
-      return out;
-    }),
-    vi.spyOn(proto, "get").mockImplementation(function (this: StatementSync, ...args) {
-      const out = get.apply(this, args as never);
-      if (out !== undefined && reads(this.sourceSQL)) rows++;
-      return out;
-    }),
-  ];
-  restores.push(() => {
-    for (const spy of spies) spy.mockRestore();
-  });
-  try {
-    await during();
-  } finally {
-    for (const spy of spies) spy.mockRestore();
-  }
-  return rows;
-}
+const countEventRows = countRows;
 
 /** Ingests in batches, so no single call is large. */
 function ingestMany(h: H, label: string, events: Parameters<typeof ingestRaw>[3]): void {
