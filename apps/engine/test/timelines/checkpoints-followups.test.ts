@@ -7,7 +7,7 @@ import {
   reduce,
 } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
 import {
   openStorage,
