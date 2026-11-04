@@ -360,3 +360,57 @@ describe("boot writes checkpoints for existing logs", () => {
     expect(sequencesOf(PROJECT)).toEqual(before);
   });
 });
+
+// Red round 2 (roborev panel 6682, PR #345): the boot backfill is a disposable cache, so a busy
+// write lock must never abort startup. Missing checkpoints are left for the lazy path.
+describe("boot backfill is best effort under a busy write lock", () => {
+  /** A fresh projection over a log with no checkpoints (a log that predates them). */
+  function freshProjectionNoCheckpoints() {
+    seedLog(storage(), events);
+    rebuildStaleProjections(storage(), domainReducer);
+    db().exec("DELETE FROM checkpoints");
+    expect(sequencesOf(PROJECT)).toEqual([]);
+  }
+
+  it("rebuildStaleProjections does not throw, keeps the projection, and writes nothing", () => {
+    freshProjectionNoCheckpoints();
+    const before = storage().projection(PROJECT);
+    const impatient = openStorage(dbPath(), { busyTimeoutMs: 100 });
+    db().exec("BEGIN IMMEDIATE");
+    try {
+      const { value, ms } = timed(() => {
+        let rebuilt: string[] | undefined;
+        expect(() => {
+          rebuilt = rebuildStaleProjections(impatient, domainReducer);
+        }).not.toThrow();
+        return rebuilt;
+      });
+      expect(value).not.toContain(PROJECT);
+      expect(ms).toBeLessThan(2000);
+    } finally {
+      db().exec("ROLLBACK");
+      impatient.close();
+    }
+    expect(storage().projection(PROJECT)).toEqual(before);
+    expect(sequencesOf(PROJECT)).toEqual([]);
+  }, 30_000);
+
+  it("engine boot completes under the lock, and a later seek is right and fills the checkpoints", () => {
+    freshProjectionNoCheckpoints();
+    engine?.close();
+    engine = undefined;
+    let booted: ReturnType<typeof bootInProcess> | undefined;
+    db().exec("BEGIN IMMEDIATE");
+    try {
+      expect(() => {
+        booted = bootInProcess(dbPath());
+      }).not.toThrow();
+    } finally {
+      db().exec("ROLLBACK");
+    }
+    engine = booted?.engine;
+    expect(sequencesOf(PROJECT)).toEqual([]);
+    expect(stateAtSequence(storage(), PROJECT, 1250)).toEqual(fullReplay(1250));
+    expect(sequencesOf(PROJECT)).toEqual([500, 1000]);
+  }, 60_000);
+});
