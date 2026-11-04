@@ -1,0 +1,26 @@
+apps/web/src/city/crew/highlight/CrewHighlight.order.browser.test.tsx:128:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━
+
+  ! This variable wait is unused.
+  
+    126 │ }
+    127 │ 
+  > 128 │ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        │       ^^^^
+    129 │ 
+    130 │ /** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend wait with an underscore.
+  
+    126 126 │   }
+    127 127 │   
+    128     │ - const·wait·=·(ms:·number)·=>·new·Promise((r)·=>·setTimeout(r,·ms));
+        128 │ + const·_wait·=·(ms:·number)·=>·new·Promise((r)·=>·setTimeout(r,·ms));
+    129 129 │   
+    130 130 │   /** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+  
+
+Checked 9 files in 80ms. No fixes applied.
+Found 1 warning.
+exit 0

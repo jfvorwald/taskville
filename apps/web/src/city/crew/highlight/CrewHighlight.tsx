@@ -187,6 +187,20 @@ export function CrewHighlight({
   const latest = useRef({ state, reducedMotion });
   latest.current = { state, reducedMotion };
 
+  // Test hook (M3.19 style): the highlight is drawn in WebGL, so e2e reads its state here instead.
+  useEffect(() => {
+    if (import.meta.env.VITE_TV_TEST_HOOKS !== "1") return;
+    const w = window as unknown as { __taskvilleCrewHighlight?: () => unknown };
+    w.__taskvilleCrewHighlight = () => {
+      const { parentId, familyIds, dimmedIds } = latest.current.state;
+      if (parentId === null) return null;
+      return { parentId, familyIds: [...familyIds], dimmedIds: [...dimmedIds] };
+    };
+    return () => {
+      delete w.__taskvilleCrewHighlight;
+    };
+  }, []);
+
   // A pick inside the family eases the camera to that bot (zoom is never touched).
   useEffect(() => {
     let last = selectionStore.getSnapshot();
