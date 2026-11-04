@@ -210,3 +210,85 @@ describe("a helper's call closed by a boundary that first establishes session ow
     expect(frames[0]?.id).toBe(boundarySeq);
   });
 });
+
+// M5.15 round 3 (roborev 6775): retention runs in the same reduce as the boundary. A finished
+// session owner kept only by a late running call stops being kept when the boundary closes that
+// call; with 50 newer finished agents retention then drops the owner and its session. The
+// unregistered helper's running call in that session is closed by the same boundary all the same,
+// so the feed must find it from the rule applied before retention, not in the retained state.
+describe("a helper's call closed by a boundary whose owner retention then drops", () => {
+  const HELPER = "retained-helper";
+  const OWNER = "retained-owner";
+  const RET_SESSION = "sess-retained-owner";
+  const NEWER = Array.from({ length: 50 }, (_, i) => `retained-newer-${i}`);
+
+  const setup = (h: H) => {
+    h.addProject("spike", SPIKE_CWD);
+    ingestRaw(h, "spike", "ret-owner", [
+      { type: "session.started", agentId: OWNER, sessionId: RET_SESSION, at: at(0), payload: {} },
+      { type: "agent.finished", agentId: OWNER, sessionId: RET_SESSION, at: at(1), payload: {} },
+      {
+        type: "tool_call.started",
+        agentId: OWNER,
+        sessionId: RET_SESSION,
+        at: at(2),
+        payload: { toolCallId: "toolu_ret_owner", toolName: "Bash" },
+      },
+    ]);
+    ingestRaw(
+      h,
+      "spike",
+      "ret-newer",
+      NEWER.map((agentId, i) => ({
+        type: "agent.finished",
+        agentId,
+        at: at(10 + i),
+        payload: {},
+      })),
+    );
+    ingestRaw(h, "spike", "ret-helper", [
+      {
+        type: "tool_call.started",
+        agentId: HELPER,
+        sessionId: RET_SESSION,
+        at: at(3),
+        payload: { toolCallId: "toolu_ret_helper", toolName: "Read" },
+      },
+    ]);
+  };
+  const ownerTurnEnd = {
+    type: "session.turn_ended",
+    agentId: OWNER,
+    sessionId: RET_SESSION,
+    at: at(100),
+    payload: {},
+  };
+
+  it("sends the helper's call as unfinished in a backlog read", async () => {
+    const h = await start();
+    setup(h);
+    ingestRaw(h, "spike", "ret-end", [ownerTurnEnd]);
+    const boundarySeq = h.engine.storage.head("spike") ?? 0;
+    const reader = await h.openFeed(HELPER);
+    const frames = await drain(reader);
+    await reader.cancel();
+    expect(summary(frames)).toEqual([
+      ["toolu_ret_helper", "running"],
+      ["toolu_ret_helper", "unfinished"],
+    ]);
+    expect(frames[1]?.id).toBe(boundarySeq);
+  });
+
+  it("sends the helper's call as unfinished live", async () => {
+    const h = await start();
+    setup(h);
+    const reader = await h.openFeed(HELPER);
+    expect(summary(await drain(reader))).toEqual([["toolu_ret_helper", "running"]]);
+    ingestRaw(h, "spike", "ret-end", [ownerTurnEnd]);
+    const boundarySeq = h.engine.storage.head("spike") ?? 0;
+    const frames = await drain(reader);
+    await reader.cancel();
+    expect(summary(frames)).toEqual([["toolu_ret_helper", "unfinished"]]);
+    expect(frames[0]?.id).toBe(boundarySeq);
+  });
+});
