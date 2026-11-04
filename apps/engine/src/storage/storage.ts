@@ -179,6 +179,35 @@ function prepareStatements(db: Database) {
       `SELECT envelope_json FROM events WHERE project_id = ? AND ingest_sequence > ?
        ORDER BY ingest_sequence`,
     ),
+    holdsAgent: prepare(
+      "SELECT 1 AS held FROM agent_events WHERE project_id = ? AND agent_id = ? LIMIT 1",
+    ),
+    agentEventsOfType: prepare(
+      `SELECT e.envelope_json FROM agent_events a
+       JOIN events e ON e.project_id = a.project_id AND e.ingest_sequence = a.ingest_sequence
+       WHERE a.project_id = ? AND a.type = ? AND a.agent_id = ? ORDER BY a.ingest_sequence`,
+    ),
+    agentFeedEvents: prepare(
+      `WITH sessions AS (
+         SELECT DISTINCT session_id FROM agent_events
+         WHERE project_id = :p AND agent_id = :a AND session_id IS NOT NULL
+       ), mates AS (
+         SELECT DISTINCT agent_id FROM agent_events
+         WHERE project_id = :p AND session_id IN (SELECT session_id FROM sessions)
+       ), wanted AS (
+         SELECT ingest_sequence FROM agent_events WHERE project_id = :p AND agent_id = :a
+         UNION
+         SELECT ingest_sequence FROM agent_events
+         WHERE project_id = :p AND session_id IN (SELECT session_id FROM sessions)
+         UNION
+         SELECT ingest_sequence FROM agent_events
+         WHERE project_id = :p AND type = 'agent.registered'
+           AND agent_id IN (SELECT agent_id FROM mates)
+       )
+       SELECT e.envelope_json FROM wanted w
+       JOIN events e ON e.project_id = :p AND e.ingest_sequence = w.ingest_sequence
+       WHERE w.ingest_sequence > :after ORDER BY w.ingest_sequence`,
+    ),
     appendEvent: prepare(
       `INSERT INTO events (project_id, ingest_sequence, event_id, source_id, source_event_id,
          source_sequence, occurred_at, received_at, type, schema_version, provenance,
@@ -283,6 +312,43 @@ export class Storage implements StorageReads {
     const rows = this.#stmt.events.iterate(projectId, afterSequence) as Iterable<{
       envelope_json: string;
     }>;
+    for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
+  }
+
+  /** Whether the project has an event naming the agent (an index lookup, not a log read). */
+  holdsAgent(projectId: string, agentId: string): boolean {
+    return this.#stmt.holdsAgent.get(projectId, agentId) !== undefined;
+  }
+
+  /** The agent's events of one type, in sequence order (an index lookup). */
+  *agentEventsOfType(
+    projectId: string,
+    agentId: string,
+    type: string,
+  ): IterableIterator<StoredEnvelope> {
+    const rows = this.#stmt.agentEventsOfType.iterate(projectId, type, agentId) as Iterable<{
+      envelope_json: string;
+    }>;
+    for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
+  }
+
+  /**
+   * The events a feed for the agent must fold, above `afterSequence`, in sequence order: the
+   * agent's own, every event in a session the agent has events in (a session owner's boundary
+   * closes an unregistered helper's calls, and ownership is decided by who named the session
+   * first), and the registrations of the agents seen in those sessions (a subagent never owns a
+   * session). Events of other agents in other sessions cannot change the agent's calls.
+   */
+  *agentFeedEvents(
+    projectId: string,
+    agentId: string,
+    afterSequence = 0,
+  ): IterableIterator<StoredEnvelope> {
+    const rows = this.#stmt.agentFeedEvents.iterate({
+      p: projectId,
+      a: agentId,
+      after: afterSequence,
+    }) as Iterable<{ envelope_json: string }>;
     for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
   }
 

@@ -72,8 +72,8 @@ export async function writeWithin(
  * turns the agent's `tool_call.*` events into ToolCall frames:
  *
  * - A ToolCall's state at an event depends on the events before it (a finish carries the start's
- *   name and time), so the tracker folds the project's log from sequence 1 even when the client
- *   resumes later; frames at or below `after` are folded and not sent.
+ *   name and time), so the tracker folds the events that can matter to the agent (its own and its
+ *   sessions', see `Storage.agentFeedEvents`) from sequence 1 even when the client resumes later; frames at or below `after` are folded and not sent.
  * - `lastQueued` is the highest project sequence folded. A live event at or below it is a
  *   duplicate and dropped; one above `lastQueued + 1` means a broadcast was missed, so the
  *   subscriber goes back to reading storage.
@@ -179,7 +179,13 @@ export class FeedSubscriber implements HubSubscriber {
   #readPage(): PendingFrame[] {
     const frames: PendingFrame[] = [];
     let read = 0;
-    for (const event of this.#options.storage.events(this.#options.projectId, this.#lastQueued)) {
+    const head = this.#options.storage.head(this.#options.projectId) ?? 0;
+    const events = this.#options.storage.agentFeedEvents(
+      this.#options.projectId,
+      this.#options.agentId,
+      this.#lastQueued,
+    );
+    for (const event of events) {
       read++;
       this.#lastQueued = event.ingestSequence;
       const calls = this.#tracker.applyAll(event);
@@ -188,7 +194,11 @@ export class FeedSubscriber implements HubSubscriber {
       }
       if (read === BACKLOG_PAGE) break;
     }
-    if (read < BACKLOG_PAGE) this.#phase = "live";
+    if (read < BACKLOG_PAGE) {
+      // Other agents' events were not read; the head was read in this tick, so all up to it are folded.
+      this.#lastQueued = Math.max(this.#lastQueued, head);
+      this.#phase = "live";
+    }
     return frames;
   }
 

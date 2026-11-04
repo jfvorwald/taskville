@@ -38,8 +38,8 @@ const snapshot = (call: FeedToolCall): FeedToolCall => ({
 });
 
 /**
- * Folds one agent's `tool_call.*` events, in ingest order, into its ToolCalls. Every event of the
- * project must be applied, not only this agent's: a session boundary closes calls with no result,
+ * Folds one agent's `tool_call.*` events, in ingest order, into its ToolCalls. Every event that can
+ * matter to the agent must be applied, not only its own (`Storage.agentFeedEvents`): a session boundary closes calls with no result,
  * and which calls it closes is the domain reducer's rule, so the tracker runs the reducer beside
  * its own fold and reads the closure from the reducer's state rather than re-implementing it.
  */
@@ -117,6 +117,8 @@ export class ToolCallTracker {
     if (event.agentId === undefined || event.type === "tool_call.started") return [];
     // Nothing open, nothing to close: skip the entity step, which would double every event's cost.
     if (this.#open.size === 0) return [];
+    // The reducer closes a call by replacing it, so an event that left toolCalls as they were closed none.
+    if (this.#state.toolCalls === before.toolCalls) return [];
     const closed: FeedToolCall[] = [];
     // The reducer's own closure rule, on the state it saw: sessions and agents after the event's
     // entity update (a boundary can first establish session ownership) but before retention (which
