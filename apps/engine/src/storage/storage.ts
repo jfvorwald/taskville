@@ -191,9 +191,6 @@ function prepareStatements(db: Database) {
       `WITH sessions AS (
          SELECT DISTINCT session_id FROM agent_events
          WHERE project_id = :p AND agent_id = :a AND session_id IS NOT NULL
-       ), mates AS (
-         SELECT DISTINCT agent_id FROM agent_events
-         WHERE project_id = :p AND session_id IN (SELECT session_id FROM sessions)
        ), wanted AS (
          SELECT ingest_sequence FROM agent_events WHERE project_id = :p AND agent_id = :a
          UNION
@@ -201,12 +198,19 @@ function prepareStatements(db: Database) {
          WHERE project_id = :p AND session_id IN (SELECT session_id FROM sessions)
          UNION
          SELECT ingest_sequence FROM agent_events
-         WHERE project_id = :p AND type = 'agent.registered'
-           AND agent_id IN (SELECT agent_id FROM mates)
+         WHERE project_id = :p AND type IN ('agent.registered', 'agent.finished')
        )
        SELECT e.envelope_json FROM wanted w
        JOIN events e ON e.project_id = :p AND e.ingest_sequence = w.ingest_sequence
        WHERE w.ingest_sequence > :after ORDER BY w.ingest_sequence`,
+    ),
+    agentSessions: prepare(
+      `SELECT s.session_id, (
+         SELECT min(f.ingest_sequence) FROM agent_events f
+         WHERE f.project_id = :p AND f.session_id = s.session_id
+       ) AS first_sequence
+       FROM (SELECT DISTINCT session_id FROM agent_events
+             WHERE project_id = :p AND agent_id = :a AND session_id IS NOT NULL) s`,
     ),
     appendEvent: prepare(
       `INSERT INTO events (project_id, ingest_sequence, event_id, source_id, source_event_id,
@@ -336,8 +340,11 @@ export class Storage implements StorageReads {
    * The events a feed for the agent must fold, above `afterSequence`, in sequence order: the
    * agent's own, every event in a session the agent has events in (a session owner's boundary
    * closes an unregistered helper's calls, and ownership is decided by who named the session
-   * first), and the registrations of the agents seen in those sessions (a subagent never owns a
-   * session). Events of other agents in other sessions cannot change the agent's calls.
+   * first), and every registration and finish in the project (retention drops a finished agent,
+   * and with it the sessions it owns, by its rank among all finished agents and keeps the parent
+   * of any unfinished agent; a subagent never owns a session). The session set is the agent's as
+   * of this read: a session the agent enters later needs its earlier events too, which is the
+   * caller's to fold (`agentSessions`).
    */
   *agentFeedEvents(
     projectId: string,
@@ -350,6 +357,15 @@ export class Storage implements StorageReads {
       after: afterSequence,
     }) as Iterable<{ envelope_json: string }>;
     for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
+  }
+
+  /** The sessions the agent has events in, each with the first indexed sequence of the session. */
+  agentSessions(projectId: string, agentId: string): Map<string, number> {
+    const rows = this.#stmt.agentSessions.all({ p: projectId, a: agentId }) as unknown as {
+      session_id: string;
+      first_sequence: number;
+    }[];
+    return new Map(rows.map((row) => [row.session_id, row.first_sequence]));
   }
 
   /**

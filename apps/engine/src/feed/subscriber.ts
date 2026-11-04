@@ -74,6 +74,8 @@ export async function writeWithin(
  * - A ToolCall's state at an event depends on the events before it (a finish carries the start's
  *   name and time), so the tracker folds the events that can matter to the agent (its own and its
  *   sessions', see `Storage.agentFeedEvents`) from sequence 1 even when the client resumes later; frames at or below `after` are folded and not sent.
+ *   When the agent enters a session that already has events the fold skipped, the fold starts
+ *   over on the wider subset and sends only frames it has not sent (`#coverSessions`).
  * - `lastQueued` is the highest project sequence folded. A live event at or below it is a
  *   duplicate and dropped; one above `lastQueued + 1` means a broadcast was missed, so the
  *   subscriber goes back to reading storage.
@@ -84,8 +86,17 @@ export async function writeWithin(
 export class FeedSubscriber implements HubSubscriber {
   readonly #options: FeedSubscriberOptions;
   readonly #stream: SSEStreamingApi;
-  readonly #tracker: ToolCallTracker;
+  #tracker: ToolCallTracker;
   #lastQueued = 0;
+  /** Frames of events at or below this were sent or skipped already (starts at `after`). */
+  #quiet: number;
+  /**
+   * The agent's sessions the fold covers, from the last storage read. A session the agent enters
+   * later had its earlier events left out, so entering one sends the fold back to storage.
+   */
+  #sessions: Map<string, number> | undefined;
+  /** The fold met the agent in a session it does not cover: read the sessions again. */
+  #recheck = false;
   #phase: "backlog" | "live" = "backlog";
   #queue: PendingFrame[] = [];
   #closed = false;
@@ -96,6 +107,7 @@ export class FeedSubscriber implements HubSubscriber {
   constructor(stream: SSEStreamingApi, options: FeedSubscriberOptions) {
     this.#stream = stream;
     this.#options = options;
+    this.#quiet = options.after;
     this.#tracker = new ToolCallTracker(options.projectId, options.agentId);
   }
 
@@ -108,12 +120,15 @@ export class FeedSubscriber implements HubSubscriber {
     if (this.#closed || this.#phase === "backlog") return;
     const seq = event.ingestSequence;
     if (seq <= this.#lastQueued) return;
-    if (seq > this.#lastQueued + 1) {
+    if (this.#entersSession(event)) {
+      this.#recheck = true;
+      this.#phase = "backlog";
+    } else if (seq > this.#lastQueued + 1) {
       this.#phase = "backlog";
     } else {
       this.#lastQueued = seq;
       const calls = this.#tracker.applyAll(event);
-      if (calls.length > 0 && seq > this.#options.after) {
+      if (calls.length > 0 && seq > this.#quiet) {
         if (this.#queue.length + calls.length > this.#options.queueLimit) {
           this.#cutOff("slow_consumer");
           return;
@@ -175,26 +190,65 @@ export class FeedSubscriber implements HubSubscriber {
     return this.#phase === "live";
   }
 
+  /** Whether the event is the agent's in a session the fold does not cover yet. */
+  #entersSession(event: StoredEnvelope): boolean {
+    const sessionId = event.sessionId;
+    if (event.agentId !== this.#options.agentId || sessionId === undefined) return false;
+    return this.#sessions?.has(sessionId) !== true;
+  }
+
+  /**
+   * Before a read: if the agent has entered a session with events at or below the fold's cursor,
+   * those were never folded (the subset did not hold that session then), so the fold starts over
+   * from sequence 1 on the current subset and sends only frames of events it has not sent yet.
+   */
+  #coverSessions(): void {
+    const previous = this.#sessions;
+    if (previous !== undefined && !this.#recheck) return;
+    this.#recheck = false;
+    const sessions = this.#options.storage.agentSessions(
+      this.#options.projectId,
+      this.#options.agentId,
+    );
+    this.#sessions = sessions;
+    if (previous === undefined) return;
+    for (const [sessionId, first] of sessions) {
+      if (previous.has(sessionId) || first > this.#lastQueued) continue;
+      this.#quiet = Math.max(this.#quiet, this.#lastQueued);
+      this.#lastQueued = 0;
+      this.#tracker = new ToolCallTracker(this.#options.projectId, this.#options.agentId);
+      return;
+    }
+  }
+
   /** Folds the next page of the log and, if it reached the head, switches to live in the same tick. */
   #readPage(): PendingFrame[] {
     const frames: PendingFrame[] = [];
     let read = 0;
     const head = this.#options.storage.head(this.#options.projectId) ?? 0;
+    this.#coverSessions();
     const events = this.#options.storage.agentFeedEvents(
       this.#options.projectId,
       this.#options.agentId,
       this.#lastQueued,
     );
+    let entered = false;
     for (const event of events) {
+      // Committed since the sessions were read (between pages): fold it after the next check.
+      if (this.#entersSession(event)) {
+        entered = true;
+        break;
+      }
       read++;
       this.#lastQueued = event.ingestSequence;
       const calls = this.#tracker.applyAll(event);
-      if (calls.length > 0 && event.ingestSequence > this.#options.after) {
+      if (calls.length > 0 && event.ingestSequence > this.#quiet) {
         frames.push(...framesOf(event.ingestSequence, calls));
       }
       if (read === BACKLOG_PAGE) break;
     }
-    if (read < BACKLOG_PAGE) {
+    if (entered) this.#recheck = true;
+    else if (read < BACKLOG_PAGE) {
       // Other agents' events were not read; the head was read in this tick, so all up to it are folded.
       this.#lastQueued = Math.max(this.#lastQueued, head);
       this.#phase = "live";
