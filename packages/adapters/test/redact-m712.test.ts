@@ -55,11 +55,12 @@ describe("M7.12 G-3: no word cap before -p<password>", () => {
   it.each([
     ["mysqldump", (n: number) => `mysqldump -u root ${many(n)} -p${pw}`],
     ["mysql", (n: number) => `mysql ${many(n)} -p${pw}`],
-    ["sshpass", (n: number) => `sshpass ${many(n)} -p ${pw} ssh host`],
   ])("masks the password of %s after many words", (_name, make) => {
     for (const n of [300, 5000]) expectMasked(make(n), pw);
   });
 
+  // sshpass options end at its first non-option word (the command), so a long run of words
+  // before -p is not an sshpass password; the uncapped walk is covered by this long command tail.
   it("keeps a port readable in a long sshpass command", () => {
     const input = `sshpass -p ${pw} ssh ${"h ".repeat(400)}-p 2222 host`;
     const result = redactText(input);
