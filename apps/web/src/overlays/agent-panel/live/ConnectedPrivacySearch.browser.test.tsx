@@ -22,13 +22,16 @@ const hitName = (call: number, n = 0) =>
   `/r/conn/hit-${String(call).padStart(3, "0")}-${n}-file.ts`;
 
 /** A search call with no recorded filePaths: hits live only in the stored output body. */
-function search(tool: "Grep" | "Glob", n: number): ToolCallFrame {
+function search(tool: "Grep" | "Glob", n: number, hitCount = 1): ToolCallFrame {
   const id = `cs-${tool}-${n}`;
   const input = bodyOf(id, "input", JSON.stringify({ pattern: "CONN_PATTERN_SENTINEL" }));
   const output = bodyOf(
     id,
     "output",
-    JSON.stringify({ filenames: [hitName(n)], content: "CONN_LINE_SENTINEL matched" }),
+    JSON.stringify({
+      filenames: Array.from({ length: hitCount }, (_, i) => hitName(n, i)),
+      content: "CONN_LINE_SENTINEL matched",
+    }),
   );
   evidence[input.id] = input;
   evidence[output.id] = output;
@@ -139,17 +142,38 @@ describe.each(["Grep", "Glob"] as const)("connected privacy %s group", (tool) =>
     for (const id of hits) expect(id).toMatch(/:output$/);
   });
 
-  it("keeps evidence fetches bounded by the cap for a long group", async () => {
+  it("keeps evidence fetches bounded and counts unloaded searches as searches", async () => {
     await mount(
       Array.from({ length: 80 }, (_, i) => search(tool, i + 1)),
       true,
     );
-    await expect.poll(() => text(), { timeout: 4000 }).toContain("hit-001-0-file.ts");
+    // The first 32 calls load: 32 known names, none omitted. The other 48 are not loaded.
+    await expect.poll(() => text(), { timeout: 4000 }).toContain("hit-032-0-file.ts");
     await new Promise((r) => setTimeout(r, 400));
     expect(new Set(hits).size).toBeLessThanOrEqual(CAP);
     for (const id of hits) expect(id).toMatch(/:output$/);
+    expect(text()).not.toContain("hit-033-0-file.ts");
     expect(text()).not.toContain("hit-080-0-file.ts");
-    expect(text()).toMatch(/and \d+ more/);
+    // The known-omitted filename count is exact (zero here), so no "and N more" appears.
+    expect(text()).not.toMatch(/and \d+ more/);
+    // The unknown results are reported as a count of searches, which is known.
+    expect(text()).toContain("results of 48 more searches not loaded");
+    // No text claims a filename count for them.
+    expect(text()).not.toMatch(/48 more (files?|filenames?|names?|paths?|hits?|results?)\b/);
+    expect(text()).not.toMatch(/\b48\b[^.]*\b(files|filenames|names|paths|hits)\b/);
+  });
+
+  it("states an exact 'and N more' when loaded hits exceed the cap", async () => {
+    // 5 calls x 10 distinct names = 50 known names; 32 are shown, so exactly 18 are omitted.
+    await mount(
+      Array.from({ length: 5 }, (_, i) => search(tool, i + 1, 10)),
+      true,
+    );
+    await expect.poll(() => text(), { timeout: 4000 }).toContain("and 18 more");
+    expect(text()).not.toContain("hit-005-9-file.ts");
+    expect(text()).not.toMatch(/searches not loaded/);
+    expect(new Set(hits).size).toBe(5);
+    for (const id of hits) expect(id).toMatch(/:output$/);
   });
 
   it("fetches nothing for a collapsed group with Hide code off (baseline)", async () => {
