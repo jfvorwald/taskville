@@ -27,6 +27,11 @@ import { useData } from "../../../data/react.ts";
 import type { DataStore } from "../../../data/store.ts";
 import { visibleControls } from "../../action-card/format.ts";
 import { cardTarget } from "../../action-card/target.ts";
+import { displayPath } from "../code/displayPath.ts";
+import { ExpandableCode } from "../code/ExpandableCode.tsx";
+import { buildEditorLink } from "../code/editorLink.ts";
+import type { CodeHighlighter } from "../code/highlighter.ts";
+import { EVIDENCE_BODY_CAPACITY } from "./evidenceCache.ts";
 import styles from "./live.module.css";
 
 export interface LiveTabProps {
@@ -34,9 +39,23 @@ export interface LiveTabProps {
   store: DataStore;
   select: (id: string | null) => void;
   calls: readonly ToolCallFrame[];
-  evidence: Readonly<Record<string, EvidenceResponse>>;
+  evidence:
+    | Readonly<Record<string, EvidenceResponse>>
+    | ((id: string) => EvidenceResponse | undefined);
+  /** Internal connected loader: only calls whose details are currently rendered. */
+  onVisibleCalls?: (
+    calls: readonly ToolCallFrame[],
+    /** Privacy only: calls of visible Search groups whose output part alone is needed. */
+    outputOnly?: readonly ToolCallFrame[],
+  ) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
+  /** Hide code bodies (Edit fragments, Write content). Default false. */
+  privacy?: boolean;
+  /** Highlights expanded code bodies. Defaults to the shared lazy Shiki one. */
+  highlighter?: CodeHighlighter;
+  /** Editor link template with one {path}. Defaults to the VS Code one. */
+  editorTemplate?: string;
 }
 type Evicted = ReadonlySet<string>;
 /** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
@@ -83,6 +102,10 @@ const FOLLOW_THRESHOLD = 8;
 const distanceFromBottom = (node: HTMLElement) =>
   node.scrollHeight - node.clientHeight - node.scrollTop;
 const EVICTED = "details no longer stored";
+const CODE_HIDDEN = "Code hidden by the privacy setting";
+/** The language id Shiki gets for a path: its extension, or plain text. */
+const languageOf = (path: string | undefined) =>
+  /\.([A-Za-z0-9]+)$/.exec(path ?? "")?.[1] ?? "text";
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -121,13 +144,25 @@ function parseBody(body: EvidenceResponse): unknown {
   }
 }
 
-function Path({ path }: { path: string }) {
-  const shown = safe(path);
+/**
+ * A path may become an editor link only when showing it changes nothing: no secret to mask (or already masked), no
+ * hidden or reordering character, no control character. Every editor link goes through this.
+ */
+const isLinkablePath = (path: string) =>
+  safe(path) === path &&
+  !path.includes("[REDACTED") &&
+  !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+
+function Path({ path, privacy = false }: { path: string; privacy?: boolean }) {
+  const bounded = displayPath(path, { privacy });
+  const shown = safe(bounded);
   // A path with a hidden or reordering character is shown with markers, as text and not a link.
-  return path.startsWith("/") &&
-    shown === path &&
-    !Array.from(path).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ? (
-    <a href={`vscode://file${path.split("/").map(encodeURIComponent).join("/")}`}>{shown}</a>
+  // Under privacy a path that was hidden or shortened is never a link.
+  const href = bounded === path && isLinkablePath(path) ? buildEditorLink(path) : null;
+  return href ? (
+    <a href={href} rel="noopener noreferrer">
+      {shown}
+    </a>
   ) : (
     <span>{shown}</span>
   );
@@ -206,14 +241,14 @@ const bodyOfCall = (
   evidence: LiveTabProps["evidence"],
 ) => {
   const ref = call.evidence?.[part];
-  return ref ? evidence[ref.id] : undefined;
+  return ref ? (typeof evidence === "function" ? evidence(ref.id) : evidence[ref.id]) : undefined;
 };
 const oneLine = (text: string) => text.split("\n", 1)[0].slice(0, 120);
 /** The pretty printed body of a deep value is large. It is computed once per body, not per render. */
 const pretty = (value: unknown) =>
   typeof value === "string" || value === undefined ? value : JSON.stringify(value, null, 2);
 
-const ToolCard = memo(function ToolCard({
+const OpenToolCard = memo(function OpenToolCard({
   call,
   inputBody,
   outputBody,
@@ -225,6 +260,8 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded,
   position,
   size,
+  highlighter,
+  editorTemplate,
 }: {
   call: ToolCallFrame;
   inputBody: EvidenceResponse | undefined;
@@ -237,6 +274,8 @@ const ToolCard = memo(function ToolCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
+  highlighter: CodeHighlighter | undefined;
+  editorTemplate: string | undefined;
 }) {
   const heading = useId();
   const expand = useId();
@@ -296,6 +335,10 @@ const ToolCard = memo(function ToolCard({
   // The subject path is in the heading, as the editor link. The rest are listed once, below.
   const otherPaths = paths.filter((path) => path !== subjectPath);
   const phase = string(call.phase) ?? "unknown";
+  const codeProps = {
+    ...(highlighter ? { highlighter } : {}),
+    ...(editorTemplate === undefined ? {} : { editorTemplate }),
+  };
   return (
     <article
       className={styles.card}
@@ -350,13 +393,37 @@ const ToolCard = memo(function ToolCard({
                 </>
               )}
               {edit.before.truncated || edit.after.truncated ? <p>{TRUNCATED}</p> : null}
+              <ExpandableCode
+                label={`Edit ${safe(subjectPath ?? "")}`}
+                text={edit.after.text}
+                language={languageOf(subjectPath)}
+                privacy={false}
+                {...codeProps}
+                {...(subjectPath === undefined || !isLinkablePath(subjectPath)
+                  ? {}
+                  : { path: subjectPath })}
+              />
             </>
           ) : (
             <p>Input: {missingInput}</p>
           )}
         </div>
       ) : tool === "Write" ? (
-        <Bounded text={string(input.content) ?? inputText ?? missingInput} />
+        <>
+          <Bounded text={string(input.content) ?? inputText ?? missingInput} />
+          {string(input.content) === undefined ? null : (
+            <ExpandableCode
+              label={`Write ${safe(subjectPath ?? "")}`}
+              text={string(input.content) as string}
+              language={languageOf(subjectPath)}
+              privacy={false}
+              {...codeProps}
+              {...(subjectPath === undefined || !isLinkablePath(subjectPath)
+                ? {}
+                : { path: subjectPath })}
+            />
+          )}
+        </>
       ) : tool === "Bash" ? (
         <>
           <Bounded as="p" text={command ?? missingInput} />
@@ -413,6 +480,62 @@ const ToolCard = memo(function ToolCard({
   );
 });
 
+/**
+ * What a card shows under the privacy setting, for every tool: the heading (tool name), status,
+ * timing and the recorded paths, and the hidden note. Nothing from an input or output body is
+ * read, so a tool the renderer has never heard of cannot leak either.
+ */
+function HiddenToolCard({
+  call,
+  position,
+  size,
+}: {
+  call: ToolCallFrame;
+  position: number;
+  size: number;
+}) {
+  const heading = useId();
+  const tool = typeof call.toolName === "string" ? call.toolName : "not reported";
+  return (
+    <article
+      className={styles.card}
+      aria-labelledby={heading}
+      aria-posinset={position}
+      aria-setsize={size}
+      tabIndex={-1}
+    >
+      <h3 id={heading}>{safe(tool)}</h3>
+      <p>
+        Status: {safe(string(call.phase) ?? "unknown")}. Timing:{" "}
+        {typeof call.durationMs === "number" && Number.isFinite(call.durationMs)
+          ? `${call.durationMs} ms`
+          : "not reported"}
+      </p>
+      {call.filePaths.length ? (
+        <p>
+          Path:{" "}
+          {call.filePaths.map((path) => (
+            <span key={path}>
+              <Path path={path} privacy />{" "}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      <p>{CODE_HIDDEN}</p>
+    </article>
+  );
+}
+
+type ToolCardProps = Parameters<typeof OpenToolCard>[0] & { privacy: boolean };
+/** Privacy is one early branch: a hidden card never reaches the code that reads bodies. */
+function ToolCard({ privacy, ...props }: ToolCardProps) {
+  return privacy ? (
+    <HiddenToolCard call={props.call} position={props.position} size={props.size} />
+  ) : (
+    <OpenToolCard {...props} />
+  );
+}
+
 /** A run of Read calls or of Search calls: one card that expands to the files or the patterns. */
 function GroupCard({
   kind,
@@ -423,6 +546,10 @@ function GroupCard({
   toggleExpanded,
   position,
   size,
+  detailPage,
+  detailPageSize,
+  onDetailPage,
+  privacy,
 }: {
   kind: "read" | "search";
   calls: readonly ToolCallFrame[];
@@ -432,10 +559,64 @@ function GroupCard({
   toggleExpanded: (id: string) => void;
   position: number;
   size: number;
+  detailPage: number;
+  detailPageSize: number;
+  onDetailPage: (id: string, page: number) => void;
+  privacy: boolean;
 }) {
   const heading = useId();
   const list = useId();
+  const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
+  if (privacy) {
+    // Only file names, each bounded and capped like the open cards; never a pattern, a matched
+    // line or a body. A search also contributes the hit filenames its loaded result lists.
+    const all = [
+      ...new Set(
+        calls.flatMap((call) => [
+          ...call.filePaths,
+          ...(kind === "search"
+            ? stringList(object(bodyValue(bodyOfCall(call, "output", evidence))).filenames)
+            : []),
+        ]),
+      ),
+    ];
+    const names = all.slice(0, detailPageSize);
+    // A search call counts as not loaded unless its output body is present now (past the cap,
+    // beyond the shared budget, evicted, failed or pending). Their hits are unknown, so report
+    // a count of searches, never filenames.
+    const unloaded =
+      kind === "search" ? calls.filter((call) => !bodyOfCall(call, "output", evidence)).length : 0;
+    const more = all.length - names.length;
+    return (
+      <article
+        className={styles.card}
+        aria-labelledby={heading}
+        aria-posinset={position}
+        aria-setsize={size}
+        tabIndex={-1}
+      >
+        <h3 id={heading}>
+          {kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`}
+        </h3>
+        {names.length ? (
+          <p>
+            Path:{" "}
+            {names.map((path) => (
+              <span key={path}>
+                <Path path={path} privacy />{" "}
+              </span>
+            ))}
+            {more > 0 ? `and ${more} more` : null}
+          </p>
+        ) : null}
+        {unloaded > 0 ? (
+          <p>{`results of ${unloaded} more ${unloaded === 1 ? "search" : "searches"} not loaded`}</p>
+        ) : null}
+        <p>{CODE_HIDDEN}</p>
+      </article>
+    );
+  }
   return (
     <article
       className={styles.card}
@@ -470,10 +651,30 @@ function GroupCard({
       >
         {kind === "read" ? "Expand paths" : "Expand patterns"}
       </Button>
+      {expanded && page.count > 1 ? (
+        <div>
+          <Button
+            aria-label={kind === "read" ? "Previous read details" : "Previous search details"}
+            isDisabled={page.index === 0}
+            onPress={() => onDetailPage(calls[0].toolCallId, page.index - 1)}
+          >
+            Previous
+          </Button>
+          <span role="status">{`Details page ${page.index + 1} of ${page.count}`}</span>
+          <Button
+            aria-label={kind === "read" ? "Next read details" : "Next search details"}
+            isDisabled={page.index + 1 === page.count}
+            onPress={() => onDetailPage(calls[0].toolCallId, page.index + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      ) : null}
       {expanded ? (
         <ul id={list}>
-          {calls.map((call) => {
+          {page.calls.map((call) => {
             const body = bodyOfCall(call, "input", evidence);
+            const output = bodyOfCall(call, "output", evidence);
             const input = object(bodyValue(body));
             const subject =
               kind === "read"
@@ -485,9 +686,7 @@ function GroupCard({
                 ? [
                     ...new Set([
                       ...call.filePaths,
-                      ...stringList(
-                        object(bodyValue(bodyOfCall(call, "output", evidence))).filenames,
-                      ),
+                      ...stringList(object(bodyValue(output)).filenames),
                     ]),
                   ]
                 : [];
@@ -496,6 +695,8 @@ function GroupCard({
                 {subject === undefined ? (
                   isGone(call.evidence?.input, body, evicted) ? (
                     EVICTED
+                  ) : call.evidence?.input?.status === "stored" ? (
+                    "details not loaded"
                   ) : (
                     "not reported"
                   )
@@ -504,6 +705,11 @@ function GroupCard({
                 ) : (
                   bounded(subject).text
                 )}
+                {kind === "search" && isGone(call.evidence?.output, output, evicted) ? (
+                  <span> {EVICTED}</span>
+                ) : kind === "search" && !output && call.evidence?.output?.status === "stored" ? (
+                  <span> details not loaded</span>
+                ) : null}
                 {call.phase === "succeeded" ? null : <span> ({safe(String(call.phase))})</span>}
                 {hits.map((path) => (
                   <span key={path}>
@@ -521,6 +727,12 @@ function GroupCard({
 }
 
 type Item = { key: string; kind: "call" | "read" | "search"; calls: readonly ToolCallFrame[] };
+
+function groupDetails(calls: readonly ToolCallFrame[], wanted: number, size: number) {
+  const count = Math.max(1, Math.ceil(calls.length / size));
+  const index = Math.max(0, Math.min(wanted, count - 1));
+  return { index, count, calls: calls.slice(index * size, (index + 1) * size) };
+}
 
 const RUNS = new Map<string, "read" | "search">([
   ["Read", "read"],
@@ -553,6 +765,22 @@ function group(calls: readonly ToolCallFrame[]): Item[] {
   return items;
 }
 
+/**
+ * One shared output budget for every visible privacy Search group: what the body cache holds after
+ * standalone calls take their input and output bodies, at most 32 per group, filled in order.
+ */
+function privacyOutputs(visible: readonly Item[], standalone: number): ToolCallFrame[] {
+  let left = Math.max(0, EVIDENCE_BODY_CAPACITY - 2 * standalone);
+  const wanted: ToolCallFrame[] = [];
+  for (const item of visible) {
+    if (item.kind !== "search") continue;
+    const take = item.calls.slice(0, Math.min(32, left));
+    left -= take.length;
+    wanted.push(...take);
+  }
+  return wanted;
+}
+
 export function LiveTab(props: LiveTabProps) {
   const projectId = useData((s) => s.state?.projectId, props.store);
   return <LiveFeed key={JSON.stringify([projectId, props.agentId])} {...props} />;
@@ -560,7 +788,18 @@ export function LiveTab(props: LiveTabProps) {
 
 const NONE: ReadonlySet<string> = new Set();
 
-function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: LiveTabProps) {
+function LiveFeed({
+  agentId,
+  store,
+  select,
+  calls,
+  evidence,
+  evicted = NONE,
+  onVisibleCalls,
+  privacy = false,
+  highlighter,
+  editorTemplate,
+}: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<HTMLElement | null>(null);
@@ -570,6 +809,7 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
   // The offset the virtualizer last wrote, so its measurement corrections are not read as a reader.
   const written = useRef<number | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [detailPages, setDetailPages] = useState<ReadonlyMap<string, number>>(() => new Map());
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
   const items = useMemo(() => group(calls), [calls]);
   const focusNewest = useRef(false);
@@ -587,6 +827,51 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
     scrollMargin,
     useFlushSync: false,
   });
+  const virtualItems = virtualizer.getVirtualItems();
+  const singleCount = virtualItems.filter(({ index }) => items[index].kind === "call").length;
+  const expandedCount = virtualItems.filter(
+    ({ index }) => items[index].kind !== "call" && expanded.has(items[index].key),
+  ).length;
+  // Reserve both body parts per call and share the remaining budget across presented groups.
+  const detailPageSize = Math.max(
+    1,
+    Math.min(
+      32,
+      Math.floor(
+        (Math.floor(EVIDENCE_BODY_CAPACITY / 2) - singleCount) / Math.max(1, expandedCount),
+      ),
+    ),
+  );
+  // Report after commit, so even transient follow ranges are genuinely mounted. Collapsed
+  // groups show metadata only; their member details become requested when expanded.
+  useEffect(() => {
+    onVisibleCalls?.(
+      virtualItems.flatMap(({ index }) => {
+        const item = items[index];
+        if (item.kind === "call") return item.calls;
+        // Under privacy a group card renders no details, so no part of it is needed in full.
+        return !privacy && expanded.has(item.key)
+          ? groupDetails(item.calls, detailPages.get(item.key) ?? 0, detailPageSize).calls
+          : [];
+      }),
+      privacy
+        ? privacyOutputs(
+            virtualItems.map(({ index }) => items[index]),
+            singleCount,
+          )
+        : [],
+    );
+  });
+  const onDetailPage = useCallback((id: string, page: number) => {
+    setDetailPages((old) => new Map(old).set(id, page));
+  }, []);
+  useEffect(() => {
+    const keys = new Set(items.map((item) => item.key));
+    setDetailPages((old) => {
+      if ([...old.keys()].every((key) => keys.has(key))) return old;
+      return new Map([...old].filter(([key]) => keys.has(key)));
+    });
+  }, [items]);
   // The shell and controlled consumers already own scrolling. Include content before the list
   // in the virtualizer's coordinates rather than creating a second nested viewport.
   useLayoutEffect(() => {
@@ -752,8 +1037,10 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
         {virtualizer.getVirtualItems().map((virtual) => {
           const item = items[virtual.index];
           const [call] = item.calls;
-          const inputBody = bodyOfCall(call, "input", evidence);
-          const outputBody = bodyOfCall(call, "output", evidence);
+          // GroupCard reads only its presented page. Unused gets would keep its first member hot.
+          const inputBody = item.kind === "call" ? bodyOfCall(call, "input", evidence) : undefined;
+          const outputBody =
+            item.kind === "call" ? bodyOfCall(call, "output", evidence) : undefined;
           const common = {
             expanded: expanded.has(item.key),
             toggleExpanded,
@@ -771,7 +1058,16 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
               {item.kind === "call" ? (
                 <ToolCard
                   {...common}
-                  {...{ call, inputBody, outputBody, agents, select }}
+                  {...{
+                    call,
+                    inputBody,
+                    outputBody,
+                    agents,
+                    select,
+                    privacy,
+                    highlighter,
+                    editorTemplate,
+                  }}
                   inputGone={isGone(call.evidence?.input, inputBody, evicted)}
                   outputGone={isGone(call.evidence?.output, outputBody, evicted)}
                 />
@@ -781,6 +1077,10 @@ function LiveFeed({ agentId, store, select, calls, evidence, evicted = NONE }: L
                   {...{ evidence, evicted }}
                   kind={item.kind}
                   calls={item.calls}
+                  detailPage={detailPages.get(item.key) ?? 0}
+                  detailPageSize={detailPageSize}
+                  onDetailPage={onDetailPage}
+                  privacy={privacy}
                 />
               )}
             </div>

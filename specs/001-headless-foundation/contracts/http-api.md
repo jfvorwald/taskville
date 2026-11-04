@@ -245,11 +245,16 @@ event; a call whose finish never arrives stays `running`, with no `finishedAt` o
 until the domain reducer closes it at a session or turn boundary (a turn end or failure, a prompt
 submission, a session end, or the agent finishing). The feed then sends one more frame for the call
 with `phase: "unfinished"`, `finishedAt` set to the boundary's time, no `durationMs` and no
-`evidence.output`: it reports that no result was recorded, not an outcome. The frame `id` is the
-boundary event's sequence. A `PostToolUse` that arrives later replaces `unfinished`, as in the
-reducer. Known limitation (#285): the reducer keeps at most 32 open calls per agent and, at a
-boundary, records only the latest-started open call as `unfinished`; a call it dropped for either
-reason never gets an `unfinished` frame and stays `running` in the feed.
+`evidence.output`: it reports that no result was recorded, not an outcome. A boundary
+closes every running call of the agent that the reducer closes, so one event can give several
+`unfinished` frames, one per call, oldest start first. The frame `id` is the boundary event's
+sequence, written on the last frame of the event only; the earlier frames of that event carry no
+`id`. A client that reconnects after receiving only some of an event's frames resumes from the
+previous `id` and gets all of the event's frames again. Frames are full ToolCall snapshots keyed by
+`toolCallId`, so a replay is idempotent: a client replaces what it holds for that `toolCallId`. A
+`PostToolUse` that arrives later replaces `unfinished`, as in the reducer. Known limitation: the
+reducer keeps at most 32 open calls per agent; a call it dropped for that reason never gets an
+`unfinished` frame and stays `running` in the feed.
 
 ```text
 { "toolCallId", "agentId", "toolName"?, "phase": "running" | "succeeded" | "failed" | "unfinished",

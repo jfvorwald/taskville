@@ -103,3 +103,33 @@ describe("camera pose (turn about the vertical axis through the city center)", (
     expectPose(cam, home);
   });
 });
+
+describe("camera pose pan (round 3, S3)", () => {
+  it("slides the default pose over the ground with no turn, and puts it back at zero", () => {
+    const cam = defaultCamera();
+    const home = snapshot(cam);
+    const pose = createCameraPose();
+    pose.apply(cam, 0);
+    pose.apply(cam, 0, 3, -2);
+    expect(cam.position.x).toBeCloseTo(13, 6);
+    expect(cam.position.y).toBeCloseTo(8, 6);
+    expect(cam.position.z).toBeCloseTo(8, 6);
+    expect(cam.quaternion.angleTo(home.q)).toBeCloseTo(0, 6);
+    pose.apply(cam, 0, 0, 0);
+    expectPose(cam, home);
+  });
+
+  it("pans in world axes after the turn, without accumulating across calls", () => {
+    const cam = defaultCamera();
+    const home = snapshot(cam);
+    const pose = createCameraPose();
+    pose.apply(cam, 0);
+    pose.apply(cam, 90, 1, 1);
+    pose.apply(cam, 90, 1, 1);
+    expect(cam.position.x).toBeCloseTo(11, 6);
+    expect(cam.position.y).toBeCloseTo(8, 6);
+    expect(cam.position.z).toBeCloseTo(-9, 6);
+    pose.apply(cam, 0, 0, 0);
+    expectPose(cam, home);
+  });
+});

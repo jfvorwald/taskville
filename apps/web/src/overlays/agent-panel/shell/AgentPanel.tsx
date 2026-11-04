@@ -1,5 +1,13 @@
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import { highlightStore } from "../../../city/crew/highlight/highlightStore.ts";
 import { shouldClearOnEscape } from "../../../city/interaction/escape.ts";
 import type { Agent } from "../../../data/domain.ts";
 import { useData } from "../../../data/react.ts";
@@ -7,6 +15,9 @@ import { type DataStore, dataStore } from "../../../data/store.ts";
 import { HowDidWeGetHere } from "../../../history/ui/how-did-we.tsx";
 import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
+import { getSettingsStore } from "../../settings/store.ts";
+import { displayPath } from "../code/displayPath.ts";
+import { CrewTab } from "../crew/CrewTab.tsx";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
 import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
 import styles from "./agent-panel.module.css";
@@ -77,6 +88,12 @@ export function AgentPanel({
 }: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
+  const settings = getSettingsStore();
+  const { privacyMode } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
   const [nowMs, setNowMs] = useState(() => store.now());
   const [chosen, setChosen] = useState<PanelTab>(initialTab);
 
@@ -113,6 +130,23 @@ export function AgentPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [known, selectedId, agents, teams, select]);
+
+  const results = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const a of agents) {
+      if (a.resultSummary !== undefined) {
+        out[a.id] = privacyMode ? "Summary hidden by the privacy setting" : a.resultSummary;
+      }
+    }
+    return out;
+  }, [agents, privacyMode]);
+
+  const openId = known && chosen === "crew" ? agent.id : null;
+  // The city dims everyone outside the family while this agent's Crew tab is open.
+  useEffect(() => {
+    highlightStore.open(openId);
+    return () => highlightStore.open(null);
+  }, [openId]);
 
   if (agent === undefined || state === null) return null;
 
@@ -178,7 +212,7 @@ export function AgentPanel({
         </p>
         {file === null ? null : (
           <p className={styles.file} data-testid="agent-panel-file">
-            {file}
+            {displayPath(file, { privacy: privacyMode })}
           </p>
         )}
       </header>
@@ -211,6 +245,17 @@ export function AgentPanel({
             <ConnectedFilesTab agentId={agent.id} />
           ) : active === "files" ? (
             <p>Files are not available for this history view.</p>
+          ) : active === "crew" ? (
+            <CrewTab
+              parentId={agent.id}
+              agents={state.agents}
+              activity={state.activity}
+              results={results}
+              nowMs={nowMs}
+              teams={teams}
+              onSelect={select}
+              onHover={(id) => highlightStore.hover(id)}
+            />
           ) : null}
         </TabPanel>
       </Tabs>

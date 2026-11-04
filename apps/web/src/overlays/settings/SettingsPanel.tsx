@@ -1,7 +1,9 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { Button, Label, Radio, RadioGroup, Switch } from "react-aria-components";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { StrictAttributionSection } from "./attribution/StrictAttributionSection.tsx";
+import { useSettingsOpen, useToggleSettings } from "./open.tsx";
 import { SoundSection } from "./SoundSection.tsx";
 import styles from "./settings.module.css";
 import {
@@ -32,8 +34,7 @@ export interface SettingsPanelProps extends OverlayProps {
 }
 
 /**
- * The settings sidebar: theme, day or night, reduced motion, sound, and a placeholder for code
- * privacy. Values live in the settings store (local to this viewer), not in the engine.
+ * The settings sidebar: theme, day or night, reduced motion, sound, and hiding code bodies. Values live in the settings store (local to this viewer), not in the engine.
  */
 export function SettingsPanel({
   store = getSettingsStore(),
@@ -42,7 +43,9 @@ export function SettingsPanel({
   onThemeChange = (id) => store.set("theme", id),
 }: SettingsPanelProps) {
   const values = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const [open, setOpen] = useState(false);
+  const state = useSettingsOpen();
+  const [open] = state;
+  const toggle = useToggleSettings(state);
   // The theme system falls back to the default for an unknown id, so the panel shows that.
   const inUse = themeId ?? values.theme;
   const theme = themes.some((t) => t.id === inUse) ? inUse : DEFAULT_SETTINGS.theme;
@@ -53,7 +56,8 @@ export function SettingsPanel({
         className={styles.toggle}
         aria-expanded={open}
         aria-controls="settings-panel-body"
-        onPress={() => setOpen((o) => !o)}
+        data-settings-toggle=""
+        onPress={toggle}
       >
         Settings
       </Button>
@@ -121,17 +125,17 @@ export function SettingsPanel({
           >
             Desktop notifications
           </Switch>
-          <Switch
-            className={styles.switch}
-            isDisabled
-            aria-label="Hide code in the city"
-            aria-describedby="settings-hide-code-note"
-          >
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={values.privacyMode}
+              aria-checked={values.privacyMode}
+              onChange={(event) => store.set("privacyMode", event.target.checked)}
+            />
             Hide code in the city
-            <span id="settings-hide-code-note" className={styles.note}>
-              Coming later
-            </span>
-          </Switch>
+          </label>
+          <StrictAttributionSection store={store} />
         </div>
       ) : null}
     </InteractiveRegion>

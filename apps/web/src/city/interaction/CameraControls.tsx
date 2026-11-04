@@ -17,7 +17,8 @@ export function CameraControls({ selection }: OverlayProps) {
     cameraRig.getSnapshot,
     cameraRig.getSnapshot,
   );
-  const isDefault = view.azimuthOffset === 0 && view.zoom === 1;
+  const isDefault =
+    view.azimuthOffset === 0 && view.zoom === 1 && view.panX === 0 && view.panZ === 0;
   return (
     <InteractiveRegion
       className={styles.bar}

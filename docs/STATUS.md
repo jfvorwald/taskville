@@ -2,7 +2,7 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-02 01:26 UTC. **Main:** 33baf17. **State:** M4 complete to G4 #75, still open awaiting human review. M5/M6 remain in progress under the owner authorization. M5.02 feature branch contains child PR322; this is not main or milestone acceptance.
+**Updated:** 2026-11-04 02:30 UTC. **Main:** 53563fe. **State:** G4 #75 closed by the owner ("keep going", 2026-11-02). M5 and M6 in progress under the owner's M4 to M6 authorization. Decisions #333, #336, #198 and #289 answered by the owner on 2026-11-03; all four took the default (applied below).
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
@@ -32,14 +32,31 @@ Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with
 
 ## In progress: M5 Crews and code feed and M6 History
 
-- Merged on main: M5.01 #56 (#291), M5.03 #58 (#301), M5.05 #59 (#292), M5.06 #64 (#307), M5.07 #65 (#303), M5.16 #296 (#298), M6.01 #60 (#282), M6.02 #68 (#300), M6.03 #73 (#306). Live GitHub states for #307/#306 verified during this integration.
-- M5.02 #57: parent PR321 is ready for review. Child PR322 merged normally into M5.02 at5df1f07, with exact source/test equality to reviewed fcc7638. Final source gate4,259 and web1,434 pass; focused lifecycle browser14 pass. Broader browser51 pass/1frame-wait failure, unchanged isolated file1pass. Panel6532 and independent source reviews pass. Required 45.92-second seed7 demo clip recorded with99accepted events/two subagents and two finishes; final parent panel6535 and exact head67c41c9 CI PASS. Normal main merge refused by base policy;#295 blocks#57/#314. Parent main integration is not accepted.
-- M6.04 #77 / PR324: source dacc4a1, panel6549 and independent code/security reviews PASS. Fast gate4,187, web1,362 and8feature/full-scene browser tests pass. CI check/web-smoke PASS on58b3a79 (run41367923311). Normal main merge refused by base policy;#295 blocks#77. #323 remains awaiting human review, following existing architecture default.
-- M6.05 #78 / PR326: owner explicitly accepted support only for producers with explicit current-task IDs; decision#325 closed and scope blocker removed. Current Claude Code activity remains unsupported, without invented attribution. Four browser tests and missing-creation mutation pass; remote CI passed ond33caeb. Required panel6555 is historical FAIL awaiting confirmation under accepted scope; root gate and independent final code/security reviews remain pending. Claude resumes here.
-- M6.06 #74 / PR327: source97fe8a8, individual6573/panel6576 and independent code/security PASS;39affectedbrowser/4,187fastgate PASS. Exact head0246bf2 CI check/web-smoke PASS(run41372066094). Normal main merge refused;#295 blocks#74. Branch fixes historical lighting/live-effect, anchor/paused-quip and failed/overlapping-seek findings; no main acceptance claimed.
-- Open roadmap work, verified from GitHub: M5.04 #63, M5.08 #66, M5.09 #71, M5.10 #67, M5.11 #72, M5.12 #104, M5.13 #175; M6.04 #77, M6.05 #78, M6.06 #74, M6.07 #79; retros #99/#100 and owner gates #76/#80. Open follow-ups #279, #281, #285, #311, #312 and #318 remain.
-- Reviewed branches M5.02 #57/PR321, M5.17 #313/PR320 and M5.19 #315/PR319 were blocked by normal main merge policy; #295 remains open. M5.18 #314 source is integrated into the parent feature branch; its issue remains open until the main stack integrates. No admin bypass or repository configuration change was used.
-- Performance: the M3 budget shortfall (#268) stays open and unmet; lively-day seeks miss 300 ms (#279).
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M5.01 #56, M5.03 #58, M5.05 #59, M5.06 #64, M5.07 #65, M5.16 #296 | #291, #301, #292, #307, #303, #298 | merged earlier |
+| M6.01 #60, M6.02 #68, M6.03 #73 | #282, #300, #306 | merged earlier |
+| M5.19 #315 Settings reachable with an agent selected (P0) | #319 | admin-merged 2026-11-02; [report](tasks/M5.19.md) |
+| M5.17 #313 visible evidence, bounded cache | #320 | admin-merged; [report](tasks/M5.17.md) |
+| M5.02 #57 subagent crews (incl. M5.18 #314 via child #322) | #321 | admin-merged; [report](tasks/M5.02.md) |
+| M6.04 #77 back-to-live pill | #324 | lead merged main in (docs-only conflicts); decision #323 default in force; [report](tasks/M6.04.md) |
+| M6.06 #74 replay fidelity | #327 | lead resolved CityRoot and overlay conflicts; panel 6582 PASS; [report](tasks/M6.06.md) |
+| M6.08 #279 replay checkpoints | #330 | lazy plus eager-on-ingest checkpoints; seek worst p95 17.0 and 47.3 ms (load 10 to 12, untimed warm-up); confirming review PASS; follow-up #332; [report](tasks/M6.08.md) |
+| M5.10 #67 stuck attribution for crews | #328 | roborev 6596 and 6619 fixed; confirming review PASS; follow-up #334; [report](tasks/M5.10.md) |
+| M5.20 #318 flaky large-state memory test | #335 | root cause: 892 per-step ingests; batch ingest, 79 ms idle, 933 ms under 40 busy loops; panel 6640 PASS; [report](tasks/M5.20.md) |
+| M5.08 #66 crew tab and family highlight | #329 | render-time highlight (B1), rig ground pan, reduced motion; confirming review PASS after two roborev panels and three fix rounds; result summary pending decision #333; follow-up #337; clip NOT RUN; [report](tasks/M5.08.md) |
+| M5.23 #338 privacy: bound and gate recorded paths (P1 security) | #339 | displayPath rule in hidden cards, Files tab and panel header; rows keyed by path; panel 6653 fixed; re-review 6660 non-leak mediums deferred to #341; [report](tasks/M5.23.md) |
+| M5.09 #71 code rendering, editor links, privacy mode | #331 | shiki 4.5.0 lazy (JS regex engine), text-only rendering, editor links, deny-by-default privacy; security confirmation PASS; action card under privacy is decision #336; crafted-path residual fixed in M5.23 #339; [report](tasks/M5.09.md) |
+| M5.11 #72 crews e2e (replay) | #344 | 4 of 4 pass, ingest-to-panel lag 46 ms (send 51 ms); highlight seen-fail checked; roborev 6677 fixed, 6690 PASS; code review PASS; follow-up #348; [report](tasks/M5.11.md) |
+| M5.25 #342 Crew tab result summary (decision #333 D1) | #346 | capped at 280 code points, hidden under privacy; REDUCER_VERSION 7; panel 6699 PASS, re-review 6713 answered (v7 never released); code review BLOCKED then CONFIRMED; [report](tasks/M5.25.md) |
+| M6.11 #332 checkpoint follow-ups | #345 | boot backfill (best effort under a busy lock); seek after reboot with no warm-up worst p95 34.4 ms (lively, 50,005 events); panels 6682 fixed, 6705 PASS; code review fixed, security PASS; follow-up #347; [report](tasks/M6.11.md) |
+| M5.24 #341 privacy group caps and search hit names | #343 | cap 32 plus exact "and N more"; unloaded searches reported as searches; per-window output budget (debugger round after a lifetime ledger starved the tail); panels 6674 and 6694 fixed, post-commit 6683 and 6691 fixed; confirming review CONFIRMED; [report](tasks/M5.24.md) |
+
+- Draft: M6.05 #78 (PR #326), required panel 6555 failed on a valid attribution finding; owner decision #325 limits it to producers with explicit task IDs.
+- Not started: M5.04 #63, M5.12 #104, M5.13 #175, M6.07 #79, M6.09 #311, M6.10 #312, M5.14 #281, M5.15 #285; follow-ups #334, #337, #347 (M6.12), #348 (M5.26); retros #99, #100; gates #76, #80.
+- Flakes this session (load average 25 to 48 from parallel workers and roborev): engine `checkpoints.test.ts` "state at many positions equals a full replay" (5 s timeout, 3 times, passes alone); web `test/wiring/start.test.ts` (twice). The M6.11 timing pins were made baseline-relative.
+- Performance: #268 (web budget) stays open; lively-day seeks now meet 300 ms with checkpoints (#279), existing logs need the boot backfill in #332.
+- Workers this session: Claude Agent-tool specialists (test-writer and implementer at definition defaults, Sonnet; code-reviewer, security-reviewer and debugger at their defaults), in lead-made worktrees under `.worktrees/`. Confirming reviews after the two-panel roborev cap were independent code-reviewer and security-reviewer passes.
 
 ## Done in wave 2 (M3 Live city)
 
@@ -110,6 +127,8 @@ Workers this session (all stopped after handoff, branches frozen, worktrees kept
 
 ## Remaining decisions
 
+Answered 2026-11-03 (defaults applied): #333 (result summary follow-up #342, merged), #336 (action card keeps the exact input under Hide code; documented in tasks/M5.09.md), #198 (accept and document; residual restated at G5), #289 (live permission e2e stays NOT RUN; replay only).
+
 Open owner decision issues: #178, #190, #198. Defaults remain in force; none blocks M3. Closed on the owner's "accept defaults" on 2026-10-31 19:02 EDT: #174, #176 (D2 applied: constitution 1.3.0 allows roadmap tickets with explicit contracts per milestone; M3 Constitution Check runs in its retro), #184, #187, #202, #206. Earlier: #213 (CLI token keeps root registration; residual risk in the G2 summary) and #223 (#219 merged; targeted linear rules, #222 after G2).
 
 SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16's overlap invalid). The 1x eight-hour run remains M7 work.
@@ -149,6 +168,9 @@ SC-006 remains MISSED (valid figure 39.7%, not a quiet machine; 28.7% and M2.16'
 Open decision tickets: [label `waiting:user`](https://github.com/jfvorwald/taskville/issues?q=is%3Aopen+label%3Awaiting%3Auser).
 
 - G4 [#75](https://github.com/jfvorwald/taskville/issues/75): the M4 gate review.
+- [#323](https://github.com/jfvorwald/taskville/issues/323): live chime while browsing history (M6.04); architecture default implemented.
+- [#333](https://github.com/jfvorwald/taskville/issues/333): source of a finished subagent's result summary (M5.08); rows show "not reported" meanwhile.
+- [#336](https://github.com/jfvorwald/taskville/issues/336): whether Hide code also hides the action card's request input (M5.09); default keeps the exact input visible.
 - [#198](https://github.com/jfvorwald/taskville/issues/198): sessions not minted by the run the human started can now approve prompts (M4.11 H1); default accept and document in force.
 - [#289](https://github.com/jfvorwald/taskville/issues/289): live permission e2e writes `~/.claude.json`; NOT RUN meanwhile.
 - [#284](https://github.com/jfvorwald/taskville/issues/284): bridge hook port-squatting residual; defaults applied.
@@ -237,5 +259,7 @@ Targets in the spec are not measurements until a ticket records them here with t
 - Packages still carry M1.02 placeholder tests; owning tickets remove them when real tests land.
 
 ## Next
+
+2026-11-04 carry-over: M5.11, M5.24, M5.25 and M6.11 are merged. Next M5/M6 batch, disjoint Owns: M5.15 #285 and M5.14 #281 (engine feed, run in order, same paths), M6.09 #311 (history Escape), M5.21 #334 (crew attention), M5.22 #337 then M5.26 #348 (crew highlight), M6.12 #347 (checkpoint hardening). Then M5.04 #63, M5.13 #175, M6.07 #79, M6.10 #312, M5.12 #104, the M6.05 #78 draft (decision #325 scope), the M5 and M6 wave runs, retros #99 and #100, and the G5 #76 and G6 #80 summaries.
 
 M4 to its wave run, retro and the G4 summary on #75 (left open for owner review), then M5 and M6 under the same authorization. Still to schedule: #268 (web performance), #236 (theme fidelity), and the post-G3 follow-ups #214, #215, #222 and the browser-test follow-ups in the M3.26 report. The next milestone runs in T3 Code with Claude subagents as the orchestration experiment's comparison run (#231); M3's baseline snapshot is linked from the G3 summary.

@@ -8,9 +8,17 @@ export interface CameraView {
   readonly azimuthOffset: number;
   /** Multiplies the fit zoom. 1 is the default framing. */
   readonly zoom: number;
+  /** Slides the view over the ground in world units (x, z), after the turn. 0 is the default. */
+  readonly panX: number;
+  readonly panZ: number;
 }
 
-export const DEFAULT_VIEW: CameraView = Object.freeze({ azimuthOffset: 0, zoom: 1 });
+export const DEFAULT_VIEW: CameraView = Object.freeze({
+  azimuthOffset: 0,
+  zoom: 1,
+  panX: 0,
+  panZ: 0,
+});
 export const MIN_ZOOM = 0.6;
 export const MAX_ZOOM = 3;
 
@@ -19,6 +27,8 @@ export interface CameraRig {
   subscribe(listener: () => void): () => void;
   orbitBy(degrees: number): void;
   zoomBy(factor: number): void;
+  /** Slides the view over the ground by a world offset; turn and zoom are unchanged. */
+  panBy(dx: number, dz: number): void;
   reset(): void;
   isDefault(): boolean;
 }
@@ -34,7 +44,14 @@ export function createCameraRig(): CameraRig {
   let view: CameraView = DEFAULT_VIEW;
   const listeners = new Set<() => void>();
   const set = (next: CameraView) => {
-    if (next.azimuthOffset === view.azimuthOffset && next.zoom === view.zoom) return;
+    if (
+      next.azimuthOffset === view.azimuthOffset &&
+      next.zoom === view.zoom &&
+      next.panX === view.panX &&
+      next.panZ === view.panZ
+    ) {
+      return;
+    }
     view = next;
     for (const listener of [...listeners]) listener();
   };
@@ -47,14 +64,18 @@ export function createCameraRig(): CameraRig {
       };
     },
     orbitBy(degrees) {
-      set({ azimuthOffset: wrapDegrees(view.azimuthOffset + degrees), zoom: view.zoom });
+      set({ ...view, azimuthOffset: wrapDegrees(view.azimuthOffset + degrees) });
+    },
+    panBy(dx, dz) {
+      set({ ...view, panX: view.panX + dx, panZ: view.panZ + dz });
     },
     zoomBy(factor) {
       const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.zoom * factor));
-      set({ azimuthOffset: view.azimuthOffset, zoom });
+      set({ ...view, zoom });
     },
     reset: () => set(DEFAULT_VIEW),
-    isDefault: () => view.azimuthOffset === 0 && view.zoom === 1,
+    isDefault: () =>
+      view.azimuthOffset === 0 && view.zoom === 1 && view.panX === 0 && view.panZ === 0,
   };
 }
 

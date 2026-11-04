@@ -143,7 +143,9 @@ describe("M5.07 production sidebar precedence", () => {
 
     selectionStore.select(AGENT);
     await expect.element(page.getByTestId("agent-panel")).toHaveAttribute("data-agent-id", AGENT);
-    expect(settings().elements()).toHaveLength(0);
+    // #315: the Settings toggle is always present; the panel still holds the sidebar.
+    await expect.element(settings()).toBeVisible();
+    expect(sidebar()?.contains(page.getByTestId("agent-panel").element())).toBe(true);
     await page.getByRole("tab", { name: "Files", exact: true }).click();
     await expect.element(row()).toHaveAttribute("data-edit-count", "1");
     await row().click();
@@ -191,13 +193,15 @@ describe("M5.07 production sidebar precedence", () => {
         files: row().elements().length > 0,
         settings: settings().elements().length > 0,
       }))
-      .toEqual({ card: true, panel: false, files: false, settings: false });
+      .toEqual({ card: true, panel: false, files: false, settings: true });
     await expect.element(page.getByTestId("action-card")).toBeVisible();
     expect(document.querySelectorAll('[data-slot="sidebar"]')).toHaveLength(1);
     expect(sidebar()?.contains(page.getByTestId("action-card").element())).toBe(true);
     expect(page.getByTestId("agent-panel").elements()).toHaveLength(0);
     expect(page.getByRole("tab", { name: "Files", exact: true }).elements()).toHaveLength(0);
-    expect(settings().elements()).toHaveLength(0);
+    // #315: the Settings toggle is always present; the card still holds the sidebar.
+    await expect.element(settings()).toBeVisible();
+    expect(sidebar()?.contains(page.getByTestId("action-card").element())).toBe(true);
     await expect
       .poll(() => calls.find((c) => c.url.pathname === `/v1/requests/${REQUEST}/input`))
       .toBeDefined();
@@ -227,7 +231,9 @@ describe("M5.07 production sidebar precedence", () => {
     expect(page.getByTestId("agent-panel").elements()).toHaveLength(0);
     expect(page.getByRole("tab", { name: "Files", exact: true }).elements()).toHaveLength(0);
     expect(row().elements()).toHaveLength(0);
-    expect(settings().elements()).toHaveLength(0);
+    // #315: the Settings toggle is always present; the card still holds the sidebar.
+    await expect.element(settings()).toBeVisible();
+    expect(sidebar()?.contains(page.getByTestId("action-card").element())).toBe(true);
 
     selectionStore.select(null);
     await expect.element(page.getByTestId("action-card")).not.toBeInTheDocument();
@@ -238,7 +244,9 @@ describe("M5.07 production sidebar precedence", () => {
     selectionStore.select(AGENT);
     await expect.element(page.getByTestId("agent-panel")).toHaveAttribute("data-agent-id", AGENT);
     expect(page.getByTestId("action-card").elements()).toHaveLength(0);
-    expect(settings().elements()).toHaveLength(0);
+    // #315: the Settings toggle is always present; the panel still holds the sidebar.
+    await expect.element(settings()).toBeVisible();
+    expect(sidebar()?.contains(page.getByTestId("agent-panel").element())).toBe(true);
     // Default tab persistence across a remount is not contracted. Select Files again.
     await page.getByRole("tab", { name: "Files", exact: true }).click();
     await expect.element(row()).toBeVisible();

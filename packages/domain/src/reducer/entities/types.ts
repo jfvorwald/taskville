@@ -47,6 +47,8 @@ export interface Agent {
   readonly firstSeenAt: string;
   readonly lastSeenAt: string;
   readonly finishedAt?: string;
+  /** The `agent.finished` summary, capped at REASON_MAX_CHARS. Absent when missing or empty. */
+  readonly resultSummary?: string;
   /** Tool calls whose start was seen. A finish whose start never arrives is not counted. */
   readonly toolCallCount: number;
   readonly consecutiveToolFailures: number;

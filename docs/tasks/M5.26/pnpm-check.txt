@@ -1,0 +1,178 @@
+$ pnpm run typecheck && pnpm run lint && pnpm run test
+$ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+$ biome check .
+fixtures/claude-code/permission/spike-server.mjs:16:26 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    14 │ const log = (o) => {
+    15 │   const rec = { ts: new Date().toISOString(), tRel: ((Date.now() - t0) / 1000).toFixed(3), ...o };
+  > 16 │   fs.appendFileSync(LOG, JSON.stringify(rec) + "\n");
+       │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    17 │   console.log(JSON.stringify(rec).slice(0, 300));
+    18 │ };
+  
+  i Template literals are easier to read than a chain of + operators and quotes, and they avoid mistakes with spaces and escaped quotes.
+  
+  i Unsafe fix: Use a template literal.
+  
+     14  14 │   const log = (o) => {
+     15  15 │     const rec = { ts: new Date().toISOString(), tRel: ((Date.now() - t0) / 1000).toFixed(3), ...o };
+     16     │ - ··fs.appendFileSync(LOG,·JSON.stringify(rec)·+·"\n");
+         16 │ + ··fs.appendFileSync(LOG,·`${JSON.stringify(rec)}\n`);
+     17  17 │     console.log(JSON.stringify(rec).slice(0, 300));
+     18  18 │   };
+  
+
+apps/web/src/audio/index.ts:9:52 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+     7 │ import { loadAmbientLoop } from "./loops.ts";
+     8 │ import { getSoundSettingsStore } from "./settings.ts";
+   > 9 │ import { type ChimingSoundscape, createSoundscape, type Soundscape } from "./soundscape.ts";
+       │                                                    ^^^^^^^^^^^^^^^
+    10 │ 
+    11 │ export type { AudioBackend, Cue } from "./backend.ts";
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+    9 │ import·{·type·ChimingSoundscape,·createSoundscape,·type·Soundscape·}·from·"./soundscape.ts";
+      │                                                    ----------------                         
+
+apps/web/src/city/crew/highlight/CrewHighlight.order.browser.test.tsx:128:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━
+
+  ! This variable wait is unused.
+  
+    126 │ }
+    127 │ 
+  > 128 │ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        │       ^^^^
+    129 │ 
+    130 │ /** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend wait with an underscore.
+  
+    126 126 │   }
+    127 127 │   
+    128     │ - const·wait·=·(ms:·number)·=>·new·Promise((r)·=>·setTimeout(r,·ms));
+        128 │ + const·_wait·=·(ms:·number)·=>·new·Promise((r)·=>·setTimeout(r,·ms));
+    129 129 │   
+    130 130 │   /** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+  
+
+Checked 910 files in 820ms. No fixes applied.
+Found 2 warnings.
+Found 1 info.
+$ vitest run
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.26
+
+ ❯ |@taskville/engine| test/timelines/checkpoints-followups.test.ts (20 tests | 1 failed) 41401ms
+   ❯ busy_timeout is restored after stateAtSequence (4)
+     × foreign-lock path: the timeout is back to 5000 ms after upkeep gave up 1544ms
+(node:20838) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ |@taskville/web| test/wiring/start.test.ts (8 tests | 1 failed) 7311ms
+   ❯ startWiring: ?theme= in the address (3)
+     × selects the named theme and leaves the stored theme setting alone 5997ms
+(node:21239) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21313) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21449) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21482) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21531) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21619) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21623) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21670) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:21692) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:22573) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:22781) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:22738) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:22791) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ |@taskville/engine| test/storage/memory.test.ts (5 tests | 1 failed) 64512ms
+   ❯ SQLite memory and WAL settings (2)
+     × keeps the -wal file bounded through a long ingest 62566ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |@taskville/engine| test/storage/memory.test.ts > SQLite memory and WAL settings > keeps the -wal file bounded through a long ingest
+Error: Test timed out in 60000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/storage/memory.test.ts:41:3
+     39|   });
+     40|
+     41|   it("keeps the -wal file bounded through a long ingest", () => {
+       |   ^
+     42|     const storage = open();
+     43|     try {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |@taskville/engine| test/timelines/checkpoints-followups.test.ts > busy_timeout is restored after stateAtSequence > foreign-lock path: the timeout is back to 5000 ms after upkeep gave up
+AssertionError: expected 493.3195420000011 to be less than 400
+ ❯ test/timelines/checkpoints-followups.test.ts:146:19
+    144|     const { extra, value } = lockCost(clearCache, () => stateAtSequenc…
+    145|     expect(value).toEqual(fullReplay(1250));
+    146|     expect(extra).toBeLessThan(400); // the 250 ms budget is shared by…
+       |                   ^
+    147|     db().exec("BEGIN IMMEDIATE");
+    148|     try {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |@taskville/web| test/wiring/start.test.ts > startWiring: ?theme= in the address > selects the named theme and leaves the stored theme setting alone
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/wiring/start.test.ts:69:3
+     67|
+     68| describe("startWiring: ?theme= in the address", () => {
+     69|   it("selects the named theme and leaves the stored theme setting alon…
+       |   ^
+     70|     const app = await boot("?theme=steampunk");
+     71|     dispose = app.startWiring();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  3 failed | 281 passed (284)
+      Tests  3 failed | 4343 passed (4346)
+   Start at  20:59:44
+   Duration  129.25s (tests 70%, import 24%, transform 5%, worker 1%)
+
+    Isolate  284 workers spawned · ~598ms startup each (spawn + environment, per file)
+             at least ~23.65s faster with isolate: false — reuses workers across files instead of one per file
+
+[ELIFECYCLE] Test failed. See above for more details.
+[ELIFECYCLE] Command failed with exit code 1.
+exit 1

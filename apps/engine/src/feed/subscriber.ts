@@ -25,11 +25,19 @@ export interface FeedSubscriberOptions {
   drainTimeoutMs: number;
 }
 
-/** A frame waiting to be written: the ToolCall as of the event with this ingest sequence. */
+/**
+ * A frame waiting to be written: the ToolCall as of the event with this ingest sequence. One
+ * event can give several frames (a boundary closing parallel calls); only the last carries the
+ * `id`, so a client that resumes mid-event gets the whole event again (idempotent snapshots).
+ */
 interface PendingFrame {
   sequence: number;
   call: FeedToolCall;
+  last: boolean;
 }
+
+const framesOf = (sequence: number, calls: FeedToolCall[]): PendingFrame[] =>
+  calls.map((call, i) => ({ sequence, call, last: i === calls.length - 1 }));
 
 /**
  * One write, raced against the drain timeout: a client that never reads would otherwise hold its
@@ -104,13 +112,13 @@ export class FeedSubscriber implements HubSubscriber {
       this.#phase = "backlog";
     } else {
       this.#lastQueued = seq;
-      const call = this.#tracker.apply(event);
-      if (call !== undefined && seq > this.#options.after) {
-        if (this.#queue.length >= this.#options.queueLimit) {
+      const calls = this.#tracker.applyAll(event);
+      if (calls.length > 0 && seq > this.#options.after) {
+        if (this.#queue.length + calls.length > this.#options.queueLimit) {
           this.#cutOff("slow_consumer");
           return;
         }
-        this.#queue.push({ sequence: seq, call });
+        this.#queue.push(...framesOf(seq, calls));
       }
     }
     this.#wake?.();
@@ -174,9 +182,9 @@ export class FeedSubscriber implements HubSubscriber {
     for (const event of this.#options.storage.events(this.#options.projectId, this.#lastQueued)) {
       read++;
       this.#lastQueued = event.ingestSequence;
-      const call = this.#tracker.apply(event);
-      if (call !== undefined && event.ingestSequence > this.#options.after) {
-        frames.push({ sequence: event.ingestSequence, call });
+      const calls = this.#tracker.applyAll(event);
+      if (calls.length > 0 && event.ingestSequence > this.#options.after) {
+        frames.push(...framesOf(event.ingestSequence, calls));
       }
       if (read === BACKLOG_PAGE) break;
     }
@@ -194,7 +202,11 @@ export class FeedSubscriber implements HubSubscriber {
         frame.call.phase,
       ),
     };
-    return this.#write("toolcall", JSON.stringify(data), String(frame.sequence));
+    return this.#write(
+      "toolcall",
+      JSON.stringify(data),
+      frame.last ? String(frame.sequence) : undefined,
+    );
   }
 
   async #write(event: string, data: string, id?: string): Promise<void> {

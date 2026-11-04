@@ -3,7 +3,7 @@ import type { Database } from "./sqlite.ts";
 
 // Schema migrations, applied in order inside one BEGIN IMMEDIATE transaction.
 // A migration is never edited after it ships; changes are new migrations.
-// Requests, commands, checkpoints, archives, and settings tables arrive with
+// Requests, commands, archives, and settings tables arrive with
 // the milestones that need them (data-model.md, decision #114).
 
 const V1 = `
@@ -91,7 +91,20 @@ CREATE TABLE pairings (
 ) STRICT;
 `;
 
-const MIGRATIONS: readonly string[] = [V1];
+// Replay checkpoints (ARCHITECTURE.md 7.4): disposable caches of reducer state, tagged with the
+// reducer version and the state hash. Additive; nothing else reads or depends on them.
+const V2 = `
+CREATE TABLE checkpoints (
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  sequence INTEGER NOT NULL CHECK (sequence >= 1),
+  reducer_version INTEGER NOT NULL,
+  state_hash TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  PRIMARY KEY (project_id, sequence)
+) STRICT;
+`;
+
+const MIGRATIONS: readonly string[] = [V1, V2];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 

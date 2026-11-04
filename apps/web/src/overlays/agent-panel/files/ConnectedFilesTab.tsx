@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
 import { useCurrentProjectId } from "../../../data/project.ts";
 import { readSseFrames } from "../../../data/sse.ts";
 import { SESSION_HEADER } from "../../../pairing/pair.ts";
 import { useSession } from "../../../pairing/session.tsx";
+import { getSettingsStore } from "../../settings/store.ts";
 import { FilesTab, type FilesTabProps, isEdit } from "./FilesTab.tsx";
 
 /** Only the default Files slot owns transport; injected tabs remain controlled. */
@@ -25,6 +26,12 @@ function SelectedFiles({
   agentId: string;
   secret: string;
 }) {
+  const settings = getSettingsStore();
+  const { privacyMode } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
   const [frames, setFrames] = useState<FilesTabProps["frames"]>([]);
   const [evidence, setEvidence] = useState<Record<string, EvidenceResponse>>({});
   const [unavailable, setUnavailable] = useState(false);
@@ -171,9 +178,17 @@ function SelectedFiles({
             break;
           }
           if (raw.event !== "toolcall") continue;
-          const id = Number(raw.id);
+          // A frame with no id is an earlier frame of an event whose last frame carries the id: it
+          // is applied, ordered just after the cursor, but only an identified frame moves it.
+          const identified = raw.id !== undefined && raw.id !== "";
+          const id = identified ? Number(raw.id) : cursor + 1;
           const data: ToolCallFrame = JSON.parse(raw.data ?? "null");
-          if (!Number.isSafeInteger(id) || id <= cursor || data?.agentId !== agentId) continue;
+          if (
+            !Number.isSafeInteger(id) ||
+            (identified && id <= cursor) ||
+            data?.agentId !== agentId
+          )
+            continue;
           if (
             !Array.isArray(data.filePaths) ||
             !data.filePaths.every((path) => typeof path === "string") ||
@@ -182,7 +197,7 @@ function SelectedFiles({
             !data.evidence
           )
             throw new Error("Invalid feed frame");
-          cursor = id;
+          if (identified) cursor = id;
           setFrames((old) => [...old, { id, data }]);
         }
       } catch {
@@ -207,6 +222,7 @@ function SelectedFiles({
         agentId={agentId}
         frames={frames}
         evidence={evidence}
+        privacy={privacyMode}
         onSelectionChange={onSelectionChange}
       />
     </>

@@ -11,6 +11,7 @@ export interface RequestLike {
   reason?: { text: string } | undefined;
   answerable: boolean;
   state: string;
+  heuristic?: boolean | undefined;
 }
 
 type Requests = Readonly<Record<string, RequestLike>>;
@@ -63,6 +64,7 @@ export function cardTarget(args: {
     sinceMs: Date.parse(record.since),
     answerable: request?.answerable === true,
     requestState: request?.state ?? "open",
+    ...(request?.heuristic === true ? { heuristic: true } : {}),
   };
 }
 

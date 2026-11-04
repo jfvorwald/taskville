@@ -1,0 +1,55 @@
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.26/apps/web
+
+stderr | src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > gl.render wrapper only syncs the main scene > a render of another scene does not forget the main scene's lift
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+stderr | src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > unmount cleanup > takes an active lift off the bot
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+ ❯ |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx (7 tests | 2 failed) 29760ms
+   ❯ gl.render wrapper only syncs the main scene (2)
+     × a render of another scene does not forget the main scene's lift 5667ms
+   ❯ unmount cleanup (1)
+     × takes an active lift off the bot 5231ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > gl.render wrapper only syncs the main scene > a render of another scene does not forget the main scene's lift
+AssertionError: expected 0 to be greater than 0.01
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/CrewHighlight.safety.browser.test.tsx/gl-render-wrapper-only-syncs-the-main-scene---a-render-of-another-scene-does-not-forget-the-main-scene-s-lift.png
+
+ ❯ src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx:174:39
+    172|     await vi.waitFor(() => {
+    173|       h.drawMain();
+    174|       expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
+       |                                       ^
+    175|     }, FRAME);
+    176|     h.gl.render(new Scene(), h.camera);
+ ❯ checkCallback node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/index.aTZaPVhf-DvCp5hGw.js?v=1819f771:5427:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > unmount cleanup > takes an active lift off the bot
+AssertionError: expected 0 to be greater than 0.01
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/CrewHighlight.safety.browser.test.tsx/unmount-cleanup---takes-an-active-lift-off-the-bot.png
+
+ ❯ src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx:248:39
+    246|     await vi.waitFor(() => {
+    247|       h.drawMain();
+    248|       expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
+       |                                       ^
+    249|     }, FRAME);
+    250|     // Unmount inside the hop (450 ms), with no draw in between.
+ ❯ checkCallback node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/index.aTZaPVhf-DvCp5hGw.js?v=1819f771:5427:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 5 passed (7)
+   Start at  20:55:18
+   Duration  62.42s (tests 52%, import 47%, worker 1%)
+

@@ -4,6 +4,7 @@ import { type DataStore, dataStore } from "../../data/store.ts";
 import { ACTION_CARD_ID, ActionCard, type CardTarget } from "../../overlays/action-card/index.ts";
 import { AgentList } from "../../overlays/agent-list/AgentList.tsx";
 import { AGENT_PANEL_ID, AgentPanel } from "../../overlays/agent-panel/shell/index.ts";
+import { Bubbles, bubblesOverlay } from "../../overlays/bubbles/Bubbles.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../overlays/host/types.ts";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
 import { recordedCardTarget } from "./recordedTarget.ts";
@@ -84,4 +85,14 @@ export const presentedAgentPanelOverlay: OverlayDefinition = {
   slot: "sidebar",
   modes: ["live", "history"],
   Component: PresentedAgentPanel,
+};
+
+function PresentedBubbles(props: OverlayProps) {
+  const { store } = useContext(Context);
+  return <Bubbles {...props} store={store} />;
+}
+
+export const presentedBubblesOverlay: OverlayDefinition = {
+  ...bubblesOverlay,
+  Component: PresentedBubbles,
 };
