@@ -7,7 +7,7 @@ import { DEFAULT_PROJECT_ID, selectProject } from "../../../data/project.ts";
 import { SessionProvider } from "../../../pairing/session.tsx";
 import { getSettingsStore } from "../../settings/store.ts";
 import { ConnectedLiveTab } from "./ConnectedLiveTab.tsx";
-import { AGENT, bodyOf, PROJECT, seedStore } from "./liveKit.tsx";
+import { AGENT, bodyOf, PROJECT, paint, seedStore } from "./liveKit.tsx";
 
 // M5.24 red round 2 (roborev 6674, LiveTab.tsx:575): through the connected tab, under Hide code, a
 // visible collapsed Grep or Glob group shows hit filenames that exist only in output evidence, so
@@ -253,10 +253,11 @@ function accounted(): number[] {
 }
 
 describe.each(["Grep", "Glob"] as const)("connected privacy %s budget across groups", (tool) => {
-  it("keeps total output fetches within one budget that fits the cache", async () => {
+  it("requests no more bodies for a static window than the cache holds", async () => {
     await mount(manyGroups(tool), true);
     await new Promise((r) => setTimeout(r, 1200));
-    // Standalone calls take cache space first; the search groups share what is left.
+    // The view is static, so everything fetched is the current window: standalone calls take
+    // their input and output bodies first, and search outputs share what is left.
     expect(searchOutputs().size).toBeGreaterThan(0);
     expect(searchOutputs().size).toBeLessThanOrEqual(CACHE - standalone().size);
   });
@@ -293,5 +294,152 @@ describe.each(["Grep", "Glob"] as const)("connected privacy %s budget across gro
     expect(text()).toContain("hit-001-0-file.ts");
     expect(text()).toContain("results of 1 more search not loaded");
     expect(text()).not.toContain("1 more searches");
+  });
+});
+
+// M5.24 red round 5 (confirming review of green round 4): the budget is per visible window, not a
+// lifetime ledger for the stream. A live tail keeps loading, evicted bodies are fetched again when
+// their call is visible again, and a static view never refetches.
+
+interface Live {
+  push: (call: ToolCallFrame) => void;
+  fetches: Map<string, number>;
+}
+
+/** A stream the test feeds one frame at a time, so a tail-following view can scroll through it. */
+function serveLive(delay: (id: string, nth: number) => number = () => 0): Live {
+  const live: Live = { push: () => {}, fetches: new Map() };
+  let next = 0;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), location.origin);
+    if (/^\/v1\/agents\/[^/]+\/feed$/.test(url.pathname)) {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            live.push = (call) => {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `id: ${++next}\nevent: toolcall\ndata: ${JSON.stringify(call)}\n\n`,
+                ),
+              );
+            };
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    }
+    if (url.pathname.startsWith("/v1/evidence/")) {
+      const id = decodeURIComponent(url.pathname.slice("/v1/evidence/".length));
+      const nth = (live.fetches.get(id) ?? 0) + 1;
+      live.fetches.set(id, nth);
+      hits.push(id);
+      const wait = delay(id, nth);
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      const body = evidence[id];
+      return body ? Response.json(body) : new Response(null, { status: 404 });
+    }
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener(
+        "abort",
+        () => reject(new DOMException("aborted", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  return live;
+}
+
+async function mountLive(live: Live) {
+  getSettingsStore().set("privacyMode", true);
+  await render(
+    <SessionProvider value="connected-privacy-window-session">
+      <div
+        data-testid="agent-panel-tab-slot"
+        style={{ height: 460, width: 400, overflowY: "auto" }}
+      >
+        <ConnectedLiveTab agentId={AGENT} store={seedStore()} select={vi.fn()} />
+      </div>
+    </SessionProvider>,
+  );
+  await expect.poll(() => live.push.toString().includes("enqueue")).toBe(true);
+}
+
+/** The real scrolling ancestor of the cards: the slot, or the page when the slot does not scroll. */
+function scroller(): HTMLElement {
+  let node = slot().element().querySelector("article")?.parentElement;
+  while (node) {
+    if (
+      /(auto|scroll)/.test(getComputedStyle(node).overflowY) &&
+      node.scrollHeight > node.clientHeight + 20
+    )
+      return node;
+    node = node.parentElement;
+  }
+  return document.scrollingElement as HTMLElement;
+}
+
+const pace = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe.each(["Grep", "Glob"] as const)("connected privacy %s window budget", (tool) => {
+  it("keeps loading a new group at the tail after 90 standalone calls stream past", async () => {
+    const live = serveLive();
+    await mountLive(live);
+    for (let n = 1; n <= 90; n++) {
+      live.push(bash(n));
+      await pace(25);
+    }
+    live.push(search(tool, 1));
+    live.push(search(tool, 2));
+    await expect.poll(() => text(), { timeout: 5000 }).toContain("hit-001-0-file.ts");
+    expect(text()).toContain("hit-002-0-file.ts");
+    expect(text()).not.toMatch(/searches? not loaded/);
+  });
+
+  it("refetches an evicted group when it is visible again and notes it meanwhile", async () => {
+    // The second and later fetches of a group output are slow, so the pending note is observable.
+    const live = serveLive((id, nth) =>
+      /^cs-(Grep|Glob)-\d+:output$/.test(id) && nth > 1 ? 600 : 0,
+    );
+    await mountLive(live);
+    for (let n = 1; n <= 4; n++) live.push(search(tool, n));
+    live.push(divider(1));
+    await expect.poll(() => text(), { timeout: 4000 }).toContain("hit-004-0-file.ts");
+    // 90 standalone calls (180 bodies) stream past the tail and push the group out of the cache.
+    for (let n = 1; n <= 90; n++) {
+      live.push(bash(n));
+      await pace(25);
+    }
+    await pace(300);
+    const before = live.fetches.get(`cs-${tool}-4:output`) ?? 0;
+    const view = scroller();
+    // Pause following the way a reader does: reach the bottom, then scroll up to the top.
+    view.scrollTop = view.scrollHeight;
+    await paint();
+    view.scrollTop = Math.max(0, view.scrollTop - view.clientHeight);
+    await paint();
+    await expect.element(slot().getByRole("button", { name: /jump to latest/i })).toBeVisible();
+    view.scrollTop = 0;
+    await paint();
+    await expect
+      .poll(() => text(), { timeout: 4000 })
+      .toContain("results of 4 more searches not loaded");
+    await expect.poll(() => text(), { timeout: 5000 }).toContain("hit-004-0-file.ts");
+    expect(text()).not.toMatch(/searches? not loaded/);
+    expect(live.fetches.get(`cs-${tool}-4:output`)).toBeGreaterThan(before);
+  });
+
+  it("fetches each visible output at most once in a static view", async () => {
+    const live = serveLive();
+    await mountLive(live);
+    const calls = [bash(1), bash(2), bash(3)];
+    for (let g = 0; g < 3; g++) {
+      for (let i = 0; i < PER_GROUP; i++) calls.push(search(tool, g * PER_GROUP + i + 1));
+      calls.push(divider(g));
+    }
+    for (const call of calls) live.push(call);
+    await expect.poll(() => text(), { timeout: 4000 }).toMatch(/Searched \d+ times/);
+    await pace(1500);
+    expect(live.fetches.size).toBeGreaterThan(0);
+    for (const [id, count] of live.fetches) expect(count, id).toBeLessThanOrEqual(1);
   });
 });
