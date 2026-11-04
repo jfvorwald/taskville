@@ -7,7 +7,7 @@ import {
   reduce,
 } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
 import {
   openStorage,
@@ -62,6 +62,11 @@ function counting(base: ProjectionReducer<ProjectState>) {
   return counter;
 }
 
+// Every test here folds a 2,600-event log at least once, and a loaded machine (load average 20 to
+// 140 in a parallel `pnpm check`) stretches a fold from tens of ms to seconds. The 5 s default
+// flaked (L-206); a test with a bigger share sets its own.
+vi.setConfig({ testTimeout: 60_000 });
+
 const dbPath = useDbPath();
 let engine: Engine | undefined;
 let app: ReturnType<typeof bootInProcess>["app"];
@@ -94,24 +99,42 @@ const timed = <T>(fn: () => T): { value: T; ms: number } => {
   return { value, ms: performance.now() - started };
 };
 
+/** Runs per side in lockCost. The minimum of several runs drops the ones a busy CPU stretched. */
+const LOCK_RUNS = 3;
+/** Per-test timeout for tests that fold the log 2 * LOCK_RUNS times; a loaded fold takes seconds. */
+const LOADED_TIMEOUT_MS = 90_000;
+
 /**
  * The time a foreign write lock adds to `run`, in ms. `prepare` puts the data in the same state
- * before each of two runs: one unlocked (the baseline: fold, JSON, sha256, disk) and one with the
- * lock held on `db()`. The difference is lock wait only, so machine load does not move it.
- * Returns the locked run's value too.
+ * before each run: LOCK_RUNS unlocked (the baseline: fold, JSON, sha256, disk) and LOCK_RUNS with
+ * the lock held on `db()`. Each side takes its fastest run, so a stall from machine load (which
+ * only ever adds time) cannot inflate the locked side or deflate the baseline; a real lock wait is
+ * in every locked run, so the minimum still carries it. Returns the last locked run's value too.
  */
-function lockCost<T>(prepare: () => void, run: () => T): { extra: number; value: T } {
-  prepare();
-  const baseline = timed(run).ms;
-  prepare();
-  db().exec("BEGIN IMMEDIATE");
-  let locked: { value: T; ms: number };
-  try {
-    locked = timed(run);
-  } finally {
-    db().exec("ROLLBACK");
+function lockCost<T>(
+  prepare: () => void,
+  run: () => T,
+  runs = LOCK_RUNS,
+): { extra: number; value: T } {
+  const baselines: number[] = [];
+  for (let i = 0; i < runs; i++) {
+    prepare();
+    baselines.push(timed(run).ms);
   }
-  return { extra: locked.ms - baseline, value: locked.value };
+  const lockedMs: number[] = [];
+  let value: T | undefined;
+  for (let i = 0; i < runs; i++) {
+    prepare();
+    db().exec("BEGIN IMMEDIATE");
+    try {
+      const locked = timed(run);
+      lockedMs.push(locked.ms);
+      value = locked.value;
+    } finally {
+      db().exec("ROLLBACK");
+    }
+  }
+  return { extra: Math.min(...lockedMs) - Math.min(...baselines), value: value as T };
 }
 const clearCache = () => void db().exec("DELETE FROM checkpoints");
 
@@ -140,46 +163,65 @@ describe("busy_timeout is restored after stateAtSequence", () => {
     }
   }, 30_000);
 
-  it("foreign-lock path: the timeout is back to 5000 ms after upkeep gave up", () => {
-    const { extra, value } = lockCost(clearCache, () => stateAtSequence(storage(), PROJECT, 1250));
-    expect(value).toEqual(fullReplay(1250));
-    expect(extra).toBeLessThan(400); // the 250 ms budget is shared by all upkeep steps
-    db().exec("BEGIN IMMEDIATE");
-    try {
-      expect(writeWaitMs(storage())).toBeGreaterThan(4500);
-    } finally {
-      db().exec("ROLLBACK");
-    }
-  }, 30_000);
+  it(
+    "foreign-lock path: the timeout is back to 5000 ms after upkeep gave up",
+    () => {
+      const { extra, value } = lockCost(clearCache, () =>
+        stateAtSequence(storage(), PROJECT, 1250),
+      );
+      expect(value).toEqual(fullReplay(1250));
+      expect(extra).toBeLessThan(400); // the 250 ms budget is shared by all upkeep steps
+      db().exec("BEGIN IMMEDIATE");
+      try {
+        expect(writeWaitMs(storage())).toBeGreaterThan(4500);
+      } finally {
+        db().exec("ROLLBACK");
+      }
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
-  it("the budget is shared: even with bad rows to prune and rows to write, total stays under 400 ms", () => {
-    const damaged = () => {
-      clearCache();
-      stateAtSequence(storage(), PROJECT, LOG_LENGTH);
-      db().prepare("UPDATE checkpoints SET state_json = 'x' WHERE sequence IN (500, 1000)").run();
-    };
-    const { extra, value } = lockCost(damaged, () =>
-      stateAtSequence(storage(), PROJECT, LOG_LENGTH),
-    );
-    expect(value).toEqual(fullReplay(LOG_LENGTH));
-    expect(extra).toBeLessThan(400);
-  }, 30_000);
+  it(
+    "the budget is shared: even with bad rows to prune and rows to write, total stays under 400 ms",
+    () => {
+      const damaged = () => {
+        clearCache();
+        stateAtSequence(storage(), PROJECT, LOG_LENGTH);
+        // 2500 is the nearest checkpoint to the seek, so it is read, found bad, deleted and
+        // rewritten: prune, delete and put each need the lock, three waits if the budget is not shared.
+        db().prepare("UPDATE checkpoints SET state_json = 'x' WHERE sequence IN (500, 2500)").run();
+      };
+      const { extra, value } = lockCost(damaged, () =>
+        stateAtSequence(storage(), PROJECT, LOG_LENGTH),
+      );
+      expect(value).toEqual(fullReplay(LOG_LENGTH));
+      expect(extra).toBeLessThan(400);
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // FAILS on main: the budget sets busy_timeout to the remaining 250 ms even on a connection
   // whose own timeout is smaller, so it raises it. Math.min keeps the smaller one.
-  it("never raises a connection whose own busy_timeout is smaller than the budget", () => {
-    const impatient = openStorage(dbPath(), { busyTimeoutMs: 30 });
-    try {
-      // Writing the missing rows needs the lock: it waits about 30 ms, not the 250 ms budget.
-      const { extra, value } = lockCost(clearCache, () =>
-        stateAtSequence(impatient, PROJECT, 1250),
-      );
-      expect(value).toEqual(fullReplay(1250));
-      expect(extra).toBeLessThan(150);
-    } finally {
-      impatient.close();
-    }
-  }, 30_000);
+  it(
+    "never raises a connection whose own busy_timeout is smaller than the budget",
+    () => {
+      const impatient = openStorage(dbPath(), { busyTimeoutMs: 10 });
+      try {
+        // Writing the row at 500 needs the lock: it waits about 10 ms, not the 250 ms budget. The
+        // fold is only 500 events, so eight runs per side are cheap and the minimum is stable.
+        const { extra, value } = lockCost(
+          clearCache,
+          () => stateAtSequence(impatient, PROJECT, 500),
+          8,
+        );
+        expect(value).toEqual(fullReplay(500));
+        expect(extra).toBeLessThan(130);
+      } finally {
+        impatient.close();
+      }
+    },
+    LOADED_TIMEOUT_MS,
+  );
 });
 
 describe("prune takes the write lock only when there is something to prune", () => {
@@ -189,24 +231,32 @@ describe("prune takes the write lock only when there is something to prune", () 
   });
 
   // FAILS on main: prune always runs BEGIN IMMEDIATE and waits out the budget (250 ms).
-  it("prune returns 0 promptly while a foreign connection holds the write lock", () => {
-    const { extra, value } = lockCost(
-      () => {},
-      () => storage().checkpoints().prune(PROJECT, REDUCER_VERSION, LOG_LENGTH),
-    );
-    expect(value).toBe(0);
-    expect(extra).toBeLessThan(100);
-  });
+  it(
+    "prune returns 0 promptly while a foreign connection holds the write lock",
+    () => {
+      const { extra, value } = lockCost(
+        () => {},
+        () => storage().checkpoints().prune(PROJECT, REDUCER_VERSION, LOG_LENGTH),
+      );
+      expect(value).toBe(0);
+      expect(extra).toBeLessThan(100);
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // FAILS on main, same reason: a fully populated cache needs no upkeep at all.
-  it("a seek over a fully populated, healthy cache is not delayed by a foreign write lock", () => {
-    const { extra, value } = lockCost(
-      () => {},
-      () => stateAtSequence(storage(), PROJECT, 1250),
-    );
-    expect(value).toEqual(fullReplay(1250));
-    expect(extra).toBeLessThan(100);
-  });
+  it(
+    "a seek over a fully populated, healthy cache is not delayed by a foreign write lock",
+    () => {
+      const { extra, value } = lockCost(
+        () => {},
+        () => stateAtSequence(storage(), PROJECT, 1250),
+      );
+      expect(value).toEqual(fullReplay(1250));
+      expect(extra).toBeLessThan(100);
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // Pin (passes on main): when there is something to prune, prune still does it.
   it("still removes a row of another version, one beyond the head, and a non-object row", () => {
@@ -316,63 +366,82 @@ describe("boot writes checkpoints for existing logs", () => {
   }
 
   // FAILS on main: rebuildStaleProjections writes the projection only.
-  it("a boot rebuild leaves a trusted checkpoint at every multiple of 500 with no reads", () => {
-    rebootOverLog();
-    expect(sequencesOf(PROJECT)).toEqual([500, 1000, 1500, 2000, 2500]);
-    for (const row of db()
-      .prepare(
-        "SELECT sequence, reducer_version, state_hash, state_json FROM checkpoints WHERE project_id = ?",
-      )
-      .all(PROJECT) as unknown as {
-      sequence: number;
-      reducer_version: number;
-      state_hash: string;
-      state_json: string;
-    }[]) {
-      expect(row.reducer_version).toBe(REDUCER_VERSION);
-      expect(JSON.parse(row.state_json)).toEqual(fullReplay(row.sequence));
-      expect(row.state_hash).toBe(stateHash(REDUCER_VERSION, fullReplay(row.sequence)));
-    }
-  });
+  it(
+    "a boot rebuild leaves a trusted checkpoint at every multiple of 500 with no reads",
+    () => {
+      rebootOverLog();
+      expect(sequencesOf(PROJECT)).toEqual([500, 1000, 1500, 2000, 2500]);
+      for (const row of db()
+        .prepare(
+          "SELECT sequence, reducer_version, state_hash, state_json FROM checkpoints WHERE project_id = ?",
+        )
+        .all(PROJECT) as unknown as {
+        sequence: number;
+        reducer_version: number;
+        state_hash: string;
+        state_json: string;
+      }[]) {
+        expect(row.reducer_version).toBe(REDUCER_VERSION);
+        expect(JSON.parse(row.state_json)).toEqual(fullReplay(row.sequence));
+        expect(row.state_hash).toBe(stateHash(REDUCER_VERSION, fullReplay(row.sequence)));
+      }
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // FAILS on main: the first seek after boot folds all 1250 events.
-  it("a seek right after boot replays at most 250 events", () => {
-    rebootOverLog();
-    const counter = counting(domainReducer);
-    const state = stateAtSequence(storage(), PROJECT, 1250, { reducer: counter.reducer });
-    expect(counter.applied).toBeLessThanOrEqual(250);
-    expect(state).toEqual(fullReplay(1250));
-  });
+  it(
+    "a seek right after boot replays at most 250 events",
+    () => {
+      rebootOverLog();
+      const counter = counting(domainReducer);
+      const state = stateAtSequence(storage(), PROJECT, 1250, { reducer: counter.reducer });
+      expect(counter.applied).toBeLessThanOrEqual(250);
+      expect(state).toEqual(fullReplay(1250));
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // FAILS on main: a reducer version change rebuilds the projection but no checkpoints.
-  it("the first boot after a reducer version change writes checkpoints for the new version", () => {
-    seedLog(storage(), events);
-    const next: ProjectionReducer<ProjectState> = {
-      version: REDUCER_VERSION + 1,
-      initial: (projectId) => ({ ...initialState(projectId), reducerVersion: REDUCER_VERSION + 1 }),
-      apply: (state, event) => ({ ...reduce(state, event), reducerVersion: REDUCER_VERSION + 1 }),
-    };
-    rebuildStaleProjections(storage(), domainReducer); // the old version's projection (and cache)
-    expect(rebuildStaleProjections(storage(), next)).toContain(PROJECT);
-    const rows = db()
-      .prepare("SELECT sequence, reducer_version FROM checkpoints WHERE project_id = ?")
-      .all(PROJECT) as unknown as { sequence: number; reducer_version: number }[];
-    expect(rows.map((r) => r.sequence).sort((a, b) => a - b)).toEqual([
-      500, 1000, 1500, 2000, 2500,
-    ]);
-    expect(rows.every((r) => r.reducer_version === REDUCER_VERSION + 1)).toBe(true);
-  });
+  it(
+    "the first boot after a reducer version change writes checkpoints for the new version",
+    () => {
+      seedLog(storage(), events);
+      const next: ProjectionReducer<ProjectState> = {
+        version: REDUCER_VERSION + 1,
+        initial: (projectId) => ({
+          ...initialState(projectId),
+          reducerVersion: REDUCER_VERSION + 1,
+        }),
+        apply: (state, event) => ({ ...reduce(state, event), reducerVersion: REDUCER_VERSION + 1 }),
+      };
+      rebuildStaleProjections(storage(), domainReducer); // the old version's projection (and cache)
+      expect(rebuildStaleProjections(storage(), next)).toContain(PROJECT);
+      const rows = db()
+        .prepare("SELECT sequence, reducer_version FROM checkpoints WHERE project_id = ?")
+        .all(PROJECT) as unknown as { sequence: number; reducer_version: number }[];
+      expect(rows.map((r) => r.sequence).sort((a, b) => a - b)).toEqual([
+        500, 1000, 1500, 2000, 2500,
+      ]);
+      expect(rows.every((r) => r.reducer_version === REDUCER_VERSION + 1)).toBe(true);
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // Pin: a project whose projection is fresh is not rebuilt, so its checkpoints are left alone.
-  it("a second boot with nothing stale changes no checkpoint rows", () => {
-    rebootOverLog();
-    const before = sequencesOf(PROJECT);
-    engine?.close();
-    const booted = bootInProcess(dbPath());
-    engine = booted.engine;
-    app = booted.app;
-    expect(sequencesOf(PROJECT)).toEqual(before);
-  });
+  it(
+    "a second boot with nothing stale changes no checkpoint rows",
+    () => {
+      rebootOverLog();
+      const before = sequencesOf(PROJECT);
+      engine?.close();
+      const booted = bootInProcess(dbPath());
+      engine = booted.engine;
+      app = booted.app;
+      expect(sequencesOf(PROJECT)).toEqual(before);
+    },
+    LOADED_TIMEOUT_MS,
+  );
 });
 
 // Red round 2 (roborev panel 6682, PR #345): the boot backfill is a disposable cache, so a busy
@@ -386,26 +455,30 @@ describe("boot backfill is best effort under a busy write lock", () => {
     expect(sequencesOf(PROJECT)).toEqual([]);
   }
 
-  it("rebuildStaleProjections does not throw, keeps the projection, and writes nothing", () => {
-    freshProjectionNoCheckpoints();
-    const before = storage().projection(PROJECT);
-    const impatient = openStorage(dbPath(), { busyTimeoutMs: 100 });
-    try {
-      const { extra, value } = lockCost(clearCache, () => {
-        let rebuilt: string[] | undefined;
-        expect(() => {
-          rebuilt = rebuildStaleProjections(impatient, domainReducer);
-        }).not.toThrow();
-        return rebuilt;
-      });
-      expect(value).not.toContain(PROJECT);
-      expect(extra).toBeLessThan(1000);
-    } finally {
-      impatient.close();
-    }
-    expect(storage().projection(PROJECT)).toEqual(before);
-    expect(sequencesOf(PROJECT)).toEqual([]);
-  }, 30_000);
+  it(
+    "rebuildStaleProjections does not throw, keeps the projection, and writes nothing",
+    () => {
+      freshProjectionNoCheckpoints();
+      const before = storage().projection(PROJECT);
+      const impatient = openStorage(dbPath(), { busyTimeoutMs: 100 });
+      try {
+        const { extra, value } = lockCost(clearCache, () => {
+          let rebuilt: string[] | undefined;
+          expect(() => {
+            rebuilt = rebuildStaleProjections(impatient, domainReducer);
+          }).not.toThrow();
+          return rebuilt;
+        });
+        expect(value).not.toContain(PROJECT);
+        expect(extra).toBeLessThan(1000);
+      } finally {
+        impatient.close();
+      }
+      expect(storage().projection(PROJECT)).toEqual(before);
+      expect(sequencesOf(PROJECT)).toEqual([]);
+    },
+    LOADED_TIMEOUT_MS,
+  );
 
   // The M6.11 guard that a non-busy error is rethrown was replaced in M6.12 (#347): the backfill
   // now logs it and boot continues. See checkpoints-hardening.test.ts.
