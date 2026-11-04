@@ -34,7 +34,7 @@ const call = (n: number): ToolCallFrame => ({
   toolCallId: `synthetic-envelope-call-${n}`,
   agentId: A,
   toolName: n === SEND_NEAR_TOP || n === SEND_NEAR_BOTTOM ? "SendMessage" : "Write",
-  phase: "finished",
+  phase: "succeeded",
   startedAt: startedAt(n),
   filePaths: [path(n)],
   evidence: { input: null, output: null },
