@@ -236,7 +236,6 @@ function manyGroups(tool: "Grep" | "Glob") {
   return calls;
 }
 
-
 /** Per group card: loaded names shown plus searches reported as not loaded. */
 function accounted(): number[] {
   const root = slot().element();
