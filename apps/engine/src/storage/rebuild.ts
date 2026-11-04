@@ -126,34 +126,35 @@ function backfillCheckpoints<S>(
   if (missing.size === 0) return;
   const last = Math.max(...missing);
   // Each batch is written as soon as it fills, after stepping past the event cursor, so at most
-  // CHECKPOINT_BATCH rows of state are held between writes.
-  try {
-    cache.withWaitBudget(UPKEEP_WAIT_MS, () => {
-      let state = reducer.initial(projectId);
-      let position = 0;
-      while (position < last) {
-        const rows: CheckpointRow[] = [];
-        for (const event of storage.events(projectId, position)) {
-          state = reducer.apply(state, event);
-          const sequence = event.ingestSequence;
-          position = sequence;
-          if (missing.has(sequence)) {
-            const json = canonicalJson(state);
-            rows.push({
-              sequence,
-              reducerVersion: reducer.version,
-              stateHash: `${reducer.version}:${sha256Hex(json)}`,
-              stateJson: json,
-            });
-          }
-          if (sequence >= last || rows.length >= CHECKPOINT_BATCH) break;
+  // CHECKPOINT_BATCH rows of state are held between writes. Only the checkpoint writes are best
+  // effort; a failed event read or reducer step is not a cache failure and aborts boot.
+  cache.withWaitBudget(UPKEEP_WAIT_MS, () => {
+    let state = reducer.initial(projectId);
+    let position = 0;
+    while (position < last) {
+      const rows: CheckpointRow[] = [];
+      for (const event of storage.events(projectId, position)) {
+        state = reducer.apply(state, event);
+        const sequence = event.ingestSequence;
+        position = sequence;
+        if (missing.has(sequence)) {
+          const json = canonicalJson(state);
+          rows.push({
+            sequence,
+            reducerVersion: reducer.version,
+            stateHash: `${reducer.version}:${sha256Hex(json)}`,
+            stateJson: json,
+          });
         }
-        if (rows.length === 0) break;
-        cache.put(projectId, rows);
+        if (sequence >= last || rows.length >= CHECKPOINT_BATCH) break;
       }
-    });
-  } catch (error) {
-    if (isBusy(error)) return;
-    logger?.warn(upkeepFields(error), "checkpoint backfill failed");
-  }
+      if (rows.length === 0) break;
+      try {
+        cache.put(projectId, rows);
+      } catch (error) {
+        if (!isBusy(error)) logger?.warn(upkeepFields(error), "checkpoint backfill failed");
+        return;
+      }
+    }
+  });
 }
