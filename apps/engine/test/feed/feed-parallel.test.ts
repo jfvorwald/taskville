@@ -154,3 +154,59 @@ describe.each([
     expect(summary(frames)).toEqual([]);
   });
 });
+
+// M5.15 round 2 (roborev 6739): an unregistered helper starts a call in a session before its owner
+// has reported anything. The owner's first event is the turn end, and the reducer establishes the
+// session's owner while reducing that very event, then closes the helper's call. The feed must
+// look the closure up after the event, not in the pre-event state, so the helper's call arrives as
+// unfinished.
+describe("a helper's call closed by a boundary that first establishes session ownership", () => {
+  const HELPER = "late-owner-helper";
+  const OWNER = "late-owner";
+  const LATE_SESSION = "sess-late-owner";
+  const helperStart = {
+    type: "tool_call.started",
+    agentId: HELPER,
+    sessionId: LATE_SESSION,
+    at: at(0),
+    payload: { toolCallId: "toolu_late_helper", toolName: "Read" },
+  };
+  const ownerTurnEnd = {
+    type: "session.turn_ended",
+    agentId: OWNER,
+    sessionId: LATE_SESSION,
+    at: at(5),
+    payload: {},
+  };
+
+  it("sends the helper's call as unfinished in a backlog read", async () => {
+    const h = await start();
+    h.addProject("spike", SPIKE_CWD);
+    ingestRaw(h, "spike", "late-helper", [helperStart]);
+    ingestRaw(h, "spike", "late-owner-end", [ownerTurnEnd]);
+    const boundarySeq = h.engine.storage.head("spike") ?? 0;
+    const reader = await h.openFeed(HELPER);
+    const frames = await drain(reader);
+    await reader.cancel();
+    expect(summary(frames)).toEqual([
+      ["toolu_late_helper", "running"],
+      ["toolu_late_helper", "unfinished"],
+    ]);
+    expect(frames[1]?.id).toBe(boundarySeq);
+    expect(frames[1]?.data.finishedAt).toBe(at(5));
+  });
+
+  it("sends the helper's call as unfinished live", async () => {
+    const h = await start();
+    h.addProject("spike", SPIKE_CWD);
+    ingestRaw(h, "spike", "late-helper", [helperStart]);
+    const reader = await h.openFeed(HELPER);
+    expect(summary(await drain(reader))).toEqual([["toolu_late_helper", "running"]]);
+    ingestRaw(h, "spike", "late-owner-end", [ownerTurnEnd]);
+    const boundarySeq = h.engine.storage.head("spike") ?? 0;
+    const frames = await drain(reader);
+    await reader.cancel();
+    expect(summary(frames)).toEqual([["toolu_late_helper", "unfinished"]]);
+    expect(frames[0]?.id).toBe(boundarySeq);
+  });
+});
