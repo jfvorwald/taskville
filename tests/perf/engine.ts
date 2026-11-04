@@ -7,7 +7,20 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { EventBatchResponse } from "../../packages/protocol/src/index.ts";
 
-const CLI_MAIN = resolve(import.meta.dirname, "../../apps/cli/src/main.ts");
+const ROOT = resolve(import.meta.dirname, "../..");
+const CLI_MAIN = resolve(ROOT, "apps/cli/src/main.ts");
+
+/**
+ * The node flags of the documented launch, `pnpm taskville` (root package.json), so the perf
+ * checks measure the engine as users start it. It caps V8's semi-spaces (#166): by default the
+ * young generation grows to 64 MiB under ingest churn and keeps it, a one-time RSS step that
+ * decided SC-006.
+ */
+export function engineNodeFlags(): string[] {
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  const [, ...rest] = String(pkg.scripts.taskville).split(/\s+/);
+  return rest.filter((token) => token.startsWith("--"));
+}
 
 export interface RunningEngine {
   base: string;
@@ -59,13 +72,13 @@ export interface StartOptions {
   onSpawn?: (pid: number, home: string) => void;
 }
 
-/** Starts `node apps/cli/src/main.ts serve --headless` on a free port in a new home. */
+/** Starts `node <engineNodeFlags> apps/cli/src/main.ts serve --headless` on a free port in a new home. */
 export async function startEngine(options: StartOptions = {}): Promise<RunningEngine> {
   const home = mkdtempSync(join(tmpdir(), "taskville-perf-"));
   const port = await freePort();
   const child = spawn(
     process.execPath,
-    [CLI_MAIN, "serve", "--headless", "--home", home, "--port", String(port)],
+    [...engineNodeFlags(), CLI_MAIN, "serve", "--headless", "--home", home, "--port", String(port)],
     { stdio: ["ignore", "pipe", "ignore"] },
   );
   // Tracked from spawn, so stop() also returns if the engine already exited on its own.
