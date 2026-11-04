@@ -1,3 +1,7 @@
+import {
+  applyRegistration,
+  initialEntities,
+} from "../../../../../packages/domain/src/reducer/index.ts";
 import type { StoredEnvelope } from "../../data/domain.ts";
 import styles from "./crew-bars.module.css";
 
@@ -9,52 +13,50 @@ export interface CrewRun {
   startedAt: number;
   finishedSequence?: number;
   finishedAt?: number;
-  /** The source guessed the parent link; the label says so. */
-  heuristic?: boolean;
+  /** Always absent: a heuristic registration never forms or changes a run. */
+  heuristic?: never;
 }
 
 const ROW = 12;
 const MIN_WIDTH = 2;
 
-/** Subagent runs from recorded events: first registration opens, `agent.finished` closes. */
+/**
+ * Subagent runs from recorded events. Links, names and kinds come from the domain's own
+ * registration rule (`applyRegistration`), so a heuristic registration never creates, moves or
+ * renames a run. A run opens at the agent's first recorded registration and closes at its first
+ * `agent.finished`, which may arrive before any registration.
+ */
 export function crewRuns(events: readonly StoredEnvelope[]): CrewRun[] {
-  // A child may register, and even finish, before a later registration links its parent.
-  const seen = new Map<
-    string,
-    Omit<CrewRun, "parentId" | "heuristic"> & {
-      parentId: string | undefined;
-      heuristic: boolean | undefined;
-    }
-  >();
+  let entities = initialEntities();
+  const opened = new Map<string, { sequence: number; at: number }>();
+  const closed = new Map<string, { sequence: number; at: number }>();
   for (const event of events) {
-    if (!event.agentId) continue;
-    const time = Date.parse(event.receivedAt);
+    const agentId = event.agentId;
+    if (!agentId) continue;
+    const mark = { sequence: event.ingestSequence, at: Date.parse(event.receivedAt) };
     if (event.type === "agent.registered") {
-      if (event.payload.kind !== "subagent") continue;
-      const before = seen.get(event.agentId);
-      const linked = event.payload.parentAgentId;
-      // Only a registration that itself names the parent confirms or clears the guess.
-      const heuristic = linked ? event.payload.heuristic === true : before?.heuristic;
-      seen.set(event.agentId, {
-        ...before,
-        agentId: event.agentId,
-        parentId: linked ?? before?.parentId,
-        name: event.payload.displayName,
-        startSequence: before?.startSequence ?? event.ingestSequence,
-        startedAt: before?.startedAt ?? time,
-        heuristic: heuristic || undefined,
-      });
-    } else if (event.type === "agent.finished") {
-      const run = seen.get(event.agentId);
-      if (run && run.finishedSequence === undefined) {
-        run.finishedSequence = event.ingestSequence;
-        run.finishedAt = time;
-      }
+      entities = applyRegistration(entities, event, agentId);
+      const seq = entities.agents[agentId]?.registeredSeq;
+      if (seq === event.ingestSequence && !opened.has(agentId)) opened.set(agentId, mark);
+    } else if (event.type === "agent.finished" && !closed.has(agentId)) {
+      closed.set(agentId, mark);
     }
   }
   const runs: CrewRun[] = [];
-  for (const { parentId, heuristic, ...run } of seen.values()) {
-    if (parentId) runs.push({ ...run, parentId, ...(heuristic ? { heuristic } : {}) });
+  for (const [agentId, open] of opened) {
+    const agent = entities.agents[agentId];
+    if (agent?.kind !== "subagent" || agent.parentAgentId === undefined) continue;
+    const close = closed.get(agentId);
+    // A finish recorded before the first registration also bounds the start.
+    const start = close && close.sequence < open.sequence ? close : open;
+    runs.push({
+      agentId,
+      parentId: agent.parentAgentId,
+      name: agent.displayName ?? agentId,
+      startSequence: start.sequence,
+      startedAt: start.at,
+      ...(close ? { finishedSequence: close.sequence, finishedAt: close.at } : {}),
+    });
   }
   return runs;
 }
@@ -84,22 +86,23 @@ export function CrewBars({
       {own.map((run, row) => {
         const left = place(run.startSequence);
         const right = run.finishedSequence === undefined ? 100 : place(run.finishedSequence);
-        const when = new Date(run.startedAt).toLocaleString();
-        const label = run.heuristic ? `${run.name} (possibly)` : run.name;
+        const when = Number.isFinite(run.startedAt)
+          ? new Date(run.startedAt).toLocaleString()
+          : "start time unknown";
+        const took = (run.finishedAt ?? Number.NaN) - run.startedAt;
         const tail =
           run.finishedAt === undefined
             ? "running"
-            : run.finishedAt < run.startedAt
-              ? "duration unknown"
-              : `ran ${Math.round((run.finishedAt - run.startedAt) / 1000)}s`;
+            : Number.isFinite(took) && took >= 0
+              ? `ran ${Math.round(took / 1000)}s`
+              : "duration unknown";
         return (
           <div
             key={run.agentId}
             className={styles.bar}
             role="img"
-            data-heuristic={run.heuristic ? "true" : undefined}
             data-state={run.finishedSequence === undefined ? "running" : "finished"}
-            aria-label={`${label} · ${when} · ${tail}`}
+            aria-label={`${run.name} · ${when} · ${tail}`}
             style={{
               left: `min(${left}%, calc(100% - ${MIN_WIDTH}px))`,
               width: `max(${MIN_WIDTH}px, ${right - left}%)`,
