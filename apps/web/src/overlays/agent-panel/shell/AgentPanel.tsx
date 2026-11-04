@@ -3,10 +3,15 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import {
+  type FeedFocus,
+  feedFocus as sharedFeedFocus,
+} from "../../../city/crew/envelopes/feedFocus.ts";
 import { highlightStore } from "../../../city/crew/highlight/highlightStore.ts";
 import { shouldClearOnEscape } from "../../../city/interaction/escape.ts";
 import type { Agent } from "../../../data/domain.ts";
@@ -46,6 +51,8 @@ export interface AgentPanelProps extends OverlayProps {
   initialTab?: PanelTab;
   /** Overrides the selected tab content. Live and Files use paired feeds by default. */
   renderTab?: (tab: PanelTab, agentId: string) => ReactNode;
+  /** A clicked envelope asks for its sender's Live feed; defaults to the app-wide hand-off. */
+  feedFocus?: FeedFocus;
 }
 
 /** "handing_off" is read as "Handing off", the same words the world labels use. */
@@ -84,6 +91,7 @@ export function AgentPanel({
   store = dataStore,
   initialTab = "live",
   renderTab,
+  feedFocus = sharedFeedFocus,
 }: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
@@ -95,6 +103,21 @@ export function AgentPanel({
   );
   const [nowMs, setNowMs] = useState(() => store.now());
   const [chosen, setChosen] = useState<PanelTab>(initialTab);
+  const focus = useSyncExternalStore(
+    feedFocus.subscribe,
+    feedFocus.getSnapshot,
+    feedFocus.getSnapshot,
+  );
+  const handledFocus = useRef(focus);
+
+  // A clicked envelope for the selected agent opens its Live tab. Scrolling to the exact message
+  // is a follow-up.
+  useEffect(() => {
+    if (focus === null || focus === handledFocus.current || focus.agentId !== selection.selectedId)
+      return;
+    handledFocus.current = focus;
+    setChosen("live");
+  }, [focus, selection.selectedId]);
 
   useEffect(() => {
     setNowMs(store.now());
