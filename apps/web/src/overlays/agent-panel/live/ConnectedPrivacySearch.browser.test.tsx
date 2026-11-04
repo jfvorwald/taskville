@@ -100,16 +100,13 @@ function serve(calls: ToolCallFrame[]) {
 const slot = () => page.getByTestId("agent-panel-tab-slot");
 const text = () => slot().element().textContent ?? "";
 
-async function mount(calls: ToolCallFrame[], privacy: boolean) {
+async function mount(calls: ToolCallFrame[], privacy: boolean, height = 460) {
   evidence = evidence ?? {};
   getSettingsStore().set("privacyMode", privacy);
   serve(calls);
   await render(
     <SessionProvider value="connected-privacy-search-session">
-      <div
-        data-testid="agent-panel-tab-slot"
-        style={{ height: 460, width: 400, overflowY: "auto" }}
-      >
+      <div data-testid="agent-panel-tab-slot" style={{ height, width: 400, overflowY: "auto" }}>
         <ConnectedLiveTab agentId={AGENT} store={seedStore()} select={vi.fn()} />
       </div>
     </SessionProvider>,
@@ -190,5 +187,111 @@ describe("connected privacy Read group", () => {
     expect(text()).toContain("read-2.ts");
     await new Promise((r) => setTimeout(r, 400));
     expect(hits).toEqual([]);
+  });
+});
+
+// M5.24 red round 4 (roborev 6691): several mounted collapsed privacy search groups share one
+// output budget that fits the 128-body evidence cache, so no group's names silently vanish.
+
+const CACHE = 128;
+const GROUPS = 5;
+const PER_GROUP = 32;
+
+/** A standalone Bash call with stored input and output bodies: it takes cache space too. */
+function bash(n: number): ToolCallFrame {
+  const id = `cs-bash-${n}`;
+  const input = bodyOf(id, "input", JSON.stringify({ command: "echo hi" }));
+  const output = bodyOf(id, "output", JSON.stringify({ stdout: "hi", stderr: "" }));
+  evidence[input.id] = input;
+  evidence[output.id] = output;
+  return {
+    toolCallId: id,
+    agentId: AGENT,
+    toolName: "Bash",
+    phase: "succeeded",
+    filePaths: [],
+    evidence: {
+      input: { id: input.id, status: "stored" },
+      output: { id: output.id, status: "stored" },
+    },
+  };
+}
+
+/** A Write breaks one search run from the next; it carries no evidence. */
+const divider = (n: number): ToolCallFrame => ({
+  toolCallId: `cs-write-${n}`,
+  agentId: AGENT,
+  toolName: "Write",
+  phase: "succeeded",
+  filePaths: [`/r/conn/divider-${n}.ts`],
+  evidence: { input: null, output: null },
+});
+
+function manyGroups(tool: "Grep" | "Glob") {
+  const calls: ToolCallFrame[] = [bash(1), bash(2), bash(3)];
+  for (let g = 0; g < GROUPS; g++) {
+    for (let i = 0; i < PER_GROUP; i++) calls.push(search(tool, g * PER_GROUP + i + 1));
+    calls.push(divider(g));
+  }
+  return calls;
+}
+
+const searchOutputs = () => new Set(hits.filter((id) => /^cs-(Grep|Glob)-\d+:output$/.test(id)));
+const standalone = () => new Set(hits.filter((id) => id.startsWith("cs-bash-")));
+
+/** Per group card: loaded names shown plus searches reported as not loaded. */
+function accounted(): number[] {
+  const root = slot().element();
+  return [...root.querySelectorAll("article")]
+    .filter((a) => /Searched \d+ times/.test(a.textContent ?? ""))
+    .map((a) => {
+      const t = a.textContent ?? "";
+      const shown = t.match(/hit-\d{3}-0-file\.ts/g)?.length ?? 0;
+      const unloaded = Number(t.match(/results of (\d+) more searches? not loaded/)?.[1] ?? 0);
+      return shown + unloaded;
+    });
+}
+
+describe.each(["Grep", "Glob"] as const)("connected privacy %s budget across groups", (tool) => {
+  it("keeps total output fetches within one budget that fits the cache", async () => {
+    await mount(manyGroups(tool), true);
+    await new Promise((r) => setTimeout(r, 1200));
+    // Standalone calls take cache space first; the search groups share what is left.
+    expect(searchOutputs().size).toBeGreaterThan(0);
+    expect(searchOutputs().size).toBeLessThanOrEqual(CACHE - standalone().size);
+  });
+
+  it("accounts for every search in every visible group, names or not-loaded count", async () => {
+    await mount(manyGroups(tool), true, 4000);
+    // A tall slot mounts all five groups; each must be fully accounted for.
+    const full = () => {
+      const all = accounted();
+      return all.length === GROUPS && all.every((n) => n === PER_GROUP);
+    };
+    await expect.poll(full, { timeout: 5000 }).toBe(true);
+    await new Promise((r) => setTimeout(r, 600));
+    expect(full(), JSON.stringify(accounted())).toBe(true);
+    expect(text()).not.toMatch(/\b1 more searches\b/);
+  });
+
+  it("reads 'results of 1 more search not loaded' for one call past the cap", async () => {
+    await mount(
+      Array.from({ length: PER_GROUP + 1 }, (_, i) => search(tool, i + 1)),
+      true,
+    );
+    await expect.poll(() => text(), { timeout: 4000 }).toContain("hit-032-0-file.ts");
+    expect(text()).toContain("results of 1 more search not loaded");
+    expect(text()).not.toContain("1 more searches");
+  });
+
+  it("counts a call whose output failed to load as not loaded", async () => {
+    const calls = [search(tool, 1), search(tool, 2), search(tool, 3)];
+    delete evidence[`${calls[1].toolCallId}:output`];
+    await mount(calls, true);
+    await expect.poll(() => text(), { timeout: 4000 }).toContain("hit-003-0-file.ts");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(text()).toContain("hit-001-0-file.ts");
+    expect(text()).toContain("results of 1 more search not loaded");
+    expect(text()).not.toContain("1 more searches");
   });
 });
