@@ -550,6 +550,49 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(spoolLines(home)).toHaveLength(1);
   });
 
+  it("never breaks a live lock that replaced the one it judged stale", async () => {
+    // M5.27: holder A releases and exits, and live shim C takes a new lock, between a
+    // waiter reading A's PID and checking it. That window is microseconds wide (two CI
+    // failures of the concurrency case below), so a copy of the real shim pauses in it.
+    const source = readFileSync(SHIM, "utf8");
+    const read = '  owner=$(lock_owner "$lock")\n';
+    expect(source.split(read)).toHaveLength(2);
+    const paused = join(home.root, "paused-shim.sh");
+    writeFileSync(
+      paused,
+      source.replace(
+        read,
+        `${read}  : >"$spool/read-done"; while [ ! -e "$spool/go" ]; do sleep 0.01; done\n`,
+      ),
+    );
+    const lock = join(home.spoolDir, "claude-code.lock");
+    const holderA = spawn("sleep", ["30"]);
+    const aExited = new Promise((resolve) => holderA.on("exit", resolve));
+    mkdirSync(lock, { mode: 0o700 });
+    writeFileSync(join(lock, "pid"), `${holderA.pid}\n`);
+    const child = spawn(shell, [paused], {
+      env: shimEnv(home, await deadUrl()),
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    const exited = new Promise<number | null>((resolve) => child.on("close", resolve));
+    child.stdin.end(JSON.stringify(hookPayload(500)));
+    const readDone = join(home.spoolDir, "read-done");
+    while (!existsSync(readDone)) await new Promise((r) => setTimeout(r, 10));
+    // A releases and exits; C (this live process) takes the lock.
+    rmSync(lock, { recursive: true });
+    holderA.kill();
+    await aExited;
+    mkdirSync(lock, { mode: 0o700 });
+    writeFileSync(join(lock, "pid"), `${process.pid}\n`);
+    writeFileSync(join(home.spoolDir, "go"), "");
+    expect(await exited).toBe(0);
+    // C still holds its lock, and the waiter never wrote the main file under it.
+    expect(existsSync(join(lock, "pid"))).toBe(true);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${process.pid}\n`);
+    expect(existsSync(home.spoolFile)).toBe(false);
+    expect(spoolLines(home)).toHaveLength(1);
+  }, 15_000);
+
   it("does not corrupt the spool under concurrent invocations", async () => {
     const url = await deadUrl();
     const count = 24;
