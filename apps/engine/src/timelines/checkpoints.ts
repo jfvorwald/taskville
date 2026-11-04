@@ -1,6 +1,12 @@
-import { canonicalJson, sha256Hex, stateHash } from "@taskville/domain/hash";
+import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { domainReducer } from "../ingest/index.ts";
+import {
+  CHECKPOINT_BATCH,
+  trusted,
+  type UpkeepLogger,
+  upkeepFields,
+} from "../storage/checkpoints.ts";
 import {
   CHECKPOINT_INTERVAL,
   type CheckpointRow,
@@ -8,6 +14,7 @@ import {
   type Storage,
   UPKEEP_WAIT_MS,
 } from "../storage/index.ts";
+import { isBusy } from "../storage/rebuild.ts";
 
 // Replay checkpoints (ARCHITECTURE.md 7.4; constitution II and VI). A checkpoint is the reducer
 // state after the first N events, kept every CHECKPOINT_INTERVAL events so a seek replays at most
@@ -23,30 +30,18 @@ export { CHECKPOINT_INTERVAL };
 export interface StateAtOptions {
   reducer?: ProjectionReducer<ProjectState>;
   interval?: number;
+  /** Where a cache write failure other than a busy lock is logged. */
+  logger?: UpkeepLogger;
 }
 
-/** The state if `row` is trustworthy for `reducer`: right version, parses, belongs to this project at this head, and matches its hash. */
-function trusted(
-  row: CheckpointRow,
-  reducer: ProjectionReducer<ProjectState>,
-  projectId: string,
-): ProjectState | undefined {
-  if (row.reducerVersion !== reducer.version) return undefined;
-  try {
-    const state = JSON.parse(row.stateJson) as ProjectState;
-    if (state.head !== row.sequence || state.projectId !== projectId) return undefined;
-    return stateHash(reducer.version, state) === row.stateHash ? state : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Runs cache upkeep; a cache that cannot be written (a busy database) costs speed, never correctness. */
-function attempt(fn: () => void): void {
+/** Runs cache upkeep; a cache that cannot be written costs speed, never correctness. Busy and spent-budget errors are silent; any other is logged once, errcode only. */
+function attempt(fn: () => void, logger: UpkeepLogger | undefined): boolean {
   try {
     fn();
-  } catch {
-    // Disposable cache: ignore.
+    return true;
+  } catch (error) {
+    if (!isBusy(error)) logger?.warn(upkeepFields(error), "checkpoint cache upkeep failed");
+    return false;
   }
 }
 
@@ -74,12 +69,13 @@ function stateAt(
 ): ProjectState {
   const reducer = options.reducer ?? domainReducer;
   const interval = options.interval ?? CHECKPOINT_INTERVAL;
+  const logger = options.logger;
   const cache = storage.checkpoints();
   const head = storage.head(projectId) ?? 0;
 
   // Cache upkeep needs the write lock; if another connection holds it the read still succeeds
   // from the log, so upkeep is best effort; every step shares the one wait budget set by the caller.
-  attempt(() => cache.prune(projectId, reducer.version, head));
+  attempt(() => cache.prune(projectId, reducer.version, head), logger);
   const stored = new Set(cache.sequences(projectId));
 
   let state = reducer.initial(projectId);
@@ -87,23 +83,29 @@ function stateAt(
   const candidates = [...stored].filter((s) => s <= upTo).sort((a, b) => b - a);
   for (const sequence of candidates) {
     const row = cache.get(projectId, sequence);
-    const loaded = row && trusted(row, reducer, projectId);
+    const loaded = row && trusted(row, reducer.version, projectId);
     if (loaded) {
       state = loaded;
       base = sequence;
       break;
     }
-    attempt(() => cache.delete(projectId, sequence));
+    attempt(() => cache.delete(projectId, sequence), logger);
     stored.delete(sequence);
   }
 
-  // Collected during the walk and written after it, so no write happens under the event cursor.
-  const fresh: CheckpointRow[] = [];
-  if (base < upTo) {
-    for (const event of storage.events(projectId, base)) {
+  // Each batch of fresh rows is written as soon as it fills, after stepping past the event
+  // cursor (no write happens under it), so at most CHECKPOINT_BATCH rows are held between writes.
+  // After a failed write no later batch is tried; the seek still answers from the log.
+  let writing = true;
+  let position = base;
+  while (position < upTo) {
+    const before = position;
+    const fresh: CheckpointRow[] = [];
+    for (const event of storage.events(projectId, position)) {
       state = reducer.apply(state, event);
       const sequence = event.ingestSequence;
-      if (sequence % interval === 0 && !stored.has(sequence)) {
+      position = sequence;
+      if (writing && sequence % interval === 0 && !stored.has(sequence)) {
         const json = canonicalJson(state);
         fresh.push({
           sequence,
@@ -112,9 +114,10 @@ function stateAt(
           stateJson: json,
         });
       }
-      if (sequence >= upTo) break;
+      if (sequence >= upTo || fresh.length >= CHECKPOINT_BATCH) break;
     }
+    if (fresh.length > 0 && !attempt(() => cache.put(projectId, fresh), logger)) writing = false;
+    if (position === before) break;
   }
-  attempt(() => cache.put(projectId, fresh));
   return state;
 }

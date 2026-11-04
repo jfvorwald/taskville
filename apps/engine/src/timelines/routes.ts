@@ -4,6 +4,7 @@ import type { StoredEnvelope } from "@taskville/protocol";
 import type { Context, Hono } from "hono";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
+import type { UpkeepLogger } from "../storage/checkpoints.ts";
 import type { Storage } from "../storage/index.ts";
 import { stateAtSequence } from "./checkpoints.ts";
 import { type Position, parsePosition } from "./position.ts";
@@ -22,6 +23,8 @@ export interface TimelineRouteOptions {
   storage: Storage;
   /** Engine clock for `computedAt` and for attention at position 0. */
   now?: () => Date;
+  /** Where checkpoint cache failures are logged. */
+  logger?: UpkeepLogger;
 }
 
 /** A timeline id that named a project, or why it did not. */
@@ -170,7 +173,9 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     // At the head the stored projection is the replay already done, if it is current.
     const stored = at === head ? storage.projection<ProjectState>(projectId) : undefined;
     const reuse = stored?.reducerVersion === REDUCER_VERSION && stored.head === at;
-    const state = reuse ? stored.state : stateAtSequence(storage, projectId, at);
+    const state = reuse
+      ? stored.state
+      : stateAtSequence(storage, projectId, at, options.logger ? { logger: options.logger } : {});
     return c.json({
       timelineId,
       at,
