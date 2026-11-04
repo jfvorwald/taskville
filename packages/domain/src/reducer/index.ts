@@ -27,6 +27,7 @@ export {
   callsClosedAtBoundary,
   compareTimestamps,
   MAX_OPEN_TOOL_CALLS_PER_AGENT,
+  reduceEntities,
 } from "./entities/index.ts";
 export type * from "./entities/types.ts";
 export {

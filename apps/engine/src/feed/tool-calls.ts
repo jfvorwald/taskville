@@ -3,6 +3,7 @@ import {
   initialState,
   type ProjectState,
   reduce,
+  reduceEntities,
   type ToolCallState,
 } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
@@ -114,10 +115,13 @@ export class ToolCallTracker {
   #closedByBoundary(before: ProjectState, event: StoredEnvelope): FeedToolCall[] {
     // A start never closes a call; it can only drop the oldest open one beyond the cap.
     if (event.agentId === undefined || event.type === "tool_call.started") return [];
+    // Nothing open, nothing to close: skip the entity step, which would double every event's cost.
+    if (this.#open.size === 0) return [];
     const closed: FeedToolCall[] = [];
-    // The reducer's own closure rule. It runs after the event updated the sessions and agents (a
-    // boundary can first establish session ownership), over the calls that were running before.
-    const seen = { ...before, sessions: this.#state.sessions, agents: this.#state.agents };
+    // The reducer's own closure rule, on the state it saw: sessions and agents after the event's
+    // entity update (a boundary can first establish session ownership) but before retention (which
+    // may drop that owner), over the calls that were running before the event.
+    const seen = { ...reduceEntities(before, event), toolCalls: before.toolCalls };
     for (const { id } of callsClosedAtBoundary(seen, event, event.agentId)) {
       const call = this.#calls.get(id);
       if (call === undefined || call.agentId !== this.#agentId || !this.#open.has(id)) continue;
