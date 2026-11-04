@@ -574,3 +574,67 @@ describe("memory: checkpoint state is written as the fold goes, one batch at a t
     expect(written).toBe(Math.floor(lively.length / 500));
   }, 120_000);
 });
+
+// ---- Red round 3 (roborev re-review 6808): only the checkpoint write is best effort ----
+
+describe("boot backfill: a failed read or reducer step is not a cache write failure", () => {
+  function freshProjectionNoCheckpoints() {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    expect(sequencesOf(PROJECT)).toEqual([]);
+  }
+
+  // FAILS on main: the catch wraps the replay loop, so the read error is swallowed and boot goes on.
+  it("an event-log read error during backfill aborts boot (rebuildStaleProjections throws)", () => {
+    freshProjectionNoCheckpoints();
+    const logger = recordingLogger();
+    const read = vi.spyOn(storage(), "events").mockImplementation(() => {
+      throw new Error("event log unreadable");
+    });
+    const put = vi.spyOn(storage().checkpoints(), "put");
+    expect(() => bootRebuild(storage(), domainReducer, { logger })).toThrow("event log unreadable");
+    expect(read).toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  // FAILS on main: same catch swallows a reducer throw.
+  it("a reducer.apply throw during backfill aborts boot (rebuildStaleProjections throws)", () => {
+    freshProjectionNoCheckpoints();
+    const logger = recordingLogger();
+    const broken: ProjectionReducer<ProjectState> = {
+      ...domainReducer,
+      apply: () => {
+        throw new Error("reducer exploded");
+      },
+    };
+    expect(() => bootRebuild(storage(), broken, { logger })).toThrow("reducer exploded");
+  });
+
+  // FAILS on main: a read failure partway through the fold is swallowed too.
+  it("an event-log read error after some events were folded still aborts boot", () => {
+    freshProjectionNoCheckpoints();
+    const real = storage().events.bind(storage());
+    vi.spyOn(storage(), "events").mockImplementation(function* (...args: Parameters<typeof real>) {
+      let n = 0;
+      for (const event of real(...args)) {
+        if (++n > 100) throw new Error("event log unreadable");
+        yield event;
+      }
+    });
+    expect(() => bootRebuild(storage(), domainReducer, { logger: recordingLogger() })).toThrow(
+      "event log unreadable",
+    );
+  });
+
+  // Pin (passes on main): a non-busy put failure is still logged once and boot continues.
+  it("a non-busy put failure still logs once and boot continues", () => {
+    freshProjectionNoCheckpoints();
+    const logger = recordingLogger();
+    vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
+      throw FULL();
+    });
+    expect(() => bootRebuild(storage(), domainReducer, { logger })).not.toThrow();
+    expect(logger.calls()).toHaveLength(1);
+    expectNoBodies(logger.calls());
+  });
+});
