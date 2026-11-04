@@ -1,7 +1,12 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { domainReducer } from "../ingest/index.ts";
-import { putInBatches, trusted, type UpkeepLogger } from "../storage/checkpoints.ts";
+import {
+  CHECKPOINT_BATCH,
+  trusted,
+  type UpkeepLogger,
+  upkeepFields,
+} from "../storage/checkpoints.ts";
 import {
   CHECKPOINT_INTERVAL,
   type CheckpointRow,
@@ -29,14 +34,14 @@ export interface StateAtOptions {
   logger?: UpkeepLogger;
 }
 
-/** Runs cache upkeep; a cache that cannot be written costs speed, never correctness. Busy and spent-budget errors are silent; any other is logged once, without bodies. */
-function attempt(fn: () => void, logger: UpkeepLogger | undefined): void {
+/** Runs cache upkeep; a cache that cannot be written costs speed, never correctness. Busy and spent-budget errors are silent; any other is logged once, errcode only. */
+function attempt(fn: () => void, logger: UpkeepLogger | undefined): boolean {
   try {
     fn();
+    return true;
   } catch (error) {
-    if (isBusy(error)) return;
-    const { errcode, message } = error as { errcode?: unknown; message?: unknown };
-    logger?.warn({ errcode, message }, "checkpoint cache upkeep failed");
+    if (!isBusy(error)) logger?.warn(upkeepFields(error), "checkpoint cache upkeep failed");
+    return false;
   }
 }
 
@@ -88,13 +93,19 @@ function stateAt(
     stored.delete(sequence);
   }
 
-  // Collected during the walk and written after it, so no write happens under the event cursor.
-  const fresh: CheckpointRow[] = [];
-  if (base < upTo) {
-    for (const event of storage.events(projectId, base)) {
+  // Each batch of fresh rows is written as soon as it fills, after stepping past the event
+  // cursor (no write happens under it), so at most CHECKPOINT_BATCH rows are held between writes.
+  // After a failed write no later batch is tried; the seek still answers from the log.
+  let writing = true;
+  let position = base;
+  while (position < upTo) {
+    const before = position;
+    const fresh: CheckpointRow[] = [];
+    for (const event of storage.events(projectId, position)) {
       state = reducer.apply(state, event);
       const sequence = event.ingestSequence;
-      if (sequence % interval === 0 && !stored.has(sequence)) {
+      position = sequence;
+      if (writing && sequence % interval === 0 && !stored.has(sequence)) {
         const json = canonicalJson(state);
         fresh.push({
           sequence,
@@ -103,9 +114,10 @@ function stateAt(
           stateJson: json,
         });
       }
-      if (sequence >= upTo) break;
+      if (sequence >= upTo || fresh.length >= CHECKPOINT_BATCH) break;
     }
+    if (fresh.length > 0 && !attempt(() => cache.put(projectId, fresh), logger)) writing = false;
+    if (position === before) break;
   }
-  attempt(() => putInBatches(cache, projectId, fresh), logger);
   return state;
 }

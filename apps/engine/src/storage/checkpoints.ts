@@ -40,15 +40,13 @@ export function trusted(
   }
 }
 
-/** Writes `rows` in batches of `CHECKPOINT_BATCH`; the first failing batch throws and later ones are not tried. */
-export function putInBatches(
-  cache: SqliteCheckpoints,
-  projectId: string,
-  rows: readonly CheckpointRow[],
-): void {
-  for (let i = 0; i < rows.length; i += CHECKPOINT_BATCH) {
-    cache.put(projectId, rows.slice(i, i + CHECKPOINT_BATCH));
-  }
+/** The only fields of a failed cache write that reach a log: the numeric SQLite code, if any. Never the message, which can carry SQL or state text. */
+export function upkeepFields(error: unknown): { errcode?: number } {
+  const errcode =
+    typeof error === "object" && error !== null
+      ? (error as { errcode?: unknown }).errcode
+      : undefined;
+  return typeof errcode === "number" ? { errcode } : {};
 }
 
 /**

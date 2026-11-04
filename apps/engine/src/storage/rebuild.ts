@@ -1,12 +1,13 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
 import {
+  CHECKPOINT_BATCH,
   CHECKPOINT_INTERVAL,
   type CheckpointRow,
-  putInBatches,
   trusted,
   UPKEEP_WAIT_MS,
   type UpkeepLogger,
+  upkeepFields,
 } from "./checkpoints.ts";
 import type { ProjectionRecord, Storage } from "./storage.ts";
 
@@ -92,6 +93,7 @@ export function rebuildStaleProjections<S>(
 
 /** True for SQLite's busy and locked errors (another connection holds the write lock) and for a spent upkeep budget. */
 export function isBusy(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
   const { errcode, message } = error as { errcode?: unknown; message?: unknown };
   return (
     errcode === 5 ||
@@ -123,27 +125,35 @@ function backfillCheckpoints<S>(
   }
   if (missing.size === 0) return;
   const last = Math.max(...missing);
-  const rows: CheckpointRow[] = [];
-  let state = reducer.initial(projectId);
-  for (const event of storage.events(projectId)) {
-    state = reducer.apply(state, event);
-    const sequence = event.ingestSequence;
-    if (missing.has(sequence)) {
-      const json = canonicalJson(state);
-      rows.push({
-        sequence,
-        reducerVersion: reducer.version,
-        stateHash: `${reducer.version}:${sha256Hex(json)}`,
-        stateJson: json,
-      });
-    }
-    if (sequence >= last) break;
-  }
+  // Each batch is written as soon as it fills, after stepping past the event cursor, so at most
+  // CHECKPOINT_BATCH rows of state are held between writes.
   try {
-    cache.withWaitBudget(UPKEEP_WAIT_MS, () => putInBatches(cache, projectId, rows));
+    cache.withWaitBudget(UPKEEP_WAIT_MS, () => {
+      let state = reducer.initial(projectId);
+      let position = 0;
+      while (position < last) {
+        const rows: CheckpointRow[] = [];
+        for (const event of storage.events(projectId, position)) {
+          state = reducer.apply(state, event);
+          const sequence = event.ingestSequence;
+          position = sequence;
+          if (missing.has(sequence)) {
+            const json = canonicalJson(state);
+            rows.push({
+              sequence,
+              reducerVersion: reducer.version,
+              stateHash: `${reducer.version}:${sha256Hex(json)}`,
+              stateJson: json,
+            });
+          }
+          if (sequence >= last || rows.length >= CHECKPOINT_BATCH) break;
+        }
+        if (rows.length === 0) break;
+        cache.put(projectId, rows);
+      }
+    });
   } catch (error) {
     if (isBusy(error)) return;
-    const { errcode, message } = error as { errcode?: unknown; message?: unknown };
-    logger?.warn({ errcode, message }, "checkpoint backfill failed");
+    logger?.warn(upkeepFields(error), "checkpoint backfill failed");
   }
 }
