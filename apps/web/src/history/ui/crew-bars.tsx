@@ -33,11 +33,8 @@ export function crewRuns(events: readonly StoredEnvelope[]): CrewRun[] {
       if (event.payload.kind !== "subagent") continue;
       const before = seen.get(event.agentId);
       const linked = event.payload.parentAgentId;
-      const heuristic = linked
-        ? event.payload.heuristic === true
-        : event.payload.heuristic === true
-          ? before?.heuristic
-          : false;
+      // Only a registration that itself names the parent confirms or clears the guess.
+      const heuristic = linked ? event.payload.heuristic === true : before?.heuristic;
       seen.set(event.agentId, {
         ...before,
         agentId: event.agentId,
@@ -92,7 +89,9 @@ export function CrewBars({
         const tail =
           run.finishedAt === undefined
             ? "running"
-            : `ran ${Math.round((run.finishedAt - run.startedAt) / 1000)}s`;
+            : run.finishedAt < run.startedAt
+              ? "duration unknown"
+              : `ran ${Math.round((run.finishedAt - run.startedAt) / 1000)}s`;
         return (
           <div
             key={run.agentId}
