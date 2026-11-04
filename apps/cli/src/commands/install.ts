@@ -29,11 +29,13 @@ import {
   HOOK_EVENTS,
   hasOtelSettings,
   hookCommand,
+  installedOtel,
   isTaskvilleBridgeHook,
   isTaskvilleHook,
   type JsonObject,
   OTEL_HELPER_NAME,
   parseSettings,
+  removeOtelSettings,
   removeTaskvilleHooks,
   SettingsError,
   SHIM_NAME,
@@ -87,6 +89,12 @@ function plan(io: Io, args: string[], usage: string): Plan {
   if (target !== "claude-code") usageError(`unknown or missing target "${target ?? ""}"`, usage);
   const { values } = parseCommand(io, rest, OPTIONS, usage);
   const scope = values.scope;
+  if (usage === INSTALL_USAGE && values.otel === true && scope !== "project") {
+    usageError(
+      "--otel needs --scope project: the helper hands the CLI token to the endpoint Claude Code resolves, so it is never installed into a user-wide file",
+      usage,
+    );
+  }
   if (scope !== "user" && scope !== "project") usageError("--scope must be user or project", usage);
 
   // Never fall back to the OS home directory: HOME comes from the caller's environment only, so a
@@ -282,7 +290,15 @@ export async function install(io: Io, args: string[]): Promise<number> {
       ? (() => {
           const source = readFileSync(OTEL_HELPER_SOURCE, "utf8");
           const helper = checkShim(p.home, OTEL_HELPER_NAME, source);
-          return { source, helper, command: hookCommand({ shimPath: helper.path, home: p.home }) };
+          return {
+            source,
+            helper,
+            command: hookCommand({
+              shimPath: helper.path,
+              home: p.home,
+              url: `http://127.0.0.1:${port}`,
+            }),
+          };
         })()
       : undefined;
   const hooksDone = alreadyInstalled(settings, command, bridge);
@@ -370,7 +386,10 @@ function installedBridge(settings: JsonObject): JsonObject | undefined {
 export async function uninstall(io: Io, args: string[]): Promise<number> {
   const p = plan(io, args, UNINSTALL_USAGE);
   const { state, settings } = readSettings(p.target);
-  const { settings: stripped, removed } = removeTaskvilleHooks(settings);
+  const hooksStripped = removeTaskvilleHooks(settings);
+  const otelStripped = removeOtelSettings(hooksStripped.settings);
+  const stripped = otelStripped.settings;
+  const removed = hooksStripped.removed + otelStripped.removed;
   if (removed === 0) {
     io.stdout(`Taskville hooks are not installed in ${showPath(p.target)}; nothing to change.\n`);
     return EXIT.ok;
@@ -388,13 +407,16 @@ export async function uninstall(io: Io, args: string[]): Promise<number> {
       // Only when the file is exactly what install wrote from the backup: a formatting-only edit
       // since then must survive (roborev 5210).
       const command = installedCommand(settings);
-      const written =
+      const otel = installedOtel(settings);
+      let restored =
         command === undefined
           ? undefined
-          : serialize(
-              addTaskvilleHooks(parseSettings(backup), command, installedBridge(settings)),
-              detectIndent(backup),
-            );
+          : addTaskvilleHooks(parseSettings(backup), command, installedBridge(settings));
+      if (restored !== undefined && otel !== undefined) {
+        restored = addOtelSettings(restored, otel.port, otel.helper);
+      }
+      const written =
+        restored === undefined ? undefined : serialize(restored, detectIndent(backup));
       if (written === state.text) {
         next = backup;
         how = "restoring the original from the backup, byte for byte";

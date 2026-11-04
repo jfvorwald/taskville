@@ -287,6 +287,10 @@ export function otelEnv(port: number): Record<string, string> {
     OTEL_LOGS_EXPORTER: "otlp",
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
     OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp`,
+    // Pinned too, so a shared settings file cannot redirect one signal (security review H1).
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp/v1/metrics`,
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp/v1/logs`,
+    OTEL_TRACES_EXPORTER: "none",
   };
 }
 
@@ -309,6 +313,42 @@ export function addOtelSettings(settings: JsonObject, port: number, helper: stri
   let next = put(settings, "env", { ...env, ...otelEnv(port) });
   next = put(next, "otelHeadersHelper", helper);
   return next;
+}
+
+const OTEL_HELPER_MARKER = new RegExp(
+  `^TASKVILLE_HOME=${QUOTED} TASKVILLE_URL='http://127\\.0\\.0\\.1:([0-9]{1,5})' '(?:[^']|'\\\\'')*/${OTEL_HELPER_NAME.replaceAll(".", "\\.")}'$`,
+);
+
+/**
+ * Removes what `install --otel` wrote: the `otelHeadersHelper` when it is exactly a Taskville
+ * helper command, and each `env` key whose value is exactly what install wrote for that command's
+ * port. Anything the user changed since stays. An `env` left empty is dropped.
+ */
+export function removeOtelSettings(settings: JsonObject): {
+  settings: JsonObject;
+  removed: number;
+} {
+  const helper = settings.otelHeadersHelper;
+  const match = typeof helper === "string" ? OTEL_HELPER_MARKER.exec(helper) : null;
+  if (match === null) return { settings, removed: 0 };
+  let next = without(settings, "otelHeadersHelper");
+  let removed = 1;
+  if (isObject(settings.env)) {
+    const kept: JsonObject = {};
+    for (const [key, value] of Object.entries(settings.env)) {
+      if (otelEnv(Number(match[1]))[key] === value) removed += 1;
+      else Object.defineProperty(kept, key, descriptor(value));
+    }
+    next = Object.keys(kept).length > 0 ? put(next, "env", kept) : without(next, "env");
+  }
+  return { settings: next, removed };
+}
+
+/** The port in a Taskville `otelHeadersHelper` command, if `settings` has one. */
+export function installedOtel(settings: JsonObject): { port: number; helper: string } | undefined {
+  const helper = settings.otelHeadersHelper;
+  const match = typeof helper === "string" ? OTEL_HELPER_MARKER.exec(helper) : null;
+  return match === null ? undefined : { port: Number(match[1]), helper: helper as string };
 }
 
 /** The file's indent (two spaces when it cannot tell), so a rewrite keeps its look. */

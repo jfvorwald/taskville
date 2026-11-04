@@ -38,13 +38,19 @@ function useOptionalSession(): string | undefined {
   }
 }
 
+/** Telemetry is exported on an interval, so a selected agent's cost is asked for again. */
+export const DEFAULT_COST_REFRESH_MS = 15_000;
+
 /**
  * The selected agent's cost: the given source, else the engine's endpoint under a paired app,
- * else nothing. A failure, a 404 and a stale answer all leave `undefined` (no invented zero).
+ * else nothing. It asks again every `refreshMs` while the agent stays selected; the newest answer
+ * wins and `undefined` removes the figure. A failure keeps what is shown, a stale answer for an
+ * agent no longer selected is dropped, and unmounting aborts (no invented zero).
  */
 export function useAgentCost(
   agentId: string | undefined,
   costSource: CostSource | undefined,
+  refreshMs: number = DEFAULT_COST_REFRESH_MS,
 ): AgentCostView | undefined {
   const secret = useOptionalSession();
   const [answer, setAnswer] = useState<{ agentId: string; view: AgentCostView } | undefined>();
@@ -53,15 +59,26 @@ export function useAgentCost(
     const source = costSource ?? (secret === undefined ? undefined : sessionCostSource(secret));
     setAnswer(undefined);
     if (agentId === undefined || source === undefined) return;
-    const controller = new AbortController();
-    source(agentId, controller.signal).then(
-      (view) => {
-        if (!controller.signal.aborted && view !== undefined) setAnswer({ agentId, view });
-      },
-      () => {},
-    );
-    return () => controller.abort();
-  }, [agentId, costSource, secret]);
+    let controller = new AbortController();
+    const ask = () => {
+      controller.abort();
+      const current = new AbortController();
+      controller = current;
+      source(agentId, current.signal).then(
+        (view) => {
+          if (current.signal.aborted) return;
+          setAnswer(view === undefined ? undefined : { agentId, view });
+        },
+        () => {},
+      );
+    };
+    ask();
+    const timer = setInterval(ask, refreshMs);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [agentId, costSource, secret, refreshMs]);
 
   return answer !== undefined && answer.agentId === agentId ? answer.view : undefined;
 }

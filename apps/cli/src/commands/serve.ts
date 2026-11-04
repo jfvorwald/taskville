@@ -177,7 +177,7 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
     wired = wirePermissionBridge({ app, engine, config, logger, now });
     registerClaudeCodeRoutes(app, claudeCode, { observeHook: wired.observeHook });
     // Optional OpenTelemetry receiver (M5.12): tokens and cost, kept in memory.
-    registerOtlpRoutes(app);
+    registerOtlpRoutes(app, { logger });
     // Agent feed, crew, and evidence reads (M5.01): the stream cap and shutdown are the engine's.
     registerFeedRoutes(app, {
       storage: engine.storage,

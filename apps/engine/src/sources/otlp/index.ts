@@ -5,6 +5,7 @@
 import { MAX_BATCH_BYTES } from "@taskville/protocol";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import type { Logger } from "pino";
 import { type AppEnv, requireScope } from "../../http/app.ts";
 import { apiError } from "../../http/errors.ts";
 
@@ -12,6 +13,11 @@ export const OTLP_METRICS_PATH = "/v1/otlp/v1/metrics";
 export const OTLP_LOGS_PATH = "/v1/otlp/v1/logs";
 /** Agents the ledger keeps; further new agents are ignored rather than growing without bound. */
 export const MAX_LEDGER_AGENTS = 10_000;
+/** The longest session.id, agent_id or parent_agent_id kept; a longer one drops the data point. */
+export const MAX_KEY_LENGTH = 256;
+const MAX_SUM = Number.MAX_SAFE_INTEGER;
+const add = (sum: number, value: number): number =>
+  Math.min(MAX_SUM, sum + Math.min(MAX_SUM, value));
 
 export interface CostTokens {
   input: number;
@@ -48,6 +54,14 @@ const emptyTotals = (): Totals => ({
 /** Tokens and cost per agent, in memory. Metrics win over logs so spend is never counted twice. */
 export class CostLedger {
   readonly #entries = new Map<string, Entry>();
+  #warned = false;
+
+  /** True once, the first time a new agent is refused because the ledger is full. */
+  noteFull(): boolean {
+    const first = !this.#warned;
+    this.#warned = true;
+    return first;
+  }
 
   /** @internal */
   entry(agentId: string, parentAgentId: string | undefined): Entry | undefined {
@@ -106,17 +120,50 @@ function text(attrs: Map<string, string | number>, key: string): string | undefi
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-/** `claude-code:<session.id>[:<agent_id>]`, the adapters' agent IDs; undefined without a session. */
-function agentOf(attrs: Map<string, string | number>): string | undefined {
+/**
+ * `claude-code:<session.id>[:<agent_id>]`, the adapters' agent IDs. Undefined without a session;
+ * "too_long" when a key is over MAX_KEY_LENGTH (the data point is refused and counted).
+ */
+function whoOf(
+  attrs: Map<string, string | number>,
+): { agentId: string; parent: string | undefined } | "too_long" | undefined {
   const session = text(attrs, "session.id");
   if (session === undefined) return undefined;
   const agent = text(attrs, "agent_id");
-  return agent === undefined ? `claude-code:${session}` : `claude-code:${session}:${agent}`;
+  const parent = text(attrs, "parent_agent_id");
+  for (const key of [session, agent, parent]) {
+    if (key !== undefined && key.length > MAX_KEY_LENGTH) return "too_long";
+  }
+  return {
+    agentId: agent === undefined ? `claude-code:${session}` : `claude-code:${session}:${agent}`,
+    parent,
+  };
 }
+
+/** The ledger entry for a data point; a refusal (too long, or ledger full) is reported as such. */
+function entryFor(
+  ledger: CostLedger,
+  attrs: Map<string, string | number>,
+  onFull: () => void,
+): Entry | "skip" | "rejected" {
+  const who = whoOf(attrs);
+  if (who === undefined) return "skip";
+  if (who === "too_long") return "rejected";
+  const entry = ledger.entry(who.agentId, who.parent);
+  if (entry === undefined) {
+    onFull();
+    return "rejected";
+  }
+  return entry;
+}
+
+type Ingest = (ledger: CostLedger, body: Json, onFull: () => void) => number;
 
 const TOKEN_TYPES: ReadonlySet<string> = new Set(["input", "output", "cacheRead", "cacheCreation"]);
 
-function ingestMetrics(ledger: CostLedger, body: Json): void {
+/** Returns the number of data points refused (an over-long key, or a full ledger). */
+function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): number {
+  let rejected = 0;
   for (const resource of list(body.resourceMetrics)) {
     for (const scope of list(resource.scopeMetrics)) {
       for (const metric of list(scope.metrics)) {
@@ -127,47 +174,59 @@ function ingestMetrics(ledger: CostLedger, body: Json): void {
         );
         for (const point of points) {
           const attrs = attributes(point.attributes);
-          const agentId = agentOf(attrs);
           const value = number(point.asInt ?? point.asDouble);
-          if (agentId === undefined || value === undefined) continue;
+          if (value === undefined) continue;
           const type = text(attrs, "type");
           if (isTokens && (type === undefined || !TOKEN_TYPES.has(type))) continue;
-          const entry = ledger.entry(agentId, text(attrs, "parent_agent_id"));
-          if (entry === undefined) continue;
+          const entry = entryFor(ledger, attrs, onFull);
+          if (entry === "skip") continue;
+          if (entry === "rejected") {
+            rejected += 1;
+            continue;
+          }
           entry.metrics.seen = true;
-          if (isTokens) entry.metrics.tokens[type as keyof CostTokens] += value;
-          else entry.metrics.costUsd += value;
+          if (isTokens) {
+            const key = type as keyof CostTokens;
+            entry.metrics.tokens[key] = add(entry.metrics.tokens[key], value);
+          } else entry.metrics.costUsd = add(entry.metrics.costUsd, value);
         }
       }
     }
   }
+  return rejected;
 }
 
-function ingestLogs(ledger: CostLedger, body: Json): void {
+function ingestLogs(ledger: CostLedger, body: Json, onFull: () => void): number {
+  let rejected = 0;
   for (const resource of list(body.resourceLogs)) {
     for (const scope of list(resource.scopeLogs)) {
       for (const record of list(scope.logRecords)) {
         const attrs = attributes(record.attributes);
         if (attrs.get("event.name") !== "claude_code.api_request") continue;
-        const agentId = agentOf(attrs);
-        if (agentId === undefined) continue;
-        const entry = ledger.entry(agentId, text(attrs, "parent_agent_id"));
-        if (entry === undefined) continue;
+        const entry = entryFor(ledger, attrs, onFull);
+        if (entry === "skip") continue;
+        if (entry === "rejected") {
+          rejected += 1;
+          continue;
+        }
         const logs = entry.logs;
         logs.seen = true;
         const num = (key: string) => number(attrs.get(key)) ?? 0;
-        logs.tokens.input += num("input_tokens");
-        logs.tokens.output += num("output_tokens");
-        logs.tokens.cacheRead += num("cache_read_tokens");
-        logs.tokens.cacheCreation += num("cache_creation_tokens");
-        logs.costUsd += num("cost_usd");
+        logs.tokens.input = add(logs.tokens.input, num("input_tokens"));
+        logs.tokens.output = add(logs.tokens.output, num("output_tokens"));
+        logs.tokens.cacheRead = add(logs.tokens.cacheRead, num("cache_read_tokens"));
+        logs.tokens.cacheCreation = add(logs.tokens.cacheCreation, num("cache_creation_tokens"));
+        logs.costUsd = add(logs.costUsd, num("cost_usd"));
       }
     }
   }
+  return rejected;
 }
 
 export interface OtlpRouteOptions {
   ledger?: CostLedger;
+  /** For the one warning when the ledger is full (counts only, never an ID). */
+  logger?: Logger;
 }
 
 /**
@@ -177,7 +236,7 @@ export interface OtlpRouteOptions {
  */
 export function registerOtlpRoutes(app: Hono<AppEnv>, options: OtlpRouteOptions = {}): CostLedger {
   const ledger = options.ledger ?? new CostLedger();
-  const receive = (path: string, ingest: (ledger: CostLedger, body: Json) => void) =>
+  const receive = (path: string, ingest: Ingest, rejectedKey: string) =>
     app.post(
       path,
       requireScope("ingest"),
@@ -201,12 +260,18 @@ export function registerOtlpRoutes(app: Hono<AppEnv>, options: OtlpRouteOptions 
         ) {
           return apiError(c, 400, "bad_request", "Expected an OTLP/HTTP JSON export");
         }
-        ingest(ledger, body);
-        return c.json({});
+        const rejected = ingest(ledger, body, () => {
+          if (ledger.noteFull()) {
+            options.logger?.warn({ maxAgents: MAX_LEDGER_AGENTS }, "OTLP cost ledger is full");
+          }
+        });
+        return c.json(
+          rejected === 0 ? {} : { partialSuccess: { [rejectedKey]: String(rejected) } },
+        );
       },
     );
-  receive(OTLP_METRICS_PATH, ingestMetrics);
-  receive(OTLP_LOGS_PATH, ingestLogs);
+  receive(OTLP_METRICS_PATH, ingestMetrics, "rejectedDataPoints");
+  receive(OTLP_LOGS_PATH, ingestLogs, "rejectedLogRecords");
   app.get("/v1/agents/:id/cost", requireScope("read"), (c) => {
     const cost = ledger.get(c.req.param("id"));
     if (cost === undefined) {

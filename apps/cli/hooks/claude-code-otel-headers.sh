@@ -9,6 +9,20 @@
 # engine answers 401, which is the honest failure. The token is never echoed anywhere else.
 home=${TASKVILLE_HOME:-}
 [ -n "$home" ] || exit 1
+# Only to the engine: every inherited OTLP endpoint variable must be unset or the engine's
+# loopback origin (TASKVILLE_URL, default http://127.0.0.1:4807), equal to it or continuing with
+# "/" (so "http://127.0.0.1:4807.evil.example" and "...4807@evil.example" do not match). Otherwise
+# print nothing and exit 0: Claude Code may resolve any of these from a shared settings file or
+# the user's own collector, and none of them may receive the token.
+origin=${TASKVILLE_URL:-http://127.0.0.1:4807}
+origin=${origin%/}
+for endpoint in "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}" \
+  "${OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}"; do
+  case $endpoint in
+    '' | "$origin" | "$origin"/*) ;;
+    *) exit 0 ;;
+  esac
+done
 token_file=$home/token
 if [ -h "$token_file" ] || [ ! -f "$token_file" ]; then exit 1; fi
 token=
