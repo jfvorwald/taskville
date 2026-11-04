@@ -35,6 +35,9 @@ export interface AgentCost {
 
 interface Totals {
   seen: boolean;
+  /** Metrics only: which quantity the metrics reported, so each is chosen on its own. */
+  seenTokens: boolean;
+  seenCost: boolean;
   tokens: CostTokens;
   costUsd: number;
 }
@@ -47,6 +50,8 @@ interface Entry {
 
 const emptyTotals = (): Totals => ({
   seen: false,
+  seenTokens: false,
+  seenCost: false,
   tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
   costUsd: 0,
 });
@@ -78,13 +83,15 @@ export class CostLedger {
   get(agentId: string): AgentCost | undefined {
     const entry = this.#entries.get(agentId);
     if (entry === undefined) return undefined;
-    const totals = entry.metrics.seen ? entry.metrics : entry.logs.seen ? entry.logs : undefined;
-    if (totals === undefined) return undefined;
+    if (!entry.metrics.seen && !entry.logs.seen) return undefined;
+    // Each quantity: the metric total when metrics reported it, else the logged sum, never both.
+    const tokens = entry.metrics.seenTokens ? entry.metrics.tokens : entry.logs.tokens;
+    const costUsd = entry.metrics.seenCost ? entry.metrics.costUsd : entry.logs.costUsd;
     return {
       agentId,
       ...(entry.parentAgentId === undefined ? {} : { parentAgentId: entry.parentAgentId }),
-      tokens: { ...totals.tokens },
-      costUsd: totals.costUsd,
+      tokens: { ...tokens },
+      costUsd,
     };
   }
 }
@@ -185,6 +192,8 @@ function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): numb
             continue;
           }
           entry.metrics.seen = true;
+          if (isTokens) entry.metrics.seenTokens = true;
+          else entry.metrics.seenCost = true;
           if (isTokens) {
             const key = type as keyof CostTokens;
             entry.metrics.tokens[key] = add(entry.metrics.tokens[key], value);
