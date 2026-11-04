@@ -2,7 +2,7 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-04 01:00 UTC. **Main:** e68583c. **State:** G4 #75 closed by the owner ("keep going", 2026-11-02). M5 and M6 in progress under the owner's M4 to M6 authorization. Decisions #333, #336, #198 and #289 answered by the owner on 2026-11-03; all four took the default (applied below).
+**Updated:** 2026-11-04 02:30 UTC. **Main:** 53563fe. **State:** G4 #75 closed by the owner ("keep going", 2026-11-02). M5 and M6 in progress under the owner's M4 to M6 authorization. Decisions #333, #336, #198 and #289 answered by the owner on 2026-11-03; all four took the default (applied below).
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
@@ -50,9 +50,9 @@ Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with
 | M5.11 #72 crews e2e (replay) | #344 | 4 of 4 pass, ingest-to-panel lag 46 ms (send 51 ms); highlight seen-fail checked; roborev 6677 fixed, 6690 PASS; code review PASS; follow-up #348; [report](tasks/M5.11.md) |
 | M5.25 #342 Crew tab result summary (decision #333 D1) | #346 | capped at 280 code points, hidden under privacy; REDUCER_VERSION 7; panel 6699 PASS, re-review 6713 answered (v7 never released); code review BLOCKED then CONFIRMED; [report](tasks/M5.25.md) |
 | M6.11 #332 checkpoint follow-ups | #345 | boot backfill (best effort under a busy lock); seek after reboot with no warm-up worst p95 34.4 ms (lively, 50,005 events); panels 6682 fixed, 6705 PASS; code review fixed, security PASS; follow-up #347; [report](tasks/M6.11.md) |
+| M5.24 #341 privacy group caps and search hit names | #343 | cap 32 plus exact "and N more"; unloaded searches reported as searches; per-window output budget (debugger round after a lifetime ledger starved the tail); panels 6674 and 6694 fixed, post-commit 6683 and 6691 fixed; confirming review CONFIRMED; [report](tasks/M5.24.md) |
 
 - Draft: M6.05 #78 (PR #326), required panel 6555 failed on a valid attribution finding; owner decision #325 limits it to producers with explicit task IDs.
-- In progress: M5.24 #341 (PR #343): privacy group caps and search hit names; two roborev panels (6674, 6694) and a post-commit (6691) fixed; the confirming review rejected a per-stream fetch ledger, so round 5 moves to a per-window budget with refetch after eviction (debugger owns the green).
 - Not started: M5.04 #63, M5.12 #104, M5.13 #175, M6.07 #79, M6.09 #311, M6.10 #312, M5.14 #281, M5.15 #285; follow-ups #334, #337, #347 (M6.12), #348 (M5.26); retros #99, #100; gates #76, #80.
 - Flakes this session (load average 25 to 48 from parallel workers and roborev): engine `checkpoints.test.ts` "state at many positions equals a full replay" (5 s timeout, 3 times, passes alone); web `test/wiring/start.test.ts` (twice). The M6.11 timing pins were made baseline-relative.
 - Performance: #268 (web budget) stays open; lively-day seeks now meet 300 ms with checkpoints (#279), existing logs need the boot backfill in #332.
@@ -259,5 +259,7 @@ Targets in the spec are not measurements until a ticket records them here with t
 - Packages still carry M1.02 placeholder tests; owning tickets remove them when real tests land.
 
 ## Next
+
+2026-11-04 carry-over: M5.11, M5.24, M5.25 and M6.11 are merged. Next M5/M6 batch, disjoint Owns: M5.15 #285 and M5.14 #281 (engine feed, run in order, same paths), M6.09 #311 (history Escape), M5.21 #334 (crew attention), M5.22 #337 then M5.26 #348 (crew highlight), M6.12 #347 (checkpoint hardening). Then M5.04 #63, M5.13 #175, M6.07 #79, M6.10 #312, M5.12 #104, the M6.05 #78 draft (decision #325 scope), the M5 and M6 wave runs, retros #99 and #100, and the G5 #76 and G6 #80 summaries.
 
 M4 to its wave run, retro and the G4 summary on #75 (left open for owner review), then M5 and M6 under the same authorization. Still to schedule: #268 (web performance), #236 (theme fidelity), and the post-G3 follow-ups #214, #215, #222 and the browser-test follow-ups in the M3.26 report. The next milestone runs in T3 Code with Claude subagents as the orchestration experiment's comparison run (#231); M3's baseline snapshot is linked from the G3 summary.
