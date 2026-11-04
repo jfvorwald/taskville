@@ -206,4 +206,23 @@ describe("recordedCardTarget work bound", () => {
     }
     expect(call(4)).toBeNull(); // not yet opened at an earlier head
   });
+
+  // Round 3 (roborev 6779): a recent request-opening moment whose request was merged into an older
+  // one is absent from the replayed state. It must not push the lookup into a walk over the whole
+  // recording on each update; the retained distant request is still the answer.
+  it("stays bounded when a recent opening moment was merged away and the request is distant", () => {
+    const { requests, counted, takeReads } = largeLog([
+      moment(5, ADA, "r-retained"),
+      moment(29_990, ADA, "r-merged-away"),
+    ]);
+    const held = requests.filter((r) => r.id !== "r-merged-away");
+    const call = (head: number) =>
+      recordedCardTarget({ state: stateWith(head, held), moments: counted, selectedId: ADA });
+    call(29_995); // warm-up
+    takeReads();
+    for (const head of [30_000, 29_999, 29_995, 29_991, 29_990]) {
+      expect(call(head)?.requestId).toBe("r-retained");
+      expect(takeReads()).toBeLessThan(200);
+    }
+  });
 });
