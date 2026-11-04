@@ -22,8 +22,16 @@ function lastAtOrBefore(list: readonly OpenedMoment[], head: number): number {
   return low;
 }
 
-function opensFor(moment: OpenedMoment | undefined, agentId: string): boolean {
-  return moment?.requestId !== undefined && moment.agentId === agentId;
+/** True when the moment opened a request the replayed state still holds for the agent. */
+function retainedFor(
+  moment: OpenedMoment | undefined,
+  agentId: string,
+  requests: ProjectState["requests"],
+): boolean {
+  if (moment?.requestId === undefined || moment.agentId !== agentId) return false;
+  return (
+    Object.hasOwn(requests, moment.requestId) && requests[moment.requestId]?.agentId === agentId
+  );
 }
 
 const indexes = new WeakMap<
@@ -68,7 +76,7 @@ export function recordedCardTarget(args: {
   let from = start;
   const stop = Math.max(0, start - WALK_BUDGET);
   for (let i = start - 1; i >= stop; i -= 1) {
-    if (opensFor(moments[i], selectedId)) break;
+    if (retainedFor(moments[i], selectedId, state.requests)) break;
     if (i === stop) {
       candidates = agentIndex(moments).get(selectedId) ?? [];
       from = lastAtOrBefore(candidates, head);
