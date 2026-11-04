@@ -115,8 +115,10 @@ export class ToolCallTracker {
     // A start never closes a call; it can only drop the oldest open one beyond the cap.
     if (event.agentId === undefined || event.type === "tool_call.started") return [];
     const closed: FeedToolCall[] = [];
-    // The reducer's own closure rule, on the state before the event.
-    for (const { id } of callsClosedAtBoundary(before, event, event.agentId)) {
+    // The reducer's own closure rule. It runs after the event updated the sessions and agents (a
+    // boundary can first establish session ownership), over the calls that were running before.
+    const seen = { ...before, sessions: this.#state.sessions, agents: this.#state.agents };
+    for (const { id } of callsClosedAtBoundary(seen, event, event.agentId)) {
       const call = this.#calls.get(id);
       if (call === undefined || call.agentId !== this.#agentId || !this.#open.has(id)) continue;
       // Still running afterwards means the event is no boundary.
