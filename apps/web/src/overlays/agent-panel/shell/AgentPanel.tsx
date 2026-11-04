@@ -16,6 +16,7 @@ import { InteractiveRegion } from "../../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../../host/types.ts";
 import { getSettingsStore } from "../../settings/store.ts";
 import { displayPath } from "../code/displayPath.ts";
+import { AgentCost, type CostSource, useAgentCost } from "../cost/index.ts";
 import { CrewTab } from "../crew/CrewTab.tsx";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
 import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
@@ -46,6 +47,8 @@ export interface AgentPanelProps extends OverlayProps {
   initialTab?: PanelTab;
   /** Overrides the selected tab content. Live and Files use paired feeds by default. */
   renderTab?: (tab: PanelTab, agentId: string) => ReactNode;
+  /** Tokens and cost from Claude Code's OpenTelemetry export; defaults to the engine's endpoint. */
+  costSource?: CostSource;
 }
 
 /** "handing_off" is read as "Handing off", the same words the world labels use. */
@@ -84,6 +87,7 @@ export function AgentPanel({
   store = dataStore,
   initialTab = "live",
   renderTab,
+  costSource,
 }: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
@@ -111,6 +115,7 @@ export function AgentPanel({
       ? undefined
       : byId[selectedId];
   const known = agent !== undefined;
+  const costView = useAgentCost(agent?.id, costSource);
   const { select } = selection;
 
   useEffect(() => {
@@ -209,6 +214,7 @@ export function AgentPanel({
             <span data-testid="agent-panel-elapsed">{formatElapsed(elapsed)}</span>
           )}
         </p>
+        {costView === undefined ? null : <AgentCost view={costView} className={styles.facts} />}
         {file === null ? null : (
           <p className={styles.file} data-testid="agent-panel-file">
             {displayPath(file, { privacy: privacyMode })}

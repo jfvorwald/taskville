@@ -43,6 +43,8 @@ export interface BridgeHookParts {
 
 /** File name of the installed shim. Distinctive, because it is how entries are recognized. */
 export const SHIM_NAME = "taskville-claude-code-shim.sh";
+/** The `otelHeadersHelper` script (M5.12): prints the Authorization header from the home's token. */
+export const OTEL_HELPER_NAME = "taskville-claude-code-otel-headers.sh";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type JsonObject = { [key: string]: Json };
@@ -275,6 +277,38 @@ export function addTaskvilleHooks(
     hooks = put(hooks, BRIDGE_HOOK_EVENT, [...existing, { hooks: [bridge] }]);
   }
   return put(base, "hooks", hooks);
+}
+
+/** The `env` settings that point Claude Code's OpenTelemetry export at the engine (M5.12). */
+export function otelEnv(port: number): Record<string, string> {
+  return {
+    CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+    OTEL_METRICS_EXPORTER: "otlp",
+    OTEL_LOGS_EXPORTER: "otlp",
+    OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
+    OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp`,
+  };
+}
+
+/** True when `settings` already has exactly these OpenTelemetry settings. */
+export function hasOtelSettings(settings: JsonObject, port: number, helper: string): boolean {
+  const env = settings.env;
+  return (
+    settings.otelHeadersHelper === helper &&
+    isObject(env) &&
+    Object.entries(otelEnv(port)).every(([key, value]) => env[key] === value)
+  );
+}
+
+/**
+ * Adds the OpenTelemetry `env` keys (merged into any existing `env`) and `otelHeadersHelper`.
+ * Never an `OTEL_EXPORTER_OTLP_HEADERS` or a token: the helper reads the token from the home.
+ */
+export function addOtelSettings(settings: JsonObject, port: number, helper: string): JsonObject {
+  const env = isObject(settings.env) ? settings.env : {};
+  let next = put(settings, "env", { ...env, ...otelEnv(port) });
+  next = put(next, "otelHeadersHelper", helper);
+  return next;
 }
 
 /** The file's indent (two spaces when it cannot tell), so a rewrite keeps its look. */

@@ -20,16 +20,19 @@ import {
   writeBackupOnce,
 } from "./install-files.ts";
 import {
+  addOtelSettings,
   addTaskvilleHooks,
   BRIDGE_HOOK_EVENT,
   BRIDGE_TOKEN_ENV,
   bridgeHookHandler,
   detectIndent,
   HOOK_EVENTS,
+  hasOtelSettings,
   hookCommand,
   isTaskvilleBridgeHook,
   isTaskvilleHook,
   type JsonObject,
+  OTEL_HELPER_NAME,
   parseSettings,
   removeTaskvilleHooks,
   SettingsError,
@@ -49,7 +52,7 @@ import {
 // reformatted, and the diff shows it before anything is written.
 
 const INSTALL_USAGE =
-  "taskville install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>] [--url <base>]";
+  "taskville install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>] [--url <base>] [--otel]";
 const UNINSTALL_USAGE =
   "taskville uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>]";
 
@@ -58,9 +61,11 @@ const OPTIONS = {
   "project-dir": { type: "string" },
   yes: { type: "boolean" },
   "dry-run": { type: "boolean" },
+  otel: { type: "boolean" },
 } as const;
 
 const SHIM_SOURCE = new URL("../../hooks/claude-code-shim.sh", import.meta.url);
+const OTEL_HELPER_SOURCE = new URL("../../hooks/claude-code-otel-headers.sh", import.meta.url);
 
 const usageError = (message: string, usage: string): never => {
   throw new CliError(EXIT.failure, `${message}\nUsage: ${usage}`);
@@ -271,25 +276,44 @@ export async function install(io: Io, args: string[]): Promise<number> {
   });
 
   const { state, settings } = readSettings(p.target);
-  const settingsDone = alreadyInstalled(settings, command, bridge);
-  if (settingsDone && !shim.changes) {
+  // `--otel` (M5.12): the OpenTelemetry settings and the headers helper, on top of the hooks.
+  const otel =
+    p.values.otel === true
+      ? (() => {
+          const source = readFileSync(OTEL_HELPER_SOURCE, "utf8");
+          const helper = checkShim(p.home, OTEL_HELPER_NAME, source);
+          return { source, helper, command: hookCommand({ shimPath: helper.path, home: p.home }) };
+        })()
+      : undefined;
+  const hooksDone = alreadyInstalled(settings, command, bridge);
+  const otelDone = otel === undefined || hasOtelSettings(settings, port, otel.command);
+  const settingsDone = hooksDone && otelDone;
+  if (settingsDone && !shim.changes && otel?.helper.changes !== true) {
     io.stdout(`Already installed in ${showPath(p.target)}; nothing to change.\n`);
     return EXIT.ok;
   }
-  const next = settingsDone
-    ? state.text
-    : serialize(addTaskvilleHooks(settings, command, bridge), detectIndent(state.text ?? ""));
+  let planned = hooksDone ? settings : addTaskvilleHooks(settings, command, bridge);
+  if (otel !== undefined) planned = addOtelSettings(planned, port, otel.command);
+  const next = settingsDone ? state.text : serialize(planned, detectIndent(state.text ?? ""));
   const diff = settingsDiff(p.target.shown, state.text, next);
   const extra = [
     `Hook command: ${command}`,
     shim.changes ? `Shim: copy to ${shim.path} (0755)` : `Shim: ${shim.path} is current`,
   ];
+  if (otel !== undefined) {
+    extra.push(
+      otel.helper.changes
+        ? `OpenTelemetry headers helper: copy to ${otel.helper.path} (0755)`
+        : `OpenTelemetry headers helper: ${otel.helper.path} is current`,
+    );
+  }
   if (!(await approve(p, diff, extra, `Write these hooks to ${p.target.shown}?`))) {
     return p.values["dry-run"] === true ? EXIT.ok : EXIT.failure;
   }
   unchangedSince(p, state);
 
   installShim(p.home, SHIM_NAME, shimSource);
+  if (otel !== undefined) installShim(p.home, OTEL_HELPER_NAME, otel.source);
   if (!settingsDone && next !== undefined) {
     // Keep the original for a byte-for-byte uninstall, unless an earlier install's entries are
     // already in it (then the first install's backup, if any, is the original).
@@ -304,6 +328,11 @@ export async function install(io: Io, args: string[]): Promise<number> {
   io.stdout(
     `To let Claude Code reach the bridge, start it with the token (file ${join(p.home, "bridge-token")}) for that launch only, for example: env ${BRIDGE_TOKEN_ENV}="$(cat ${shellQuote(join(p.home, "bridge-token"))})" claude\n`,
   );
+  if (otel !== undefined) {
+    io.stdout(
+      `OpenTelemetry export is set to ${url.replace(/localhost/, "127.0.0.1")}/v1/otlp; the engine keeps tokens and cost in memory (the token is read from ${join(p.home, "token")} by the headers helper, never written to settings).\n`,
+    );
+  }
   if (p.scope === "project") {
     io.stdout(
       "Note: .claude/settings.local.json holds machine-specific paths. Claude Code git-ignores it only when it creates the file itself, so add it to .gitignore if this project is a git repository.\n",
