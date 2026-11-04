@@ -45,10 +45,15 @@ const FALLBACK_LABEL = "for: a teammate";
 
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+/**
+ * `input.attention` must be in `attention()` order (the domain's order, the one the action card
+ * uses): the lead's "for:" label depends on which needs-you record comes first.
+ */
 export function crewAttribution(input: CrewAttributionInput): CrewAttribution {
   const red = new Set<string>();
   const dots = new Map<string, Set<string>>();
   const forLabels: Record<string, ForLabel> = {};
+  const firstSeen = new Set<string>(); // leads whose first needs-you record has been seen
 
   const dot = (wearerId: string, redId: string): void => {
     if (wearerId === redId) return;
@@ -63,10 +68,14 @@ export function crewAttribution(input: CrewAttributionInput): CrewAttribution {
     if (agent === undefined) continue; // nothing is guessed about an agent we do not know
     red.add(agent.id);
 
-    if (record.heuristic === true && agent.kind === "lead") {
-      const match = FOR_REASON.exec(record.reason?.text ?? "");
-      // The first needs-you record wins, the order the action card uses.
-      forLabels[agent.id] ??= { text: match?.[1] ?? FALLBACK_LABEL, heuristic: true };
+    if (agent.kind === "lead" && !firstSeen.has(agent.id)) {
+      firstSeen.add(agent.id);
+      // The label follows the lead's first needs-you record of any kind, the one the action card
+      // opens, and shows only when that record is heuristic.
+      if (record.heuristic === true) {
+        const match = FOR_REASON.exec(record.reason?.text ?? "");
+        forLabels[agent.id] = { text: match?.[1] ?? FALLBACK_LABEL, heuristic: true };
+      }
     }
 
     // Walk the recorded links only: parentAgentId, then the team lead. The seen set stops a cycle.
