@@ -26,7 +26,7 @@ import { applyToolCallFinished, applyToolCallStarted, closeUnfinishedCalls } fro
 import type { DomainEvent, EntitiesState } from "./types.ts";
 
 export { compareTimestamps, laterTimestamp } from "./time.ts";
-export { MAX_OPEN_TOOL_CALLS_PER_AGENT } from "./tool-calls.ts";
+export { callsClosedAtBoundary, MAX_OPEN_TOOL_CALLS_PER_AGENT } from "./tool-calls.ts";
 export type * from "./types.ts";
 
 // The entities slice: agents, teams, sessions, tasks, activity, and tool calls (ARCHITECTURE.md
