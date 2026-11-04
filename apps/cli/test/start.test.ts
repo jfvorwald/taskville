@@ -1,8 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import { createServer, type Server } from "node:net";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Io, run } from "../src/main.ts";
 import { freePort, tempDir } from "./helpers.ts";
@@ -17,7 +25,12 @@ import { freePort, tempDir } from "./helpers.ts";
 //   io.openUrl?: (url: string) => Promise<void>
 //       Opens a URL in the default browser (argv-based spawn of open / xdg-open / cmd /c start,
 //       never a shell string). Rejects when it fails; `start` then prints the link as today.
-//       Called once with the full pairing URL (http://127.0.0.1:<port>/#pair=<code>).
+//       Called once with the file:// URL (or path) of a redirect page under <home>/run/, never
+//       with the pairing URL itself: the code must not reach any argv (process list).
+//   io.scheduleCleanup?: (cleanup: () => void) => void
+//       Called once after the opener succeeds with a function that deletes the redirect file.
+//       main.ts passes a short setTimeout (unref'd); tests capture and call it. Shutdown also
+//       deletes the file. Absent means start picks its own short timer.
 //   io.sourceCheckout?: boolean
 //       True when the CLI runs from a source checkout (build step possible). main.ts derives it.
 //   io.buildWeb?: () => Promise<void>
@@ -148,7 +161,6 @@ async function startOn(
   return { r, port };
 }
 
-const PAIR_URL = /^http:\/\/127\.0\.0\.1:(\d+)\/#pair=[A-Za-z0-9_-]+$/;
 const jsonLines = (text: string) =>
   text
     .split("\n")
@@ -163,13 +175,13 @@ const jsonLines = (text: string) =>
     });
 
 describe("start opens the pairing link", () => {
-  it("opens the one-time URL once through the injected opener on a terminal", async () => {
+  it("opens a redirect page (not the pairing URL) once through the injected opener on a terminal", async () => {
     const s = setup();
     const { r, port } = await startOn(["start"], s, { stdoutIsTTY: true });
     await until(() => r.opened.length > 0, "opener call");
     expect(r.opened).toHaveLength(1);
-    expect(r.opened[0]).toMatch(PAIR_URL);
-    expect(r.opened[0]).toContain(`:${port}/`);
+    expect(r.opened[0]).not.toContain("#pair=");
+    expect(redirectFile(s.home, r.opened[0] as string)).toContain(`:${port}/#pair=`);
     expect(await r.stop()).toBe(0);
   });
 
@@ -200,6 +212,108 @@ describe("start opens the pairing link", () => {
       },
     });
     await until(() => r.out().includes("#pair="), "printed link");
+    expect(r.out()).toMatch(/http:\/\/127\.0\.0\.1:\d+\/#pair=[A-Za-z0-9_-]+/);
+    expect(await r.stop()).toBe(0);
+  });
+});
+
+/** The local path of what the opener received (a file:// URL or a path); asserts it is in <home>/run. */
+function openedPath(home: string, arg: string): string {
+  expect(arg, "the opener must get a file:// URL or an absolute path").toMatch(/^(file:\/\/|\/)/);
+  const path = arg.startsWith("file://") ? fileURLToPath(arg) : arg;
+  expect(dirname(realpathSync(dirname(path)))).toBe(realpathSync(home));
+  expect(basename(dirname(path))).toBe("run");
+  return path;
+}
+
+/** Reads the redirect page the opener was pointed at. */
+function redirectFile(home: string, arg: string): string {
+  return readFileSync(openedPath(home, arg), "utf8");
+}
+
+describe("the pairing code never reaches the opener's argv (M7.08 security finding)", () => {
+  const pageMatches = (html: string) =>
+    html.match(/http:\/\/127\.0\.0\.1:\d+\/#pair=[A-Za-z0-9_-]+/);
+
+  it("opens a file under <home>/run/ whose name and URL do not contain the code", async () => {
+    const s = setup();
+    const { r } = await startOn(["start"], s, { stdoutIsTTY: true });
+    await until(() => r.opened.length > 0, "opener call");
+    const arg = r.opened[0] as string;
+    const link = pageMatches(redirectFile(s.home, arg));
+    expect(link).not.toBeNull();
+    const code = (link as RegExpMatchArray)[0].split("#pair=")[1] as string;
+    expect(arg).not.toContain(code);
+    expect(arg).not.toContain("pair");
+    expect(arg).not.toMatch(/^https?:/);
+    await r.stop();
+  });
+
+  it("writes the page 0600 in a 0700 dir, redirecting without external resources", async () => {
+    const s = setup();
+    const { r } = await startOn(["start"], s, { stdoutIsTTY: true });
+    await until(() => r.opened.length > 0, "opener call");
+    const path = openedPath(s.home, r.opened[0] as string);
+    expect(mode(path)).toBe(0o600);
+    expect(mode(dirname(path))).toBe(0o700);
+    const html = readFileSync(path, "utf8");
+    expect(html).toMatch(/http-equiv=["']refresh["']/i);
+    expect(html).toContain("location.replace");
+    expect(html).not.toMatch(/<(script|link|img|iframe)[^>]+(src|href)=/i);
+    await r.stop();
+  });
+
+  it("uses an unpredictable name (a second start picks a different file)", async () => {
+    const names: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const s = setup();
+      const { r } = await startOn(["start"], s, { stdoutIsTTY: true });
+      await until(() => r.opened.length > 0, "opener call");
+      names.push(basename(openedPath(s.home, r.opened[0] as string)));
+      await r.stop();
+    }
+    expect(names[0]).not.toBe(names[1]);
+    expect(names[0]).toMatch(/[A-Za-z0-9_-]{16,}/);
+  });
+
+  it("deletes the page when the injected cleanup trigger fires", async () => {
+    const s = setup();
+    const triggers: Array<() => void> = [];
+    const { r } = await startOn(["start"], s, {
+      stdoutIsTTY: true,
+      scheduleCleanup: (fn: () => void) => {
+        triggers.push(fn);
+      },
+    });
+    await until(() => r.opened.length > 0, "opener call");
+    const path = openedPath(s.home, r.opened[0] as string);
+    expect(existsSync(path)).toBe(true);
+    expect(triggers).toHaveLength(1);
+    triggers[0]?.();
+    expect(existsSync(path)).toBe(false);
+    triggers[0]?.(); // idempotent
+    expect(await r.stop()).toBe(0);
+  });
+
+  it("deletes the page on shutdown even if the trigger never fires", async () => {
+    const s = setup();
+    const { r } = await startOn(["start"], s, {
+      stdoutIsTTY: true,
+      scheduleCleanup: () => {},
+    });
+    await until(() => r.opened.length > 0, "opener call");
+    const path = openedPath(s.home, r.opened[0] as string);
+    expect(existsSync(path)).toBe(true);
+    expect(await r.stop()).toBe(0);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("prints the link and never calls the opener when the page cannot be written", async () => {
+    const s = setup();
+    writeFileSync(join(s.home, "run"), "not a directory"); // <home>/run cannot be created
+    const { r } = await startOn(["start"], s, { stdoutIsTTY: true });
+    await until(() => r.out().includes("#pair=") || r.opened.length > 0, "link or opener call");
+    expect(r.opened).toEqual([]);
     expect(r.out()).toMatch(/http:\/\/127\.0\.0\.1:\d+\/#pair=[A-Za-z0-9_-]+/);
     expect(await r.stop()).toBe(0);
   });
