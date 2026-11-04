@@ -129,4 +129,22 @@ describe("teammate message envelopes in the city", () => {
       await scene.unmount();
     }
   }, 60_000);
+
+  it("drops the message text from a tooltip that is already open when Hide code turns on", async () => {
+    const settings = getSettingsStore();
+    const { scene } = await inFlight();
+    try {
+      const canvas = scene.root().gl.domElement;
+      await userEvent.hover(canvas, { position: scene.onCanvas(scene.envelopes()[0] as Object3D) });
+      await vi.waitFor(() => expect(tooltip()?.textContent).toBe("Pip to Bo: hi bo"), FRAME_WAIT);
+
+      // The pointer stays where it is: only the setting changes.
+      settings.set("privacyMode", true);
+      await scene.frames(2);
+      await vi.waitFor(() => expect(tooltip()?.textContent).toBe("Pip to Bo"), { timeout: 1_000 });
+    } finally {
+      settings.set("privacyMode", false);
+      await scene.unmount();
+    }
+  }, 60_000);
 });
