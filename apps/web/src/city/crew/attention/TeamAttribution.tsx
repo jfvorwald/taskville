@@ -6,6 +6,7 @@ import type { DataStore } from "../../../data/store.ts";
 import { LabelSprite } from "../../agents/LabelSprite.tsx";
 import { colorMaterial } from "../../agents/resources.ts";
 import type { AgentView } from "../../agents/types.ts";
+import { useAttributedView } from "../strict-attribution/index.ts";
 import { crewGeometries } from "../subagents/resources.ts";
 import { crewAttribution, leadDotTargets } from "./attribution.ts";
 
@@ -56,12 +57,14 @@ export function TeamAttribution({
 }) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
-  const out = useMemo(
-    () =>
-      state === null
-        ? undefined
-        : crewAttribution({ agents: state.agents, teams: state.teams, attention }),
+  const slice = useMemo(
+    () => ({ agents: state?.agents ?? {}, teams: state?.teams ?? {}, attention }),
     [state, attention],
+  );
+  const attributed = useAttributedView(slice);
+  const out = useMemo(
+    () => (state === null ? undefined : crewAttribution(attributed)),
+    [state, attributed],
   );
   if (out === undefined || state === null) return null;
   return (

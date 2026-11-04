@@ -16,6 +16,7 @@ import { AgentsLayer } from "../agents/index.ts";
 import { agentLabel } from "../agents/label.ts";
 import type { AgentLabelEntry, AgentView, Placement } from "../agents/types.ts";
 import { troubleDetail } from "../attention/detail.ts";
+import { useAttributedView } from "../crew/strict-attribution/index.ts";
 import { TeamDecorations } from "../crew/teams/TeamDecorations.tsx";
 import { presentationEpoch } from "../runtime/epoch.ts";
 import { rebuildPresentation } from "../runtime/rebuild.ts";
@@ -62,7 +63,17 @@ export function CityAgents({
 }: CityAgentsProps) {
   const state = useData((s) => s.state, store);
   const agents = useData((s) => s.agents, store);
-  const attention = useData((s) => s.attention, store);
+  const recordedAttention = useData((s) => s.attention, store);
+  // M5.13: strict attribution drops heuristic records once, for everything below.
+  const slice = useMemo(
+    () => ({
+      agents: state?.agents ?? {},
+      teams: state?.teams ?? {},
+      attention: recordedAttention,
+    }),
+    [state, recordedAttention],
+  );
+  const { attention } = useAttributedView(slice);
   const prefersReduced = usePrefersReducedMotion();
   const reduced = reducedMotion ?? prefersReduced;
 
