@@ -61,13 +61,16 @@ function agentGroups(scene: Object3D): Groups {
   return found;
 }
 
-/** The id-to-group map, walked at most once per frame however many rings and tethers ask. */
-const frameGroups = new WeakMap<Object3D, { stamp: number; groups: Groups }>();
-function groupsOf(scene: Object3D, stamp: number): Groups {
+/**
+ * The id-to-group map, walked at most once per draw however many rings and tethers ask. It is
+ * dropped after each draw of the scene, so it never outlives the frame (a stopped clock included).
+ */
+const frameGroups = new WeakMap<Object3D, Groups>();
+function groupsOf(scene: Object3D): Groups {
   const known = frameGroups.get(scene);
-  if (known !== undefined && known.stamp === stamp) return known.groups;
+  if (known !== undefined) return known;
   const groups = agentGroups(scene);
-  frameGroups.set(scene, { stamp, groups });
+  frameGroups.set(scene, groups);
   return groups;
 }
 
@@ -260,22 +263,37 @@ export function CrewHighlight({
   // Just before each draw, after every frame callback has run: put the dim and the lift back.
   useEffect(() => {
     const draw = gl.render;
-    gl.render = (renderScene, camera) => {
-      if (!idleRef.current()) sync.current(agentGroups(renderScene));
+    // Set when another wrapper was installed over this one and this one can no longer be removed.
+    let dead = false;
+    const wrapper: typeof gl.render = (renderScene, camera) => {
+      // Only the main scene: a RenderTexture, Hud or portal scene must not sync or forget state.
+      const main = renderScene === scene;
+      if (!dead && main && !idleRef.current()) sync.current(agentGroups(renderScene));
       draw.call(gl, renderScene, camera);
+      if (main) frameGroups.delete(scene);
     };
+    gl.render = wrapper;
     return () => {
-      gl.render = draw;
-      for (const group of agentGroups(scene).values()) setDim(group, false);
+      // Restore only if still the current wrapper; otherwise pass through and leave gl.render be.
+      if (gl.render === wrapper) gl.render = draw;
+      else dead = true;
+      const groups = agentGroups(scene);
+      const b = bounce.current;
+      if (b.lifted !== null) {
+        const prev = groups.get(b.lifted.id);
+        if (prev !== undefined && prev.position.y === b.lifted.y) prev.position.y -= b.lifted.by;
+        b.lifted = null;
+      }
+      for (const group of groups.values()) setDim(group, false);
       dimmed.current.clear();
       disposeFades();
     };
   }, [gl, scene]);
 
   const focus = useMemo(() => new Vector3(), []);
-  useFrame(({ camera, clock, invalidate }, delta) => {
+  useFrame(({ camera, invalidate }, delta) => {
     if (target.current === null && idleRef.current()) return;
-    if (!idleRef.current()) sync.current(groupsOf(scene, clock.elapsedTime));
+    if (!idleRef.current()) sync.current(groupsOf(scene));
     // The hop and the dim need a draw per frame while they run, even on demand rendering.
     if (bounce.current.lifted !== null) invalidate();
     const goal = target.current;
@@ -325,9 +343,9 @@ function FollowRing({
 }) {
   const mesh = useRef<Mesh>(null);
   const scene = useThree((s) => s.scene);
-  useFrame(({ clock }) => {
+  useFrame(() => {
     if (mesh.current === null) return;
-    const at = groupsOf(scene, clock.elapsedTime).get(id);
+    const at = groupsOf(scene).get(id);
     // No visible bot (finished and gone, or hidden behind a crew marker): no ring.
     mesh.current.visible = at !== undefined && isShown(at);
     if (at !== undefined) {
@@ -347,13 +365,13 @@ function Tether({ from, to, color }: { from: string; to: string; color: Color })
   const line = useRef<Object3D>(null);
   const ends = useRef<{ a: Vector3; b: Vector3 } | null>(null);
   const scene = useThree((s) => s.scene);
-  useFrame(({ clock }) => {
+  useFrame(() => {
     const segments = line.current as unknown as {
       geometry: BufferGeometry;
       computeLineDistances(): void;
     } | null;
     if (segments === null) return;
-    const groups = groupsOf(scene, clock.elapsedTime);
+    const groups = groupsOf(scene);
     const a = groups.get(from);
     const b = groups.get(to);
     if (a === undefined || b === undefined) return;
