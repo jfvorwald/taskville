@@ -1,5 +1,6 @@
+import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { CHECKPOINT_INTERVAL } from "./checkpoints.ts";
+import { CHECKPOINT_INTERVAL, type CheckpointRow, UPKEEP_WAIT_MS } from "./checkpoints.ts";
 import type { ProjectionRecord, Storage } from "./storage.ts";
 
 /**
@@ -81,29 +82,55 @@ export function rebuildStaleProjections<S>(
   return rebuilt;
 }
 
-/** Writes the checkpoints a fresh project lacks (a log that predates them); a complete cache costs one query. */
+/** True for SQLite's busy and locked errors (another connection holds the write lock) and for a spent upkeep budget. */
+function isBusy(error: unknown): boolean {
+  const { errcode, message } = error as { errcode?: unknown; message?: unknown };
+  return (
+    errcode === 5 ||
+    errcode === 6 ||
+    (typeof message === "string" && /database is (locked|busy)|wait budget spent/.test(message))
+  );
+}
+
+/**
+ * Writes the checkpoints a fresh project lacks (a log that predates them); a complete cache costs
+ * one query. Best effort: the fold is read-only and the write waits at most the upkeep budget, so
+ * a busy write lock skips the backfill (a later seek fills the cache) instead of aborting boot.
+ * Any other error still propagates.
+ */
 function backfillCheckpoints<S>(
   storage: Storage,
   projectId: string,
   head: number,
   reducer: ProjectionReducer<S>,
 ): void {
-  const stored = new Set(storage.checkpoints().sequences(projectId));
+  const cache = storage.checkpoints();
+  const stored = new Set(cache.sequences(projectId));
   const missing = new Set<number>();
   for (let sequence = CHECKPOINT_INTERVAL; sequence <= head; sequence += CHECKPOINT_INTERVAL) {
     if (!stored.has(sequence)) missing.add(sequence);
   }
   if (missing.size === 0) return;
   const last = Math.max(...missing);
-  storage.transaction((tx) => {
-    let state = reducer.initial(projectId);
-    for (const event of tx.events(projectId)) {
-      state = reducer.apply(state, event);
-      const sequence = event.ingestSequence;
-      if (missing.has(sequence)) {
-        tx.writeCheckpoint({ projectId, sequence, reducerVersion: reducer.version, state });
-      }
-      if (sequence >= last) break;
+  const rows: CheckpointRow[] = [];
+  let state = reducer.initial(projectId);
+  for (const event of storage.events(projectId)) {
+    state = reducer.apply(state, event);
+    const sequence = event.ingestSequence;
+    if (missing.has(sequence)) {
+      const json = canonicalJson(state);
+      rows.push({
+        sequence,
+        reducerVersion: reducer.version,
+        stateHash: `${reducer.version}:${sha256Hex(json)}`,
+        stateJson: json,
+      });
     }
-  });
+    if (sequence >= last) break;
+  }
+  try {
+    cache.withWaitBudget(UPKEEP_WAIT_MS, () => cache.put(projectId, rows));
+  } catch (error) {
+    if (!isBusy(error)) throw error;
+  }
 }
