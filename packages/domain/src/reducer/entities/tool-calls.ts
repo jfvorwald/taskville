@@ -116,6 +116,34 @@ export function applyToolCallFinished(
 }
 
 /**
+ * The running calls a boundary event closes, in `s` as it stands before the event, oldest start
+ * first (see `closeUnfinishedCalls` for the rule). The feed reuses this so it shows every closed
+ * call as `unfinished`, where the bounded projection keeps only the latest per agent (M5.15).
+ */
+export function callsClosedAtBoundary(
+  s: EntitiesState,
+  e: DomainEvent,
+  agentId: string,
+): ToolCall[] {
+  const sessionId = e.type === "agent.finished" ? undefined : e.sessionId;
+  const ownsSession = sessionId !== undefined && getOwn(s.sessions, sessionId)?.agentId === agentId;
+  const closes = (c: ToolCall): boolean => {
+    if (c.phase !== "running") return false;
+    if (e.type === "session.ended" && sessionId !== undefined && c.sessionId === sessionId) {
+      return true;
+    }
+    const inScope =
+      sessionId === undefined || c.sessionId === undefined || c.sessionId === sessionId;
+    if (c.agentId === agentId) return inScope;
+    if (!ownsSession || c.sessionId !== sessionId) return false;
+    return getOwn(s.agents, c.agentId)?.registered !== true;
+  };
+  return Object.values(s.toolCalls)
+    .filter(closes)
+    .sort((a, b) => (laterStart(a, b) ? 1 : -1));
+}
+
+/**
  * Closes running calls that will never get a `tool_call.finished` (data-model.md "Unfinished
  * tool calls", M2.13). `e` is a boundary event of agent `agentId`:
  * - its own running calls in the event's session (all of them for `agent.finished`, or for an
@@ -131,20 +159,7 @@ export function closeUnfinishedCalls(
   e: DomainEvent,
   agentId: string,
 ): EntitiesState {
-  const sessionId = e.type === "agent.finished" ? undefined : e.sessionId;
-  const ownsSession = sessionId !== undefined && getOwn(s.sessions, sessionId)?.agentId === agentId;
-  const closes = (c: ToolCall): boolean => {
-    if (c.phase !== "running") return false;
-    if (e.type === "session.ended" && sessionId !== undefined && c.sessionId === sessionId) {
-      return true;
-    }
-    const inScope =
-      sessionId === undefined || c.sessionId === undefined || c.sessionId === sessionId;
-    if (c.agentId === agentId) return inScope;
-    if (!ownsSession || c.sessionId !== sessionId) return false;
-    return getOwn(s.agents, c.agentId)?.registered !== true;
-  };
-  const closing = Object.values(s.toolCalls).filter(closes);
+  const closing = callsClosedAtBoundary(s, e, agentId);
   if (closing.length === 0) return s;
 
   // Per agent, keep the latest started closed call as its one finished call.

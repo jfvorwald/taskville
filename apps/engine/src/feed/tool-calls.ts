@@ -1,4 +1,5 @@
 import {
+  callsClosedAtBoundary,
   initialState,
   type ProjectState,
   reduce,
@@ -54,22 +55,29 @@ export class ToolCallTracker {
   }
 
   /**
-   * Applies an event. Returns the ToolCall as of this event, or undefined when the event does not
-   * change this agent's tool calls (another agent's event, or a repeated start or finish). A
-   * boundary closes at most one call per agent (the reducer keeps the latest started of the calls
-   * it closes), so one event gives at most one call.
+   * Applies an event. Returns every ToolCall that changed as of this event: none when the event
+   * does not change this agent's tool calls (another agent's event, or a repeated start or
+   * finish), one for a start or finish, and at a boundary one `unfinished` call for each running
+   * call of this agent the reducer closed, oldest start first. The reducer's projection keeps only
+   * the latest of them (M5.15), so the closure rule is read from the domain, not from its state.
    */
-  apply(event: StoredEnvelope): FeedToolCall | undefined {
-    this.#state = reduce(this.#state, event);
-    const call = this.#fold(event) ?? this.#closedByBoundary(event);
-    if (call !== undefined) {
+  applyAll(event: StoredEnvelope): FeedToolCall[] {
+    const before = this.#state;
+    this.#state = reduce(before, event);
+    const folded = this.#fold(event);
+    const calls = folded === undefined ? this.#closedByBoundary(before, event) : [folded];
+    for (const call of calls) {
       if (call.phase === "running") this.#open.add(call.toolCallId);
       else this.#open.delete(call.toolCallId);
-    } else {
-      this.#restoreRepeatedStart(event);
     }
+    if (calls.length === 0) this.#restoreRepeatedStart(event);
     this.#forgetDropped();
-    return call;
+    return calls;
+  }
+
+  /** The last call `applyAll` gives (the latest started at a boundary), or undefined for none. */
+  apply(event: StoredEnvelope): FeedToolCall | undefined {
+    return this.applyAll(event).at(-1);
   }
 
   /**
@@ -102,19 +110,25 @@ export class ToolCallTracker {
     }
   }
 
-  /** The reducer closed an open call of this agent as `unfinished` at this event. */
-  #closedByBoundary(event: StoredEnvelope): FeedToolCall | undefined {
-    for (const id of this.#open) {
+  /** The open calls of this agent that the reducer closed as `unfinished` at this event. */
+  #closedByBoundary(before: ProjectState, event: StoredEnvelope): FeedToolCall[] {
+    // A start never closes a call; it can only drop the oldest open one beyond the cap.
+    if (event.agentId === undefined || event.type === "tool_call.started") return [];
+    const closed: FeedToolCall[] = [];
+    // The reducer's own closure rule, on the state before the event.
+    for (const { id } of callsClosedAtBoundary(before, event, event.agentId)) {
       const call = this.#calls.get(id);
+      if (call === undefined || call.agentId !== this.#agentId || !this.#open.has(id)) continue;
+      // Still running afterwards means the event is no boundary.
       const reduced = Object.hasOwn(this.#state.toolCalls, id)
         ? this.#state.toolCalls[id]
         : undefined;
-      if (call === undefined || reduced?.phase !== "unfinished") continue;
-      const closed: FeedToolCall = { ...call, phase: "unfinished", finishedAt: event.occurredAt };
-      this.#calls.set(id, closed);
-      return snapshot(closed);
+      if (reduced?.phase === "running") continue;
+      const next: FeedToolCall = { ...call, phase: "unfinished", finishedAt: event.occurredAt };
+      this.#calls.set(id, next);
+      closed.push(snapshot(next));
     }
-    return undefined;
+    return closed;
   }
 
   #fold(event: StoredEnvelope): FeedToolCall | undefined {
