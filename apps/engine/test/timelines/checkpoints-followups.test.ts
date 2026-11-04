@@ -7,7 +7,7 @@ import {
   reduce,
 } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
 import {
   openStorage,
@@ -94,6 +94,27 @@ const timed = <T>(fn: () => T): { value: T; ms: number } => {
   return { value, ms: performance.now() - started };
 };
 
+/**
+ * The time a foreign write lock adds to `run`, in ms. `prepare` puts the data in the same state
+ * before each of two runs: one unlocked (the baseline: fold, JSON, sha256, disk) and one with the
+ * lock held on `db()`. The difference is lock wait only, so machine load does not move it.
+ * Returns the locked run's value too.
+ */
+function lockCost<T>(prepare: () => void, run: () => T): { extra: number; value: T } {
+  prepare();
+  const baseline = timed(run).ms;
+  prepare();
+  db().exec("BEGIN IMMEDIATE");
+  let locked: { value: T; ms: number };
+  try {
+    locked = timed(run);
+  } finally {
+    db().exec("ROLLBACK");
+  }
+  return { extra: locked.ms - baseline, value: locked.value };
+}
+const clearCache = () => void db().exec("DELETE FROM checkpoints");
+
 /** How long a write on `conn` waits for a foreign lock, in ms (the lock is held on `db()`). */
 function writeWaitMs(conn: ReturnType<typeof openStorage>): number {
   const started = performance.now();
@@ -120,11 +141,11 @@ describe("busy_timeout is restored after stateAtSequence", () => {
   }, 30_000);
 
   it("foreign-lock path: the timeout is back to 5000 ms after upkeep gave up", () => {
+    const { extra, value } = lockCost(clearCache, () => stateAtSequence(storage(), PROJECT, 1250));
+    expect(value).toEqual(fullReplay(1250));
+    expect(extra).toBeLessThan(400); // the 250 ms budget is shared by all upkeep steps
     db().exec("BEGIN IMMEDIATE");
     try {
-      const { value, ms } = timed(() => stateAtSequence(storage(), PROJECT, 1250));
-      expect(value).toEqual(fullReplay(1250));
-      expect(ms).toBeLessThan(400); // the 250 ms budget is shared by all upkeep steps
       expect(writeWaitMs(storage())).toBeGreaterThan(4500);
     } finally {
       db().exec("ROLLBACK");
@@ -132,31 +153,30 @@ describe("busy_timeout is restored after stateAtSequence", () => {
   }, 30_000);
 
   it("the budget is shared: even with bad rows to prune and rows to write, total stays under 400 ms", () => {
-    stateAtSequence(storage(), PROJECT, LOG_LENGTH);
-    db().prepare("UPDATE checkpoints SET state_json = 'x' WHERE sequence IN (500, 1000)").run();
-    db().exec("BEGIN IMMEDIATE");
-    try {
-      const { value, ms } = timed(() => stateAtSequence(storage(), PROJECT, LOG_LENGTH));
-      expect(value).toEqual(fullReplay(LOG_LENGTH));
-      expect(ms).toBeLessThan(400);
-    } finally {
-      db().exec("ROLLBACK");
-    }
+    const damaged = () => {
+      clearCache();
+      stateAtSequence(storage(), PROJECT, LOG_LENGTH);
+      db().prepare("UPDATE checkpoints SET state_json = 'x' WHERE sequence IN (500, 1000)").run();
+    };
+    const { extra, value } = lockCost(damaged, () =>
+      stateAtSequence(storage(), PROJECT, LOG_LENGTH),
+    );
+    expect(value).toEqual(fullReplay(LOG_LENGTH));
+    expect(extra).toBeLessThan(400);
   }, 30_000);
 
   // FAILS on main: the budget sets busy_timeout to the remaining 250 ms even on a connection
   // whose own timeout is smaller, so it raises it. Math.min keeps the smaller one.
   it("never raises a connection whose own busy_timeout is smaller than the budget", () => {
-    stateAtSequence(storage(), PROJECT, 0); // no rows needed; just proves the log is seeded
     const impatient = openStorage(dbPath(), { busyTimeoutMs: 30 });
-    db().exec("BEGIN IMMEDIATE");
     try {
-      // Prune does not need the lock for nothing... but rows to write do: two steps at <= 30 ms.
-      const { value, ms } = timed(() => stateAtSequence(impatient, PROJECT, 1250));
+      // Writing the missing rows needs the lock: it waits about 30 ms, not the 250 ms budget.
+      const { extra, value } = lockCost(clearCache, () =>
+        stateAtSequence(impatient, PROJECT, 1250),
+      );
       expect(value).toEqual(fullReplay(1250));
-      expect(ms).toBeLessThan(150);
+      expect(extra).toBeLessThan(150);
     } finally {
-      db().exec("ROLLBACK");
       impatient.close();
     }
   }, 30_000);
@@ -170,28 +190,22 @@ describe("prune takes the write lock only when there is something to prune", () 
 
   // FAILS on main: prune always runs BEGIN IMMEDIATE and waits out the budget (250 ms).
   it("prune returns 0 promptly while a foreign connection holds the write lock", () => {
-    db().exec("BEGIN IMMEDIATE");
-    try {
-      const { value, ms } = timed(() =>
-        storage().checkpoints().prune(PROJECT, REDUCER_VERSION, LOG_LENGTH),
-      );
-      expect(value).toBe(0);
-      expect(ms).toBeLessThan(100);
-    } finally {
-      db().exec("ROLLBACK");
-    }
+    const { extra, value } = lockCost(
+      () => {},
+      () => storage().checkpoints().prune(PROJECT, REDUCER_VERSION, LOG_LENGTH),
+    );
+    expect(value).toBe(0);
+    expect(extra).toBeLessThan(100);
   });
 
   // FAILS on main, same reason: a fully populated cache needs no upkeep at all.
   it("a seek over a fully populated, healthy cache is not delayed by a foreign write lock", () => {
-    db().exec("BEGIN IMMEDIATE");
-    try {
-      const { value, ms } = timed(() => stateAtSequence(storage(), PROJECT, 1250));
-      expect(value).toEqual(fullReplay(1250));
-      expect(ms).toBeLessThan(100);
-    } finally {
-      db().exec("ROLLBACK");
-    }
+    const { extra, value } = lockCost(
+      () => {},
+      () => stateAtSequence(storage(), PROJECT, 1250),
+    );
+    expect(value).toEqual(fullReplay(1250));
+    expect(extra).toBeLessThan(100);
   });
 
   // Pin (passes on main): when there is something to prune, prune still does it.
@@ -376,9 +390,8 @@ describe("boot backfill is best effort under a busy write lock", () => {
     freshProjectionNoCheckpoints();
     const before = storage().projection(PROJECT);
     const impatient = openStorage(dbPath(), { busyTimeoutMs: 100 });
-    db().exec("BEGIN IMMEDIATE");
     try {
-      const { value, ms } = timed(() => {
+      const { extra, value } = lockCost(clearCache, () => {
         let rebuilt: string[] | undefined;
         expect(() => {
           rebuilt = rebuildStaleProjections(impatient, domainReducer);
@@ -386,14 +399,27 @@ describe("boot backfill is best effort under a busy write lock", () => {
         return rebuilt;
       });
       expect(value).not.toContain(PROJECT);
-      expect(ms).toBeLessThan(2000);
+      expect(extra).toBeLessThan(1000);
     } finally {
-      db().exec("ROLLBACK");
       impatient.close();
     }
     expect(storage().projection(PROJECT)).toEqual(before);
     expect(sequencesOf(PROJECT)).toEqual([]);
   }, 30_000);
+
+  // Guard (passes on green): only busy and locked errors are swallowed by the best-effort catch.
+  it("rethrows an error that is not a busy lock", () => {
+    freshProjectionNoCheckpoints();
+    const put = vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
+      throw new Error("disk exploded");
+    });
+    try {
+      expect(() => rebuildStaleProjections(storage(), domainReducer)).toThrow("disk exploded");
+      expect(put).toHaveBeenCalled();
+    } finally {
+      put.mockRestore();
+    }
+  });
 
   it("after a skipped backfill, a seek fills the checkpoints, and a later unlocked boot keeps them", () => {
     freshProjectionNoCheckpoints();
