@@ -71,8 +71,11 @@
 #              running is never broken (a reused PID only costs per-event
 #              files). Breaking is serialized by a second mkdir lock,
 #              claude-code.lock.break: only its holder may judge and remove
-#              claude-code.lock, and holders only ever remove their own lock,
-#              so the lock judged stale is the lock removed. The break lock is
+#              claude-code.lock, and holders only ever remove their own lock.
+#              The breaker reads the PID again after finding it not running and
+#              breaks only if it is unchanged (the holder may have released and
+#              a live shim taken a new lock meanwhile), so the lock judged stale
+#              is the lock removed. The break lock is
 #              held for a few milliseconds and never reclaimed automatically;
 #              if a shim is killed while holding it, later events go to
 #              per-event files until it is removed by hand. Nothing is lost.
@@ -329,6 +332,10 @@ break_stale_lock() {
     *[!0-9]*) ;;
     *) kill -0 "$owner" 2>/dev/null || stale=yes ;;
   esac
+  # The holder may have released and exited, and a live shim taken a new lock,
+  # since the read (M5.27). A dead holder can no longer release, so a lock that
+  # still names it now is the lock moved below.
+  if [ "$stale" = yes ] && [ "$(lock_owner "$lock")" != "$owner" ]; then stale=no; fi
   if [ "$stale" = yes ] && mv "$lock" "$work/stale-lock" 2>/dev/null; then broke=yes; fi
   rmdir "$breaker" 2>/dev/null
   [ "$broke" = yes ]

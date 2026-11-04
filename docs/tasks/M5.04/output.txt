@@ -1,0 +1,7 @@
+
+Running 1 test using 1 worker
+
+envelope tooltip: pip to bo: Greeting bo from pip
+  ✓  1 ../../tests/e2e/crews/envelopes.spec.ts:26:1 › a teammate message flies as an envelope that says who wrote to whom (8.4s)
+
+  1 passed (10.1s)
