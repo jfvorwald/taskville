@@ -84,7 +84,7 @@ describe("strict teammate attribution in the crew layer", () => {
     await render(<Probe store={createSettingsStore(memoryStorage())} />);
     await expect.element(page.getByTestId("red")).toHaveTextContent("red: lead");
     await expect.element(page.getByTestId("label")).toHaveTextContent("label: for: pip");
-    await expect.element(page.getByTestId("guess")).toHaveTextContent("pip is guessed as pip");
+    await expect.element(page.getByTestId("guess")).toHaveTextContent("guess: pip is guessed as pip");
   });
 
   it("hides them when switched on and restores them when switched off", async () => {
@@ -96,7 +96,7 @@ describe("strict teammate attribution in the crew layer", () => {
     await page.getByRole("switch", { name: NAME }).click();
     await expect.element(page.getByTestId("red")).toHaveTextContent("red: lead");
     await expect.element(page.getByTestId("label")).toHaveTextContent("label: for: pip");
-    await expect.element(page.getByTestId("guess")).toHaveTextContent("pip is guessed as pip");
+    await expect.element(page.getByTestId("guess")).toHaveTextContent("guess: pip is guessed as pip");
   });
 
   it("still shows a recorded teammate link when strict", async () => {
