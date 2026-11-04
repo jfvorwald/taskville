@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import {
+  FEED_REQUEST_TTL_MS,
   type FeedFocus,
   feedFocus as sharedFeedFocus,
 } from "../../../city/crew/envelopes/feedFocus.ts";
@@ -119,8 +120,10 @@ export function AgentPanel({
     if (focus === null || focus === handledFocus.current || focus.agentId !== selection.selectedId)
       return;
     handledFocus.current = focus;
-    setChosen("live");
-  }, [focus, selection.selectedId]);
+    // Single use: consumed here, so a remount does not apply it again. A stale one is only dropped.
+    if (feedFocus.ageOf(focus) <= FEED_REQUEST_TTL_MS) setChosen("live");
+    feedFocus.clear(focus);
+  }, [focus, selection.selectedId, feedFocus]);
 
   useEffect(() => {
     setNowMs(store.now());
