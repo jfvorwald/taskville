@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { OWN_ESCAPE_SELECTOR } from "../../city/interaction/escape.ts";
 import type { ReplayRate } from "../state/store.ts";
 import { BackToLive } from "./back-to-live.tsx";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
@@ -29,6 +30,13 @@ export function HistoryControls() {
       )
         return;
       const key = event.key.toLowerCase();
+      // A dialog keeps its own Escape.
+      if (
+        key === "escape" &&
+        event.target instanceof HTMLElement &&
+        event.target.closest(OWN_ESCAPE_SELECTOR) !== null
+      )
+        return;
       if (key === "h" && history.mode === "live") {
         event.preventDefault();
         history.enter();
@@ -37,11 +45,13 @@ export function HistoryControls() {
         (history.mode === "history" || history.pending)
       ) {
         event.preventDefault();
+        // Escape only returns to live: stop it before the panel and city listeners clear the selection.
+        if (key === "escape") event.stopPropagation();
         history.exit();
       }
     }
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
+    window.addEventListener("keydown", keydown, true);
+    return () => window.removeEventListener("keydown", keydown, true);
   }, [history]);
   return (
     <>

@@ -1,0 +1,9 @@
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.26/apps/web
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  20:52:02
+   Duration  29.06s (import 94%, tests 4%, worker 2%)
+

@@ -292,8 +292,11 @@ function SelectedLive({
             break;
           }
           if (raw.event !== "toolcall") continue;
+          // A frame with no id is an earlier frame of an event whose last frame carries the id: it
+          // updates its call, but only an identified frame moves the reconnect cursor.
+          const identified = raw.id !== undefined && raw.id !== "";
           const id = Number(raw.id);
-          if (!Number.isSafeInteger(id) || id <= cursor) continue;
+          if (identified && (!Number.isSafeInteger(id) || id <= cursor)) continue;
           let data: ToolCallFrame;
           try {
             data = JSON.parse(raw.data ?? "null");
@@ -308,7 +311,7 @@ function SelectedLive({
             !data.filePaths.every((path) => typeof path === "string")
           )
             continue;
-          cursor = id;
+          if (identified) cursor = id;
           const at = index.get(data.toolCallId);
           if (at === undefined) {
             index.set(data.toolCallId, list.length);

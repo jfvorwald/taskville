@@ -1,3 +1,5 @@
+import { stateHash } from "@taskville/domain/hash";
+import type { ProjectState } from "@taskville/domain/reducer";
 import type { Database } from "./sqlite.ts";
 
 /** Events between checkpoints (ARCHITECTURE.md 7.4). */
@@ -6,12 +8,45 @@ export const CHECKPOINT_INTERVAL = 500;
 /** The longest cache upkeep waits, in total, for another connection's write lock. */
 export const UPKEEP_WAIT_MS = 250;
 
+/** The most checkpoint rows one `put` writes, so no single transaction or batch holds them all. */
+export const CHECKPOINT_BATCH = 20;
+
+/** The one logging method cache upkeep needs; a pino logger satisfies it. */
+export interface UpkeepLogger {
+  warn(obj: object, msg: string): void;
+}
+
 /** One stored checkpoint: the reducer state after events 1..sequence. */
 export interface CheckpointRow {
   sequence: number;
   reducerVersion: number;
   stateHash: string;
   stateJson: string;
+}
+
+/** The state if `row` is trustworthy for a reducer of `version`: right version, parses, belongs to this project at this head, and matches its hash. */
+export function trusted(
+  row: CheckpointRow,
+  version: number,
+  projectId: string,
+): ProjectState | undefined {
+  if (row.reducerVersion !== version) return undefined;
+  try {
+    const state = JSON.parse(row.stateJson) as ProjectState;
+    if (state.head !== row.sequence || state.projectId !== projectId) return undefined;
+    return stateHash(version, state) === row.stateHash ? state : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The only fields of a failed cache write that reach a log: the numeric SQLite code, if any. Never the message, which can carry SQL or state text. */
+export function upkeepFields(error: unknown): { errcode?: number } {
+  const errcode =
+    typeof error === "object" && error !== null
+      ? (error as { errcode?: unknown }).errcode
+      : undefined;
+  return typeof errcode === "number" ? { errcode } : {};
 }
 
 /**
