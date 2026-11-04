@@ -1,0 +1,21 @@
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.26/apps/engine
+
+
+ Test Files  2 passed (2)
+      Tests  25 passed (25)
+   Start at  21:01:59
+   Duration  47.77s (tests 93%, import 4%, transform 3%)
+
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.26/apps/web
+
+(node:44079) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  21:02:48
+   Duration  5.64s (tests 95%, transform 4%, import 1%)
+

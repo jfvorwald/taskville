@@ -1,0 +1,116 @@
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.26/apps/web
+
+stderr | src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > gl.render wrapper only syncs the main scene > a render of another scene does not forget the main scene's lift
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+stderr | src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > unmount cleanup > takes an active lift off the bot
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+stderr | src/city/crew/highlight/CrewHighlight.browser.test.tsx > fade clones for bots outside the family > stay bounded while another system keeps swapping the material back, and are disposed on close
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+ ❯ |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx (7 tests | 2 failed) 75314ms
+   ❯ gl.render wrapper only syncs the main scene (2)
+     × a render of another scene does not forget the main scene's lift 7687ms
+   ❯ unmount cleanup (1)
+     × takes an active lift off the bot 7911ms
+stderr | src/city/crew/highlight/CrewHighlight.browser.test.tsx > family rings > hides the ring when the bot's group is removed from the scene
+THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+ ❯ |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.browser.test.tsx (10 tests | 2 failed) 143954ms
+   ❯ fade clones for bots outside the family (1)
+     × stay bounded while another system keeps swapping the material back, and are disposed on close 20784ms
+   ❯ family rings (3)
+     × hides the ring when the bot's group is removed from the scene 19743ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.browser.test.tsx > fade clones for bots outside the family > stay bounded while another system keeps swapping the material back, and are disposed on close
+Error: Test timed out in 15000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/CrewHighlight.browser.test.tsx/fade-clones-for-bots-outside-the-family---stay-bounded-while-another-system-keeps-swapping-the-material-back--and-are-disposed-on-close.png
+
+ ❯ task node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5136:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5153:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:4939:28
+ ❯ chain node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:4336:14
+ ❯ src/city/crew/highlight/CrewHighlight.browser.test.tsx:227:3
+    225|
+    226| describe("fade clones for bots outside the family", () => {
+    227|   it("stay bounded while another system keeps swapping the material ba…
+       |   ^
+    228|     const h = await mount({ swap: true });
+    229|     const real = h.pooled.clone.bind(h.pooled);
+ ❯ node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5217:52
+ ❯ runWithSuite node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5665:8
+ ❯ Object.collect node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5217:22
+ ❯ Object.collect node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5222:51
+ ❯ node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5850:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.browser.test.tsx > family rings > hides the ring when the bot's group is removed from the scene
+Error: Test timed out in 15000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/CrewHighlight.browser.test.tsx/family-rings---hides-the-ring-when-the-bot-s-group-is-removed-from-the-scene.png
+
+ ❯ task node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5136:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5153:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:4939:28
+ ❯ chain node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:4336:14
+ ❯ src/city/crew/highlight/CrewHighlight.browser.test.tsx:269:3
+    267|   });
+    268|
+    269|   it("hides the ring when the bot's group is removed from the scene", …
+       |   ^
+    270|     const h = await mount();
+    271|     h.inputs.open("L");
+ ❯ node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5217:52
+ ❯ runWithSuite node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5665:8
+ ❯ Object.collect node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5217:22
+ ❯ Object.collect node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5222:51
+ ❯ node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/plugins.DPQHVT0p-B15pb88X.js?v=1819f771:5850:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > gl.render wrapper only syncs the main scene > a render of another scene does not forget the main scene's lift
+AssertionError: expected 0 to be greater than 0.01
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/CrewHighlight.safety.browser.test.tsx/gl-render-wrapper-only-syncs-the-main-scene---a-render-of-another-scene-does-not-forget-the-main-scene-s-lift.png
+
+ ❯ src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx:174:39
+    172|     await vi.waitFor(() => {
+    173|       h.drawMain();
+    174|       expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
+       |                                       ^
+    175|     }, FRAME);
+    176|     h.gl.render(new Scene(), h.camera);
+ ❯ checkCallback node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/index.aTZaPVhf-DvCp5hGw.js?v=1819f771:5427:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |@taskville/web-browser (chromium)| src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx > unmount cleanup > takes an active lift off the bot
+AssertionError: expected 0 to be greater than 0.01
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/CrewHighlight.safety.browser.test.tsx/unmount-cleanup---takes-an-active-lift-off-the-bot.png
+
+ ❯ src/city/crew/highlight/CrewHighlight.safety.browser.test.tsx:248:39
+    246|     await vi.waitFor(() => {
+    247|       h.drawMain();
+    248|       expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
+       |                                       ^
+    249|     }, FRAME);
+    250|     // Unmount inside the hop (450 ms), with no draw in between.
+ ❯ checkCallback node_modules/.vite/vitest/51d0f6494bc6ae4ba3d416e8c93de58c2cbe4c08/deps/index.aTZaPVhf-DvCp5hGw.js?v=1819f771:5427:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed | 3 passed (5)
+      Tests  4 failed | 24 passed (28)
+   Start at  20:48:42
+   Duration  185.29s (tests 66%, import 32%, worker 2%)
+
