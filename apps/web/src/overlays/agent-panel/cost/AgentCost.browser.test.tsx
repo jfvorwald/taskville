@@ -209,14 +209,16 @@ describe("agent panel header: tokens and cost", () => {
 
   it("shows cost that becomes available while the same agent stays selected, and keeps it fresh", async () => {
     let calls = 0;
+    let sawFirst = false;
     const later: CostSource = async () => {
       calls += 1;
       if (calls <= 2) return undefined;
-      return calls === 3 ? SCOUT : LEAD;
+      return sawFirst ? LEAD : SCOUT;
     };
     await render(panel("L", later, 40));
     // The first answers are "no cost yet"; nothing is shown, then the figure appears by itself.
     await expect.element(page.getByTestId("agent-panel-tokens")).toHaveTextContent("1k tokens");
+    sawFirst = true;
     // And a later, larger figure replaces it without a reselect.
     await expect.element(page.getByTestId("agent-panel-tokens")).toHaveTextContent("12.3k tokens");
     expect(calls).toBeGreaterThanOrEqual(4);
