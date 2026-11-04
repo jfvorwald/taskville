@@ -40,6 +40,10 @@ let page: Page;
 const row = (id: string) => page.getByTestId("agent-list").locator(`[data-agent-id="${id}"]`);
 const panel = () => page.getByTestId("agent-panel");
 const feed = () => page.getByRole("feed", { name: "Tool calls" });
+const heldCard = () =>
+  feed()
+    .getByRole("article")
+    .filter({ hasText: /wc -l .*notes\.txt/ });
 
 test.beforeAll(async ({ browser }) => {
   mkdirSync(OUT, { recursive: true });
@@ -137,6 +141,8 @@ test("selecting a subagent shows its feed, and a new event lands in under one se
   const held = readRecording(SUBAGENT_FIXTURE).find((r) => r.seq === HELD_SEQ);
   expect(held && hookName(held)).toBe("PreToolUse");
   expect(held?.input.tool_name).toBe("Bash");
+  // The held-back card is not in the feed before the POST.
+  await expect(heldCard()).toHaveCount(0);
   const sentAt = Date.now();
   await postHook(engine, held as NonNullable<typeof held>);
   const ingestedAt = Date.now();
@@ -146,17 +152,14 @@ test("selecting a subagent shows its feed, and a new event lands in under one se
     })
     .toBeDefined();
   const cardAt = await page.evaluate(() => (window as unknown as { __cardAt: number }).__cardAt);
-  const fromIngest = Math.max(0, cardAt - ingestedAt);
+  const fromIngest = cardAt - ingestedAt;
   const fromSend = cardAt - sentAt;
   console.log(
     `M5.11 LAG ingest-to-panel ${fromIngest} ms (POST response to card); send-to-panel ${fromSend} ms; budget ${LAG_BUDGET_MS} ms`,
   );
-  expect(fromIngest).toBeLessThan(LAG_BUDGET_MS);
-  await expect(
-    feed()
-      .getByRole("article")
-      .filter({ hasText: /wc -l .*notes\.txt/ }),
-  ).toBeVisible();
+  // Asserted from the start of the POST, which is stricter than from ingest.
+  expect(fromSend).toBeLessThan(LAG_BUDGET_MS);
+  await expect(heldCard()).toBeVisible();
 });
 
 /**
@@ -205,22 +208,24 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
   // The team lead and teammates are a different family and are not in this crew.
   await expect(panel().locator(`[data-agent-id="${PIP}"]`)).toHaveCount(0);
 
-  // The highlight (dim outside the family, ground ring, tethers) is drawn in WebGL and has no DOM
-  // marker, so it is checked in pixels. The context asks
-  // for reduced motion (no bounce, no unrelated animation), and the shots clip to a city region
-  // that the panel, the agent list and the camera controls do not cover (1000x640 viewport: the
-  // list is left of x 312, the panel right of x 640, the controls above y 53).
+  // The highlight (dim outside the family, ring, tethers) is drawn in WebGL and has no DOM marker,
+  // so it is checked in pixels. The context asks for reduced motion (no bounce, no unrelated
+  // animation), and the shots clip to a city region that the panel, the agent list and the camera
+  // controls do not cover (1000x640 viewport: the list is left of x 312, the panel right of x 640,
+  // the controls above y 53). The overlap is checked again in each tab state below.
   const region = { x: 330, y: 70, width: 300, height: 280 };
-  for (const id of ["agent-panel", "agent-list", "camera-controls"]) {
-    const b = await page.getByTestId(id).boundingBox();
-    if (b === null) throw new Error(`${id} not visible`);
-    const apart =
-      b.x >= region.x + region.width ||
-      b.x + b.width <= region.x ||
-      b.y >= region.y + region.height ||
-      b.y + b.height <= region.y;
-    expect(apart, `${id} overlaps the clip region`).toBe(true);
-  }
+  const assertRegionClear = async () => {
+    for (const id of ["agent-panel", "agent-list", "camera-controls"]) {
+      const b = await page.getByTestId(id).boundingBox();
+      if (b === null) throw new Error(`${id} not visible`);
+      const apart =
+        b.x >= region.x + region.width ||
+        b.x + b.width <= region.x ||
+        b.y >= region.y + region.height ||
+        b.y + b.height <= region.y;
+      expect(apart, `${id} overlaps the clip region`).toBe(true);
+    }
+  };
   const shot = async () => {
     await page.waitForTimeout(1200);
     return page.screenshot({ clip: region, animations: "allow" });
@@ -234,11 +239,13 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
     await panel().getByRole("tab", { name: "Crew" }).click();
     await expect(panel().getByTestId("agent-panel-tab-slot")).toHaveAttribute("data-tab", "crew");
     await title.hover();
+    await assertRegionClear();
   };
   const openLive = async () => {
     await panel().getByRole("tab", { name: "Live" }).click();
     await expect(panel().getByTestId("agent-panel-tab-slot")).toHaveAttribute("data-tab", "live");
     await title.hover();
+    await assertRegionClear();
   };
   await openLive();
   const control1 = await shot();
@@ -269,4 +276,26 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
   // Opening the Crew tab draws the highlight in that region, and leaving it clears it.
   expect(appeared).toBeGreaterThan(APPEARS);
   expect(returned).toBeLessThan(TOLERANCE);
+});
+
+test("the team lead's Crew tab lists its teammates as the crew", async () => {
+  // Teammates are children of their team's recorded lead (apps/web/src/overlays/agent-panel/shell/
+  // family.ts, parentLinks), so the lead's Crew tab is where the team shows.
+  await row(LEAD).click();
+  await expect(panel()).toHaveAttribute("data-agent-id", LEAD);
+  await expect(panel()).toHaveAttribute("data-kind", "lead");
+  await panel().getByRole("tab", { name: "Crew" }).click();
+  await expect(panel().getByTestId("agent-panel-tab-slot")).toHaveAttribute("data-tab", "crew");
+  const rows = panel().getByTestId("crew-row");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.and(page.locator(`[data-agent-id="${PIP}"]`))).toBeVisible();
+  await expect(rows.and(page.locator(`[data-agent-id="${BO}"]`))).toBeVisible();
+  await expect(rows.and(page.locator(`[data-agent-id="${PIP}"]`))).toContainText("pip");
+  await expect(rows.and(page.locator(`[data-agent-id="${BO}"]`))).toContainText("bo");
+  // The other session's subagents are a different family.
+  await expect(panel().locator(`[data-agent-id="${SUB_A}"]`)).toHaveCount(0);
+  // A teammate is a leaf here: its own panel has no Crew tab.
+  await row(PIP).click();
+  await expect(panel()).toHaveAttribute("data-kind", "teammate");
+  await expect(panel().getByRole("tab", { name: "Crew" })).toHaveCount(0);
 });

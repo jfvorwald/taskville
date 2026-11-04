@@ -1,11 +1,12 @@
 
-Running 3 tests using 1 worker
+Running 4 tests using 1 worker
 
-  ✓  1 ../../tests/e2e/crews/crews.spec.ts:69:1 › crew visuals: subagents and a team appear as crews of their leads (14.6s)
-M5.11 LAG ingest-to-panel 51 ms (POST response to card); send-to-panel 70 ms; budget 1000 ms
-  ✓  2 ../../tests/e2e/crews/crews.spec.ts:101:1 › selecting a subagent shows its feed, and a new event lands in under one second (465ms)
+  ✓  1 ../../tests/e2e/crews/crews.spec.ts:73:1 › crew visuals: subagents and a team appear as crews of their leads (3.2s)
+M5.11 LAG ingest-to-panel 46 ms (POST response to card); send-to-panel 51 ms; budget 1000 ms
+  ✓  2 ../../tests/e2e/crews/crews.spec.ts:105:1 › selecting a subagent shows its feed, and a new event lands in under one second (753ms)
 M5.11 HIGHLIGHT changed-pixel share: control vs control 0.000 %, Crew tab open vs Live 0.144 %, back to Live vs control 0.000 %, row hover vs open 0.000 % (not asserted)
-  ✓  3 ../../tests/e2e/crews/crews.spec.ts:196:1 › the Crew tab lists the family and highlights it in the city (13.5s)
+  ✓  3 ../../tests/e2e/crews/crews.spec.ts:199:1 › the Crew tab lists the family and highlights it in the city (9.3s)
+  ✓  4 ../../tests/e2e/crews/crews.spec.ts:281:1 › the team lead's Crew tab lists its teammates as the crew (574ms)
 
-  3 passed (31.4s)
+  4 passed (17.5s)
 exit 0
