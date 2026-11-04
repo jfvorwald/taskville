@@ -565,8 +565,19 @@ function GroupCard({
   const page = groupDetails(calls, detailPage, detailPageSize);
   const settled = calls.filter((call) => call.phase === "succeeded").length;
   if (privacy) {
-    // Only the recorded file names, each bounded; never a pattern or a body.
-    const names = [...new Set(calls.flatMap((call) => call.filePaths))];
+    // Only file names, each bounded and capped like the open cards; never a pattern, a matched
+    // line or a body. A search also contributes the hit filenames its loaded result lists.
+    const all = [
+      ...new Set(
+        calls.flatMap((call) => [
+          ...call.filePaths,
+          ...(kind === "search"
+            ? stringList(object(bodyValue(bodyOfCall(call, "output", evidence))).filenames)
+            : []),
+        ]),
+      ),
+    ];
+    const names = all.slice(0, detailPageSize);
     return (
       <article
         className={styles.card}
@@ -586,6 +597,7 @@ function GroupCard({
                 <Path path={path} privacy />{" "}
               </span>
             ))}
+            {all.length > names.length ? `and ${all.length - names.length} more` : null}
           </p>
         ) : null}
         <p>{CODE_HIDDEN}</p>
