@@ -4,53 +4,52 @@ import { render } from "vitest-browser-react";
 import { BASE, finished, recording, registered } from "./crew-bars.fixture.ts";
 import { CrewBars, crewRuns } from "./crew-bars.tsx";
 
-describe("heuristic subagent registrations (roborev 6796 high)", () => {
-  it("derives a run flagged heuristic, and a recorded registration clears the flag", () => {
-    const guess = recording([
-      registered("p", "Planner", { kind: "session" }),
-      registered("c", "reviewer", { kind: "subagent", parentAgentId: "p", heuristic: true }),
-    ]);
-    const [run] = crewRuns(guess);
-    expect(run).toMatchObject({ agentId: "c", parentId: "p", startSequence: 2 });
-    expect(run.heuristic).toBe(true);
-
-    const confirmed = recording([
-      registered("p", "Planner", { kind: "session" }),
-      registered("c", "reviewer", { kind: "subagent", parentAgentId: "p", heuristic: true }),
-      registered("c", "reviewer", { kind: "subagent", parentAgentId: "p" }),
-    ]);
-    const [kept] = crewRuns(confirmed);
-    expect(kept.startSequence).toBe(2);
-    expect(kept.heuristic).toBeFalsy();
+describe("run links mirror the domain's recorded links (round 4)", () => {
+  const session = registered("p", "Planner", { kind: "session" });
+  const recorded = registered("c", "reviewer", { kind: "subagent", parentAgentId: "p" });
+  const guess = registered("c", "guessed-name", {
+    kind: "subagent",
+    parentAgentId: "other",
+    heuristic: true,
   });
 
-  it("renders a heuristic run labeled possibly, and a recorded run unlabeled", async () => {
-    const base = {
-      parentId: "p",
-      startSequence: 1,
-      startedAt: BASE,
-      finishedSequence: 3,
-      finishedAt: BASE + 2000,
-    };
-    const view = await render(
-      <div style={{ width: 1000 }}>
-        <CrewBars
-          parentId="p"
-          range={{ first: 1, last: 5 }}
-          runs={[
-            { ...base, agentId: "g", name: "guess-run", heuristic: true },
-            { ...base, agentId: "r", name: "recorded-run" },
-          ]}
-        />
-      </div>,
+  it("yields no run for a heuristic-only link", () => {
+    expect(crewRuns(recording([session, guess]))).toEqual([]);
+  });
+
+  it("keeps a recorded run unchanged when a heuristic registration arrives after it", () => {
+    const [run, ...rest] = crewRuns(recording([session, recorded, guess]));
+    expect(rest).toEqual([]);
+    expect(run).toMatchObject({ agentId: "c", parentId: "p", name: "reviewer", startSequence: 2 });
+    expect(run.heuristic).toBeFalsy();
+  });
+
+  it("builds the run from the recorded registration when a guess came first", () => {
+    const [run, ...rest] = crewRuns(recording([session, guess, recorded]));
+    expect(rest).toEqual([]);
+    expect(run).toMatchObject({ parentId: "p", name: "reviewer", startSequence: 3 });
+    expect(run.heuristic).toBeFalsy();
+  });
+
+  it("keeps the link when a later recorded registration omits the parent", () => {
+    const [run] = crewRuns(
+      recording([session, recorded, registered("c", "reviewer", { kind: "subagent" })]),
     );
-    const guess = page.getByRole("img", { name: /guess-run/ });
-    await expect.element(guess).toHaveAccessibleName(/possibly/i);
-    expect(guess.element().getAttribute("data-heuristic")).toBe("true");
-    const recorded = page.getByRole("img", { name: /recorded-run/ });
-    await expect.element(recorded).not.toHaveAccessibleName(/possibly/i);
-    expect(recorded.element().getAttribute("data-heuristic")).toBeNull();
-    view.unmount();
+    expect(run).toMatchObject({ parentId: "p", startSequence: 2 });
+  });
+
+  it("drops the run when a later recorded registration makes the agent a non-subagent", () => {
+    expect(
+      crewRuns(recording([session, recorded, registered("c", "reviewer", { kind: "session" })])),
+    ).toEqual([]);
+  });
+
+  it("finishes a run whose agent.finished arrived before its first registration", () => {
+    const [run] = crewRuns(recording([session, finished("c"), recorded]));
+    expect(run).toMatchObject({ agentId: "c", parentId: "p" });
+    expect(run.finishedSequence).toBe(2);
+    expect(run.finishedAt).toBe(BASE + 2000);
+    expect(run.startSequence).toBe(2); // never after its own finish
   });
 });
 
