@@ -1,4 +1,5 @@
-const OWN_ESCAPE_SELECTOR = 'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
+export const OWN_ESCAPE_SELECTOR =
+  'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
 const TEXT_ENTRY = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
 /**
