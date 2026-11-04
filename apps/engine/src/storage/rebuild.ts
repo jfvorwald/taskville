@@ -1,4 +1,5 @@
 import type { StoredEnvelope } from "@taskville/protocol";
+import { CHECKPOINT_INTERVAL } from "./checkpoints.ts";
 import type { ProjectionRecord, Storage } from "./storage.ts";
 
 /**
@@ -22,12 +23,25 @@ export function rebuildProjection<S>(
   projectId: string,
   reducer: ProjectionReducer<S>,
 ): ProjectionRecord<S> {
+  return rebuild(storage, projectId, reducer, false);
+}
+
+/** The fold behind `rebuildProjection`; `withCheckpoints` also writes every replay checkpoint. */
+function rebuild<S>(
+  storage: Storage,
+  projectId: string,
+  reducer: ProjectionReducer<S>,
+  withCheckpoints: boolean,
+): ProjectionRecord<S> {
   return storage.transaction((tx) => {
     let state = reducer.initial(projectId);
     let head = 0;
     for (const event of tx.events(projectId)) {
       state = reducer.apply(state, event);
       head = event.ingestSequence;
+      if (withCheckpoints && head % CHECKPOINT_INTERVAL === 0) {
+        tx.writeCheckpoint({ projectId, sequence: head, reducerVersion: reducer.version, state });
+      }
     }
     const stateHash = tx.writeProjection({
       projectId,
@@ -42,7 +56,9 @@ export function rebuildProjection<S>(
 /**
  * Boot step, run before the HTTP server listens: rebuilds every project whose
  * projection is missing, was produced by a different reducer version, or lags
- * the project head. Returns the IDs it rebuilt.
+ * the project head, writing its replay checkpoints as it folds. A project whose
+ * projection is fresh but whose log predates checkpoints gets the missing ones
+ * backfilled. Returns the IDs it rebuilt.
  */
 export function rebuildStaleProjections<S>(
   storage: Storage,
@@ -55,9 +71,39 @@ export function rebuildStaleProjections<S>(
       projection !== undefined &&
       projection.reducerVersion === reducer.version &&
       projection.head === project.head;
-    if (fresh) continue;
-    rebuildProjection(storage, project.id, reducer);
+    if (fresh) {
+      backfillCheckpoints(storage, project.id, project.head, reducer);
+      continue;
+    }
+    rebuild(storage, project.id, reducer, true);
     rebuilt.push(project.id);
   }
   return rebuilt;
+}
+
+/** Writes the checkpoints a fresh project lacks (a log that predates them); a complete cache costs one query. */
+function backfillCheckpoints<S>(
+  storage: Storage,
+  projectId: string,
+  head: number,
+  reducer: ProjectionReducer<S>,
+): void {
+  const stored = new Set(storage.checkpoints().sequences(projectId));
+  const missing = new Set<number>();
+  for (let sequence = CHECKPOINT_INTERVAL; sequence <= head; sequence += CHECKPOINT_INTERVAL) {
+    if (!stored.has(sequence)) missing.add(sequence);
+  }
+  if (missing.size === 0) return;
+  const last = Math.max(...missing);
+  storage.transaction((tx) => {
+    let state = reducer.initial(projectId);
+    for (const event of tx.events(projectId)) {
+      state = reducer.apply(state, event);
+      const sequence = event.ingestSequence;
+      if (missing.has(sequence)) {
+        tx.writeCheckpoint({ projectId, sequence, reducerVersion: reducer.version, state });
+      }
+      if (sequence >= last) break;
+    }
+  });
 }
