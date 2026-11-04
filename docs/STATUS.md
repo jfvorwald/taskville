@@ -2,7 +2,7 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-04 02:30 UTC. **Main:** 53563fe. **State:** G4 #75 closed by the owner ("keep going", 2026-11-02). M5 and M6 in progress under the owner's M4 to M6 authorization. Decisions #333, #336, #198 and #289 answered by the owner on 2026-11-03; all four took the default (applied below).
+**Updated:** 2026-11-04 17:00 UTC. **Main:** 51feb7f. **State:** M5 and M6 complete to their gates, awaiting owner review: [G5 #76](https://github.com/jfvorwald/taskville/issues/76) and [G6 #80](https://github.com/jfvorwald/taskville/issues/80) (summaries posted, `waiting:user`). Open owner decisions: #376 (hold M5.14), #374 (OTel credential), #360 (OTLP payload source). Work is stopped at the gates.
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
@@ -29,6 +29,32 @@ Gate summary: [G4 #75](https://github.com/jfvorwald/taskville/issues/75). Retro:
 | M4.17 #309 security review fixes | #310 | [report](tasks/M4.17.md) |
 
 Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with 10 load flakes (all 8 files passed alone); app e2e, permission replay and telemetry replay pass; web smoke theme switch failed twice: Settings unreachable while an agent is selected (#315, from the M5.07 sidebar composition).
+
+## Done in M5 Crews and code feed and M6 History (awaiting owner review at G5 and G6)
+
+Gate summaries: [G5 #76](https://github.com/jfvorwald/taskville/issues/76), [G6 #80](https://github.com/jfvorwald/taskville/issues/80). Retros: [retros/M5.md](retros/M5.md), [retros/M6.md](retros/M6.md). Lessons L-206 to L-215.
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M5.15 #285 feed closes every parallel call | #351 | idless frames, web consumers, closure before retention; confirming review CONFIRMED; [report](tasks/M5.15.md) |
+| M5.22 #337 highlight wrapper safety | #352 | [report](tasks/M5.22.md) |
+| M5.21 #334 attribution polish | #353 | [report](tasks/M5.21.md) |
+| M6.09 #311 history Escape | #354 | capture phase, dialogs keep Escape; [report](tasks/M6.09.md) |
+| M6.10 #312 card and header polish | #355 | three rounds on the lookup bound; follow-up #361; [report](tasks/M6.10.md) |
+| M6.12 #347 checkpoint hardening | #357 | allowlisted logs, streamed batches, validated backfill; follow-up #364; [report](tasks/M6.12.md) |
+| M6.07 #79 subagent run bars | #358 | debugger: mirror the domain via applyRegistration; follow-up #367; [report](tasks/M6.07.md) |
+| M5.13 #175 strict attribution | #359 | [report](tasks/M5.13.md) |
+| M5.26 #348 highlight test hook | #362 | [report](tasks/M5.26.md) |
+| M5.04 #63 teammate envelopes | #363 | card scroll descoped to #368; privacy and occlusion fixed; [report](tasks/M5.04.md) |
+| M6.05 #78 history entry from the agent panel | #326 | decision #325 scope; [report](tasks/M6.05.md) |
+| M5.12 #104 OTel receiver | #370 | security review fixes (loopback-only helper, project scope, uninstall); decisions #360, #374; follow-up #369; [report](tasks/M5.12.md) |
+| M5.27 #365 shim spool corruption | #371 | real stale-lock race, found from a CI failure; [report](tasks/M5.27.md) |
+| M6.13 #356 checkpoint test deflake | #372 | [report](tasks/M6.13.md) |
+| M5.RT #99, M6.RT #100 retros | #377 | |
+| Wave fixes | #378 | three browser tests broken by intended changes; [report](tasks/WAVE-M5M6.md) |
+| M5.14 #281 feed agent index | #375 (draft) | held for decision #376 |
+
+Wave run on main a93d5a1: `pnpm check` 4,493 of 4,493; app e2e, web smoke 4, crews 5, permission replay 6, telemetry replay 7 pass; browser 906 of 912, fixed in #378 and rerun 912 of 912.
 
 ## In progress: M5 Crews and code feed and M6 History
 
@@ -259,6 +285,8 @@ Targets in the spec are not measurements until a ticket records them here with t
 - Packages still carry M1.02 placeholder tests; owning tickets remove them when real tests land.
 
 ## Next
+
+2026-11-04: stopped at G5 #76 and G6 #80 for owner review. After the owner answers #376, #374 and #360, the open follow-ups are #361, #364, #367, #368, #369, #373, then M7 (only with the owner's authorization).
 
 2026-11-04 carry-over: M5.11, M5.24, M5.25 and M6.11 are merged. Next M5/M6 batch, disjoint Owns: M5.15 #285 and M5.14 #281 (engine feed, run in order, same paths), M6.09 #311 (history Escape), M5.21 #334 (crew attention), M5.22 #337 then M5.26 #348 (crew highlight), M6.12 #347 (checkpoint hardening). Then M5.04 #63, M5.13 #175, M6.07 #79, M6.10 #312, M5.12 #104, the M6.05 #78 draft (decision #325 scope), the M5 and M6 wave runs, retros #99 and #100, and the G5 #76 and G6 #80 summaries.
 
