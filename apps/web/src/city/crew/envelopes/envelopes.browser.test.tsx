@@ -42,6 +42,13 @@ const AGENTS = {
 
 type Golden = { events: { type: string; agentId: string; payload: Record<string, unknown> }[] }[];
 
+/** The golden holds input-form payloads; ingest stores `reason` as `{ text, masked, truncated }`. */
+function storedForm(payload: Record<string, unknown>): Record<string, unknown> {
+  const { reason } = payload;
+  if (typeof reason !== "string") return payload;
+  return { ...payload, reason: { text: reason, masked: false, truncated: false } };
+}
+
 /** Every event of a recorded S-2 stream, as stored envelopes in receive order. */
 function recorded(golden: Golden): StoredEnvelope[] {
   let seq = 0;
@@ -55,7 +62,7 @@ function recorded(golden: Golden): StoredEnvelope[] {
         sourceEventId: `golden-${seq}`,
         eventId: `00000000-0000-4000-9000-${seq.toString(16).padStart(12, "0")}`,
         type: e.type,
-        payload: e.payload,
+        payload: storedForm(e.payload),
         occurredAt: AT,
         receivedAt: AT,
         ingestSequence: seq,
