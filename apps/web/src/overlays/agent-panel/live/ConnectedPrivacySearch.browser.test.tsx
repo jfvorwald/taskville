@@ -253,13 +253,34 @@ function accounted(): number[] {
 }
 
 describe.each(["Grep", "Glob"] as const)("connected privacy %s budget across groups", (tool) => {
-  it("requests no more bodies for a static window than the cache holds", async () => {
+  it("keeps one settled window within the cache and fetches nothing more", async () => {
     await mount(manyGroups(tool), true);
-    await new Promise((r) => setTimeout(r, 1200));
-    // The view is static, so everything fetched is the current window: standalone calls take
-    // their input and output bodies first, and search outputs share what is left.
-    expect(searchOutputs().size).toBeGreaterThan(0);
-    expect(searchOutputs().size).toBeLessThanOrEqual(CACHE - standalone().size);
+    // The mount shows the top first and then follows the tail, so the fetches over the whole mount
+    // are the union of several windows. Measure only the settled tail window.
+    await expect.poll(() => text(), { timeout: 5000 }).toContain("divider-4.ts");
+    let seen = -1;
+    await expect
+      .poll(
+        async () => {
+          const stable = hits.length === seen;
+          seen = hits.length;
+          await new Promise((r) => setTimeout(r, 500));
+          return stable;
+        },
+        { timeout: 8000 },
+      )
+      .toBe(true);
+    const root = slot().element();
+    const loadedOutputs = root.textContent?.match(/hit-\d{3}-0-file\.ts/g)?.length ?? 0;
+    const standaloneBodies =
+      2 * [...root.querySelectorAll("article h3")].filter((h) => h.textContent === "Bash").length;
+    // (a) The outputs loaded for the mounted groups plus the standalone bodies in this window fit.
+    expect(loadedOutputs).toBeGreaterThan(0);
+    expect(loadedOutputs + standaloneBodies).toBeLessThanOrEqual(CACHE);
+    // (b) Nothing new is fetched while the window stays put.
+    const settled = hits.length;
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(hits.length).toBe(settled);
   });
 
   it("accounts for every search in every visible group, names or not-loaded count", async () => {
