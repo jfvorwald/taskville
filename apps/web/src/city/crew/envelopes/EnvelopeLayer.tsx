@@ -126,6 +126,7 @@ export function EnvelopeLayer({
 
   useEffect(() => {
     const dom = gl.domElement;
+    const settings = getSettingsStore();
     const picker = createPicker();
     const pickables: Object3D[] = [];
     let downX = 0;
@@ -152,6 +153,20 @@ export function EnvelopeLayer({
       tooltip.current?.remove();
       tooltip.current = null;
     };
+    // Under Hide code the message text stays out of the tooltip: only who wrote to whom.
+    const tooltipText = (envelope: Envelope) => {
+      const { summary: _text, ...bare } = envelope;
+      return envelopeLabel(
+        settings.getSnapshot().privacyMode ? bare : envelope,
+        store.getState().state?.agents ?? {},
+      );
+    };
+    // The setting can change under an open tooltip; it is rewritten at once.
+    const unsubscribe = settings.subscribe(() => {
+      if (hovered.current === null || tooltip.current === null) return;
+      const open = log.live(store.now()).find((x) => x.id === hovered.current);
+      if (open !== undefined) tooltip.current.textContent = tooltipText(open);
+    });
     const onMove = (e: PointerEvent) => {
       const id = hit(e);
       if (id === null) {
@@ -172,12 +187,7 @@ export function EnvelopeLayer({
         tooltip.current = el;
       }
       hovered.current = id;
-      // Under Hide code the message text stays out of the tooltip: only who wrote to whom.
-      const { summary: _text, ...bare } = envelope;
-      tooltip.current.textContent = envelopeLabel(
-        getSettingsStore().getSnapshot().privacyMode ? bare : envelope,
-        store.getState().state?.agents ?? {},
-      );
+      tooltip.current.textContent = tooltipText(envelope);
       tooltip.current.style.left = `${e.clientX + TOOLTIP_OFFSET_PX}px`;
       tooltip.current.style.top = `${e.clientY + TOOLTIP_OFFSET_PX}px`;
     };
@@ -207,6 +217,7 @@ export function EnvelopeLayer({
       dom.removeEventListener("pointerleave", hideTooltip);
       dom.removeEventListener("pointerdown", onDown);
       dom.removeEventListener("pointerup", onUp);
+      unsubscribe();
       hideTooltip();
     };
   }, [gl, camera, scene, log, store, selection, feedFocus]);
