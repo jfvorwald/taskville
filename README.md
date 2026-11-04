@@ -36,8 +36,8 @@ Attention is shown by color and by shape, so it never depends on color alone.
 
 Selecting an agent opens a panel with up to three tabs.
 
-- **Live:** the agent's recent tool calls, with status, timing, and the recorded input and output.
-- **Files:** the files the agent touched, grouped with edit counts, with syntax-highlighted code rendering (Shiki, loaded lazily), editor links, and masked secrets.
+- **Live:** the agent's recent tool calls, with status, timing, and the recorded input and output. Code is rendered with syntax highlighting (Shiki, loaded lazily), with editor links and masked secrets.
+- **Files:** the files the agent touched, grouped with edit counts, and the recorded input and output for each edit (plain text).
 - **Crew:** the lead's subagents and teammates, with a highlight on the whole family in the city.
 - **Privacy:** "Hide code in the city" keeps file names and counts and hides code bodies, for screen sharing or an office display. Recorded paths are bounded and gated.
 
@@ -84,7 +84,7 @@ Four themes, switchable at any time without changing task state, selection, came
 - **Permission bridge:** a held `PermissionRequest` hook is what makes Allow and Deny possible. If no viewer is connected, or the hold window runs out, the hook falls through and Claude Code asks in the terminal as usual.
 - **Pairing:** a browser pairs with a one-time link that `serve` prints on the terminal (press `p` for a new one). Paired browsers survive a restart, and `taskville unpair` revokes them all.
 - **Seeded demo producer** for six agents, so you can see the city without a real session.
-- **CLI:** `serve`, `project`, `status` (agents as a tree), `events ingest` and `events follow`, `requests`, `unpair`, `install` and `uninstall` for Claude Code, and `demo`. Add `--json` to any of them.
+- **CLI:** `serve`, `project`, `status` (agents as a tree), `events ingest` and `events follow`, `requests`, `unpair`, `install` and `uninstall` for Claude Code, and `demo`. Commands that report data, such as `status` and `requests`, take `--json`.
 
 ## Try it
 
