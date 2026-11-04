@@ -61,7 +61,7 @@ export class EngineClient {
       if ((error as Error).name === "AbortError") throw error;
       throw new CliError(
         EXIT.unreachable,
-        `Engine unreachable at ${this.base}; is \`taskville serve\` running?`,
+        `Engine unreachable at ${this.base}; is \`taskville start\` running?`,
       );
     }
     if (response.ok) return response;

@@ -14,12 +14,13 @@ import { CliError, EXIT } from "../errors.ts";
 const RUN =
   "taskville demo run --seed <n> --duration <sim-time> --offline [--pace <pace>] [--json]";
 const START =
-  "taskville demo start --project <id> --seed <n> [--pace <pace>] [--speed <x>] [--duration <sim-time>]";
+  "taskville demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <sim-time>]";
 const PACE = { pace: { type: "string" } } as const;
 
 /** `taskville demo run` and `demo start` (contracts/cli.md, FR-013), on the M1.15 producer. */
 export async function demo(io: Io, args: string[]): Promise<number> {
   const [sub, ...rest] = args;
+  if (sub === undefined || sub.startsWith("-")) return start(io, args);
   if (sub === "run") return run(io, rest);
   if (sub === "start") return start(io, rest);
   throw new CliError(EXIT.failure, `Unknown demo command\nUsage: ${RUN}\n       ${START}`);
@@ -138,8 +139,11 @@ async function start(io: Io, args: string[]): Promise<number> {
     },
     START,
   );
-  const projectId = required(values, "project", START);
-  const seed = seedOf(values, START);
+  const projectId = typeof values.project === "string" ? values.project : "unsorted";
+  const seed =
+    values.seed === undefined
+      ? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+      : seedOf(values, START);
   const pace = paceOf(values, START);
   const speed = typeof values.speed === "string" ? Number(values.speed) : 1;
   if (
@@ -174,6 +178,12 @@ async function start(io: Io, args: string[]): Promise<number> {
     return EXIT.ok;
   } catch (error) {
     if (isAbort(error) || io.signal?.aborted) return EXIT.ok;
+    if (error instanceof CliError && error.code === EXIT.notFound) {
+      throw new CliError(
+        EXIT.notFound,
+        `Unknown project "${projectId}"; add it with \`taskville project add\``,
+      );
+    }
     if (error instanceof DemoIngestError) {
       if (error.codes.includes("unknown_project")) {
         throw new CliError(
