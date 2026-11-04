@@ -291,4 +291,21 @@ describe("selected agent task history through production sidebar", () => {
     await position(HEAD, "live");
     expect(transport.timeline.requests).toEqual([]);
   });
+
+  it.each([
+    ["heuristic", { activity: "documenting", heuristic: true }],
+    ["unknown", { activity: "unknown", sourceValue: "mystery" }],
+  ])(
+    "offers no entry for a %s current activity that carries a taskId (#325)",
+    async (_name, payload) => {
+      const recording = log.map((event) =>
+        event.ingestSequence === HEAD ? storedEnvelopeSchema.parse({ ...event, payload }) : event,
+      );
+      const transport = await mount(ADA, recording);
+      expect(dataStore.getState().state?.activity[ADA]).toMatchObject({ taskId: TASK });
+      expect(panelEntry().elements()).toHaveLength(0);
+      await position(HEAD, "live");
+      expect(transport.timeline.requests).toEqual([]);
+    },
+  );
 });
