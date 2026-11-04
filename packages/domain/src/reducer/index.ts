@@ -24,8 +24,10 @@ import { initialRetired, type Retired, retain } from "./retention.ts";
 
 export type { Command, PendingRequest, RequestsState } from "./attention/index.ts";
 export {
+  applyRegistration,
   callsClosedAtBoundary,
   compareTimestamps,
+  initialEntities,
   MAX_OPEN_TOOL_CALLS_PER_AGENT,
   reduceEntities,
 } from "./entities/index.ts";

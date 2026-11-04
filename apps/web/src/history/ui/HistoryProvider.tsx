@@ -8,6 +8,7 @@ import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
 import { EMPTY_FIDELITY_FRAME, type FidelityFrame } from "../fidelity/frame.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
+import { type CrewRun, crewRuns } from "./crew-bars.tsx";
 import { currentTaskId } from "./how-did-we.tsx";
 
 export interface RecordedMoment {
@@ -23,6 +24,7 @@ interface Presentation {
   readonly fidelity: FidelityFrame;
   moments: readonly RecordedMoment[];
   agents: readonly { id: string; name: string }[];
+  crew: readonly CrewRun[];
   mode: "live" | "history";
   store: DataStore;
   time: number | null;
@@ -48,6 +50,7 @@ const live = {
   range: null,
   moments: [] as readonly RecordedMoment[],
   agents: [] as readonly { id: string; name: string }[],
+  crew: [] as readonly CrewRun[],
 };
 const fallback: Presentation = {
   ...live,
@@ -386,6 +389,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         publish({
           range: { first: firstSequence, last: lastSequence },
           moments,
+          crew: crewRuns(recorded),
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
         await controller
