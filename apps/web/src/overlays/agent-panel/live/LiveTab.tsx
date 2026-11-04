@@ -582,7 +582,7 @@ function GroupCard({
       ),
     ];
     const names = all.slice(0, detailPageSize);
-    // Search calls past the cap are never loaded, so their hits are unknown: count each as one.
+    // Search calls past the cap are never loaded, so their hits are unknown. Report them as a count of searches, never as filenames.
     const unloaded =
       kind === "search"
         ? calls
@@ -590,7 +590,7 @@ function GroupCard({
             .filter((call) => !bodyOfCall(call, "output", evidence) && !call.filePaths.length)
             .length
         : 0;
-    const more = all.length - names.length + unloaded;
+    const more = all.length - names.length;
     return (
       <article
         className={styles.card}
@@ -613,6 +613,7 @@ function GroupCard({
             {more > 0 ? `and ${more} more` : null}
           </p>
         ) : null}
+        {unloaded > 0 ? <p>{`results of ${unloaded} more searches not loaded`}</p> : null}
         <p>{CODE_HIDDEN}</p>
       </article>
     );
