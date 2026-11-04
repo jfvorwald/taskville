@@ -8,6 +8,8 @@ import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
 import { EMPTY_FIDELITY_FRAME, type FidelityFrame } from "../fidelity/frame.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
+import { type CrewRun, crewRuns } from "./crew-bars.tsx";
+import { currentTaskId } from "./how-did-we.tsx";
 
 export interface RecordedMoment {
   readonly sequence: number;
@@ -22,6 +24,7 @@ interface Presentation {
   readonly fidelity: FidelityFrame;
   moments: readonly RecordedMoment[];
   agents: readonly { id: string; name: string }[];
+  crew: readonly CrewRun[];
   mode: "live" | "history";
   store: DataStore;
   time: number | null;
@@ -35,6 +38,7 @@ interface Presentation {
   pending: boolean;
   error: string | null;
   enter(): void;
+  enterTask(agentId: string, taskId: string): void;
   seek(time: number): void;
   exit(): void;
 }
@@ -46,6 +50,7 @@ const live = {
   range: null,
   moments: [] as readonly RecordedMoment[],
   agents: [] as readonly { id: string; name: string }[],
+  crew: [] as readonly CrewRun[],
 };
 const fallback: Presentation = {
   ...live,
@@ -59,6 +64,7 @@ const fallback: Presentation = {
   pending: false,
   error: null,
   enter() {},
+  enterTask() {},
   seek() {},
   exit() {},
 };
@@ -152,13 +158,15 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             explicitSeek = false;
         });
     }
-    async function enter() {
+    async function enter(target?: { agentId: string; taskId: string }) {
       if (
         !active ||
         value.pending ||
         value.mode === "history" ||
         dataStore.getState().projectId !== projectId
       )
+        return;
+      if (target && currentTaskId(dataStore.getState().state, target.agentId) !== target.taskId)
         return;
       cancel();
       const requestGeneration = generation;
@@ -203,6 +211,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         const cursors = new Set<string>();
         const eventIds = new Set<string>();
         let expected = firstSequence;
+        let taskStart: { sequence: number; time: number } | undefined;
         // The head projection may prune retired agents; the loaded log still records them.
         const agents = new Map<
           string,
@@ -247,6 +256,13 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             )
               throw new Error("events");
             eventIds.add(event.eventId);
+            if (
+              target &&
+              !taskStart &&
+              event.type === "task.created" &&
+              event.taskId === target.taskId
+            )
+              taskStart = { sequence: event.ingestSequence, time };
             recorded.push(event);
             if (event.agentId) {
               const before = agents.get(event.agentId);
@@ -306,6 +322,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           moments.at(-1)?.time !== last
         )
           throw new Error("events");
+        if (target && !taskStart) throw new Error("task creation unavailable");
         explicitSeek = true;
         controller = createHistoryStore({
           liveStore: dataStore,
@@ -372,9 +389,12 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         publish({
           range: { first: firstSequence, last: lastSequence },
           moments,
+          crew: crewRuns(recorded),
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
-        await controller.getState().seekSequence(lastSequence, last);
+        await controller
+          .getState()
+          .seekSequence(taskStart?.sequence ?? lastSequence, taskStart?.time ?? last);
         if (active && requestGeneration === generation) explicitSeek = false;
       } catch {
         if (active && requestGeneration === generation) {
@@ -387,6 +407,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       ...fallback,
       enter: () => {
         void enter();
+      },
+      enterTask: (agentId, taskId) => {
+        void enter({ agentId, taskId });
       },
       seek,
       play: () => controller?.getState().play(),

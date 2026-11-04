@@ -196,6 +196,41 @@ async function diffShare(a: Buffer, b: Buffer): Promise<number> {
   );
 }
 
+/**
+ * M5.26 (#348): the highlight's own state, read through the test hook (`window.__taskvilleCrewHighlight`,
+ * built only with VITE_TV_TEST_HOOKS=1). Null while no Crew tab is open.
+ */
+type Shown = { parentId: string; familyIds: string[]; dimmedIds: string[] } | null;
+const highlightNow = (): Promise<Shown> =>
+  page.evaluate(() => {
+    const hook = (window as unknown as { __taskvilleCrewHighlight?: () => unknown })
+      .__taskvilleCrewHighlight;
+    if (hook === undefined)
+      throw new Error("crew highlight test hook missing (VITE_TV_TEST_HOOKS=1 build?)");
+    return hook() as Shown;
+  });
+/** Asserts exactly `family` is highlighted (parent first) and every other agent is dimmed. */
+async function expectFamily(parent: string, children: string[]) {
+  const all = Object.keys((await snapshotOf(engine, PROJECT_ID)).agents);
+  const family = [parent, ...children];
+  await expect
+    .poll(async () => {
+      const s = await highlightNow();
+      return s === null
+        ? null
+        : {
+            parentId: s.parentId,
+            family: [...s.familyIds].sort(),
+            dimmed: [...s.dimmedIds].sort(),
+          };
+    })
+    .toEqual({
+      parentId: parent,
+      family: [...family].sort(),
+      dimmed: all.filter((id) => !family.includes(id)).sort(),
+    });
+}
+
 test("the Crew tab lists the family and highlights it in the city", async () => {
   await row(SESSION).click();
   await expect(panel()).toHaveAttribute("data-agent-id", SESSION);
@@ -208,8 +243,13 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
   // The team lead and teammates are a different family and are not in this crew.
   await expect(panel().locator(`[data-agent-id="${PIP}"]`)).toHaveCount(0);
 
-  // The highlight (dim outside the family, ring, tethers) is drawn in WebGL and has no DOM marker,
-  // so it is checked in pixels. The context asks for reduced motion (no bounce, no unrelated
+  // Exactly the parent and its two subagents are the family; every other agent (the team lead, its
+  // teammates) is dimmed. Read from the highlight's test hook (M5.26).
+  await expectFamily(SESSION, [SUB_A, SUB_B]);
+
+  // The pixel check stays as a secondary assertion: it proves the highlight is actually drawn in
+  // WebGL, which the hook (state, not pixels) cannot. The highlight has no DOM marker, so it is
+  // checked in pixels. The context asks for reduced motion (no bounce, no unrelated
   // animation), and the shots clip to a city region that the panel, the agent list and the camera
   // controls do not cover (1000x640 viewport: the list is left of x 312, the panel right of x 640,
   // the controls above y 53). The overlap is checked again in each tab state below.
@@ -268,6 +308,8 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
   console.log(
     `M5.11 HIGHLIGHT changed-pixel share: control vs control ${(quiet * 100).toFixed(3)} %, Crew tab open vs Live ${(appeared * 100).toFixed(3)} %, back to Live vs control ${(returned * 100).toFixed(3)} %, row hover vs open ${(hoverExtra * 100).toFixed(3)} % (not asserted)`,
   );
+  // Closing the Crew tab clears the hook state.
+  await expect.poll(highlightNow).toBeNull();
   const TOLERANCE = 0.001;
   // Measured: noise floor 0.000 % (control pair), highlight about 0.14 %; the bots here are small.
   const APPEARS = 0.0005;
@@ -294,6 +336,8 @@ test("the team lead's Crew tab lists its teammates as the crew", async () => {
   await expect(rows.and(page.locator(`[data-agent-id="${BO}"]`))).toContainText("bo");
   // The other session's subagents are a different family.
   await expect(panel().locator(`[data-agent-id="${SUB_A}"]`)).toHaveCount(0);
+  // The lead and its two teammates are highlighted; the other session and its subagents are dimmed.
+  await expectFamily(LEAD, [PIP, BO]);
   // A teammate is a leaf here: its own panel has no Crew tab.
   await row(PIP).click();
   await expect(panel()).toHaveAttribute("data-kind", "teammate");

@@ -23,7 +23,14 @@ import { initialRetired, type Retired, retain } from "./retention.ts";
 // rebuilt from events at startup.
 
 export type { Command, PendingRequest, RequestsState } from "./attention/index.ts";
-export { compareTimestamps, MAX_OPEN_TOOL_CALLS_PER_AGENT } from "./entities/index.ts";
+export {
+  applyRegistration,
+  callsClosedAtBoundary,
+  compareTimestamps,
+  initialEntities,
+  MAX_OPEN_TOOL_CALLS_PER_AGENT,
+  reduceEntities,
+} from "./entities/index.ts";
 export type * from "./entities/types.ts";
 export {
   RETAIN_CLOSED_REQUESTS,

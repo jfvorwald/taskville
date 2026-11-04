@@ -35,7 +35,10 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
         {formatCounts(shown)}
       </p>
       {otherProjects.length > 0 || away ? (
-        <InteractiveRegion className={styles.chips}>
+        <InteractiveRegion
+          className={styles.chips}
+          {...(mode === "history" ? { role: "group", "aria-label": "Live" } : {})}
+        >
           <AttentionChips otherProjects={otherProjects} onSwitch={selectProject} />
           {away ? (
             // Until a project switcher exists, a chip is the only way in, so there must be a way back.
