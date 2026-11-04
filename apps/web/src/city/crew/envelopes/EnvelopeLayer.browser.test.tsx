@@ -1,6 +1,7 @@
 import { type Object3D, Vector3 } from "three";
 import { describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
+import { getSettingsStore } from "../../../overlays/settings/store.ts";
 import { message, stored } from "./envelopeFixtures.ts";
 import { ENVELOPE_FLIGHT_MS } from "./envelopes.ts";
 import { FRAME_WAIT, type MountOptions, mount } from "./testScene.tsx";
@@ -104,6 +105,27 @@ describe("teammate message envelopes in the city", () => {
       expect(scene.selection.getSnapshot()).not.toBe("pip");
       expect(scene.feedFocus.getSnapshot()).toBeNull();
     } finally {
+      await scene.unmount();
+    }
+  }, 60_000);
+
+  it("shows only who wrote to whom, never the message text, while Hide code is on", async () => {
+    const settings = getSettingsStore();
+    const { scene } = await inFlight();
+    try {
+      const canvas = scene.root().gl.domElement;
+      const at = scene.onCanvas(scene.envelopes()[0] as Object3D);
+      settings.set("privacyMode", true);
+      await userEvent.hover(canvas, { position: { x: 4, y: 4 } });
+      await userEvent.hover(canvas, { position: at });
+      await vi.waitFor(() => expect(tooltip()?.textContent).toBe("Pip to Bo"), FRAME_WAIT);
+
+      settings.set("privacyMode", false);
+      await userEvent.hover(canvas, { position: { x: 4, y: 4 } });
+      await userEvent.hover(canvas, { position: at });
+      await vi.waitFor(() => expect(tooltip()?.textContent).toBe("Pip to Bo: hi bo"), FRAME_WAIT);
+    } finally {
+      settings.set("privacyMode", false);
       await scene.unmount();
     }
   }, 60_000);
