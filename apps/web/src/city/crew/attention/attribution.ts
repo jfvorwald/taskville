@@ -1,9 +1,6 @@
 import type { Attention } from "../../../data/domain.ts";
 
 // M5.10 stuck attribution for subagents and teammates (ARCHITECTURE 2.9, decision #120).
-//
-// RED STUB: the types below are the contract the tests pin; `crewAttribution` returns the empty
-// attribution so the tests fail on their assertions. The implementer replaces the body only.
 
 /** The slice of the domain `Agent` the attribution reads; the reducer's `Agent` satisfies it. */
 export interface AttributionAgent {
