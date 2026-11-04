@@ -1,0 +1,10 @@
+
+Running 3 tests using 1 worker
+
+  ✓  1 ../../tests/e2e/crews/crews.spec.ts:67:1 › crew visuals: subagents and a team appear as crews of their leads (3.4s)
+M5.11 LAG ingest-to-panel 72 ms (POST response to card); send-to-panel 77 ms; budget 1000 ms
+  ✓  2 ../../tests/e2e/crews/crews.spec.ts:99:1 › selecting a subagent shows its feed, and a new event lands in under one second (549ms)
+  ✓  3 ../../tests/e2e/crews/crews.spec.ts:144:1 › the Crew tab lists the family and highlights it in the city (6.4s)
+
+  3 passed (16.3s)
+exit 0
