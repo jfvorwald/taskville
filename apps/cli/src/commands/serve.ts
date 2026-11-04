@@ -24,6 +24,7 @@ import {
   replaySpool,
 } from "@taskville/engine/src/sources/claude-code/index.ts";
 import { GitWatcher } from "@taskville/engine/src/sources/git/index.ts";
+import { registerOtlpRoutes } from "@taskville/engine/src/sources/otlp/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
 import pino from "pino";
 import packageJson from "../../package.json" with { type: "json" };
@@ -175,6 +176,8 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
     // that answer them, and live PostToolUse telemetry closing a request answered in the terminal.
     wired = wirePermissionBridge({ app, engine, config, logger, now });
     registerClaudeCodeRoutes(app, claudeCode, { observeHook: wired.observeHook });
+    // Optional OpenTelemetry receiver (M5.12): tokens and cost, kept in memory.
+    registerOtlpRoutes(app, { logger });
     // Agent feed, crew, and evidence reads (M5.01): the stream cap and shutdown are the engine's.
     registerFeedRoutes(app, {
       storage: engine.storage,
