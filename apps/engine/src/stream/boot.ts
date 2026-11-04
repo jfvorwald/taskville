@@ -71,7 +71,9 @@ export function bootEngine(options: BootOptions): Engine {
   let closed = false;
   try {
     ensureUnsortedProject(storage, { now });
-    const rebuilt = rebuildStaleProjections(storage, domainReducer);
+    const rebuilt = rebuildStaleProjections(storage, domainReducer, {
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
     if (rebuilt.length > 0) options.logger?.info({ rebuilt }, "projections rebuilt");
     const expired = expireOpenRequests(storage, domainReducer, { now });
     if (expired.length > 0)
@@ -117,7 +119,11 @@ export function bootEngine(options: BootOptions): Engine {
       drainTimeoutMs,
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
     });
-    registerTimelineRoutes(options.app, { storage, now });
+    registerTimelineRoutes(options.app, {
+      storage,
+      now,
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
     return {
       storage,
       hub,

@@ -1,6 +1,7 @@
-import { canonicalJson, sha256Hex, stateHash } from "@taskville/domain/hash";
+import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { domainReducer } from "../ingest/index.ts";
+import { putInBatches, trusted, type UpkeepLogger } from "../storage/checkpoints.ts";
 import {
   CHECKPOINT_INTERVAL,
   type CheckpointRow,
@@ -8,6 +9,7 @@ import {
   type Storage,
   UPKEEP_WAIT_MS,
 } from "../storage/index.ts";
+import { isBusy } from "../storage/rebuild.ts";
 
 // Replay checkpoints (ARCHITECTURE.md 7.4; constitution II and VI). A checkpoint is the reducer
 // state after the first N events, kept every CHECKPOINT_INTERVAL events so a seek replays at most
@@ -23,30 +25,18 @@ export { CHECKPOINT_INTERVAL };
 export interface StateAtOptions {
   reducer?: ProjectionReducer<ProjectState>;
   interval?: number;
+  /** Where a cache write failure other than a busy lock is logged. */
+  logger?: UpkeepLogger;
 }
 
-/** The state if `row` is trustworthy for `reducer`: right version, parses, belongs to this project at this head, and matches its hash. */
-function trusted(
-  row: CheckpointRow,
-  reducer: ProjectionReducer<ProjectState>,
-  projectId: string,
-): ProjectState | undefined {
-  if (row.reducerVersion !== reducer.version) return undefined;
-  try {
-    const state = JSON.parse(row.stateJson) as ProjectState;
-    if (state.head !== row.sequence || state.projectId !== projectId) return undefined;
-    return stateHash(reducer.version, state) === row.stateHash ? state : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Runs cache upkeep; a cache that cannot be written (a busy database) costs speed, never correctness. */
-function attempt(fn: () => void): void {
+/** Runs cache upkeep; a cache that cannot be written costs speed, never correctness. Busy and spent-budget errors are silent; any other is logged once, without bodies. */
+function attempt(fn: () => void, logger: UpkeepLogger | undefined): void {
   try {
     fn();
-  } catch {
-    // Disposable cache: ignore.
+  } catch (error) {
+    if (isBusy(error)) return;
+    const { errcode, message } = error as { errcode?: unknown; message?: unknown };
+    logger?.warn({ errcode, message }, "checkpoint cache upkeep failed");
   }
 }
 
@@ -74,12 +64,13 @@ function stateAt(
 ): ProjectState {
   const reducer = options.reducer ?? domainReducer;
   const interval = options.interval ?? CHECKPOINT_INTERVAL;
+  const logger = options.logger;
   const cache = storage.checkpoints();
   const head = storage.head(projectId) ?? 0;
 
   // Cache upkeep needs the write lock; if another connection holds it the read still succeeds
   // from the log, so upkeep is best effort; every step shares the one wait budget set by the caller.
-  attempt(() => cache.prune(projectId, reducer.version, head));
+  attempt(() => cache.prune(projectId, reducer.version, head), logger);
   const stored = new Set(cache.sequences(projectId));
 
   let state = reducer.initial(projectId);
@@ -87,13 +78,13 @@ function stateAt(
   const candidates = [...stored].filter((s) => s <= upTo).sort((a, b) => b - a);
   for (const sequence of candidates) {
     const row = cache.get(projectId, sequence);
-    const loaded = row && trusted(row, reducer, projectId);
+    const loaded = row && trusted(row, reducer.version, projectId);
     if (loaded) {
       state = loaded;
       base = sequence;
       break;
     }
-    attempt(() => cache.delete(projectId, sequence));
+    attempt(() => cache.delete(projectId, sequence), logger);
     stored.delete(sequence);
   }
 
@@ -115,6 +106,6 @@ function stateAt(
       if (sequence >= upTo) break;
     }
   }
-  attempt(() => cache.put(projectId, fresh));
+  attempt(() => putInBatches(cache, projectId, fresh), logger);
   return state;
 }

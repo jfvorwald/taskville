@@ -1,6 +1,13 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { CHECKPOINT_INTERVAL, type CheckpointRow, UPKEEP_WAIT_MS } from "./checkpoints.ts";
+import {
+  CHECKPOINT_INTERVAL,
+  type CheckpointRow,
+  putInBatches,
+  trusted,
+  UPKEEP_WAIT_MS,
+  type UpkeepLogger,
+} from "./checkpoints.ts";
 import type { ProjectionRecord, Storage } from "./storage.ts";
 
 /**
@@ -64,6 +71,7 @@ function rebuild<S>(
 export function rebuildStaleProjections<S>(
   storage: Storage,
   reducer: ProjectionReducer<S>,
+  options: { logger?: UpkeepLogger } = {},
 ): string[] {
   const rebuilt: string[] = [];
   for (const project of storage.projects()) {
@@ -73,7 +81,7 @@ export function rebuildStaleProjections<S>(
       projection.reducerVersion === reducer.version &&
       projection.head === project.head;
     if (fresh) {
-      backfillCheckpoints(storage, project.id, project.head, reducer);
+      backfillCheckpoints(storage, project.id, project.head, reducer, options.logger);
       continue;
     }
     rebuild(storage, project.id, reducer, true);
@@ -83,7 +91,7 @@ export function rebuildStaleProjections<S>(
 }
 
 /** True for SQLite's busy and locked errors (another connection holds the write lock) and for a spent upkeep budget. */
-function isBusy(error: unknown): boolean {
+export function isBusy(error: unknown): boolean {
   const { errcode, message } = error as { errcode?: unknown; message?: unknown };
   return (
     errcode === 5 ||
@@ -96,19 +104,22 @@ function isBusy(error: unknown): boolean {
  * Writes the checkpoints a fresh project lacks (a log that predates them); a complete cache costs
  * one query. Best effort: the fold is read-only and the write waits at most the upkeep budget, so
  * a busy write lock skips the backfill (a later seek fills the cache) instead of aborting boot.
- * Any other error still propagates.
+ * Any other write error is logged once, without bodies, and boot continues. A row at a multiple of
+ * the interval that is not trustworthy (wrong version, corrupt, wrong hash or head) counts as missing.
  */
 function backfillCheckpoints<S>(
   storage: Storage,
   projectId: string,
   head: number,
   reducer: ProjectionReducer<S>,
+  logger: UpkeepLogger | undefined,
 ): void {
   const cache = storage.checkpoints();
   const stored = new Set(cache.sequences(projectId));
   const missing = new Set<number>();
   for (let sequence = CHECKPOINT_INTERVAL; sequence <= head; sequence += CHECKPOINT_INTERVAL) {
-    if (!stored.has(sequence)) missing.add(sequence);
+    const row = stored.has(sequence) ? cache.get(projectId, sequence) : undefined;
+    if (!row || !trusted(row, reducer.version, projectId)) missing.add(sequence);
   }
   if (missing.size === 0) return;
   const last = Math.max(...missing);
@@ -129,8 +140,10 @@ function backfillCheckpoints<S>(
     if (sequence >= last) break;
   }
   try {
-    cache.withWaitBudget(UPKEEP_WAIT_MS, () => cache.put(projectId, rows));
+    cache.withWaitBudget(UPKEEP_WAIT_MS, () => putInBatches(cache, projectId, rows));
   } catch (error) {
-    if (!isBusy(error)) throw error;
+    if (isBusy(error)) return;
+    const { errcode, message } = error as { errcode?: unknown; message?: unknown };
+    logger?.warn({ errcode, message }, "checkpoint backfill failed");
   }
 }
