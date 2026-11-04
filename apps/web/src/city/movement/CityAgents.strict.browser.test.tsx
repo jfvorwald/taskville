@@ -42,16 +42,31 @@ function stateWithRequest(heuristic: boolean): ProjectState {
   } as unknown as ProjectState;
 }
 
-async function mount(heuristic: boolean) {
-  const store = createDataStore({ now: () => Date.parse("2026-10-30T10:00:25.000Z") });
-  store.getState().reset(PROJECT);
-  store.getState().applySnapshotState(stateWithRequest(heuristic));
-  // Guard the premise: the domain says this is a needs_you record, heuristic or not.
-  expect(store.getState().attention[0]).toMatchObject({
-    agentId: "lead",
-    level: "needs_you",
-    heuristic,
+// Round 3: one agent silent past the threshold ("quiet for 29 min", heuristic trouble).
+const QUIET_NOW = Date.parse("2026-10-30T10:30:00.000Z");
+
+function stateWithSilentAgent(): ProjectState {
+  const emit = eventBuilder();
+  return [...registered(emit, "quiet"), emit("agent.connected", "quiet")].reduce(
+    reduce,
+    initialState(PROJECT),
+  );
+}
+
+async function mount(heuristic: boolean, silent = false) {
+  const store = createDataStore({
+    now: () => (silent ? QUIET_NOW : Date.parse("2026-10-30T10:00:25.000Z")),
   });
+  store.getState().reset(PROJECT);
+  store
+    .getState()
+    .applySnapshotState(silent ? stateWithSilentAgent() : stateWithRequest(heuristic));
+  // Guard the premise: the domain says this is a needs_you record, heuristic or not.
+  expect(store.getState().attention[0]).toMatchObject(
+    silent
+      ? { agentId: "quiet", level: "trouble", kind: "silent", heuristic: true }
+      : { agentId: "lead", level: "needs_you", heuristic },
+  );
   const labels = createLabelStore();
   let root: RootState | undefined;
   const screen = await render(
@@ -66,14 +81,14 @@ async function mount(heuristic: boolean) {
       </Canvas>
     </div>,
   );
-  const row = () => labels.getSnapshot().find((r) => r.id === "lead");
+  const row = () => labels.getSnapshot().find((r) => r.id === (silent ? "quiet" : "lead"));
   await vi.waitFor(() => expect(row()).toBeDefined(), FRAME_WAIT);
   const target = (root?.gl.info.render.frame ?? 0) + 4;
   await vi.waitFor(
     () => expect(root?.gl.info.render.frame).toBeGreaterThanOrEqual(target),
     FRAME_WAIT,
   );
-  return { row, screen };
+  return { row, screen, root: () => root };
 }
 
 afterEach(() => getSettingsStore().set("strictAttribution", false));
@@ -120,6 +135,34 @@ describe("CityAgents under strict teammate attribution", () => {
     try {
       expect(row()?.urgent).toBe(true);
       expect(row()?.status).toMatch(/Needs you/);
+    } finally {
+      await screen.unmount();
+    }
+  }, 30_000);
+});
+
+describe("CityAgents keeps silence trouble under strict teammate attribution (round 3)", () => {
+  it("shows the heuristic silence trouble with strict off (control)", async () => {
+    getSettingsStore().set("strictAttribution", false);
+    const { row, screen } = await mount(false, true);
+    try {
+      expect(row()?.status).toMatch(/Possible trouble/);
+    } finally {
+      await screen.unmount();
+    }
+  }, 30_000);
+
+  it("keeps an agent's silence trouble status and city mark when strict is on", async () => {
+    getSettingsStore().set("strictAttribution", true);
+    const { row, screen, root } = await mount(false, true);
+    try {
+      expect(row()?.status).toMatch(/Possible trouble/);
+      // The city mark: the agent's drawing carries an attention ring (amber for trouble).
+      let ring = false;
+      root()?.scene.traverse((o) => {
+        if ((o as { geometry?: { type?: string } }).geometry?.type === "RingGeometry") ring = true;
+      });
+      expect(ring).toBe(true);
     } finally {
       await screen.unmount();
     }

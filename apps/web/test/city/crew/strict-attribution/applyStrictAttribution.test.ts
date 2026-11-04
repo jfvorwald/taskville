@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { crewAttribution } from "../../../../src/city/crew/attention/attribution.ts";
 import { applyStrictAttribution } from "../../../../src/city/crew/strict-attribution/index.ts";
+import { attention, initialState, type ProjectState, reduce } from "../../../../src/data/domain.ts";
+import { eventBuilder, PROJECT, registered } from "../../../data/fake-engine.ts";
 import { agentBySource, agentNamed, type Replay, recordsOf, replay } from "../attention/replay.ts";
 
 // M5.13: "Strict teammate attribution" (decision #120 D2 as an option, ARCHITECTURE 2.9).
@@ -106,5 +108,55 @@ describe("recorded links still show when strict (split-pane fixture, full stream
     const out = crewAttribution(applyStrictAttribution(view(r), true));
     expect(out.red).toContain(lead.id);
     expect(out.forLabels).toEqual({});
+  });
+});
+
+// Round 3 (roborev 6812): strict drops only heuristic records that attribute a teammate's state
+// to another agent: a heuristic `needs_you` (the split-pane worker prompt on the lead). Heuristic
+// silence trouble ("quiet for 11 min") is about the agent itself and stays.
+describe("heuristic silence trouble under strict (M5.13 round 3)", () => {
+  const emit = eventBuilder();
+  const base = [...registered(emit, "lead", "quiet"), emit("agent.connected", "quiet")].reduce(
+    reduce,
+    initialState(PROJECT),
+  );
+  const state = {
+    ...base,
+    requests: {
+      r1: {
+        id: "r1",
+        agentId: "lead",
+        kind: "permission",
+        answerable: false,
+        openedAt: "2026-10-30T10:00:20.868Z",
+        state: "open",
+        late: false,
+        mergedRequestIds: [],
+        heuristic: true,
+        reason: { text: "for: pip (Bash)", masked: false, truncated: false },
+      },
+    },
+  } as unknown as ProjectState;
+  const now = Date.parse("2026-10-30T10:30:00.000Z");
+  const input = { agents: state.agents, teams: state.teams, attention: attention(state, now) };
+  const silent = input.attention.filter((r) => r.agentId === "quiet");
+
+  it("premise: the quiet agent has heuristic silent trouble and the lead a heuristic prompt", () => {
+    expect(silent).toMatchObject([{ level: "trouble", kind: "silent", heuristic: true }]);
+    expect(input.attention.find((r) => r.agentId === "lead")).toMatchObject({
+      level: "needs_you",
+      heuristic: true,
+    });
+  });
+
+  it("keeps the silent agent's trouble record when strict is on", () => {
+    const out = applyStrictAttribution(input, true);
+    expect(out.attention.filter((r) => r.agentId === "quiet")).toEqual(silent);
+  });
+
+  it("still drops the split-pane worker prompt's needs_you on the lead (pin)", () => {
+    const out = applyStrictAttribution(input, true);
+    expect(out.attention.filter((r) => r.level === "needs_you")).toEqual([]);
+    expect(out.attention).toHaveLength(silent.length);
   });
 });
