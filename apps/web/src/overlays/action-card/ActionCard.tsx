@@ -277,6 +277,7 @@ function CardBody({
   const [settled, setSettled] = useState(false);
   const [scroll, setScroll] = useState({ overflow: false, atEnd: true });
   const [now, setNow] = useState(() => store.now());
+  const storeState = useData((s) => s.state, store);
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const commandTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -298,6 +299,13 @@ function CardBody({
     const timer = setInterval(() => setNow(store.now()), TICK_MS);
     return () => clearInterval(timer);
   }, [store]);
+
+  // A seek replaces the replayed state or the recorded target; Waiting follows at once, not on
+  // the next interval tick. `storeState` and `target` are the triggers, not values read here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read the clock on those changes
+  useEffect(() => {
+    setNow(store.now());
+  }, [store, storeState, target]);
 
   // Clear the previous input and approval state before a replacement can be painted.
   useLayoutEffect(() => {

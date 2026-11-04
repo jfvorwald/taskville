@@ -21,14 +21,17 @@ export function recordedCardTarget(args: {
 }): CardTarget | null {
   const { state, moments, selectedId } = args;
   if (state === null || selectedId === null) return null;
-  for (let i = moments.length - 1; i >= 0; i -= 1) {
+  // Moments are in ingest order, so the last one at or before the head is found by bisection.
+  let low = 0;
+  let high = moments.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if ((moments[mid]?.sequence ?? Number.POSITIVE_INFINITY) <= state.head) low = mid + 1;
+    else high = mid;
+  }
+  for (let i = low - 1; i >= 0; i -= 1) {
     const moment = moments[i];
-    if (
-      moment === undefined ||
-      moment.sequence > state.head ||
-      moment.requestId === undefined ||
-      moment.agentId !== selectedId
-    )
+    if (moment === undefined || moment.requestId === undefined || moment.agentId !== selectedId)
       continue;
     const request = Object.hasOwn(state.requests, moment.requestId)
       ? state.requests[moment.requestId]
