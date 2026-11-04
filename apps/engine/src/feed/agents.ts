@@ -10,7 +10,7 @@ const AGENT_ID_MAX = 1024;
 
 /**
  * Whether a project has events for the agent. The projection answers a yes quickly; a no (or a
- * stale projection) is settled by reading the log, because retention may have dropped a finished
+ * stale projection) is settled by the agent index, because retention may have dropped a finished
  * agent from the projection while its events remain.
  */
 function holdsAgent(storage: Storage, projectId: string, agentId: string): boolean {
@@ -22,10 +22,7 @@ function holdsAgent(storage: Storage, projectId: string, agentId: string): boole
   ) {
     return true;
   }
-  for (const event of storage.events(projectId, 0)) {
-    if (event.agentId === agentId) return true;
-  }
-  return false;
+  return storage.holdsAgent(projectId, agentId);
 }
 
 /**
