@@ -236,8 +236,6 @@ function manyGroups(tool: "Grep" | "Glob") {
   return calls;
 }
 
-const searchOutputs = () => new Set(hits.filter((id) => /^cs-(Grep|Glob)-\d+:output$/.test(id)));
-const standalone = () => new Set(hits.filter((id) => id.startsWith("cs-bash-")));
 
 /** Per group card: loaded names shown plus searches reported as not loaded. */
 function accounted(): number[] {
