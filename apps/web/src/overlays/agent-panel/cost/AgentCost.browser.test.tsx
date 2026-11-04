@@ -20,6 +20,12 @@ import { AgentPanel } from "../shell/AgentPanel.tsx";
 // when the selected agent changes and ignores an answer for an agent that is no longer selected.
 // History mode asks too (the figure is the same session's); nothing here writes anything.
 //
+// Refresh (roborev 6864 b): telemetry is exported on an interval (60 s by default), so an agent
+// can have no cost when it is selected and some a minute later. While an agent stays selected the
+// panel asks again every `costRefreshMs` (prop, default 15,000 ms), whether or not it has a figure,
+// and shows the newest answer; an answer of `undefined` after a figure removes it. It stops asking
+// when the panel unmounts or the selection moves (the abort signal fires).
+//
 // Markup, inside the panel's <header> (the element that holds `agent-panel-name`):
 //   data-testid="agent-panel-cost"    present only when a CostView arrived
 //     data-testid="agent-panel-tokens"  `<n> tokens`: the sum of the four token types, as
@@ -99,8 +105,11 @@ type CostSource = (agentId: string, signal: AbortSignal) => Promise<View | undef
 
 // Panel props the shell does not declare yet are passed by spread, so a missing prop is a
 // failing assertion here and not a type error that hides the whole file.
-const panel = (id: string | null, costSource?: CostSource) => {
-  const extra = costSource === undefined ? {} : { costSource };
+const panel = (id: string | null, costSource?: CostSource, costRefreshMs?: number) => {
+  const extra = {
+    ...(costSource === undefined ? {} : { costSource }),
+    ...(costRefreshMs === undefined ? {} : { costRefreshMs }),
+  };
   return <AgentPanel {...props(id)} store={makeStore()} renderTab={() => null} {...extra} />;
 };
 
@@ -196,5 +205,32 @@ describe("agent panel header: tokens and cost", () => {
     await new Promise((r) => setTimeout(r, 50));
     await expect.element(page.getByTestId("agent-panel-tokens")).toHaveTextContent("1k tokens");
     expect(document.body.textContent).not.toContain("12.3k");
+  });
+
+  it("shows cost that becomes available while the same agent stays selected, and keeps it fresh", async () => {
+    let calls = 0;
+    const later: CostSource = async () => {
+      calls += 1;
+      if (calls <= 2) return undefined;
+      return calls === 3 ? SCOUT : LEAD;
+    };
+    await render(panel("L", later, 40));
+    // The first answers are "no cost yet"; nothing is shown, then the figure appears by itself.
+    await expect.element(page.getByTestId("agent-panel-tokens")).toHaveTextContent("1k tokens");
+    // And a later, larger figure replaces it without a reselect.
+    await expect.element(page.getByTestId("agent-panel-tokens")).toHaveTextContent("12.3k tokens");
+    expect(calls).toBeGreaterThanOrEqual(4);
+  });
+
+  it("removes a figure when a later answer is undefined, and stops asking once unmounted", async () => {
+    let calls = 0;
+    const gone: CostSource = async () => (++calls === 1 ? LEAD : undefined);
+    const view = await render(panel("L", gone, 40));
+    await expect.element(page.getByTestId("agent-panel-tokens")).toBeVisible();
+    await expect.poll(cost).toBeNull();
+    await view.unmount();
+    const settled = calls;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(calls).toBe(settled);
   });
 });

@@ -30,10 +30,10 @@ export async function loadRegisterOtlpRoutes(): Promise<RegisterOtlpRoutes | und
 }
 
 /** The real app (Host, Origin and credential middleware) with the OTLP routes registered. */
-export async function makeOtlpApp() {
+export async function makeOtlpApp(options?: object) {
   const made = makeApp();
   const register = await loadRegisterOtlpRoutes();
-  register?.(made.app);
+  register?.(made.app, options);
   return made;
 }
 

