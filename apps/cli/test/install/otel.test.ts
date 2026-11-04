@@ -154,7 +154,12 @@ describe("install claude-code --otel", () => {
       expect(text).not.toContain(TOKEN);
     }
     expect(Object.keys(env(sb.projectSettings))).not.toContain("OTEL_EXPORTER_OTLP_HEADERS");
-    expect(read(sb.projectSettings)).not.toContain("Authorization");
+    // The permission-bridge hook (M4.04) writes an Authorization header that holds the variable
+    // name, never a token; the OTel credential comes only from the helper command, which reads
+    // the token at run time.
+    const helper = json(sb.projectSettings).otelHeadersHelper;
+    expect(typeof helper).toBe("string");
+    expect(helper).not.toMatch(/Bearer/i);
   });
 
   it("is a no-op the second time: already installed, file unchanged", async () => {
