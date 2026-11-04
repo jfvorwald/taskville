@@ -4,6 +4,7 @@ import { type DataStore, dataStore } from "../data/store.ts";
 import { useHistoryPresentation } from "../history/ui/HistoryProvider.tsx";
 import { ThemedCity } from "../themes/core/index.ts";
 import { useReducedMotion } from "../wiring/index.ts";
+import { EnvelopeLayer } from "./crew/envelopes/EnvelopeLayer.tsx";
 import { CrewHighlight } from "./crew/highlight/index.ts";
 import { SubagentCrew } from "./crew/subagents/index.ts";
 import { Celebrations } from "./effects/index.ts";
@@ -50,6 +51,7 @@ export function CityRoot({
         reducedMotion={reducedMotion || mode === "history"}
       />
       <CrewHighlight store={store} reducedMotion={reducedMotion || mode === "history"} />
+      {mode === "live" && <EnvelopeLayer store={store} reducedMotion={reducedMotion} />}
       <Celebrations
         key={`${mode}:${mode === "history" ? presentation.fidelity.epoch : "live"}`}
         store={store}

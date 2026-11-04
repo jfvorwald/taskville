@@ -3,10 +3,16 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import {
+  FEED_REQUEST_TTL_MS,
+  type FeedFocus,
+  feedFocus as sharedFeedFocus,
+} from "../../../city/crew/envelopes/feedFocus.ts";
 import { highlightStore } from "../../../city/crew/highlight/highlightStore.ts";
 import { shouldClearOnEscape } from "../../../city/interaction/escape.ts";
 import type { Agent } from "../../../data/domain.ts";
@@ -47,6 +53,8 @@ export interface AgentPanelProps extends OverlayProps {
   initialTab?: PanelTab;
   /** Overrides the selected tab content. Live and Files use paired feeds by default. */
   renderTab?: (tab: PanelTab, agentId: string) => ReactNode;
+  /** A clicked envelope asks for its sender's Live feed; defaults to the app-wide hand-off. */
+  feedFocus?: FeedFocus;
 }
 
 /** "handing_off" is read as "Handing off", the same words the world labels use. */
@@ -85,6 +93,7 @@ export function AgentPanel({
   store = dataStore,
   initialTab = "live",
   renderTab,
+  feedFocus = sharedFeedFocus,
 }: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
@@ -96,6 +105,26 @@ export function AgentPanel({
   );
   const [nowMs, setNowMs] = useState(() => store.now());
   const [chosen, setChosen] = useState<PanelTab>(initialTab);
+  const focus = useSyncExternalStore(
+    feedFocus.subscribe,
+    feedFocus.getSnapshot,
+    feedFocus.getSnapshot,
+  );
+  // A request made before the panel mounted still counts: the click that selected the agent may
+  // have come first. Each request is acted on once, so nothing carries over to the next agent.
+  const handledFocus = useRef<typeof focus>(null);
+
+  // A clicked envelope for the selected agent opens its Live tab. Scrolling to the exact message
+  // is follow-up #368. The selection may land a render after the request, so a request waits for
+  // its agent to be selected.
+  useEffect(() => {
+    if (focus === null || focus === handledFocus.current || focus.agentId !== selection.selectedId)
+      return;
+    handledFocus.current = focus;
+    // Single use: consumed here, so a remount does not apply it again. A stale one is only dropped.
+    if (feedFocus.ageOf(focus) <= FEED_REQUEST_TTL_MS) setChosen("live");
+    feedFocus.clear(focus);
+  }, [focus, selection.selectedId, feedFocus]);
 
   useEffect(() => {
     setNowMs(store.now());

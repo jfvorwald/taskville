@@ -1,0 +1,146 @@
+$ pnpm run typecheck && pnpm run lint && pnpm run test
+$ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+$ biome check .
+fixtures/claude-code/permission/spike-server.mjs:16:26 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    14 │ const log = (o) => {
+    15 │   const rec = { ts: new Date().toISOString(), tRel: ((Date.now() - t0) / 1000).toFixed(3), ...o };
+  > 16 │   fs.appendFileSync(LOG, JSON.stringify(rec) + "\n");
+       │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    17 │   console.log(JSON.stringify(rec).slice(0, 300));
+    18 │ };
+  
+  i Template literals are easier to read than a chain of + operators and quotes, and they avoid mistakes with spaces and escaped quotes.
+  
+  i Unsafe fix: Use a template literal.
+  
+     14  14 │   const log = (o) => {
+     15  15 │     const rec = { ts: new Date().toISOString(), tRel: ((Date.now() - t0) / 1000).toFixed(3), ...o };
+     16     │ - ··fs.appendFileSync(LOG,·JSON.stringify(rec)·+·"\n");
+         16 │ + ··fs.appendFileSync(LOG,·`${JSON.stringify(rec)}\n`);
+     17  17 │     console.log(JSON.stringify(rec).slice(0, 300));
+     18  18 │   };
+  
+
+apps/web/src/audio/index.ts:9:52 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+     7 │ import { loadAmbientLoop } from "./loops.ts";
+     8 │ import { getSoundSettingsStore } from "./settings.ts";
+   > 9 │ import { type ChimingSoundscape, createSoundscape, type Soundscape } from "./soundscape.ts";
+       │                                                    ^^^^^^^^^^^^^^^
+    10 │ 
+    11 │ export type { AudioBackend, Cue } from "./backend.ts";
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+    9 │ import·{·type·ChimingSoundscape,·createSoundscape,·type·Soundscape·}·from·"./soundscape.ts";
+      │                                                    ----------------                         
+
+apps/web/src/city/crew/highlight/CrewHighlight.order.browser.test.tsx:128:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━
+
+  ! This variable wait is unused.
+  
+    126 │ }
+    127 │ 
+  > 128 │ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        │       ^^^^
+    129 │ 
+    130 │ /** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend wait with an underscore.
+  
+    126 126 │   }
+    127 127 │   
+    128     │ - const·wait·=·(ms:·number)·=>·new·Promise((r)·=>·setTimeout(r,·ms));
+        128 │ + const·_wait·=·(ms:·number)·=>·new·Promise((r)·=>·setTimeout(r,·ms));
+    129 129 │   
+    130 130 │   /** Waits until `n` more frames have been drawn (counted at gl.render), however slow the machine. */
+  
+
+Checked 915 files in 1425ms. No fixes applied.
+Found 2 warnings.
+Found 1 info.
+$ vitest run
+
+ RUN  v5.0.5 /Users/jfvorwald/dev/taskville/.worktrees/M5.04
+
+ ❯ |@taskville/engine| test/timelines/checkpoints.test.ts (20 tests | 1 failed) 40855ms
+   ❯ checkpoint equivalence (6)
+     × state at many positions equals a full replay 7356ms
+(node:46964) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:46996) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47011) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47020) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47045) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47104) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47059) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47096) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47131) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47120) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47190) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47138) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47155) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:47246) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |@taskville/engine| test/timelines/checkpoints.test.ts > checkpoint equivalence > state at many positions equals a full replay
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/timelines/checkpoints.test.ts:143:3
+    141|
+    142| describe("checkpoint equivalence", () => {
+    143|   it("state at many positions equals a full replay", () => {
+       |   ^
+    144|     let seed = 7;
+    145|     const random = Array.from({ length: 12 }, () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 283 passed (284)
+      Tests  1 failed | 4345 passed (4346)
+   Start at  21:02:06
+   Duration  83.71s (tests 72%, import 20%, transform 8%)
+
+    Isolate  284 workers spawned · ~261ms startup each (spawn + environment, per file)
+             at least ~10.32s faster with isolate: false — reuses workers across files instead of one per file
+
+[ELIFECYCLE] Test failed. See above for more details.
+[ELIFECYCLE] Command failed with exit code 1.
