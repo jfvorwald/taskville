@@ -1,10 +1,11 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BoxGeometry, type Group, Raycaster, Vector2 } from "three";
+import { BoxGeometry, type Group, type Object3D } from "three";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { worldAnchors } from "../../../overlays/host/index.ts";
 import type { AnchorSource } from "../../../overlays/host/types.ts";
 import { colorMaterial } from "../../agents/resources.ts";
+import { collectPickables, createPicker } from "../../interaction/pick.ts";
 import { type SelectionStore, selectionStore } from "../../interaction/selection.ts";
 import { agentAnchorId } from "../../movement/AgentLabels.tsx";
 import {
@@ -96,7 +97,7 @@ export function EnvelopeLayer({
   feedFocus = sharedFeedFocus,
   reducedMotion = false,
 }: EnvelopeLayerProps) {
-  const { gl, camera } = useThree();
+  const { gl, camera, scene } = useThree();
   const log = useMemo(() => createEnvelopeLog(), []);
   const [live, setLive] = useState<readonly Envelope[]>([]);
   const shownIds = useRef("");
@@ -117,34 +118,34 @@ export function EnvelopeLayer({
   useEffect(() => {
     return store.onEvent((event) => {
       const agents = store.getState().state?.agents ?? {};
-      if (log.observe(event, agents, store.now()) !== null) refresh();
+      if (log.observe(event, agents, store.now()) === null) return;
+      feedFocus.note(event.eventId, Date.parse(event.occurredAt));
+      refresh();
     });
-  }, [store, log, refresh]);
+  }, [store, log, refresh, feedFocus]);
 
   useEffect(() => {
     const dom = gl.domElement;
-    const raycaster = new Raycaster();
-    const ndc = new Vector2();
+    const picker = createPicker();
+    const pickables: Object3D[] = [];
     let downX = 0;
     let downY = 0;
     let down = false;
 
+    // The scene's shared picker, so a building in front of the envelope hides it.
     const hit = (e: PointerEvent): string | null => {
       const rect = dom.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0 || layer.current === null) return null;
-      ndc.set(
+      if (rect.width === 0 || rect.height === 0) return null;
+      collectPickables(scene, pickables);
+      camera.updateMatrixWorld();
+      picker.pick(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        camera,
+        pickables,
       );
-      camera.updateMatrixWorld();
-      raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObjects(layer.current.children, true);
-      for (const h of hits) {
-        for (let o: typeof h.object | null = h.object; o !== null; o = o.parent) {
-          if (typeof o.userData.envelopeId === "string") return o.userData.envelopeId;
-        }
-      }
-      return null;
+      const id = picker.control?.userData.envelopeId;
+      return typeof id === "string" ? id : null;
     };
     const hideTooltip = () => {
       hovered.current = null;
@@ -203,7 +204,7 @@ export function EnvelopeLayer({
       dom.removeEventListener("pointerup", onUp);
       hideTooltip();
     };
-  }, [gl, camera, log, store, selection, feedFocus]);
+  }, [gl, camera, scene, log, store, selection, feedFocus]);
 
   const position: [number, number, number] = useMemo(() => [0, 0, 0], []);
   useFrame(() => {

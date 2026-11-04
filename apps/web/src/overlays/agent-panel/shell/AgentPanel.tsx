@@ -24,6 +24,7 @@ import { displayPath } from "../code/displayPath.ts";
 import { CrewTab } from "../crew/CrewTab.tsx";
 import { ConnectedFilesTab } from "../files/ConnectedFilesTab.tsx";
 import { ConnectedLiveTab } from "../live/ConnectedLiveTab.tsx";
+import type { LiveTabProps } from "../live/LiveTab.tsx";
 import styles from "./agent-panel.module.css";
 import { currentFile, elapsedMs, formatElapsed } from "./facts.ts";
 import { familyPath, stepFamily } from "./family.ts";
@@ -34,6 +35,7 @@ export const AGENT_PANEL_ID = "agent-panel";
 /** How often the elapsed time is recomputed from the store clock. */
 const CLOCK_TICK_MS = 1000;
 const ID_SHORT = 8;
+const MAX_MESSAGE_TIMES = 200;
 
 const TAB_LABEL: Record<PanelTab, string> = { live: "Live", files: "Files", crew: "Crew" };
 const KIND_LABEL: Record<Agent["kind"], string> = {
@@ -110,14 +112,30 @@ export function AgentPanel({
   );
   const handledFocus = useRef(focus);
 
-  // A clicked envelope for the selected agent opens its Live tab. Scrolling to the exact message
-  // is a follow-up.
+  // When each team message happened, so a clicked envelope can find its SendMessage card. The
+  // city also notes the time in `feedFocus`, for a panel that opened after the event.
+  const messageTimes = useRef(new Map<string, number>());
+  useEffect(
+    () =>
+      store.onEvent((event) => {
+        if (event.type !== "team.message") return;
+        const times = messageTimes.current;
+        times.set(event.eventId, Date.parse(event.occurredAt));
+        if (times.size > MAX_MESSAGE_TIMES) times.delete(times.keys().next().value as string);
+      }),
+    [store],
+  );
+  const [focusMessage, setFocusMessage] = useState<LiveTabProps["focusMessage"]>(undefined);
+
+  // A clicked envelope for the selected agent opens its Live tab on the message's card.
   useEffect(() => {
     if (focus === null || focus === handledFocus.current || focus.agentId !== selection.selectedId)
       return;
     handledFocus.current = focus;
     setChosen("live");
-  }, [focus, selection.selectedId]);
+    const at = messageTimes.current.get(focus.eventId) ?? feedFocus.occurredAt(focus.eventId);
+    if (at !== undefined && !Number.isNaN(at)) setFocusMessage({ at, token: focus });
+  }, [focus, selection.selectedId, feedFocus]);
 
   useEffect(() => {
     setNowMs(store.now());
@@ -259,7 +277,12 @@ export function AgentPanel({
           {renderTab !== undefined ? (
             renderTab(active, agent.id)
           ) : active === "live" && mode === "live" ? (
-            <ConnectedLiveTab agentId={agent.id} store={store} select={select} />
+            <ConnectedLiveTab
+              agentId={agent.id}
+              store={store}
+              select={select}
+              focusMessage={focusMessage}
+            />
           ) : active === "live" ? (
             <p>Live cards are not available for this history view.</p>
           ) : active === "files" && mode === "live" ? (

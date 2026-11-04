@@ -23,12 +23,21 @@ export interface Envelope {
 
 type Agents = Readonly<Record<string, Agent>>;
 
-function resolve(to: string, agents: Agents): string | null {
+/**
+ * The one agent the sender means by `to`: within the sender's team and source when it has them.
+ * Zero matches, or several, leave the recipient unresolved rather than guessing.
+ */
+function resolve(to: string, from: string, agents: Agents): string | null {
   const wanted = to.toLowerCase();
-  for (const agent of Object.values(agents)) {
-    if (agent.sourceAgentId === to || agent.displayName?.toLowerCase() === wanted) return agent.id;
-  }
-  return null;
+  const sender = agents[from];
+  const matches = Object.values(agents).filter(
+    (agent) =>
+      (sender === undefined ||
+        (agent.sourceId === sender.sourceId &&
+          (sender.teamId === undefined || agent.teamId === sender.teamId))) &&
+      (agent.sourceAgentId === to || agent.displayName?.toLowerCase() === wanted),
+  );
+  return matches.length === 1 ? (matches[0]?.id ?? null) : null;
 }
 
 export function envelopeFor(
@@ -41,7 +50,7 @@ export function envelopeFor(
   return {
     id: event.eventId,
     fromAgentId: event.agentId,
-    toAgentId: resolve(to, agents),
+    toAgentId: resolve(to, event.agentId, agents),
     to,
     kind,
     ...(summary === undefined ? {} : { summary }),
