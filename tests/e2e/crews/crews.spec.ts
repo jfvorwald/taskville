@@ -47,6 +47,8 @@ test.beforeAll(async ({ browser }) => {
   context = await browser.newContext({
     baseURL: engine.url,
     viewport: { width: 1000, height: 640 },
+    // Freezes unrelated animation (and the highlight's bounce) so pixel comparisons are stable.
+    reducedMotion: "reduce",
     recordVideo: { dir: OUT, size: { width: 800, height: 512 } },
   });
   page = await context.newPage();
@@ -157,16 +159,43 @@ test("selecting a subagent shows its feed, and a new event lands in under one se
   ).toBeVisible();
 });
 
+/**
+ * Share of pixels that differ between two PNG shots (any channel by more than 8 of 255), decoded in
+ * the page so the test needs no image library.
+ */
+async function diffShare(a: Buffer, b: Buffer): Promise<number> {
+  return page.evaluate(
+    async ([x, y]) => {
+      const load = async (b64: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = document.createElement("canvas");
+        c.width = img.width;
+        c.height = img.height;
+        const g = c.getContext("2d") as CanvasRenderingContext2D;
+        g.drawImage(img, 0, 0);
+        return g.getImageData(0, 0, c.width, c.height).data;
+      };
+      const [da, db] = [await load(x as string), await load(y as string)];
+      let changed = 0;
+      for (let i = 0; i < da.length; i += 4) {
+        const d = Math.max(
+          Math.abs((da[i] ?? 0) - (db[i] ?? 0)),
+          Math.abs((da[i + 1] ?? 0) - (db[i + 1] ?? 0)),
+          Math.abs((da[i + 2] ?? 0) - (db[i + 2] ?? 0)),
+        );
+        if (d > 8) changed += 1;
+      }
+      return changed / (da.length / 4);
+    },
+    [a.toString("base64"), b.toString("base64")],
+  );
+}
+
 test("the Crew tab lists the family and highlights it in the city", async () => {
   await row(SESSION).click();
   await expect(panel()).toHaveAttribute("data-agent-id", SESSION);
-  // A live WebGL canvas is never "stable" for Playwright, so shoot its box from the page.
-  const canvas = page.getByTestId("scene-root").locator("canvas").first();
-  const box = await canvas.boundingBox();
-  if (box === null) throw new Error("no city canvas");
-  const shot = () => page.screenshot({ clip: box, animations: "allow" });
-  const before = await shot();
-
   await panel().getByRole("tab", { name: "Crew" }).click();
   await expect(panel().getByTestId("agent-panel-tab-slot")).toHaveAttribute("data-tab", "crew");
   const rows = panel().getByTestId("crew-row");
@@ -177,15 +206,67 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
   await expect(panel().locator(`[data-agent-id="${PIP}"]`)).toHaveCount(0);
 
   // The highlight (dim outside the family, ground ring, tethers) is drawn in WebGL and has no DOM
-  // marker, so it is checked as a pixel change in the city canvas while the tab is open and
-  // hovered, and its reversal when the tab closes. See the M5.11 report.
-  await rows.first().getByRole("button").hover();
-  await page.waitForTimeout(1200);
-  const during = await shot();
-  expect(Buffer.compare(before, during)).not.toBe(0);
+  // marker, so it is checked in pixels. The context asks
+  // for reduced motion (no bounce, no unrelated animation), and the shots clip to a city region
+  // that the panel, the agent list and the camera controls do not cover (1000x640 viewport: the
+  // list is left of x 312, the panel right of x 640, the controls above y 53).
+  const region = { x: 330, y: 70, width: 300, height: 280 };
+  for (const id of ["agent-panel", "agent-list", "camera-controls"]) {
+    const b = await page.getByTestId(id).boundingBox();
+    if (b === null) throw new Error(`${id} not visible`);
+    const apart =
+      b.x >= region.x + region.width ||
+      b.x + b.width <= region.x ||
+      b.y >= region.y + region.height ||
+      b.y + b.height <= region.y;
+    expect(apart, `${id} overlaps the clip region`).toBe(true);
+  }
+  const shot = async () => {
+    await page.waitForTimeout(1200);
+    return page.screenshot({ clip: region, animations: "allow" });
+  };
+  // The highlight is on while the Crew tab is open (dim outside the family, ring, tethers) and a
+  // hover only adds a bounce, which reduced motion removes. So the on/off pair is the Crew tab
+  // open versus the Live tab, and the panel is outside the clip. The pointer rests on the panel's
+  // title in every shot, never on a crew row or the city.
+  const title = panel().getByTestId("agent-panel-name");
+  const openCrew = async () => {
+    await panel().getByRole("tab", { name: "Crew" }).click();
+    await expect(panel().getByTestId("agent-panel-tab-slot")).toHaveAttribute("data-tab", "crew");
+    await title.hover();
+  };
+  const openLive = async () => {
+    await panel().getByRole("tab", { name: "Live" }).click();
+    await expect(panel().getByTestId("agent-panel-tab-slot")).toHaveAttribute("data-tab", "live");
+    await title.hover();
+  };
+  await openLive();
+  const control1 = await shot();
+  const control2 = await shot();
+  const quiet = await diffShare(control1, control2);
 
-  await panel().getByRole("tab", { name: "Live" }).click();
-  await page.waitForTimeout(1200);
-  const after = await shot();
-  expect(Buffer.compare(during, after)).not.toBe(0);
+  await openCrew();
+  const highlighted = await shot();
+  const appeared = await diffShare(control2, highlighted);
+
+  // Informational: hover on a crew row (a bounce, frozen by reduced motion).
+  await rows.first().getByRole("button").hover();
+  const hovered = await shot();
+  const hoverExtra = await diffShare(highlighted, hovered);
+
+  await openLive();
+  const cleared = await shot();
+  const returned = await diffShare(control2, cleared);
+
+  console.log(
+    `M5.11 HIGHLIGHT changed-pixel share: control vs control ${(quiet * 100).toFixed(3)} %, Crew tab open vs Live ${(appeared * 100).toFixed(3)} %, back to Live vs control ${(returned * 100).toFixed(3)} %, row hover vs open ${(hoverExtra * 100).toFixed(3)} % (not asserted)`,
+  );
+  const TOLERANCE = 0.001;
+  // Measured: noise floor 0.000 % (control pair), highlight about 0.14 %; the bots here are small.
+  const APPEARS = 0.0005;
+  // The control: two shots in the same unhovered state match.
+  expect(quiet).toBeLessThan(TOLERANCE);
+  // Opening the Crew tab draws the highlight in that region, and leaving it clears it.
+  expect(appeared).toBeGreaterThan(APPEARS);
+  expect(returned).toBeLessThan(TOLERANCE);
 });
