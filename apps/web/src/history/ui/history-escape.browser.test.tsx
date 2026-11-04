@@ -13,6 +13,7 @@ import { useSelection } from "../../city/interaction/useSelection.ts";
 import { DEFAULT_PROJECT_ID, selectProject } from "../../data/project.ts";
 import { dataStore } from "../../data/store.ts";
 import { AgentPanel } from "../../overlays/agent-panel/shell/AgentPanel.tsx";
+import { createAnchorSource } from "../../overlays/host/anchors.ts";
 import { SessionProvider } from "../../pairing/session.tsx";
 import { HistoryControls } from "./HistoryControls.tsx";
 import { HistoryProvider, useHistoryPresentation } from "./HistoryProvider.tsx";
@@ -25,6 +26,7 @@ import { HistoryProvider, useHistoryPresentation } from "./HistoryProvider.tsx";
 // listeners also run and clear the selection (a1), so the panel closes.
 
 const rig = createCameraRig();
+const anchors = createAnchorSource();
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
@@ -42,6 +44,7 @@ function Shell() {
     () => history.mode,
     () => history.mode,
   );
+  const panelMode = history.mode === "history" ? "history" : "live";
   return (
     <>
       <output aria-label="Mode">{mode}</output>
@@ -65,8 +68,14 @@ function Shell() {
         </Canvas>
       </div>
       <AgentPanel
-        mode={history.mode === "history" ? "history" : "live"}
+        mode={panelMode}
+        selectors={{
+          counts: { subscribe: () => () => {}, getSnapshot: () => ({ active: 0, needsYou: 0 }) },
+        }}
         selection={selection}
+        anchors={anchors}
+        intents={{ available: panelMode === "live", run: () => {} }}
+        settings={{ get: (_k, f) => f, set: () => {} }}
         store={dataStore}
       />
     </>
