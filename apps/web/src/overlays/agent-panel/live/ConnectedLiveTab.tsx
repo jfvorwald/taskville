@@ -105,10 +105,6 @@ function SelectedLive({
     let retry: ReturnType<typeof setTimeout> | undefined;
     const requested = new Map<string, object>();
     let wanted = new Map<string, object>();
-    // Search outputs granted so far and the bodies other calls have claimed. Together they stay
-    // within the body cache, so a scrolling reader cannot cycle through it and refetch.
-    let granted = new Set<string>();
-    let claimed = new Set<string>();
     // A backlog can be thousands of calls. Accumulate in place, indexed by toolCallId, and publish
     // one copy per flush instead of copying the whole list for every frame and every body.
     let list: ToolCallFrame[] = [];
@@ -214,6 +210,10 @@ function SelectedLive({
     }
     visibleReader.current = (visible, outputOnly) => {
       const next = new Map<string, object>();
+      // The bodies this window's other calls claim and the search outputs granted in it. Together
+      // they fit the body cache; a window the reader has left releases its share.
+      const claimed = new Set<string>();
+      const granted = new Set<string>();
       for (const call of visible) {
         for (const part of BOTH) {
           const ref = call.evidence[part];
@@ -284,8 +284,6 @@ function SelectedLive({
             index = new Map();
             bodies.clear();
             wanted.clear();
-            granted = new Set();
-            claimed = new Set();
             gone = new Set();
             dirty = { calls: false, bodies: false, gone: false };
             setCalls([]);
