@@ -395,22 +395,24 @@ describe("boot backfill is best effort under a busy write lock", () => {
     expect(sequencesOf(PROJECT)).toEqual([]);
   }, 30_000);
 
-  it("engine boot completes under the lock, and a later seek is right and fills the checkpoints", () => {
+  it("after a skipped backfill, a seek fills the checkpoints, and a later unlocked boot keeps them", () => {
     freshProjectionNoCheckpoints();
-    engine?.close();
-    engine = undefined;
-    let booted: ReturnType<typeof bootInProcess> | undefined;
+    const impatient = openStorage(dbPath(), { busyTimeoutMs: 100 });
     db().exec("BEGIN IMMEDIATE");
     try {
-      expect(() => {
-        booted = bootInProcess(dbPath());
-      }).not.toThrow();
+      expect(() => rebuildStaleProjections(impatient, domainReducer)).not.toThrow();
     } finally {
       db().exec("ROLLBACK");
+      impatient.close();
     }
-    engine = booted?.engine;
     expect(sequencesOf(PROJECT)).toEqual([]);
     expect(stateAtSequence(storage(), PROJECT, 1250)).toEqual(fullReplay(1250));
     expect(sequencesOf(PROJECT)).toEqual([500, 1000]);
-  }, 60_000);
+    engine?.close();
+    const booted = bootInProcess(dbPath());
+    engine = booted.engine;
+    app = booted.app;
+    expect(sequencesOf(PROJECT)).toEqual([500, 1000, 1500, 2000, 2500]);
+    expect(stateAtSequence(storage(), PROJECT, 1250)).toEqual(fullReplay(1250));
+  }, 30_000);
 });
