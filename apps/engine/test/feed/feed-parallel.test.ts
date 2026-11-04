@@ -1,0 +1,156 @@
+import { describe, expect, it } from "vitest";
+import type { SseReader } from "../stream/helpers.ts";
+import { ingestRaw, SPIKE_CWD, type ToolCallFrame, useHarness } from "./helpers.ts";
+
+// M5.15 (#285): one boundary event closes every running call of an agent, and the feed must show
+// each as `unfinished`. Frame scheme decided by the lead: one `toolcall` frame per closed call;
+// only the LAST frame of the event carries `id: <ingestSequence>`, earlier frames of the same event
+// carry no `id`. A client that reconnects mid-event with `?after=<previous id>` gets the whole
+// event's frames again (frames are full snapshots keyed by toolCallId, so a replay is idempotent);
+// one that reconnects after the event's id gets none of them again. The tests read frames with
+// `id: -1` for "no id line" (see toolCallFrames in helpers.ts). Each test fails on the current
+// source because the feed emits only the first closed call per event.
+
+const start = useHarness();
+const T0 = Date.parse("2026-10-31T10:00:00.000Z");
+const at = (i: number) => new Date(T0 + i * 1000).toISOString();
+const AGENT = "par-agent";
+const SESSION = "sess-par";
+const NO_ID = -1;
+
+type H = Awaited<ReturnType<typeof start>>;
+type Boundary = "session.turn_ended" | "session.ended";
+
+const startCall = (toolCallId: string, i: number) => ({
+  type: "tool_call.started",
+  agentId: AGENT,
+  sessionId: SESSION,
+  at: at(i),
+  payload: { toolCallId, toolName: "Bash" },
+});
+
+const boundaryEvent = (type: Boundary) => ({
+  type,
+  agentId: AGENT,
+  sessionId: SESSION,
+  at: at(9),
+  payload: {},
+});
+
+/** Two parallel running calls of one agent; returns the sequence of the last start. */
+async function twoRunning(h: H): Promise<number> {
+  h.addProject("spike", SPIKE_CWD);
+  ingestRaw(h, "spike", "par-starts", [startCall("toolu_par_a", 0), startCall("toolu_par_b", 1)]);
+  return h.engine.storage.head("spike") ?? 0;
+}
+
+function closeWith(h: H, type: Boundary): number {
+  ingestRaw(h, "spike", `par-${type}`, [boundaryEvent(type)]);
+  return h.engine.storage.head("spike") ?? 0;
+}
+
+/** Reads toolcall frames until the feed has been quiet for `quietMs`. */
+async function drain(
+  reader: SseReader,
+  quietMs = 400,
+): Promise<{ id: number; data: ToolCallFrame }[]> {
+  const out: { id: number; data: ToolCallFrame }[] = [];
+  for (;;) {
+    let frame: Awaited<ReturnType<SseReader["next"]>>;
+    try {
+      frame = await reader.next(quietMs);
+    } catch {
+      return out;
+    }
+    if (frame === null) return out;
+    if (frame.event === "toolcall") {
+      out.push({ id: frame.id ?? NO_ID, data: frame.data as ToolCallFrame });
+    }
+  }
+}
+
+const summary = (frames: { id: number; data: ToolCallFrame }[]) =>
+  frames.map((f) => [f.data.toolCallId, f.data.phase]);
+
+/** The boundary's two frames: both calls unfinished, no id on the first, the event's id on the last. */
+function expectBoundaryFrames(
+  frames: { id: number; data: ToolCallFrame }[],
+  boundarySeq: number,
+): void {
+  expect(frames).toHaveLength(2);
+  expect(new Set(summary(frames).map((s) => s.join(":")))).toEqual(
+    new Set(["toolu_par_a:unfinished", "toolu_par_b:unfinished"]),
+  );
+  expect(frames.map((f) => f.id)).toEqual([NO_ID, boundarySeq]);
+  for (const frame of frames) {
+    expect(frame.data.finishedAt).toBe(at(9));
+    expect(frame.data).not.toHaveProperty("durationMs");
+    expect(frame.data.toolName).toBe("Bash");
+    expect(frame.data.evidence.output).toBeNull();
+  }
+}
+
+describe.each([
+  ["a turn end", "session.turn_ended"],
+  ["a session end", "session.ended"],
+] as const)("two parallel running calls of one agent at %s", (_label, boundary) => {
+  it("shows both as unfinished in a backlog read, only the last frame carrying the event id", async () => {
+    const h = await start();
+    await twoRunning(h);
+    const boundarySeq = closeWith(h, boundary);
+    const reader = await h.openFeed(AGENT);
+    const frames = await drain(reader);
+    await reader.cancel();
+    expect(summary(frames.slice(0, 2))).toEqual([
+      ["toolu_par_a", "running"],
+      ["toolu_par_b", "running"],
+    ]);
+    expectBoundaryFrames(frames.slice(2), boundarySeq);
+  });
+
+  it("sends both as unfinished live, only the last frame carrying the event id", async () => {
+    const h = await start();
+    await twoRunning(h);
+    const reader = await h.openFeed(AGENT);
+    expect(summary(await drain(reader))).toEqual([
+      ["toolu_par_a", "running"],
+      ["toolu_par_b", "running"],
+    ]);
+    const boundarySeq = closeWith(h, boundary);
+    const frames = await drain(reader);
+    await reader.cancel();
+    expectBoundaryFrames(frames, boundarySeq);
+  });
+
+  it("replays both when a client reconnects with ?after= the id before the event", async () => {
+    const h = await start();
+    const lastStart = await twoRunning(h);
+    const boundarySeq = closeWith(h, boundary);
+    const reader = await h.openFeed(AGENT, `?after=${lastStart}`);
+    const frames = await drain(reader);
+    await reader.cancel();
+    expectBoundaryFrames(frames, boundarySeq);
+  });
+
+  it("replays both live-resumed too: a feed opened before the event, then reconnected before it", async () => {
+    const h = await start();
+    const lastStart = await twoRunning(h);
+    const first = await h.openFeed(AGENT, `?after=${lastStart}`);
+    const boundarySeq = closeWith(h, boundary);
+    expectBoundaryFrames(await drain(first), boundarySeq);
+    await first.cancel();
+    const again = await h.openFeed(AGENT, `?after=${lastStart}`);
+    expectBoundaryFrames(await drain(again), boundarySeq);
+    await again.cancel();
+  });
+
+  it("sends neither again when a client reconnects with ?after= the event's id", async () => {
+    const h = await start();
+    await twoRunning(h);
+    const boundarySeq = closeWith(h, boundary);
+    const reader = await h.openFeed(AGENT, `?after=${boundarySeq}`);
+    const frames = await drain(reader);
+    await reader.cancel();
+    expect(summary(frames)).toEqual([]);
+  });
+});
