@@ -1,6 +1,6 @@
 {
   "projectId": "demo",
-  "reducerVersion": 6,
+  "reducerVersion": 7,
   "head": 13,
   "agents": {
     "agent-a": {

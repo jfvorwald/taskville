@@ -1,3 +1,4 @@
+import { REASON_MAX_CHARS } from "@taskville/protocol";
 import {
   applyRegistration,
   applyTeamEnded,
@@ -75,7 +76,12 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
     }
     case "agent.finished":
       if (agentId === undefined) return s;
-      s = updateAgent(s, agentId, (a) => ({ ...a, finishedAt: e.occurredAt }));
+      s = updateAgent(s, agentId, (a) => {
+        const finished = { ...a, finishedAt: e.occurredAt };
+        const summary = e.payload.summary;
+        if (summary === undefined || summary.trim() === "") return finished;
+        return { ...finished, resultSummary: [...summary].slice(0, REASON_MAX_CHARS).join("") };
+      });
       return closeUnfinishedCalls(s, e, agentId);
     case "team.started":
       return applyTeamStarted(s, e);
