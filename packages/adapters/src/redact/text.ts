@@ -42,7 +42,9 @@ interface Candidate {
 // stop at `_` or consume the whole run greedily, so a start after `_` still scans each
 // character a bounded number of times. The JWT pattern keeps `_` in its lookbehind,
 // because its body must reach a `.`, and a run of `_eyJ` with no dot would be rescanned
-// from every start.
+// from every start; a JWT after a hyphen is found by findDashedJwts instead (M7.12). A hyphen
+// is allowed before the other prefixes (`x-sk-ant-...`): their bodies consume the whole run
+// greedily, so a start after a hyphen is not tried again.
 const TOKEN_PATTERNS: ReadonlyArray<{
   kind: MaskKind;
   pattern: RegExp;
@@ -50,12 +52,12 @@ const TOKEN_PATTERNS: ReadonlyArray<{
   /** Extra evidence the match must show, for patterns that also match prose. */
   accept?: (match: RegExpMatchArray) => boolean;
 }> = [
-  { kind: "anthropic-key", pattern: /(?<![A-Za-z0-9-])sk-ant-[A-Za-z0-9_-]{20,}/dg },
+  { kind: "anthropic-key", pattern: /(?<![A-Za-z0-9])sk-ant-[A-Za-z0-9_-]{20,}/dg },
   {
     // The digit is checked after the match rather than with a lookahead: the greedy body
     // consumes the whole run, so a digit-free run is scanned once, not once per `_sk-` in it.
     kind: "openai-key",
-    pattern: /(?<![A-Za-z0-9-])sk-[A-Za-z0-9_-]{20,}/dg,
+    pattern: /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/dg,
     accept: (match) => /[0-9]/.test(match[0].slice(3)),
   },
   { kind: "github-token", pattern: /(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36,}/dg },
@@ -64,7 +66,7 @@ const TOKEN_PATTERNS: ReadonlyArray<{
     kind: "aws-access-key",
     pattern: /(?<![A-Za-z0-9+/])(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}(?![A-Za-z0-9])/dg,
   },
-  { kind: "slack-token", pattern: /(?<![A-Za-z0-9-])(?:xox[abposre]|xapp)-[A-Za-z0-9-]{10,}/dg },
+  { kind: "slack-token", pattern: /(?<![A-Za-z0-9])(?:xox[abposre]|xapp)-[A-Za-z0-9-]{10,}/dg },
   { kind: "stripe-key", pattern: /(?<![A-Za-z0-9])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/dg },
   {
     kind: "jwt",
@@ -175,9 +177,6 @@ const MAX_USER = 128;
 const PASSWORD_COMMAND =
   /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
 
-// Words read after one of those commands, so a long line costs a bounded scan.
-const MAX_COMMAND_WORDS = 256;
-
 // A `{"name": "DB_PASSWORD", "value": "..."}` pair (Kubernetes env, the GitHub API, AWS
 // tags, `docker inspect`) written as text, in either property order and across lines.
 // PAIR_NAME finds the name (group 3); the value is read by hand.
@@ -196,11 +195,13 @@ export function redactText(input: string): RedactedText {
   const candidates: Candidate[] = [];
   findPrivateKeys(input, candidates);
   findTokens(input, candidates);
+  findDashedJwts(input, candidates);
   const ends = valueEnds(input);
   findAssignments(input, ends, candidates);
   findFlags(input, ends, candidates);
   findPasswordFlags(input, candidates);
   findNameValuePairs(input, ends, candidates);
+  findObjectPairs(input, ends, candidates);
   findAuthParams(input, candidates);
   findUserFlags(input, candidates);
   findStandaloneTokens(input, candidates);
@@ -227,6 +228,31 @@ function findTokens(input: string, out: Candidate[]): void {
       if (accept !== undefined && !accept(match)) continue;
       out.push({ start, end, kind });
     }
+  }
+}
+
+// An `eyJ` right after a hyphen (`x-eyJ...`). The pattern above cannot start there, because a
+// run of `-eyJ` with no dot would be rescanned from every start; this walk reads each
+// run once, and only the first such start in a run can match (its body is the longest).
+const DASHED_EYJ = /(?<=-)eyJ/g;
+
+function tokenRunEnd(input: string, from: number): number {
+  let i = from;
+  while (/[A-Za-z0-9_-]/.test(input.charAt(i))) i++;
+  return i;
+}
+
+function findDashedJwts(input: string, out: Candidate[]): void {
+  let runEnd = 0;
+  for (const match of input.matchAll(DASHED_EYJ)) {
+    if (match.index < runEnd) continue;
+    const first = tokenRunEnd(input, match.index + 3);
+    runEnd = first;
+    if (input.charAt(first) !== "." || first - (match.index + 3) < 5) continue;
+    if (!input.startsWith("eyJ", first + 1)) continue;
+    const second = tokenRunEnd(input, first + 4);
+    if (input.charAt(second) !== "." || second - (first + 4) < 5) continue;
+    out.push({ start: match.index, end: tokenRunEnd(input, second + 1), kind: "jwt" });
   }
 }
 
@@ -331,11 +357,17 @@ function findFlags(input: string, ends: Ends, out: Candidate[]): void {
 function findPasswordFlags(input: string, out: Candidate[]): void {
   let scannedUntil = 0;
   let dockerUntil = 0;
+  let flatUntil = 0;
   for (const match of input.matchAll(PASSWORD_COMMAND)) {
     if (match[3] !== undefined) {
       // Its own high-water mark: `docker exec db mysql -pSECRET` must still reach the mysql rule.
       if (match.index >= dockerUntil) {
-        dockerUntil = scanLoginSegment(input, match.index + match[0].length, out);
+        dockerUntil = scanLoginSegment(input, match.index + match[0].length, out, false);
+      }
+      // The same segment read with quotes ignored, so a `docker` inside a quoted word
+      // (`sh -c 'docker login -p x r'`) is covered by the scan of the one before it.
+      if (match.index >= flatUntil) {
+        flatUntil = scanLoginSegment(input, match.index + match[0].length, out, true);
       }
       continue;
     }
@@ -343,7 +375,7 @@ function findPasswordFlags(input: string, out: Candidate[]): void {
     const spaced = match[1] === undefined; // sshpass takes `-p SECRET` too
     const sshpass = match[2] !== undefined;
     let at = match.index + match[0].length;
-    for (let words = 0; words < MAX_COMMAND_WORDS; words++) {
+    for (;;) {
       at = skipBlanks(input, at);
       const end = shellWordEnd(input, at);
       if (end === at) break; // newline, `;`, `&`, `|`, a backtick, or the end of the text
@@ -381,17 +413,19 @@ function findPasswordFlags(input: string, out: Candidate[]): void {
  * `--password` value in it is masked. Global options are not parsed (they can be any number,
  * with quoted or escaped values), so `docker run -p 8080:80 img login` also loses its `8080:80`:
  * hiding a port costs less than leaking a password. A command with no `login` is left alone.
- * Each character is read once, and the caller starts the next scan after the returned end.
+ * A word counts as `login` with its quotes and backslashes removed (`"login"`, `lo\gin`). With
+ * `flat` set, quotes do not group words, so the inside of a quoted word is read as well.
+ * Each character is read once per mode, and the caller starts the next scan after the returned end.
  */
-function scanLoginSegment(input: string, from: number, out: Candidate[]): number {
+function scanLoginSegment(input: string, from: number, out: Candidate[], flat: boolean): number {
   const found: Candidate[] = [];
   let login = false;
   let at = from;
   for (;;) {
     at = skipBlanks(input, at);
-    const end = shellWordEnd(input, at);
+    const end = shellWordEnd(input, at, flat);
     if (end === at) break;
-    if (end - at === 5 && input.startsWith("login", at)) {
+    if (isPlainWord(input, at, end, "login")) {
       login = true;
     } else if (input.charAt(at) === "-") {
       const attached = input.startsWith("-p", at) && end - at > 2;
@@ -414,6 +448,18 @@ function scanLoginSegment(input: string, from: number, out: Candidate[]): number
   }
   if (login) for (const c of found) out.push(c);
   return at;
+}
+
+/** True if the word at `from`..`to`, with quotes and backslashes removed, is `expected`. */
+function isPlainWord(input: string, from: number, to: number, expected: string): boolean {
+  let matched = 0;
+  for (let i = from; i < to; i++) {
+    const ch = input.charAt(i);
+    if (ch === '"' || ch === "'" || ch === "\\") continue;
+    if (ch !== expected.charAt(matched)) return false;
+    matched += 1;
+  }
+  return matched === expected.length;
 }
 
 function skipBlanks(input: string, at: number): number {
@@ -559,6 +605,73 @@ function findNameValuePairs(input: string, ends: Ends, out: Candidate[]): void {
   }
 }
 
+const PAIR_NAME_TEXT = /^[A-Za-z_][A-Za-z0-9_.-]{0,99}$/;
+
+/**
+ * Masks the `"value"` of an object that also has a sensitive `"name"` or `"key"`, with any
+ * other properties between them (`{"name":"DB_PASSWORD","type":"secure","value":"..."}`).
+ * One quote-aware pass tracks the enclosing `{` or `[` of each key, so a name is only paired
+ * with a value of its own object, never one in a sibling or a parent, and each character is
+ * read a bounded number of times. A quote with no partner on its line is an apostrophe.
+ */
+function findObjectPairs(input: string, ends: Ends, out: Candidate[]): void {
+  const frames: number[] = [];
+  const sensitive = new Set<number>();
+  const values: Array<{ frame: number; at: number }> = [];
+  let nextFrame = 0;
+  // Where the last quote with no partner gave up: later quotes of that kind on the same line
+  // are plain characters, so a line of escaped quotes is read once, not once per quote.
+  const unpaired = new Map<string, number>();
+  const skipSpace = (at: number): number => {
+    let i = at;
+    while (i < input.length && /\s/.test(input.charAt(i))) i++;
+    return i;
+  };
+  let i = 0;
+  while (i < input.length) {
+    const ch = input.charAt(i);
+    i += 1;
+    if (ch === "{" || ch === "[") {
+      frames.push(nextFrame++);
+    } else if (ch === "}" || ch === "]") {
+      frames.pop();
+    } else if ((ch === '"' || ch === "'") && i > (unpaired.get(ch) ?? -1)) {
+      const close = quotedEnd(input, i, ch);
+      if (input.charAt(close) !== ch) {
+        unpaired.set(ch, close);
+        continue;
+      }
+      const colon = skipSpace(close + 1);
+      const frame = frames.at(-1);
+      if (input.charAt(colon) !== ":" || frame === undefined) continue;
+      const key = input.slice(i, close).toLowerCase();
+      const at = skipSpace(colon + 1);
+      if (key === "value") {
+        values.push({ frame, at });
+      } else if (key === "name" || key === "key") {
+        const quote = input.charAt(at);
+        const end = quotedEnd(input, at + 1, quote);
+        if ((quote === '"' || quote === "'") && input.charAt(end) === quote) {
+          const name = input.slice(at + 1, end);
+          if (PAIR_NAME_TEXT.test(name) && isSensitiveName(name)) sensitive.add(frame);
+        }
+      }
+      i = colon + 1;
+    }
+  }
+  // A value that never closes runs to the end of the text; what it covers is masked once.
+  let maskedUntil = 0;
+  for (const { frame, at } of values) {
+    if (at < maskedUntil || !sensitive.has(frame)) continue;
+    const value = readPairValue(input, ends, at, input.length);
+    if (value === null) continue;
+    maskedUntil = value.next;
+    if (value.end > value.start && !isPlaceholder(input, value.start, value.end)) {
+      out.push({ start: value.start, end: value.end, kind: "sensitive-value" });
+    }
+  }
+}
+
 /**
  * Masks the password in `-u user:password` style flags: everything after the first
  * colon of the shell word, which joins quoted and unquoted segments
@@ -653,13 +766,14 @@ function userSeparator(input: string, at: number): { colon: number; quote: strin
 /**
  * End of the shell word at `at`: quoted and unquoted segments joined, complete
  * references (`$(id -u)`) taken whole, backslash escapes honored. Ends at whitespace or a
- * command separator outside quotes; an unterminated quote ends it at the line end.
+ * command separator outside quotes; an unterminated quote ends it at the line end. With `flat`
+ * set, quote characters are ordinary characters and do not group words.
  */
-function shellWordEnd(input: string, at: number): number {
+function shellWordEnd(input: string, at: number, flat = false): number {
   let i = at;
   while (i < input.length) {
     const ch = input.charAt(i);
-    if (ch === '"' || ch === "'") {
+    if (!flat && (ch === '"' || ch === "'")) {
       const close = quotedEnd(input, i + 1, ch);
       if (input.charAt(close) !== ch) return close;
       i = close + 1;
