@@ -43,7 +43,11 @@ export interface LiveTabProps {
     | Readonly<Record<string, EvidenceResponse>>
     | ((id: string) => EvidenceResponse | undefined);
   /** Internal connected loader: only calls whose details are currently rendered. */
-  onVisibleCalls?: (calls: readonly ToolCallFrame[]) => void;
+  onVisibleCalls?: (
+    calls: readonly ToolCallFrame[],
+    /** Privacy only: calls of visible Search groups whose output part alone is needed. */
+    outputOnly?: readonly ToolCallFrame[],
+  ) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
   /** Hide code bodies (Edit fragments, Write content). Default false. */
@@ -578,6 +582,15 @@ function GroupCard({
       ),
     ];
     const names = all.slice(0, detailPageSize);
+    // Search calls past the cap are never loaded, so their hits are unknown: count each as one.
+    const unloaded =
+      kind === "search"
+        ? calls
+            .slice(detailPageSize)
+            .filter((call) => !bodyOfCall(call, "output", evidence) && !call.filePaths.length)
+            .length
+        : 0;
+    const more = all.length - names.length + unloaded;
     return (
       <article
         className={styles.card}
@@ -597,7 +610,7 @@ function GroupCard({
                 <Path path={path} privacy />{" "}
               </span>
             ))}
-            {all.length > names.length ? `and ${all.length - names.length} more` : null}
+            {more > 0 ? `and ${more} more` : null}
           </p>
         ) : null}
         <p>{CODE_HIDDEN}</p>
@@ -820,10 +833,17 @@ function LiveFeed({
       virtualItems.flatMap(({ index }) => {
         const item = items[index];
         if (item.kind === "call") return item.calls;
-        return expanded.has(item.key)
+        // Under privacy a group card renders no details, so no part of it is needed in full.
+        return !privacy && expanded.has(item.key)
           ? groupDetails(item.calls, detailPages.get(item.key) ?? 0, detailPageSize).calls
           : [];
       }),
+      privacy
+        ? virtualItems.flatMap(({ index }) => {
+            const item = items[index];
+            return item.kind === "search" ? item.calls.slice(0, detailPageSize) : [];
+          })
+        : [],
     );
   });
   const onDetailPage = useCallback((id: string, page: number) => {
