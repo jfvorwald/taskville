@@ -20,6 +20,42 @@ Entry format:
 
 ## Entries
 
+### L-215: Call the domain's rule instead of copying it
+- **Date:** 2026-11-04 · **Milestone:** M6 · **Ticket:** #79 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** M6.07's crewRuns re-derived registration rules; each review found a new mismatch (guesses overwriting recorded links, dropped finishes) until it folded registrations through the domain's exported applyRegistration.
+- **Lesson:** When the web needs a domain rule, export the domain function (export-only change) and call it; a copy drifts.
+- **Action:** PR #358.
+
+### L-214: Cap parallel full checks by machine load
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** many · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Seven workers plus roborev each ran `pnpm check`; load reached 150 and timing tests failed on most tickets, each needing a rerun and a judgement.
+- **Lesson:** Above load average 20 workers skip `pnpm check` and CI decides; the lead runs the wave on an idle machine.
+- **Action:** Worker briefs from 2026-11-04.
+
+### L-213: A recurring CI failure in untouched code is a bug until proven a flake
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** #365 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** The shim spool concurrency test failed in CI on two PRs that touched only engine and web code; the debugger found a real stale-lock race that could corrupt hook events.
+- **Lesson:** The second unexplained CI failure in unrelated code gets a debugger, not a rerun.
+- **Action:** PR #371.
+
+### L-212: A capture-phase handler inherits the rules of what it pre-empts
+- **Date:** 2026-11-04 · **Milestone:** M6 · **Ticket:** #311 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Moving history's Escape to the capture phase with stopPropagation took Escape away from dialogs, which the city's own handler had respected.
+- **Lesson:** When a handler moves earlier and stops events, test every rule the later handlers enforced (dialogs, text fields).
+- **Action:** PR #354.
+
+### L-211: A subset fold needs an equivalence test against the full fold
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** #281 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Folding only an agent's indexed events diverged from the full fold through retention and late session entry; row-count bounds could not see it.
+- **Lesson:** Any optimisation that folds part of a log ships with a test comparing its output to the full fold on fixtures built to hit every global rule.
+- **Action:** PR #375 held pending decision #376.
+
+### L-210: Grep every consumer before changing a wire format
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** #285 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** The lead chose idless feed frames for M5.15 and wrote that the web was unaffected; both web consumers dropped idless frames.
+- **Lesson:** Before deciding a frame or payload scheme, grep every reader of that field in every app.
+- **Action:** PR #351 round 2.
+
 ### L-209: A fetch budget for virtualized lists is per window, not per stream
 - **Date:** 2026-11-03 · **Milestone:** M5 · **Ticket:** #341 · **Recorded by:** CTO (Opus 5.5)
 - **What happened:** A per-group cap let five visible privacy search groups request 160 bodies against a 128-body cache; the fix, a lifetime ledger, then starved every new group at a live tail after about 64 calls.
