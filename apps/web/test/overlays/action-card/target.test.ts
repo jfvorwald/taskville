@@ -141,4 +141,26 @@ describe("cardTarget", () => {
     });
     expect(target?.requestState).toBe("expired");
   });
+
+  // M6.10 (#312): a live heuristic request is never answerable, and the card says so as the agent
+  // panel and the history card do. The flag comes from the request record the store holds.
+  it("marks the target heuristic when the request record is heuristic", () => {
+    const target = cardTarget({
+      selectedId: "a1",
+      attention: [record("a1")],
+      requests: { "req-a1": request({ heuristic: true, answerable: false }) },
+      agents: {},
+    });
+    expect(target?.heuristic).toBe(true);
+  });
+
+  it("does not mark the target heuristic for an ordinary request", () => {
+    const target = cardTarget({
+      selectedId: "a1",
+      attention: [record("a1")],
+      requests: { "req-a1": request({ heuristic: false }) },
+      agents: {},
+    });
+    expect(target?.heuristic ?? false).toBe(false);
+  });
 });
