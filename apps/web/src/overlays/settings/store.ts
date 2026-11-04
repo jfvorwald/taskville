@@ -25,6 +25,8 @@ export interface SettingsValues {
   desktopNotifications: boolean;
   /** Hide code bodies in the Live tab and files (M5.09). */
   privacyMode: boolean;
+  /** Show only recorded teammate links and red states, not guesses from text (M5.13). */
+  strictAttribution: boolean;
 }
 
 export const DEFAULT_SETTINGS: SettingsValues = {
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   reducedMotion: "system",
   desktopNotifications: false,
   privacyMode: false,
+  strictAttribution: false,
 };
 
 export interface SettingsStore extends Selector<SettingsValues> {
@@ -55,6 +58,7 @@ const VALID: Validators = {
   reducedMotion: oneOf(REDUCED_MOTION_CHOICES),
   desktopNotifications: (value): value is boolean => typeof value === "boolean",
   privacyMode: (value): value is boolean => typeof value === "boolean",
+  strictAttribution: (value): value is boolean => typeof value === "boolean",
 };
 
 const KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof SettingsValues)[];
