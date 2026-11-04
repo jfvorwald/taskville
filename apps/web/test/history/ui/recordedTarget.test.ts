@@ -143,4 +143,67 @@ describe("recordedCardTarget work bound", () => {
     expect(target?.requestId).toBe("r-19998");
     expect(reads).toBeLessThan(200);
   });
+
+  // Round 2 (roborev 6757): an agent with no request, or only an early one, must not make every
+  // playback update walk the log back to the start. Building a per-list index on the first call is
+  // allowed, so one warm-up call is made before reads are counted; each later head change is then
+  // bounded by the log's logarithm, not its length.
+  function largeLog(extra: readonly ReturnType<typeof moment>[]) {
+    const N = 30_000;
+    const list: ReturnType<typeof moment>[] = [];
+    const requests: Request[] = [];
+    for (let seq = 1; seq <= N; seq += 1) {
+      const early = extra.find((m) => m.sequence === seq);
+      if (early !== undefined) {
+        list.push(early);
+        if (early.requestId !== undefined) requests.push(request(early.requestId, ADA));
+      } else if (seq % 3 === 0) {
+        list.push(moment(seq, BEA, `b-${seq}`));
+        requests.push(request(`b-${seq}`, BEA));
+      } else {
+        list.push(moment(seq, BEA));
+      }
+    }
+    let reads = 0;
+    const counted = new Proxy(list, {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    return {
+      requests,
+      counted,
+      takeReads: () => {
+        const n = reads;
+        reads = 0;
+        return n;
+      },
+    };
+  }
+
+  it("stays bounded per head change for an agent that never opened a request", () => {
+    const { requests, counted, takeReads } = largeLog([]);
+    const call = (head: number) =>
+      recordedCardTarget({ state: stateWith(head, requests), moments: counted, selectedId: ADA });
+    call(1_000); // warm-up
+    takeReads();
+    for (const head of [29_999, 25_000, 20_001, 12_345, 7_000]) {
+      expect(call(head)).toBeNull();
+      expect(takeReads()).toBeLessThan(200);
+    }
+  });
+
+  it("stays bounded per head change for an agent whose only request is early in the log", () => {
+    const { requests, counted, takeReads } = largeLog([moment(5, ADA, "r-early")]);
+    const call = (head: number) =>
+      recordedCardTarget({ state: stateWith(head, requests), moments: counted, selectedId: ADA });
+    call(1_000); // warm-up
+    takeReads();
+    for (const head of [29_999, 25_000, 20_001, 12_345, 7_000]) {
+      expect(call(head)?.requestId).toBe("r-early");
+      expect(takeReads()).toBeLessThan(200);
+    }
+    expect(call(4)).toBeNull(); // not yet opened at an earlier head
+  });
 });
