@@ -13,6 +13,8 @@ export interface CrewRun {
   startedAt: number;
   finishedSequence?: number;
   finishedAt?: number;
+  /** The finish preceded the first registration, so the start is clamped and the duration unknown. */
+  clamped?: true;
   /** Always absent: a heuristic registration never forms or changes a run. */
   heuristic?: never;
 }
@@ -48,7 +50,8 @@ export function crewRuns(events: readonly StoredEnvelope[]): CrewRun[] {
     if (agent?.kind !== "subagent" || agent.parentAgentId === undefined) continue;
     const close = closed.get(agentId);
     // A finish recorded before the first registration also bounds the start.
-    const start = close && close.sequence < open.sequence ? close : open;
+    const clamped = close !== undefined && close.sequence < open.sequence;
+    const start = clamped ? close : open;
     runs.push({
       agentId,
       parentId: agent.parentAgentId,
@@ -56,6 +59,7 @@ export function crewRuns(events: readonly StoredEnvelope[]): CrewRun[] {
       startSequence: start.sequence,
       startedAt: start.at,
       ...(close ? { finishedSequence: close.sequence, finishedAt: close.at } : {}),
+      ...(clamped ? { clamped: true as const } : {}),
     });
   }
   return runs;
@@ -93,7 +97,7 @@ export function CrewBars({
         const tail =
           run.finishedAt === undefined
             ? "running"
-            : Number.isFinite(took) && took >= 0
+            : !run.clamped && Number.isFinite(took) && took >= 0
               ? `ran ${Math.round(took / 1000)}s`
               : "duration unknown";
         return (
