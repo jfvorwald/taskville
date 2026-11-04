@@ -407,19 +407,8 @@ describe("boot backfill is best effort under a busy write lock", () => {
     expect(sequencesOf(PROJECT)).toEqual([]);
   }, 30_000);
 
-  // Guard (passes on green): only busy and locked errors are swallowed by the best-effort catch.
-  it("rethrows an error that is not a busy lock", () => {
-    freshProjectionNoCheckpoints();
-    const put = vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
-      throw new Error("disk exploded");
-    });
-    try {
-      expect(() => rebuildStaleProjections(storage(), domainReducer)).toThrow("disk exploded");
-      expect(put).toHaveBeenCalled();
-    } finally {
-      put.mockRestore();
-    }
-  });
+  // The M6.11 guard that a non-busy error is rethrown was replaced in M6.12 (#347): the backfill
+  // now logs it and boot continues. See checkpoints-hardening.test.ts.
 
   it("after a skipped backfill, a seek fills the checkpoints, and a later unlocked boot keeps them", () => {
     freshProjectionNoCheckpoints();
