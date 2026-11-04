@@ -31,17 +31,21 @@ export class SqliteCheckpoints {
   /**
    * Drops rows that cannot be used for `reducerVersion` against a log of `head` events: another
    * version, a sequence outside 1..head, or state text that does not start like a JSON object
-   * (constant time per row; a row is parsed and hash-checked only when a seek would use it).
-   * Returns the number removed.
+   * (a cheap check per row, no parsing; a row is parsed and hash-checked only when a seek would
+   * use it). A read-only probe runs first and the write lock is taken only when it finds a row to
+   * drop, so a healthy cache never waits on another writer. Returns the number removed.
    */
   prune(projectId: string, reducerVersion: number, head: number): number {
+    const unusable = `project_id = ? AND (reducer_version != ?
+                 OR sequence > ? OR substr(state_json, 1, 1) != '{')`;
+    const found = this.#db
+      .prepare(`SELECT 1 FROM checkpoints WHERE ${unusable} LIMIT 1`)
+      .get(projectId, reducerVersion, head);
+    if (!found) return 0;
     return this.#write(() =>
       Number(
         this.#db
-          .prepare(
-            `DELETE FROM checkpoints WHERE project_id = ? AND (reducer_version != ?
-                 OR sequence > ? OR substr(state_json, 1, 1) != '{')`,
-          )
+          .prepare(`DELETE FROM checkpoints WHERE ${unusable}`)
           .run(projectId, reducerVersion, head).changes,
       ),
     );
@@ -133,12 +137,13 @@ export class SqliteCheckpoints {
     }
   }
 
-  /** Lowers the busy timeout to the remaining budget, if there is one; returns the undo. */
+  /** Lowers the busy timeout to the remaining budget (never raising the connection's own), if there is one; returns the undo. */
   #limitWait(): () => void {
     if (this.#remaining === undefined) return () => {};
-    const left = Math.floor(this.#remaining);
-    if (left <= 0) throw new Error("checkpoint upkeep skipped: wait budget spent");
+    const remaining = Math.floor(this.#remaining);
+    if (remaining <= 0) throw new Error("checkpoint upkeep skipped: wait budget spent");
     const previous = Number(this.#db.prepare("PRAGMA busy_timeout").get()?.timeout);
+    const left = Math.min(previous, remaining);
     this.#db.exec(`PRAGMA busy_timeout = ${left}`);
     return () => this.#db.exec(`PRAGMA busy_timeout = ${previous}`);
   }
