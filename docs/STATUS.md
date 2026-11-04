@@ -2,7 +2,7 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-02 22:00 UTC. **Main:** 321a202. **State:** M4 complete to G4 #75, awaiting human review. M5 and M6 in progress under the owner's M4 to M6 authorization. Decision #295 answered by the owner on 2026-11-02 (admin merge of reviewed, green PRs); the blocked M5/M6 stack is merged.
+**Updated:** 2026-11-04 01:00 UTC. **Main:** e68583c. **State:** G4 #75 closed by the owner ("keep going", 2026-11-02). M5 and M6 in progress under the owner's M4 to M6 authorization. Decisions #333, #336, #198 and #289 answered by the owner on 2026-11-03; all four took the default (applied below).
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
@@ -47,9 +47,14 @@ Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with
 | M5.08 #66 crew tab and family highlight | #329 | render-time highlight (B1), rig ground pan, reduced motion; confirming review PASS after two roborev panels and three fix rounds; result summary pending decision #333; follow-up #337; clip NOT RUN; [report](tasks/M5.08.md) |
 | M5.23 #338 privacy: bound and gate recorded paths (P1 security) | #339 | displayPath rule in hidden cards, Files tab and panel header; rows keyed by path; panel 6653 fixed; re-review 6660 non-leak mediums deferred to #341; [report](tasks/M5.23.md) |
 | M5.09 #71 code rendering, editor links, privacy mode | #331 | shiki 4.5.0 lazy (JS regex engine), text-only rendering, editor links, deny-by-default privacy; security confirmation PASS; action card under privacy is decision #336; crafted-path residual fixed in M5.23 #339; [report](tasks/M5.09.md) |
+| M5.11 #72 crews e2e (replay) | #344 | 4 of 4 pass, ingest-to-panel lag 46 ms (send 51 ms); highlight seen-fail checked; roborev 6677 fixed, 6690 PASS; code review PASS; follow-up #348; [report](tasks/M5.11.md) |
+| M5.25 #342 Crew tab result summary (decision #333 D1) | #346 | capped at 280 code points, hidden under privacy; REDUCER_VERSION 7; panel 6699 PASS, re-review 6713 answered (v7 never released); code review BLOCKED then CONFIRMED; [report](tasks/M5.25.md) |
+| M6.11 #332 checkpoint follow-ups | #345 | boot backfill (best effort under a busy lock); seek after reboot with no warm-up worst p95 34.4 ms (lively, 50,005 events); panels 6682 fixed, 6705 PASS; code review fixed, security PASS; follow-up #347; [report](tasks/M6.11.md) |
 
 - Draft: M6.05 #78 (PR #326), required panel 6555 failed on a valid attribution finding; owner decision #325 limits it to producers with explicit task IDs.
-- Not started: M5.04 #63, M5.11 #72, M5.12 #104, M5.13 #175, M6.07 #79, M6.09 #311, M6.10 #312, M5.14 #281, M5.15 #285; follow-ups #332, #334, #337, #341; retros #99, #100; gates #76, #80.
+- In progress: M5.24 #341 (PR #343): privacy group caps and search hit names; two roborev panels (6674, 6694) and a post-commit (6691) fixed; the confirming review rejected a per-stream fetch ledger, so round 5 moves to a per-window budget with refetch after eviction (debugger owns the green).
+- Not started: M5.04 #63, M5.12 #104, M5.13 #175, M6.07 #79, M6.09 #311, M6.10 #312, M5.14 #281, M5.15 #285; follow-ups #334, #337, #347 (M6.12), #348 (M5.26); retros #99, #100; gates #76, #80.
+- Flakes this session (load average 25 to 48 from parallel workers and roborev): engine `checkpoints.test.ts` "state at many positions equals a full replay" (5 s timeout, 3 times, passes alone); web `test/wiring/start.test.ts` (twice). The M6.11 timing pins were made baseline-relative.
 - Performance: #268 (web budget) stays open; lively-day seeks now meet 300 ms with checkpoints (#279), existing logs need the boot backfill in #332.
 - Workers this session: Claude Agent-tool specialists (test-writer and implementer at definition defaults, Sonnet; code-reviewer, security-reviewer and debugger at their defaults), in lead-made worktrees under `.worktrees/`. Confirming reviews after the two-panel roborev cap were independent code-reviewer and security-reviewer passes.
 
@@ -121,6 +126,8 @@ Wave verification on main 44f5af1 with no workers running: `pnpm check` 94 files
 Workers this session (all stopped after handoff, branches frozen, worktrees kept): Claude Sonnet 5.5 medium for M2.20, M2.10 completion, M2.19; Sonnet 5.5 high for M2.21, M2.22, M2.23; Haiku 5.5 low for the lessons copy. The live usage display could not be read from the lead session; work ended well inside the provisional 19:50 EDT cutoff.
 
 ## Remaining decisions
+
+Answered 2026-11-03 (defaults applied): #333 (result summary follow-up #342, merged), #336 (action card keeps the exact input under Hide code; documented in tasks/M5.09.md), #198 (accept and document; residual restated at G5), #289 (live permission e2e stays NOT RUN; replay only).
 
 Open owner decision issues: #178, #190, #198. Defaults remain in force; none blocks M3. Closed on the owner's "accept defaults" on 2026-10-31 19:02 EDT: #174, #176 (D2 applied: constitution 1.3.0 allows roadmap tickets with explicit contracts per milestone; M3 Constitution Check runs in its retro), #184, #187, #202, #206. Earlier: #213 (CLI token keeps root registration; residual risk in the G2 summary) and #223 (#219 merged; targeted linear rules, #222 after G2).
 

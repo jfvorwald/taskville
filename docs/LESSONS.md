@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-209: A fetch budget for virtualized lists is per window, not per stream
+- **Date:** 2026-11-03 · **Milestone:** M5 · **Ticket:** #341 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** A per-group cap let five visible privacy search groups request 160 bodies against a 128-body cache; the fix, a lifetime ledger, then starved every new group at a live tail after about 64 calls.
+- **Lesson:** Bound what the current window wants so it fits the cache, and let evicted bodies be fetched again; test a tail-following stream, not only a static view.
+- **Action:** M5.24 round 5 (PR #343).
+
+### L-208: Unknown counts get their own words
+- **Date:** 2026-11-03 · **Milestone:** M5 · **Ticket:** #341 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** "and N more" counted each unloaded search call as one filename, stating an unknown as fact (roborev high 6694).
+- **Lesson:** Count only known items; report what was not loaded as a count of the thing you know (searches), in a separate line, and test both sides.
+- **Action:** PR #343 round 3.
+
+### L-207: Check where a payload is already masked before adding a redaction pass
+- **Date:** 2026-11-03 · **Milestone:** M5 · **Ticket:** #342 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** The M5.25 ticket asked the reducer to redact `resultSummary`, but ingest already masks every `agent.finished` field (`normalize.ts`), and the domain package cannot depend on adapters.
+- **Lesson:** Before specifying redaction for a derived field, trace the source field through ingest; also grep fixtures for it, since a new field changes pinned goldens and needs a REDUCER_VERSION bump in the ticket's Owns.
+- **Action:** Scope comment on #342; goldens and version bump in PR #346.
+
+### L-206: Timing pins measure the wait, not the work around it
+- **Date:** 2026-11-03 · **Milestone:** M6 · **Ticket:** #332 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** A 150 ms bound on a seek that folds 1,250 events failed at 1,771 ms in a loaded `pnpm check`, though the lock wait it guarded was 30 ms.
+- **Lesson:** Assert lock wait as locked minus an unlocked baseline in the same process, and confirm with a mutation that the bound still catches the regression.
+- **Action:** PR #345 (`lockCost` helper, Math.min mutation check).
+
 ### L-205: Privacy as a deny-list leaks whatever it does not name
 - **Date:** 2026-11-02 · **Milestone:** M5 · **Ticket:** #71 · **Recorded by:** CTO (Opus 5.5)
 - **What happened:** Hide code first gated Edit and Write, then MultiEdit and NotebookEdit; each review round found another content-bearing path (Files tab, Bash stdout, Grep output, unknown tools, a crafted file_path).
