@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:net";
 import { createServer as createHttpServer } from "node:http";
+import { createServer, type Server } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Io, run } from "../src/main.ts";
