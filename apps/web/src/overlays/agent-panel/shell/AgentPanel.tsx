@@ -130,6 +130,16 @@ export function AgentPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [known, selectedId, agents, teams, select]);
 
+  const results = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const a of agents) {
+      if (a.resultSummary !== undefined) {
+        out[a.id] = privacyMode ? "Summary hidden by the privacy setting" : a.resultSummary;
+      }
+    }
+    return out;
+  }, [agents, privacyMode]);
+
   const openId = known && chosen === "crew" ? agent.id : null;
   // The city dims everyone outside the family while this agent's Crew tab is open.
   useEffect(() => {
@@ -234,11 +244,11 @@ export function AgentPanel({
           ) : active === "files" ? (
             <p>Files are not available for this history view.</p>
           ) : active === "crew" ? (
-            // The finished result summary is not in the store yet, so finished rows say "not reported".
             <CrewTab
               parentId={agent.id}
               agents={state.agents}
               activity={state.activity}
+              results={results}
               nowMs={nowMs}
               teams={teams}
               onSelect={select}
