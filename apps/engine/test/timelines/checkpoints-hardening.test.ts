@@ -1,9 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
-import { stateHash } from "@taskville/domain/hash";
+import { canonicalJson, stateHash } from "@taskville/domain/hash";
 import { type ProjectState, REDUCER_VERSION } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
+import { SqliteCheckpoints } from "../../src/storage/checkpoints.ts";
 import {
   type CheckpointRow,
   type ProjectionReducer,
@@ -11,7 +12,7 @@ import {
 } from "../../src/storage/index.ts";
 import { type StateAtOptions, stateAtSequence } from "../../src/timelines/checkpoints.ts";
 import { dayEvents, LIVELY, seedLog } from "./day-log.ts";
-import { bootInProcess, type Engine, useDbPath } from "./helpers.ts";
+import { bootInProcess, type Engine, getJson, useDbPath } from "./helpers.ts";
 
 // M6.12 (#347): checkpoint cache hardening from the M6.11 reviews. RED phase tests.
 //
@@ -74,8 +75,25 @@ function recordingLogger() {
   };
 }
 
-/** No state JSON, event bodies or row text in what was logged. */
+/** Every string reachable from `value`: nested objects, arrays, and Error name, message and stack. */
+function stringsIn(value: unknown, seen = new Set<unknown>()): string[] {
+  if (typeof value === "string") return [value];
+  if (value === null || typeof value !== "object" || seen.has(value)) return [];
+  seen.add(value);
+  const own = value instanceof Error ? [value.name, value.message, value.stack ?? ""] : [];
+  return [...own, ...Object.values(value).flatMap((v) => stringsIn(v, seen))];
+}
+
+/** A distinctive slice of a real state body, so a state JSON passed as a string is recognised. */
+const STATE_MARKER = canonicalJson(fullReplay(500)).slice(0, 60);
+
+/** No state JSON, event bodies or row text in what was logged, inspecting every string directly. */
 function expectNoBodies(calls: unknown[][]) {
+  for (const text of stringsIn(calls)) {
+    expect(text).not.toContain(STATE_MARKER);
+    expect(text.trimStart().startsWith("{")).toBe(false);
+    expect(text.length).toBeLessThan(200);
+  }
   const text = JSON.stringify(calls, (_key, value) =>
     value instanceof Error ? { name: value.name, message: value.message } : value,
   );
@@ -346,4 +364,213 @@ describe("a non-busy cache write failure during boot backfill does not abort boo
     expect(() => bootRebuild(storage(), domainReducer, { logger })).not.toThrow();
     expect(logger.calls()).toEqual([]);
   });
+});
+
+// ---- Red round 2 (PR #357 code review and roborev panel 6769) ----
+
+/** warn and error calls only (boot also logs info lines of its own). */
+const problems = (logger: ReturnType<typeof recordingLogger>) => [
+  ...logger.warn.mock.calls,
+  ...logger.error.mock.calls,
+];
+
+/** Wraps put so each call records `onPut()` first, then runs the real write. */
+function watchPut(onPut: (rows: readonly CheckpointRow[]) => void) {
+  const real = SqliteCheckpoints.prototype.put;
+  return vi.spyOn(SqliteCheckpoints.prototype, "put").mockImplementation(function (
+    this: SqliteCheckpoints,
+    projectId,
+    rows,
+  ) {
+    onPut(rows);
+    return real.call(this, projectId, rows);
+  });
+}
+
+describe("the engine logger reaches the cache upkeep (wiring)", () => {
+  function rebootWith(logger: ReturnType<typeof recordingLogger>) {
+    engine?.close();
+    const booted = bootInProcess(dbPath(), { logger: logger as never });
+    engine = booted.engine;
+    return booted.app;
+  }
+
+  // Fails if boot.ts stops passing options.logger to rebuildStaleProjections.
+  it("boot path: a failing non-busy put during backfill reaches the engine logger once", () => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    engine?.close();
+    vi.spyOn(SqliteCheckpoints.prototype, "put").mockImplementation(() => {
+      throw FULL();
+    });
+    const logger = recordingLogger();
+    const booted = bootInProcess(dbPath(), { logger: logger as never });
+    engine = booted.engine;
+    expect(problems(logger)).toHaveLength(1);
+    expectNoBodies(problems(logger));
+  });
+
+  // Fails if routes.ts (or boot.ts registering it) stops passing the logger to stateAtSequence.
+  it("route path: GET state with a failing non-busy cache write logs it and answers the right state", async () => {
+    const logger = recordingLogger();
+    const app = rebootWith(logger);
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    vi.spyOn(SqliteCheckpoints.prototype, "put").mockImplementation(() => {
+      throw FULL();
+    });
+    const { status, body } = await getJson<{ state: ProjectState }>(
+      app,
+      "/v1/timelines/live:demo/state?at=1250",
+    );
+    expect(status).toBe(200);
+    expect(body.state).toEqual(fullReplay(1250));
+    expect(problems(logger)).toHaveLength(1);
+    expectNoBodies(problems(logger));
+  }, 30_000);
+});
+
+describe("logged fields are an allowlist: errcode plus a fixed description", () => {
+  const SENTINEL = "SENTINEL-xyzzy-7731";
+  const leaks = (calls: unknown[][]) => stringsIn(calls).some((t) => t.includes(SENTINEL));
+
+  it.each([
+    ["a sentinel in the message", SENTINEL],
+    ["a state body in the message", canonicalJson(fullReplay(500))],
+  ])("seek path: %s never reaches the logger", (_name, message) => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    const logger = recordingLogger();
+    vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
+      throw dbError(message, 13);
+    });
+    const options: StateAtOptions & { logger: typeof logger } = { logger };
+    expect(stateAtSequence(storage(), PROJECT, 1250, options)).toEqual(fullReplay(1250));
+    expect(logger.calls()).toHaveLength(1);
+    expect(leaks(logger.calls())).toBe(false);
+    expectNoBodies(logger.calls());
+    expect(JSON.stringify(logger.calls())).toContain("13"); // errcode is kept
+  });
+
+  it("boot path: a sentinel in the message never reaches the logger", () => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    const logger = recordingLogger();
+    vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
+      throw dbError(SENTINEL, 13);
+    });
+    bootRebuild(storage(), domainReducer, { logger });
+    expect(logger.calls()).toHaveLength(1);
+    expect(leaks(logger.calls())).toBe(false);
+    expect(JSON.stringify(logger.calls())).toContain("13");
+  });
+});
+
+describe("a thrown null or undefined from the cache is a non-busy error", () => {
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+  ])("seek path: %s does not fail the seek and is logged once", (_name, thrown) => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    const logger = recordingLogger();
+    vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
+      throw thrown;
+    });
+    const options: StateAtOptions & { logger: typeof logger } = { logger };
+    expect(stateAtSequence(storage(), PROJECT, 1250, options)).toEqual(fullReplay(1250));
+    expect(logger.calls()).toHaveLength(1);
+    expectNoBodies(logger.calls());
+  });
+
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+  ])("boot path: %s does not abort boot and is logged once", (_name, thrown) => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    const logger = recordingLogger();
+    vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {
+      throw thrown;
+    });
+    expect(() => bootRebuild(storage(), domainReducer, { logger })).not.toThrow();
+    expect(logger.calls()).toHaveLength(1);
+  });
+});
+
+describe("a later batch failing mid-way", () => {
+  // Pin on main (batches are separate transactions): earlier batches stay, one log line, seek right.
+  it("keeps the earlier batches' rows, logs once for that write, and the seek answers", () => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    const logger = recordingLogger();
+    const real = SqliteCheckpoints.prototype.put;
+    let calls = 0;
+    vi.spyOn(SqliteCheckpoints.prototype, "put").mockImplementation(function (
+      this: SqliteCheckpoints,
+      projectId,
+      rows,
+    ) {
+      calls++;
+      if (calls === 2) throw FULL();
+      return real.call(this, projectId, rows);
+    });
+    const options: StateAtOptions & { logger: typeof logger } = { logger, interval: 50 };
+    expect(stateAtSequence(storage(), PROJECT, LOG_LENGTH, options)).toEqual(
+      fullReplay(LOG_LENGTH),
+    );
+    expect(calls).toBeGreaterThanOrEqual(2);
+    const kept = sequencesOf(PROJECT);
+    expect(kept).toHaveLength(MAX_BATCH); // exactly the first batch survives
+    expect(kept[0]).toBe(50);
+    expect(logger.calls()).toHaveLength(1);
+    expectNoBodies(logger.calls());
+  });
+});
+
+describe("memory: checkpoint state is written as the fold goes, one batch at a time", () => {
+  /** Rows produced so far from `applied` events folded at a checkpoint every `interval`. */
+  const produced = (applied: number, interval: number) => Math.floor(applied / interval);
+
+  // FAILS on main: every fresh row is held until the fold ends, then written in slices.
+  it("cold seek: the first put happens before the fold ends, and at most 20 rows are ever held", () => {
+    seedLog(storage(), events);
+    db().exec("DELETE FROM checkpoints");
+    const counter = counting(domainReducer);
+    const interval = 50;
+    let written = 0;
+    const heldAtPut: number[] = [];
+    const appliedAtPut: number[] = [];
+    watchPut((rows) => {
+      appliedAtPut.push(counter.applied);
+      heldAtPut.push(produced(counter.applied, interval) - written);
+      written += rows.length;
+    });
+    stateAtSequence(storage(), PROJECT, LOG_LENGTH, { interval, reducer: counter.reducer });
+    expect(counter.applied).toBe(LOG_LENGTH);
+    expect(appliedAtPut[0]).toBeLessThan(LOG_LENGTH);
+    expect(Math.max(...heldAtPut)).toBeLessThanOrEqual(MAX_BATCH);
+    expect(written).toBe(52);
+  }, 30_000);
+
+  // FAILS on main: the backfill folds to the last missing checkpoint before its single put.
+  it("boot backfill: the first put happens before the fold ends, and at most 20 rows are held", () => {
+    const lively = dayEvents(LIVELY);
+    seedLog(storage(), lively);
+    db().exec("DELETE FROM checkpoints");
+    const counter = counting(domainReducer);
+    let written = 0;
+    const heldAtPut: number[] = [];
+    const appliedAtPut: number[] = [];
+    watchPut((rows) => {
+      appliedAtPut.push(counter.applied);
+      heldAtPut.push(produced(counter.applied, 500) - written);
+      written += rows.length;
+    });
+    rebuildStaleProjections(storage(), counter.reducer);
+    expect(counter.applied).toBeGreaterThanOrEqual(lively.length - 500);
+    expect(appliedAtPut[0]).toBeLessThan(lively.length - 500);
+    expect(Math.max(...heldAtPut)).toBeLessThanOrEqual(MAX_BATCH);
+    expect(written).toBe(Math.floor(lively.length / 500));
+  }, 120_000);
 });
