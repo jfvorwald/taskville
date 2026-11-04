@@ -1,6 +1,6 @@
 {
   "projectId": "demo",
-  "reducerVersion": 6,
+  "reducerVersion": 7,
   "head": 32,
   "agents": {
     "main": {
@@ -34,7 +34,8 @@
       "role": "Explore",
       "registeredSeq": 7,
       "parentAgentId": "main",
-      "finishedAt": "2026-10-30T10:00:15Z"
+      "finishedAt": "2026-10-30T10:00:15Z",
+      "resultSummary": "Found 3 call sites"
     },
     "sub-2": {
       "id": "sub-2",

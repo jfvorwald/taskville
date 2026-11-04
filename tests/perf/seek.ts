@@ -108,7 +108,7 @@ try {
     );
   }
   console.log(
-    `\nWorst p95 ${worstP95.toFixed(1)} ms against the ${TARGET_MS} ms target: ${worstP95 <= TARGET_MS ? "MET (checkpoints not needed)" : "MISSED (add checkpoints every 500 events)"}`,
+    `\nWorst p95 ${worstP95.toFixed(1)} ms against the ${TARGET_MS} ms target: ${worstP95 <= TARGET_MS ? "MET" : "MISSED (add checkpoints every 500 events)"}`,
   );
   engine.close();
 } finally {

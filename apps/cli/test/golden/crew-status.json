@@ -48,6 +48,7 @@
       "parentAgentId": "main",
       "registered": true,
       "registeredSeq": 7,
+      "resultSummary": "Found 3 call sites",
       "role": "Explore",
       "sourceAgentId": "a0000000000000001",
       "sourceId": "adapter:generic",

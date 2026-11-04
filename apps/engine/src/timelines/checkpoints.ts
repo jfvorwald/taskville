@@ -25,14 +25,16 @@ export interface StateAtOptions {
   interval?: number;
 }
 
-/** The state if `row` is trustworthy for `reducer`: right version, parses, and matches its hash. */
+/** The state if `row` is trustworthy for `reducer`: right version, parses, belongs to this project at this head, and matches its hash. */
 function trusted(
   row: CheckpointRow,
   reducer: ProjectionReducer<ProjectState>,
+  projectId: string,
 ): ProjectState | undefined {
   if (row.reducerVersion !== reducer.version) return undefined;
   try {
     const state = JSON.parse(row.stateJson) as ProjectState;
+    if (state.head !== row.sequence || state.projectId !== projectId) return undefined;
     return stateHash(reducer.version, state) === row.stateHash ? state : undefined;
   } catch {
     return undefined;
@@ -85,7 +87,7 @@ function stateAt(
   const candidates = [...stored].filter((s) => s <= upTo).sort((a, b) => b - a);
   for (const sequence of candidates) {
     const row = cache.get(projectId, sequence);
-    const loaded = row && trusted(row, reducer);
+    const loaded = row && trusted(row, reducer, projectId);
     if (loaded) {
       state = loaded;
       base = sequence;
