@@ -130,6 +130,16 @@ export function AgentPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [known, selectedId, agents, teams, select]);
 
+  const results = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const a of agents) {
+      if (a.resultSummary !== undefined) {
+        out[a.id] = privacyMode ? "Summary hidden by the privacy setting" : a.resultSummary;
+      }
+    }
+    return out;
+  }, [agents, privacyMode]);
+
   const openId = known && chosen === "crew" ? agent.id : null;
   // The city dims everyone outside the family while this agent's Crew tab is open.
   useEffect(() => {
@@ -138,10 +148,6 @@ export function AgentPanel({
   }, [openId]);
 
   if (agent === undefined || state === null) return null;
-  const results: Record<string, string> = {};
-  for (const a of Object.values(state.agents)) {
-    if (a.resultSummary !== undefined) results[a.id] = a.resultSummary;
-  }
 
   const urgent = attention.find((a) => a.agentId === agent.id && a.level === "needs_you");
   const needsYou = urgent !== undefined;

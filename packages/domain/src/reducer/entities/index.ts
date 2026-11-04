@@ -79,7 +79,7 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       s = updateAgent(s, agentId, (a) => {
         const finished = { ...a, finishedAt: e.occurredAt };
         const summary = e.payload.summary;
-        if (summary === undefined || summary === "") return finished;
+        if (summary === undefined || summary.trim() === "") return finished;
         return { ...finished, resultSummary: [...summary].slice(0, REASON_MAX_CHARS).join("") };
       });
       return closeUnfinishedCalls(s, e, agentId);
