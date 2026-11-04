@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { createDataStore } from "../../../data/store.ts";
 import { createAnchorSource } from "../../host/anchors.ts";
 import type { OverlayProps } from "../../host/types.ts";
+import { getSettingsStore } from "../../settings/store.ts";
 import { AgentPanel } from "../shell/AgentPanel.tsx";
 
 // M5.25 red (decision #333 D1): the connected AgentPanel passes the store Agent's `resultSummary`
@@ -22,7 +23,11 @@ const base = {
 };
 const finishedAt = new Date(NOW - 5_000).toISOString();
 
-function makeStore() {
+const CODE_SENTINEL = "PRIVACY_CODE_SENTINEL";
+const PATH_SENTINEL = "/secret/PRIVACY_PATH_SENTINEL/file.ts";
+const RISKY = `Edited ${PATH_SENTINEL}\n\`\`\`ts\nconst ${CODE_SENTINEL} = 1;\n\`\`\``;
+
+function makeStore(summary = "Mapped the parser module and found two dead branches.") {
   const store = createDataStore({ now: () => NOW });
   store.setState({
     projectId: "proj-1",
@@ -38,7 +43,7 @@ function makeStore() {
           displayName: "Scout",
           registeredSeq: 2,
           finishedAt,
-          resultSummary: "Mapped the parser module and found two dead branches.",
+          resultSummary: summary,
           ...base,
         },
         noSummary: {
@@ -83,5 +88,36 @@ describe("AgentPanel Crew tab result summary (M5.25)", () => {
     render(<AgentPanel {...props} store={makeStore()} initialTab="crew" />);
     await expect.element(page.getByTestId("crew-list")).toBeVisible();
     await expect.element(page.getByText("not reported")).toBeInTheDocument();
+  });
+
+  describe("under Hide code", () => {
+    afterEach(() => getSettingsStore().set("privacyMode", false));
+
+    it("hides the summary and shows the privacy placeholder, with no summary text anywhere", async () => {
+      getSettingsStore().set("privacyMode", true);
+      const view = await render(
+        <AgentPanel {...props} store={makeStore(RISKY)} initialTab="crew" />,
+      );
+      await expect.element(page.getByTestId("crew-list")).toBeVisible();
+      await expect
+        .element(page.getByText("Summary hidden by the privacy setting"))
+        .toBeInTheDocument();
+      const html = view.container.innerHTML;
+      expect(html).not.toContain(CODE_SENTINEL);
+      expect(html).not.toContain("PRIVACY_PATH_SENTINEL");
+      expect(html).not.toContain("Edited");
+    });
+
+    it("still shows 'not reported' for a child without a summary", async () => {
+      getSettingsStore().set("privacyMode", true);
+      render(<AgentPanel {...props} store={makeStore(RISKY)} initialTab="crew" />);
+      await expect.element(page.getByText("not reported")).toBeInTheDocument();
+    });
+
+    it("shows the summary again with Hide code off", async () => {
+      getSettingsStore().set("privacyMode", false);
+      render(<AgentPanel {...props} store={makeStore(RISKY)} initialTab="crew" />);
+      await expect.element(page.getByText(CODE_SENTINEL, { exact: false })).toBeInTheDocument();
+    });
   });
 });

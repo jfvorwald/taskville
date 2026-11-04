@@ -51,8 +51,23 @@ describe("agent.finished result summary (M5.25)", () => {
     const long = "x".repeat(CAP * 5);
     const summary = finishedWith({ summary: long }).agents.a1?.resultSummary;
     expect(summary).toBeDefined();
-    expect([...(summary ?? "")].length).toBeLessThanOrEqual(CAP);
+    expect([...(summary ?? "")].length).toBe(CAP);
     expect(summary?.startsWith("x".repeat(CAP - 10))).toBe(true);
+  });
+
+  it("counts code points: 281 astral characters become exactly 280 with no lone surrogate", () => {
+    const summary = finishedWith({ summary: "\u{1F600}".repeat(CAP + 1) }).agents.a1?.resultSummary;
+    expect(summary).toBeDefined();
+    expect([...(summary ?? "")].length).toBe(CAP);
+    expect(summary?.isWellFormed()).toBe(true);
+    expect(summary).toBe("\u{1F600}".repeat(CAP));
+  });
+
+  it("treats a whitespace-only summary as absent", () => {
+    for (const blank of ["   ", "\n\t "]) {
+      const state = finishedWith({ summary: blank });
+      expect(Object.hasOwn(state.agents.a1 ?? {}, "resultSummary")).toBe(false);
+    }
   });
 
   it("keeps a summary exactly at the cap whole", () => {
