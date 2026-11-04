@@ -105,6 +105,8 @@ beforeEach(() => {
   selectProject("spike");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), location.origin);
+    // The header's cost read (M5.12) runs in both modes by contract; it is not a Files read.
+    if (url.pathname.endsWith("/cost")) return new Response(null, { status: 404 });
     reads.push({ url, signal: init?.signal ?? null });
     if (url.pathname.endsWith("/feed")) {
       return new Response(
