@@ -4,6 +4,7 @@ import { BoxGeometry, type Group, type Object3D } from "three";
 import { type DataStore, dataStore } from "../../../data/store.ts";
 import { worldAnchors } from "../../../overlays/host/index.ts";
 import type { AnchorSource } from "../../../overlays/host/types.ts";
+import { getSettingsStore } from "../../../overlays/settings/store.ts";
 import { colorMaterial } from "../../agents/resources.ts";
 import { collectPickables, createPicker } from "../../interaction/pick.ts";
 import { type SelectionStore, selectionStore } from "../../interaction/selection.ts";
@@ -119,10 +120,9 @@ export function EnvelopeLayer({
     return store.onEvent((event) => {
       const agents = store.getState().state?.agents ?? {};
       if (log.observe(event, agents, store.now()) === null) return;
-      feedFocus.note(event.eventId, Date.parse(event.occurredAt));
       refresh();
     });
-  }, [store, log, refresh, feedFocus]);
+  }, [store, log, refresh]);
 
   useEffect(() => {
     const dom = gl.domElement;
@@ -172,7 +172,12 @@ export function EnvelopeLayer({
         tooltip.current = el;
       }
       hovered.current = id;
-      tooltip.current.textContent = envelopeLabel(envelope, store.getState().state?.agents ?? {});
+      // Under Hide code the message text stays out of the tooltip: only who wrote to whom.
+      const { summary: _text, ...bare } = envelope;
+      tooltip.current.textContent = envelopeLabel(
+        getSettingsStore().getSnapshot().privacyMode ? bare : envelope,
+        store.getState().state?.agents ?? {},
+      );
       tooltip.current.style.left = `${e.clientX + TOOLTIP_OFFSET_PX}px`;
       tooltip.current.style.top = `${e.clientY + TOOLTIP_OFFSET_PX}px`;
     };

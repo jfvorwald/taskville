@@ -56,11 +56,6 @@ export interface LiveTabProps {
   highlighter?: CodeHighlighter;
   /** Editor link template with one {path}. Defaults to the VS Code one. */
   editorTemplate?: string;
-  /**
-   * Scroll to and focus the SendMessage card that started last at or before `at` (ms), once per
-   * `token`. A clicked team message envelope asks for this.
-   */
-  focusMessage?: { at: number; token: object } | undefined;
 }
 type Evicted = ReadonlySet<string>;
 /** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
@@ -804,7 +799,6 @@ function LiveFeed({
   privacy = false,
   highlighter,
   editorTemplate,
-  focusMessage,
 }: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
@@ -819,8 +813,6 @@ function LiveFeed({
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
   const items = useMemo(() => group(calls), [calls]);
   const focusNewest = useRef(false);
-  const handledMessage = useRef<object | null>(null);
-  const pendingCard = useRef<string | null>(null);
   const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
     ...(page ? pageScroll : {}),
     scrollToFn: (offset, options, instance) => {
@@ -982,15 +974,6 @@ function LiveFeed({
           virtualizer.options.measureElement(node as HTMLDivElement, undefined, virtualizer),
         );
     }
-    if (pendingCard.current !== null) {
-      const at = items.findIndex((item) => item.key === pendingCard.current);
-      const card = rows.current?.querySelector<HTMLElement>(`[data-index="${at}"] article`);
-      if (card) {
-        pendingCard.current = null;
-        card.focus({ preventScroll: true });
-        card.scrollIntoView({ block: "center" });
-      }
-    }
     if (!following || !followingRef.current) return;
     viewport.scrollTop = viewport.scrollHeight;
     // After Jump to latest the button is gone. Put focus on the newest card once it is mounted.
@@ -1004,31 +987,6 @@ function LiveFeed({
       }
     }
   });
-  // A clicked envelope: leave follow, bring the message card's row in, and focus it once mounted
-  // (the per-commit effect above). Waits for the viewport and for the card's call to arrive.
-  useEffect(() => {
-    if (!viewport || !focusMessage || focusMessage.token === handledMessage.current) return;
-    let found: ToolCallFrame | undefined;
-    let foundAt = Number.NEGATIVE_INFINITY;
-    for (const call of calls) {
-      if (call.toolName !== "SendMessage") continue;
-      const started = Date.parse(call.startedAt ?? "");
-      if (started <= focusMessage.at && started >= foundAt) {
-        found = call;
-        foundAt = started;
-      }
-    }
-    const index = found
-      ? items.findIndex((item) => item.calls.some((c) => c.toolCallId === found?.toolCallId))
-      : -1;
-    if (index < 0) return;
-    handledMessage.current = focusMessage.token;
-    followingRef.current = false;
-    focusNewest.current = false;
-    setFollowing(false);
-    pendingCard.current = items[index].key;
-    virtualizer.scrollToIndex(index, { align: "center" });
-  }, [viewport, focusMessage, calls, items, virtualizer]);
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((old) => {
       const next = new Set(old);
