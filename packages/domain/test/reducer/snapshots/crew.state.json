@@ -1,6 +1,6 @@
 {
   "projectId": "demo",
-  "reducerVersion": 7,
+  "reducerVersion": 8,
   "head": 32,
   "agents": {
     "main": {
@@ -11,7 +11,6 @@
       "connection": "connected",
       "firstSeenAt": "2026-10-30T10:00:00Z",
       "lastSeenAt": "2026-10-30T10:00:30Z",
-      "lastTurnAt": "2026-10-30T10:00:16Z",
       "toolCallCount": 2,
       "consecutiveToolFailures": 0,
       "sourceAgentId": "session-main",

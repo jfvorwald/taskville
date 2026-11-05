@@ -179,37 +179,30 @@ export function applyTeamEnded(s: EntitiesState, e: StoredEnvelopeOf<"team.ended
   return { ...s, teams: put(s.teams, team.id, { ...team, endedAt: e.occurredAt }) };
 }
 
-/** Records the agent's latest turn event (session.turn_ended, turn_failed, idle_prompt). */
-export const setLastTurn = (
-  agent: Agent,
-  lastTurn: Agent["lastTurn"],
-  at: string,
-  late = false,
-): Agent =>
-  lastTurn === undefined || staleLate(agent, at, late)
-    ? agent
-    : { ...agent, lastTurn, lastTurnAt: at };
+/**
+ * M7.15: whether `e` is a late (replayed) event older than anything already seen for `agentId`
+ * (its `lastSeenAt` before the event). The agent's turn and failure streak carry no reliable
+ * time of their own (empty after a clear; a count), so this is their mark: a stale event goes to
+ * history and the agent's seen times and counts, but does not set or clear the turn or move the
+ * streak. Live events are never stale (ARCHITECTURE.md 7.3: ingest order).
+ */
+export function staleForAgent(s: EntitiesState, e: DomainEvent, agentId: string): boolean {
+  if (!e.late) return false;
+  const agent = getOwn(s.agents, agentId);
+  return agent !== undefined && compareTimestamps(e.occurredAt, agent.lastSeenAt) < 0;
+}
 
-/** A late (replayed) event older than the recorded turn must not overwrite or clear it. */
-const staleLate = (agent: Agent, at: string, late: boolean): boolean =>
-  late && agent.lastTurnAt !== undefined && compareTimestamps(at, agent.lastTurnAt) < 0;
+/** Records the agent's latest turn event (session.turn_ended, turn_failed, idle_prompt). */
+export const setLastTurn = (agent: Agent, lastTurn: Agent["lastTurn"], at: string): Agent =>
+  lastTurn === undefined ? agent : { ...agent, lastTurn, lastTurnAt: at };
 
 /**
  * Clears the latest turn per the attention rules (data-model.md): a prompt clears any turn; a
  * tool call starting or failing clears `ended` and `idle_prompt` but not `failed`; a succeeded
  * tool call clears all of them.
  */
-export function clearLastTurn(
-  agent: Agent,
-  by: "prompt" | "tool" | "tool_succeeded",
-  at = "",
-  late = false,
-): Agent {
-  if (agent.lastTurn === undefined || staleLate(agent, at, late)) return agent;
+export function clearLastTurn(agent: Agent, by: "prompt" | "tool" | "tool_succeeded"): Agent {
+  if (agent.lastTurn === undefined) return agent;
   if (by === "tool" && agent.lastTurn === "failed") return agent;
-  // Keep lastTurnAt as the high-water mark so a later late event cannot revive an older turn.
-  const cleared = omit(agent, ["lastTurn"]);
-  if (late || at === "") return cleared;
-  const lastTurnAt = agent.lastTurnAt === undefined ? at : laterTimestamp(agent.lastTurnAt, at);
-  return { ...cleared, lastTurnAt };
+  return omit(agent, ["lastTurn", "lastTurnAt"]);
 }

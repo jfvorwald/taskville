@@ -5,6 +5,7 @@ import {
   applyTeamStarted,
   clearLastTurn,
   setLastTurn,
+  staleForAgent,
   touchAgent,
   updateAgent,
 } from "./agents.ts";
@@ -60,6 +61,8 @@ export function reduceEntities<S extends EntitiesState>(state: S, event: DomainE
 
 function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
   const agentId = e.agentId;
+  // Judged before this event widens the agent's seen times (M7.15).
+  const stale = agentId !== undefined && staleForAgent(s0, e, agentId);
   // Registration decides for itself whether the event counts (an identity conflict does not).
   let s = agentId === undefined || e.type === "agent.registered" ? s0 : touchAgent(s0, e, agentId);
 
@@ -99,7 +102,7 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       if (e.type === "session.started") s = applySessionStarted(s, e, agentId, sessionId);
       else if (e.type === "session.ended") s = applySessionEnded(s, e, agentId, sessionId);
       else s = applySessionSeen(s, e, agentId, sessionId);
-      s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt, e.late));
+      if (!stale) s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt));
       if (CLOSES_UNFINISHED.has(e.type)) s = closeUnfinishedCalls(s, e, agentId);
       return refreshActivity(s, e, agentId);
     }
@@ -143,9 +146,9 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       return refreshActivity(setActivity(s, e, agentId, e.sessionId, entry), e, agentId);
     }
     case "tool_call.started":
-      return agentId === undefined ? s : applyToolCallStarted(s, e, agentId);
+      return agentId === undefined ? s : applyToolCallStarted(s, e, agentId, stale);
     case "tool_call.finished":
-      return agentId === undefined ? s : applyToolCallFinished(s, e, agentId);
+      return agentId === undefined ? s : applyToolCallFinished(s, e, agentId, stale);
     case "test.result":
       if (agentId === undefined) return s;
       return setLatestEvidence(s, agentId, {
@@ -174,17 +177,16 @@ function turnEffect<A extends Parameters<typeof clearLastTurn>[0]>(
   agent: A,
   type: DomainEvent["type"],
   at: string,
-  late: boolean,
 ) {
   switch (type) {
     case "session.turn_ended":
-      return setLastTurn(agent, "ended", at, late);
+      return setLastTurn(agent, "ended", at);
     case "session.turn_failed":
-      return setLastTurn(agent, "failed", at, late);
+      return setLastTurn(agent, "failed", at);
     case "session.idle_prompt":
-      return setLastTurn(agent, "idle_prompt", at, late);
+      return setLastTurn(agent, "idle_prompt", at);
     case "session.prompt_submitted":
-      return clearLastTurn(agent, "prompt", at, late);
+      return clearLastTurn(agent, "prompt");
     default:
       return agent;
   }
