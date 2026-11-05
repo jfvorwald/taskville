@@ -1,4 +1,4 @@
-import type { Database } from "./sqlite.ts";
+import type { Database, Statement } from "./sqlite.ts";
 
 /** One agent's persisted totals; the shape of the receiver's ledger entry, flattened. */
 export interface CostTotalsRow {
@@ -28,14 +28,32 @@ const flag = (value: boolean): number => (value ? 1 : 0);
  */
 export class SqliteOtlpCost {
   readonly #db: Database;
+  readonly #saveRow: Statement;
+  readonly #claimRow: Statement;
+  readonly #pruneSeen: Statement;
+  readonly #evictRow: Statement;
 
   constructor(db: Database) {
     this.#db = db;
+    // `last_seen` is a monotonic sequence, so recency is exact even within one millisecond.
+    this.#saveRow = db.prepare(
+      `INSERT OR REPLACE INTO otlp_cost (agent_id, parent_agent_id, m_seen, m_seen_tokens,
+         m_seen_cost, m_input, m_output, m_cache_read, m_cache_creation, m_cost_usd, l_seen,
+         l_input, l_output, l_cache_read, l_cache_creation, l_cost_usd, last_seen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         (SELECT COALESCE(MAX(last_seen), 0) + 1 FROM otlp_cost))`,
+    );
+    this.#claimRow = db.prepare("INSERT OR IGNORE INTO otlp_seen (digest) VALUES (?)");
+    this.#pruneSeen = db.prepare("DELETE FROM otlp_seen WHERE id <= ?");
+    this.#evictRow = db.prepare("DELETE FROM otlp_cost WHERE agent_id = ?");
   }
 
+  /** The `limit` most recently updated agents, least recently updated first. */
   load(limit: number): CostTotalsRow[] {
     return this.#db
-      .prepare("SELECT * FROM otlp_cost LIMIT ?")
+      .prepare(
+        "SELECT * FROM (SELECT * FROM otlp_cost ORDER BY last_seen DESC LIMIT ?) ORDER BY last_seen",
+      )
       .all(limit)
       .map((row) => ({
         agentId: String(row.agent_id),
@@ -63,42 +81,36 @@ export class SqliteOtlpCost {
 
   save(row: CostTotalsRow): void {
     const { metrics: m, logs: l } = row;
-    this.#db
-      .prepare(
-        `INSERT OR REPLACE INTO otlp_cost (agent_id, parent_agent_id, m_seen, m_seen_tokens,
-           m_seen_cost, m_input, m_output, m_cache_read, m_cache_creation, m_cost_usd, l_seen,
-           l_input, l_output, l_cache_read, l_cache_creation, l_cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        row.agentId,
-        row.parentAgentId ?? null,
-        flag(m.seen),
-        flag(m.seenTokens),
-        flag(m.seenCost),
-        m.input,
-        m.output,
-        m.cacheRead,
-        m.cacheCreation,
-        m.costUsd,
-        flag(l.seen),
-        l.input,
-        l.output,
-        l.cacheRead,
-        l.cacheCreation,
-        l.costUsd,
-      );
+    this.#saveRow.run(
+      row.agentId,
+      row.parentAgentId ?? null,
+      flag(m.seen),
+      flag(m.seenTokens),
+      flag(m.seenCost),
+      m.input,
+      m.output,
+      m.cacheRead,
+      m.cacheCreation,
+      m.costUsd,
+      flag(l.seen),
+      l.input,
+      l.output,
+      l.cacheRead,
+      l.cacheCreation,
+      l.costUsd,
+    );
+  }
+
+  /** Forgets an agent's totals (the ledger evicts its least recently updated agent when full). */
+  evict(agentId: string): void {
+    this.#evictRow.run(agentId);
   }
 
   /** True when `digest` (64 hex characters) was not seen before, and remembers it. */
   claim(digest: string): boolean {
-    const result = this.#db
-      .prepare("INSERT OR IGNORE INTO otlp_seen (digest) VALUES (?)")
-      .run(digest);
+    const result = this.#claimRow.run(digest);
     if (Number(result.changes) === 0) return false;
-    this.#db
-      .prepare("DELETE FROM otlp_seen WHERE id <= ?")
-      .run(Number(result.lastInsertRowid) - MAX_SEEN_DIGESTS);
+    this.#pruneSeen.run(Number(result.lastInsertRowid) - MAX_SEEN_DIGESTS);
     return true;
   }
 

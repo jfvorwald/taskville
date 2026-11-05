@@ -69,12 +69,20 @@ const emptyTotals = (): Totals => ({
 export class CostLedger {
   readonly #entries = new Map<string, Entry>();
   readonly #store: SqliteOtlpCost | undefined;
+  readonly #maxAgents: number;
   readonly #seen = new Set<string>();
   #warned = false;
 
-  constructor(store?: SqliteOtlpCost) {
+  constructor(store?: SqliteOtlpCost, maxAgents: number = MAX_LEDGER_AGENTS) {
     this.#store = store;
-    for (const row of store?.load(MAX_LEDGER_AGENTS) ?? []) {
+    this.#maxAgents = maxAgents;
+    this.#load();
+  }
+
+  /** Fills the entries from the store, least recently updated first (the Map's insertion order). */
+  #load(): void {
+    this.#entries.clear();
+    for (const row of this.#store?.load(this.#maxAgents) ?? []) {
       const totals = (t: typeof row.logs): CostTokens => ({
         input: t.input,
         output: t.output,
@@ -118,6 +126,9 @@ export class CostLedger {
   save(entry: Entry): void {
     const { metrics: m, logs: l } = entry;
     const row = (t: Totals) => ({ seen: t.seen, ...t.tokens, costUsd: t.costUsd });
+    // Most recently updated last, matching the store's `last_seen`.
+    this.#entries.delete(entry.agentId);
+    this.#entries.set(entry.agentId, entry);
     this.#store?.save({
       agentId: entry.agentId,
       ...(entry.parentAgentId === undefined ? {} : { parentAgentId: entry.parentAgentId }),
@@ -128,7 +139,13 @@ export class CostLedger {
 
   /** Runs one export's changes as a single store transaction. */
   batch<T>(work: () => T): T {
-    return this.#store === undefined ? work() : this.#store.transaction(work);
+    if (this.#store === undefined) return work();
+    try {
+      return this.#store.transaction(work);
+    } catch (error) {
+      this.#load(); // the transaction rolled back, so memory must match the database again
+      throw error;
+    }
   }
 
   /** True once, the first time a new agent is refused because the ledger is full. */
@@ -142,7 +159,13 @@ export class CostLedger {
   entry(agentId: string, parentAgentId: string | undefined): Entry | undefined {
     let entry = this.#entries.get(agentId);
     if (entry === undefined) {
-      if (this.#entries.size >= MAX_LEDGER_AGENTS) return undefined;
+      if (this.#entries.size >= this.#maxAgents) {
+        // Full: the least recently updated agent makes room, in the store as well.
+        const oldest = this.#entries.keys().next().value;
+        if (oldest === undefined) return undefined;
+        this.#entries.delete(oldest);
+        this.#store?.evict(oldest);
+      }
       entry = { agentId, metrics: emptyTotals(), logs: emptyTotals() };
       this.#entries.set(agentId, entry);
     }
@@ -209,7 +232,9 @@ function whoOf(
   const agent = text(attrs, "agent_id");
   const parent = text(attrs, "parent_agent_id");
   for (const key of [session, agent, parent]) {
-    if (key !== undefined && key.length > MAX_KEY_LENGTH) return "too_long";
+    if (key !== undefined && (key.length > MAX_KEY_LENGTH || !key.isWellFormed())) {
+      return "too_long";
+    }
   }
   return {
     agentId: agent === undefined ? `claude-code:${session}` : `claude-code:${session}:${agent}`,
@@ -220,9 +245,9 @@ function whoOf(
 /** `timeUnixNano` as a decimal string; undefined when absent, zero, or not an unsigned integer. */
 function timeOf(raw: unknown): string | undefined {
   const value = typeof raw === "number" && Number.isSafeInteger(raw) ? String(raw) : raw;
-  return typeof value === "string" && /^[0-9]{1,20}$/.test(value) && /[1-9]/.test(value)
-    ? value
-    : undefined;
+  if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return undefined;
+  const normalized = value.replace(/^0+/, ""); // "007" and "7" are the same instant
+  return normalized !== "" && normalized.length <= 20 ? normalized : undefined;
 }
 
 /** Identity of a data point for dedupe; undefined without a timestamp (never deduplicated). */
@@ -333,6 +358,8 @@ export interface OtlpRouteOptions {
   ledger?: CostLedger;
   /** The engine's storage: totals persist across a restart. Without it the ledger is in memory. */
   storage?: Storage;
+  /** Agents kept before the least recently updated is evicted; default MAX_LEDGER_AGENTS. */
+  maxAgents?: number;
   /** For the one warning when the ledger is full (counts only, never an ID). */
   logger?: Logger;
 }
@@ -343,7 +370,7 @@ export interface OtlpRouteOptions {
  * Origin and credential middleware already ran. Errors never echo the input.
  */
 export function registerOtlpRoutes(app: Hono<AppEnv>, options: OtlpRouteOptions = {}): CostLedger {
-  const ledger = options.ledger ?? new CostLedger(options.storage?.otlpCost());
+  const ledger = options.ledger ?? new CostLedger(options.storage?.otlpCost(), options.maxAgents);
   const receive = (path: string, ingest: Ingest, rejectedKey: string) =>
     app.post(
       path,

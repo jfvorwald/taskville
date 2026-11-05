@@ -90,6 +90,19 @@ function planVersusActual(model: RetroModel): string {
   ].join("\n");
 }
 
+/** An agent ID as a table cell: control and line-separator characters become spaces, pipes are escaped. */
+const agentCell = (id: string): string => {
+  const clean = [...id]
+    .map((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029
+        ? " "
+        : ch;
+    })
+    .join("");
+  return `\`${clean.replace(/\|/g, "\\|")}\``;
+};
+
 function tokensAndCost(records: AgentCostRecord[] | undefined): string {
   if (records === undefined || records.length === 0) {
     return `Tokens and cost: ${NOT_MEASURED} (no OpenTelemetry data for this milestone).`;
@@ -111,7 +124,7 @@ function tokensAndCost(records: AgentCostRecord[] | undefined): string {
   return [
     "| Agent | Input | Output | Cache read | Cache creation | Cost |",
     "| --- | --- | --- | --- | --- | --- |",
-    ...rows.map((r) => line(r.agentId, r.tokens, r.costUsd)),
+    ...rows.map((r) => line(agentCell(r.agentId), r.tokens, r.costUsd)),
     line("Total", total, totalCost),
   ].join("\n");
 }

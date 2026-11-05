@@ -124,8 +124,11 @@ CREATE TABLE otlp_cost (
   l_output REAL NOT NULL CHECK (l_output >= 0),
   l_cache_read REAL NOT NULL CHECK (l_cache_read >= 0),
   l_cache_creation REAL NOT NULL CHECK (l_cache_creation >= 0),
-  l_cost_usd REAL NOT NULL CHECK (l_cost_usd >= 0)
+  l_cost_usd REAL NOT NULL CHECK (l_cost_usd >= 0),
+  last_seen INTEGER NOT NULL
 ) STRICT;
+
+CREATE INDEX otlp_cost_last_seen ON otlp_cost (last_seen);
 
 CREATE TABLE otlp_seen (
   id INTEGER PRIMARY KEY,
