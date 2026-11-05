@@ -210,6 +210,57 @@ function pidAlive(pid: number): boolean {
  * dropped, so a lock another start just created is never removed. A non-regular file at the path
  * fails at once. Every retry awaits. Returns an idempotent release.
  */
+const RECLAIM_GRACE_MS = 5000;
+
+/**
+ * Removes `path` if it still holds exactly `seen` (a lock judged stale), while holding
+ * `<path>.reclaim`. Returns true when the caller should retry at once. A reclaim file whose pid is
+ * dead, or that is older than RECLAIM_GRACE_MS, was left by a crashed taker and is cleared.
+ */
+async function reclaimStale(
+  path: string,
+  seen: string,
+  alive: (pid: number) => boolean,
+): Promise<boolean> {
+  const mutex = `${path}.reclaim`;
+  let fd: number;
+  try {
+    fd = openSync(mutex, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new CliError(EXIT.failure, `Cannot create ${mutex}; check its permissions and retry.`);
+    }
+    try {
+      const stat = lstatSync(mutex);
+      const pid = Number(readFileSync(mutex, "utf8").trim());
+      const dead = Number.isInteger(pid) && pid > 0 ? !alive(pid) : false;
+      if (dead || Date.now() - stat.mtimeMs > RECLAIM_GRACE_MS) rmSync(mutex, { force: true });
+    } catch {
+      // Gone already, or unreadable: wait for its holder.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return true;
+  }
+  try {
+    writeFileSync(fd, `${process.pid}`);
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    let now: string | undefined;
+    try {
+      now = readFileSync(path, "utf8");
+    } catch {
+      now = undefined;
+    }
+    if (now === seen) rmSync(path, { force: true });
+  } finally {
+    rmSync(mutex, { force: true });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return true;
+}
+
 export async function acquireLock(
   home: string,
   deps: { pidAlive?: (pid: number) => boolean; waitMs?: number } = {},
@@ -254,33 +305,17 @@ export async function acquireLock(
       if (!stale) seen = undefined;
     } catch (error) {
       if (error instanceof CliError) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw new CliError(EXIT.failure, `Cannot read ${path}; check its permissions and retry.`);
+      }
+      // Released between our create attempt and the read: try again after a turn.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       continue;
     }
     if (seen !== undefined) {
-      const aside = `${path}.stale.${process.pid}.${randomBytes(4).toString("hex")}`;
-      let moved: string | undefined;
-      try {
-        renameSync(path, aside);
-        moved = readFileSync(aside, "utf8");
-      } catch {
-        // Someone else moved it first, or it is unreadable: not ours to drop.
-      }
-      if (moved !== undefined && moved !== seen) {
-        // Not the lock we judged stale: put it back if the path is free, else leave it.
-        try {
-          lstatSync(path);
-        } catch {
-          try {
-            renameSync(aside, path);
-            moved = undefined;
-          } catch {
-            // Lost the race for the path; the new lock there stands.
-          }
-        }
-      }
-      if (moved !== undefined) rmSync(aside, { force: true });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      continue;
+      // Reclaiming a stale lock is serialized by a second O_EXCL file, so no taker ever moves or
+      // deletes a lock that another taker has just created (roborev 7034).
+      if (await reclaimStale(path, seen, alive)) continue;
     }
     if (Date.now() > deadline) {
       throw new CliError(EXIT.failure, `Another taskville start holds ${path}; try again shortly.`);

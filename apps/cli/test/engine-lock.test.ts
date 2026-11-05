@@ -1,5 +1,12 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { acquireLock } from "../src/commands/serve.ts";
@@ -111,5 +118,63 @@ describe("a non-regular file at engine.lock", () => {
     const r = await inChild(h, 2500);
     expect(r.timedOut, "event loop starved by a synchronous retry loop").toBe(false);
     expect(JSON.parse(r.out.trim()).maxGap).toBeLessThan(200);
+  });
+});
+
+// roborev job 7034: an unreadable lock file must fail fast, and stale-lock reclamation must be
+// serialized by a reclaim mutex (engine.lock.reclaim) so no taker ever moves a live lock.
+describe("roborev 7034", () => {
+  it.skipIf(process.getuid?.() === 0)(
+    "an unreadable lock file fails promptly with one sentence naming the path",
+    async () => {
+      const h = home();
+      const path = join(h, "engine.lock");
+      writeFileSync(path, "123\n");
+      chmodSync(path, 0o000);
+      cleanups.push(() => chmodSync(path, 0o600));
+      const started = Date.now();
+      await expect(acquireLock(h, { waitMs: 300 })).rejects.toThrow(path);
+      expect(Date.now() - started).toBeLessThan(250);
+    },
+  );
+
+  it("a reclaim mutex left behind by a crashed taker does not block a stale takeover", async () => {
+    const h = home();
+    const dead = deadPid();
+    writeFileSync(join(h, "engine.lock"), `${dead}\n`);
+    const reclaim = join(h, "engine.lock.reclaim");
+    writeFileSync(reclaim, `${dead}\n`);
+    const release = await acquireLock(h, { waitMs: 2000, pidAlive: (pid) => pid !== dead });
+    expect(readFileSync(join(h, "engine.lock"), "utf8").trim()).toBe(`${process.pid}`);
+    expect(existsSync(reclaim)).toBe(false);
+    release();
+  });
+
+  it("a live taker's lock is never moved aside: no stale files appear while it is held", async () => {
+    const h = home();
+    const dead = deadPid();
+    writeFileSync(join(h, "engine.lock"), `${dead}\n`);
+    const alive = (pid: number) => pid !== dead;
+    let first: (() => void) | undefined;
+    let fired = false;
+    const second = acquireLock(h, {
+      waitMs: 200,
+      pidAlive: (pid) => {
+        const result = alive(pid);
+        if (!fired && !result) {
+          fired = true;
+          // The other taker completes its takeover before this one acts on its stale judgment.
+          void acquireLock(h, { waitMs: 200, pidAlive: alive }).then((r) => {
+            first = r;
+          });
+        }
+        return result;
+      },
+    });
+    await expect(second).rejects.toThrow();
+    expect(first).toBeDefined();
+    expect(readdirSync(h).filter((n) => n.includes(".stale."))).toEqual([]);
+    expect(readFileSync(join(h, "engine.lock"), "utf8").trim()).toBe(`${process.pid}`);
+    first?.();
   });
 });
