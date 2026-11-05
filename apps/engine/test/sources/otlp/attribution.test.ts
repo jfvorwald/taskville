@@ -71,10 +71,15 @@ describe("metrics: claude_code.token.usage and claude_code.cost.usage", () => {
     expect((await costOf(app, NESTED.lead)).status).toBe(404);
   });
 
-  it("sums delta exports of the same agent", async () => {
+  it("sums delta exports of the same agent (data points at different timestamps)", async () => {
+    // M5.29: an identical re-delivery is counted once (persistence.test.ts); a later export sums.
     const { app } = await makeOtlpApp();
-    await sendMetrics(app, fixture("metrics-parallel.json"));
-    await sendMetrics(app, fixture("metrics-parallel.json"));
+    const body = fixture("metrics-parallel.json");
+    await sendMetrics(app, body);
+    await sendMetrics(
+      app,
+      JSON.parse(JSON.stringify(body).replaceAll("1793707200000000000", "1793707260000000000")),
+    );
     const a = await readCost(app, PARALLEL.a);
     expect(a.tokens).toEqual({ input: 800, output: 180, cacheRead: 4000, cacheCreation: 200 });
     expect(a.costUsd).toBeCloseTo(0.24, 6);

@@ -17,7 +17,7 @@ import {
 const start = useHarness();
 const SESSION = "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
 
-async function waitFor(check: () => boolean, ms = 2000): Promise<void> {
+async function waitFor(check: () => boolean, ms = 10_000): Promise<void> {
   for (let waited = 0; waited < ms && !check(); waited += 10) {
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -43,7 +43,9 @@ describe("feed backlog over more than one read page", () => {
     expect(expected).toHaveLength(calls * 2);
 
     const reader = await h.openFeed(leadOf(SESSION));
-    const frames = await toolCallFrames(reader, calls * 2);
+    // The wait per frame ends when the frame arrives, so a long ceiling costs nothing when the
+    // machine is idle; 2 s per frame measured the machine on a loaded one (LESSONS L-206).
+    const frames = await toolCallFrames(reader, calls * 2, 30_000);
     await reader.cancel();
 
     expect(frames.map((f) => f.id)).toEqual(expected);
@@ -56,7 +58,9 @@ describe("feed backlog over more than one read page", () => {
     expect(frames.map((f) => f.data.phase)).toEqual(
       Array.from({ length: calls }, () => ["running", "succeeded"]).flat(),
     );
-  });
+    // 300 calls through the full ingest path, then the whole backlog: about 0.5 s idle, 4 s at 24
+    // busy processes on 8 cores, so the 5 s default measured the machine. Sized to the work.
+  }, 60_000);
 });
 
 describe("GET /v1/agents/:id/crew: crafted data and retention", () => {
@@ -162,5 +166,6 @@ describe("a stalled feed client", () => {
     expect(next.status).toBe(200);
     await next.body?.cancel();
     await stalled.body?.cancel();
-  });
+    // The drain timer is 50 ms; the poll above waits up to 10 s for it, so the test must outlast it.
+  }, 30_000);
 });

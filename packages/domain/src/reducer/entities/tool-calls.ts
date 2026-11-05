@@ -1,6 +1,7 @@
 import type { StoredEnvelopeOf } from "@taskville/protocol";
 import { clearLastTurn, updateAgent } from "./agents.ts";
 import { appendUnique, getOwn, optional, put, removeKeys } from "./maps.ts";
+import { compareTimestamps } from "./time.ts";
 import type { DomainEvent, EntitiesState, ToolCall } from "./types.ts";
 
 // Tool calls, bounded for SC-006: the projection keeps each agent's open calls (at most
@@ -20,10 +21,15 @@ import type { DomainEvent, EntitiesState, ToolCall } from "./types.ts";
  */
 export const MAX_OPEN_TOOL_CALLS_PER_AGENT = 32;
 
+/**
+ * `stale` (staleForAgent, M7.15): a late event older than anything seen for the agent. Its call is
+ * still recorded and counted, but it does not clear the agent's turn.
+ */
 export function applyToolCallStarted(
   s: EntitiesState,
   e: StoredEnvelopeOf<"tool_call.started">,
   agentId: string,
+  stale = false,
 ): EntitiesState {
   const p = e.payload;
   const existing = getOwn(s.toolCalls, p.toolCallId);
@@ -55,16 +61,23 @@ export function applyToolCallStarted(
         };
   const owner = call.agentId;
   const withCall = { ...s, toolCalls: put(s.toolCalls, call.id, call) };
-  const counted = updateAgent(withCall, owner, (agent) =>
-    clearLastTurn({ ...agent, toolCallCount: agent.toolCallCount + 1 }, "tool"),
-  );
+  const counted = updateAgent(withCall, owner, (agent) => {
+    const next = { ...agent, toolCallCount: agent.toolCallCount + 1 };
+    return stale ? next : clearLastTurn(next, "tool");
+  });
   return call.phase === "running" ? capOpenCalls(counted, owner) : counted;
 }
 
+/**
+ * `stale` (staleForAgent, M7.15): a late finish older than anything seen for the agent does not
+ * move its failure streak or clear its turn. A late finish older than the agent's kept finished
+ * call does not replace it; the call leaves the projection as finished (it stays in the log).
+ */
 export function applyToolCallFinished(
   s: EntitiesState,
   e: StoredEnvelopeOf<"tool_call.finished">,
   agentId: string,
+  stale = false,
 ): EntitiesState {
   const p = e.payload;
   const existing = getOwn(s.toolCalls, p.toolCallId);
@@ -99,13 +112,23 @@ export function applyToolCallFinished(
         };
   const owner = finished.agentId;
 
-  // Keep only this call as the owner's latest finished call.
-  const stale = new Set(
-    Object.values(s.toolCalls)
-      .filter((c) => c.agentId === owner && c.phase !== "running" && c.id !== finished.id)
-      .map((c) => c.id),
-  );
-  const toolCalls = put(removeKeys(s.toolCalls, stale), finished.id, finished);
+  // Keep only this call as the owner's latest finished call, unless a late result is older.
+  const toolCalls =
+    newerKeptFinish(s, e, owner, finished.id) !== undefined
+      ? removeKeys(s.toolCalls, new Set([finished.id]))
+      : put(
+          removeKeys(
+            s.toolCalls,
+            new Set(
+              Object.values(s.toolCalls)
+                .filter((c) => c.agentId === owner && c.phase !== "running" && c.id !== finished.id)
+                .map((c) => c.id),
+            ),
+          ),
+          finished.id,
+          finished,
+        );
+  if (stale) return { ...s, toolCalls };
   return updateAgent({ ...s, toolCalls }, owner, (agent) => {
     const counted = {
       ...agent,
@@ -129,6 +152,10 @@ export function callsClosedAtBoundary(
   const ownsSession = sessionId !== undefined && getOwn(s.sessions, sessionId)?.agentId === agentId;
   const closes = (c: ToolCall): boolean => {
     if (c.phase !== "running") return false;
+    // A late boundary cannot close a call that started after it (M7.15).
+    if (e.late && c.startedAt !== undefined && compareTimestamps(c.startedAt, e.occurredAt) > 0) {
+      return false;
+    }
     if (e.type === "session.ended" && sessionId !== undefined && c.sessionId === sessionId) {
       return true;
     }
@@ -152,7 +179,9 @@ export function callsClosedAtBoundary(
  *   (internal helpers, S-2) close too;
  * - `session.ended` closes every running call in the session.
  * Closed calls become `unfinished` at the event's time. No counter or turn changes. For each
- * affected agent only the latest started of its closed calls is kept as its finished call.
+ * affected agent only the latest started of its closed calls is kept as its finished call, unless
+ * `e` is late and the agent already keeps a call that finished after it (M7.15): then that call
+ * stays and the closed ones leave the projection.
  */
 export function closeUnfinishedCalls(
   s: EntitiesState,
@@ -169,6 +198,11 @@ export function closeUnfinishedCalls(
     if (best === undefined || laterStart(call, best)) kept.set(call.agentId, call);
   }
   const drop = new Set<string>();
+  for (const owner of [...kept.keys()]) {
+    if (newerKeptFinish(s, e, owner) === undefined) continue;
+    kept.delete(owner);
+    for (const c of closing) if (c.agentId === owner) drop.add(c.id);
+  }
   for (const c of Object.values(s.toolCalls)) {
     const keep = kept.get(c.agentId);
     if (keep === undefined || c.id === keep.id) continue;
@@ -179,6 +213,27 @@ export function closeUnfinishedCalls(
     toolCalls = put(toolCalls, call.id, { ...call, phase: "unfinished", finishedAt: e.occurredAt });
   }
   return { ...s, toolCalls };
+}
+
+/**
+ * For a late event only (M7.15): the agent's kept finished call when it finished after `e`, so an
+ * older late result must not replace it. Live events always replace it (ARCHITECTURE.md 7.3).
+ */
+function newerKeptFinish(
+  s: EntitiesState,
+  e: DomainEvent,
+  agentId: string,
+  exceptId?: string,
+): ToolCall | undefined {
+  if (!e.late) return undefined;
+  return Object.values(s.toolCalls).find(
+    (c) =>
+      c.agentId === agentId &&
+      c.phase !== "running" &&
+      c.id !== exceptId &&
+      c.finishedAt !== undefined &&
+      compareTimestamps(c.finishedAt, e.occurredAt) > 0,
+  );
 }
 
 const laterStart = (a: ToolCall, b: ToolCall): boolean =>

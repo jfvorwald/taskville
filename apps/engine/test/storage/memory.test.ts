@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { stateHash } from "@taskville/domain/hash";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { generateDemo, LIVELY } from "../../../../packages/demo/src/index.ts";
 import { domainReducer, IngestPipeline } from "../../src/ingest/index.ts";
 import {
@@ -16,6 +16,10 @@ import { useTempDir } from "./helpers.ts";
 
 // #166 step 2 and the storage half of step 1: explicit SQLite memory settings, a bounded WAL,
 // one serialization per projection write, and a projection read that does not parse state.
+
+// The other tests here ingest up to 30 minutes of demo events (under 1 s idle); the 5 s default
+// timed out on a loaded machine. A ceiling for a stuck test, not a speed bound (LESSONS L-206).
+vi.setConfig({ testTimeout: 60_000 });
 
 const dir = useTempDir();
 
@@ -64,7 +68,10 @@ describe("SQLite memory and WAL settings", () => {
     } finally {
       storage.close();
     }
-  }, 60_000);
+    // The WAL assertion is a size, which load does not change. The work is one ingest and one
+    // projection write per step of a two hour run: 6 s idle, 27 s at 24 busy processes on 8 cores.
+    // The ceiling is 40x the idle time so a loaded `pnpm check` measures the work, not the machine.
+  }, 240_000);
 });
 
 describe("projectionMeta", () => {

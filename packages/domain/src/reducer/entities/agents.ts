@@ -1,6 +1,6 @@
 import type { StoredEnvelopeOf } from "@taskville/protocol";
 import { getOwn, omit, optional, put } from "./maps.ts";
-import { earlierTimestamp, laterTimestamp } from "./time.ts";
+import { compareTimestamps, earlierTimestamp, laterTimestamp } from "./time.ts";
 import type { Agent, DomainEvent, EntitiesState, Team } from "./types.ts";
 
 // Agents and teams. Identity is `(sourceId, sourceAgentId)` and is never merged on name
@@ -177,6 +177,19 @@ export function applyTeamEnded(s: EntitiesState, e: StoredEnvelopeOf<"team.ended
   const team = getOwn(s.teams, e.payload.teamId);
   if (team === undefined || team.endedAt !== undefined) return s;
   return { ...s, teams: put(s.teams, team.id, { ...team, endedAt: e.occurredAt }) };
+}
+
+/**
+ * M7.15: whether `e` is a late (replayed) event older than anything already seen for `agentId`
+ * (its `lastSeenAt` before the event). The agent's turn and failure streak carry no reliable
+ * time of their own (empty after a clear; a count), so this is their mark: a stale event goes to
+ * history and the agent's seen times and counts, but does not set or clear the turn or move the
+ * streak. Live events are never stale (ARCHITECTURE.md 7.3: ingest order).
+ */
+export function staleForAgent(s: EntitiesState, e: DomainEvent, agentId: string): boolean {
+  if (!e.late) return false;
+  const agent = getOwn(s.agents, agentId);
+  return agent !== undefined && compareTimestamps(e.occurredAt, agent.lastSeenAt) < 0;
 }
 
 /** Records the agent's latest turn event (session.turn_ended, turn_failed, idle_prompt). */

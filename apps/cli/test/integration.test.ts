@@ -16,7 +16,7 @@ const golden = (name: string, actual: string) => {
 /** stateHash covers engine-assigned event IDs (test evidence), so it is checked, then masked. */
 const stable = (json: string) => {
   const parsed = JSON.parse(json) as { stateHash: string };
-  expect(parsed.stateHash).toMatch(/^7:[0-9a-f]{64}$/);
+  expect(parsed.stateHash).toMatch(/^8:[0-9a-f]{64}$/);
   return `${JSON.stringify({ ...parsed, stateHash: "<stateHash>" }, null, 2)}\n`;
 };
 const expected = (fixture: string) =>
@@ -240,7 +240,10 @@ describe("serve, projects, ingest, status, requests, follow, unpair", () => {
     const result = await at("events", "ingest", "--file", file);
     expect(result.stdout).toContain("accepted 1 / duplicate 0 / conflict 0 / rejected 0");
     expect(result.code).toBe(0);
-  });
+    // The work is one 5.2 MB event read, parsed, sized, serialized, posted and validated: 0.5 s
+    // idle, 2.4 s at 24 busy processes on 8 cores, so the 5 s default measured the machine. Sized
+    // to the work; the assertions are about the result, not the time (LESSONS L-206).
+  }, 60_000);
 
   it("revokes browser pairings, ending the paired browser's open stream", async () => {
     const stream = await fetch(`${url}/v1/projects/demo/events?after=0`, {
