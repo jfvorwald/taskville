@@ -410,3 +410,26 @@ describe("M7.12 re-review: escaped quotes around a spaced password inside sh -c"
     expect(redactText(input).text).toContain("next-line-marker");
   });
 });
+
+// roborev 7048: shell operators inside escaped quotes are literal, and a second pass is a no-op.
+describe("M7.12 roborev 7048", () => {
+  const pw = ["hunter", "&", "tail"].join(" ");
+  it.each([
+    ["ampersand", `sh -c "docker login -p \\"${pw}\\" reg"`],
+    ["semicolon", `sh -c "docker login -p \\"hunter;tail9\\" reg"`],
+    ["pipe", `sh -c "podman login --password \\"hunter|tail9\\" reg"`],
+  ])("masks a password containing a shell operator inside escaped quotes (%s)", (_n, input) => {
+    const out = redactText(input).text;
+    expect(out).not.toContain("hunter");
+    expect(out).not.toContain("tail");
+    expect(out).toContain(" reg");
+  });
+
+  it.each([
+    `sh -c "docker login -p \\"hunter 2\\" reg"`,
+    `sh -c "docker login -p \\"hunter2x\\" reg"`,
+  ])("is idempotent on %s", (input) => {
+    const once = redactText(input).text;
+    expect(redactText(once).text).toBe(once);
+  });
+});

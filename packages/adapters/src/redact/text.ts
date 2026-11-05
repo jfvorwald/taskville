@@ -481,8 +481,11 @@ function escapedQuoteEnd(input: string, from: number): number {
   const stop = Math.min(input.length, from + MAX_USER);
   for (let i = from + 2; i < stop; i++) {
     const ch = input.charAt(i);
-    if (ch === "\n" || ch === "\r" || ch === ";" || ch === "&" || ch === "|" || ch === "`") break;
+    // Shell operators inside escaped quotes are literal; only a line end or the outer word's
+    // own (unescaped) closing quote ends the search (roborev 7048).
+    if (ch === "\n" || ch === "\r" || ch === '"') break;
     if (ch === "\\" && input.charAt(i + 1) === quote) return i + 2;
+    if (ch === "\\") i++;
   }
   return from;
 }
@@ -492,7 +495,7 @@ function pushPassword(input: string, from: number, to: number, out: Candidate[])
   let start = from;
   let end = to;
   const closeEnd = escapedQuoteEnd(input, start);
-  if (closeEnd > end) {
+  if (closeEnd > start) {
     // `\"hunter 2\"` inside a double-quoted `sh -c` word: mask what is between the escaped quotes.
     start += 2;
     end = closeEnd - 2;
