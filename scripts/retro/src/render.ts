@@ -100,7 +100,11 @@ const agentCell = (id: string): string => {
         : ch;
     })
     .join("");
-  return `\`${clean.replace(/\|/g, "\\|")}\``;
+  const text = clean.replace(/\|/g, "\\|");
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(longest + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
 };
 
 function tokensAndCost(records: AgentCostRecord[] | undefined): string {

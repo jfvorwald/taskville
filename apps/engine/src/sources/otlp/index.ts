@@ -267,11 +267,14 @@ function identity(
 function entryFor(
   ledger: CostLedger,
   attrs: Map<string, string | number>,
+  id: string | undefined,
   onFull: () => void,
 ): Entry | "skip" | "rejected" {
   const who = whoOf(attrs);
   if (who === undefined) return "skip";
   if (who === "too_long") return "rejected";
+  // A re-delivered point is dropped before an entry is created, so it never evicts an agent.
+  if (id !== undefined && !ledger.claim(id)) return "skip";
   const entry = ledger.entry(who.agentId, who.parent);
   if (entry === undefined) {
     onFull();
@@ -301,14 +304,13 @@ function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): numb
           if (value === undefined) continue;
           const type = text(attrs, "type");
           if (isTokens && (type === undefined || !TOKEN_TYPES.has(type))) continue;
-          const entry = entryFor(ledger, attrs, onFull);
+          const id = identity("metric", String(metric.name), attrs, point.timeUnixNano);
+          const entry = entryFor(ledger, attrs, id, onFull);
           if (entry === "skip") continue;
           if (entry === "rejected") {
             rejected += 1;
             continue;
           }
-          const id = identity("metric", String(metric.name), attrs, point.timeUnixNano);
-          if (id !== undefined && !ledger.claim(id)) continue;
           entry.metrics.seen = true;
           if (isTokens) entry.metrics.seenTokens = true;
           else entry.metrics.seenCost = true;
@@ -331,14 +333,13 @@ function ingestLogs(ledger: CostLedger, body: Json, onFull: () => void): number 
       for (const record of list(scope.logRecords)) {
         const attrs = attributes(record.attributes);
         if (attrs.get("event.name") !== "claude_code.api_request") continue;
-        const entry = entryFor(ledger, attrs, onFull);
+        const id = identity("log", "claude_code.api_request", attrs, record.timeUnixNano);
+        const entry = entryFor(ledger, attrs, id, onFull);
         if (entry === "skip") continue;
         if (entry === "rejected") {
           rejected += 1;
           continue;
         }
-        const id = identity("log", "claude_code.api_request", attrs, record.timeUnixNano);
-        if (id !== undefined && !ledger.claim(id)) continue;
         const logs = entry.logs;
         logs.seen = true;
         const num = (key: string) => number(attrs.get(key)) ?? 0;
