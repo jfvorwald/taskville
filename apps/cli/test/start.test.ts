@@ -42,7 +42,7 @@ import { freePort, tempDir } from "./helpers.ts";
 // banner (URL, home, pairing hint, "Ctrl-C" to stop) and plain-sentence warnings. Info JSON log
 // lines go to <home>/logs/engine.log (file 0600, dir 0700); --verbose also prints them to
 // stderr. serve without a TTY keeps writing JSON lines to stderr as before.
-// Runtime file (start and serve): <home>/engine.json = {"url","pid","startedAt"} (ISO string),
+// Runtime file (start and serve): <home>/engine.json = {"url","pid","startedAt","keyListener"} (ISO string),
 // mode 0600, written on listen, removed on clean shutdown. A live engine is one whose pid is
 // alive and whose GET /health answers (any HTTP answer; the file holds no token).
 
@@ -378,7 +378,7 @@ describe("<home>/engine.json", () => {
         }
       }, "complete engine.json");
       const info = readEngine(s.home);
-      expect(Object.keys(info).sort()).toEqual(["pid", "startedAt", "url"]);
+      expect(Object.keys(info).sort()).toEqual(["keyListener", "pid", "startedAt", "url"]);
       expect(info.url).toBe(`http://127.0.0.1:${port}`);
       expect(info.pid).toBe(process.pid);
       expect(Number.isNaN(Date.parse(info.startedAt))).toBe(false);
