@@ -3,7 +3,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
 import { doctor } from "./commands/doctor.ts";
@@ -62,9 +62,15 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
 };
 
 /** The folder the user ran the command from: pnpm sets INIT_CWD to it before changing directory. */
-export function resolveCwd(env: Record<string, string | undefined>, processCwd: string): string {
+export function resolveCwd(
+  env: Record<string, string | undefined>,
+  processCwd: string,
+  checkoutRoot?: string,
+): string {
   const initCwd = env.INIT_CWD;
-  if (initCwd !== undefined && initCwd !== "" && isAbsolute(initCwd)) {
+  // pnpm moves the process into the checkout; anywhere else INIT_CWD is a stale inherited value.
+  const underPnpm = checkoutRoot === undefined || resolve(processCwd) === resolve(checkoutRoot);
+  if (underPnpm && initCwd !== undefined && initCwd !== "" && isAbsolute(initCwd)) {
     try {
       if (statSync(initCwd).isDirectory()) return initCwd;
     } catch {
@@ -103,7 +109,7 @@ if (import.meta.main) {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
     env: process.env,
-    cwd: resolveCwd(process.env, process.cwd()),
+    cwd: resolveCwd(process.env, process.cwd(), REPO_ROOT),
     signal: controller.signal,
     confirm: process.stdin.isTTY ? askOnTerminal : undefined,
     stdin: process.stdin,

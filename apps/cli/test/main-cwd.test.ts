@@ -39,3 +39,18 @@ describe("resolveCwd", () => {
     expect(resolveCwd({ INIT_CWD: file }, REPO)).toBe(REPO);
   });
 });
+
+// M7.10 security review M2: INIT_CWD counts only when pnpm put the process in the checkout.
+describe("resolveCwd with the checkout root", () => {
+  it("uses INIT_CWD when the process runs in the checkout (pnpm taskville)", () => {
+    const dir = join(root, "from-pnpm");
+    mkdirSync(dir);
+    expect(resolveCwd({ INIT_CWD: dir }, REPO, REPO)).toBe(dir);
+  });
+
+  it("ignores a stale INIT_CWD when the process runs anywhere else (linked taskville)", () => {
+    const dir = join(root, "stale");
+    mkdirSync(dir);
+    expect(resolveCwd({ INIT_CWD: dir }, "/home/me/project", REPO)).toBe("/home/me/project");
+  });
+});
