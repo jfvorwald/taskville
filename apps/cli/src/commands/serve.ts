@@ -2,10 +2,14 @@ import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
   chmodSync,
+  closeSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -80,12 +84,12 @@ export async function serve(io: Io, args: string[]): Promise<number> {
   });
 }
 
-export function parsePort(text: string): number {
+export function parsePort(text: string, usage: string = USAGE): number {
   const port = Number(text);
   if (!/^\d+$/.test(text) || port < 1 || port > 65535) {
     throw new CliError(
       EXIT.failure,
-      `--port must be a whole number from 1 to 65535\nUsage: ${USAGE}`,
+      `--port must be a whole number from 1 to 65535\nUsage: ${usage}`,
     );
   }
   return port;
@@ -159,7 +163,9 @@ function loopbackOrigin(raw: string): string | undefined {
 async function liveEngine(home: string): Promise<string | undefined> {
   let info: Partial<RuntimeInfo>;
   try {
-    info = JSON.parse(readFileSync(join(home, RUNTIME_FILE), "utf8")) as Partial<RuntimeInfo>;
+    const parsed: unknown = JSON.parse(readFileSync(join(home, RUNTIME_FILE), "utf8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    info = parsed as Partial<RuntimeInfo>;
   } catch {
     return undefined;
   }
@@ -178,6 +184,143 @@ async function liveEngine(home: string): Promise<string | undefined> {
     return origin;
   } catch {
     return undefined;
+  }
+}
+
+const LOCK_FILE = "engine.lock";
+/** How long a start waits for another start's lock before giving up. */
+const LOCK_WAIT_MS = 10_000;
+/** An unparsable lock younger than this may still be mid-write by its owner. */
+const LOCK_UNPARSABLE_GRACE_MS = 3000;
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM means the process exists but is not ours.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Takes `<home>/engine.lock` (O_EXCL, 0600, the pid as text), waiting a bounded time for a live
+ * holder and taking over one whose pid is dead. O_EXCL never follows a symlink at the path. A
+ * stale lock is renamed aside first (only one taker's rename succeeds) and checked before it is
+ * dropped, so a lock another start just created is never removed. A non-regular file at the path
+ * fails at once. Every retry awaits. Returns an idempotent release.
+ */
+const RECLAIM_GRACE_MS = 5000;
+
+/**
+ * Removes `path` if it still holds exactly `seen` (a lock judged stale), while holding
+ * `<path>.reclaim`. Returns true when the caller should retry at once. A reclaim file whose pid is
+ * dead, or that is older than RECLAIM_GRACE_MS, was left by a crashed taker and is cleared.
+ */
+async function reclaimStale(
+  path: string,
+  seen: string,
+  alive: (pid: number) => boolean,
+): Promise<boolean> {
+  const mutex = `${path}.reclaim`;
+  let fd: number;
+  try {
+    fd = openSync(mutex, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new CliError(EXIT.failure, `Cannot create ${mutex}; check its permissions and retry.`);
+    }
+    try {
+      const stat = lstatSync(mutex);
+      const pid = Number(readFileSync(mutex, "utf8").trim());
+      const dead = Number.isInteger(pid) && pid > 0 ? !alive(pid) : false;
+      if (dead || Date.now() - stat.mtimeMs > RECLAIM_GRACE_MS) rmSync(mutex, { force: true });
+    } catch {
+      // Gone already, or unreadable: wait for its holder.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return true;
+  }
+  try {
+    writeFileSync(fd, `${process.pid}`);
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    let now: string | undefined;
+    try {
+      now = readFileSync(path, "utf8");
+    } catch {
+      now = undefined;
+    }
+    if (now === seen) rmSync(path, { force: true });
+  } finally {
+    rmSync(mutex, { force: true });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return true;
+}
+
+export async function acquireLock(
+  home: string,
+  deps: { pidAlive?: (pid: number) => boolean; waitMs?: number } = {},
+): Promise<() => void> {
+  const alive = deps.pidAlive ?? pidAlive;
+  const path = join(home, LOCK_FILE);
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + (deps.waitMs ?? LOCK_WAIT_MS);
+  for (;;) {
+    try {
+      const fd = openSync(path, "wx", 0o600);
+      try {
+        writeFileSync(fd, `${process.pid}`);
+      } finally {
+        closeSync(fd);
+      }
+      let held = true;
+      return () => {
+        if (!held) return;
+        held = false;
+        try {
+          if (readFileSync(path, "utf8").trim() === `${process.pid}`) unlinkSync(path);
+        } catch {
+          // Already gone.
+        }
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    let seen: string | undefined;
+    try {
+      const stat = lstatSync(path);
+      if (!stat.isFile()) {
+        throw new CliError(EXIT.failure, `${path} is not a regular file; remove it and retry.`);
+      }
+      seen = readFileSync(path, "utf8");
+      const pid = Number(seen.trim());
+      const stale =
+        Number.isInteger(pid) && pid > 0
+          ? !alive(pid)
+          : Date.now() - stat.mtimeMs > LOCK_UNPARSABLE_GRACE_MS;
+      if (!stale) seen = undefined;
+    } catch (error) {
+      if (error instanceof CliError) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw new CliError(EXIT.failure, `Cannot read ${path}; check its permissions and retry.`);
+      }
+      // Released between our create attempt and the read: try again after a turn.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      continue;
+    }
+    if (seen !== undefined) {
+      // Reclaiming a stale lock is serialized by a second O_EXCL file, so no taker ever moves or
+      // deletes a lock that another taker has just created (roborev 7034).
+      if (await reclaimStale(path, seen, alive)) continue;
+    }
+    if (Date.now() > deadline) {
+      throw new CliError(EXIT.failure, `Another taskville start holds ${path}; try again shortly.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
 
@@ -354,14 +497,21 @@ export async function runEngine(
   prepare?: () => Promise<void>,
 ): Promise<number> {
   const { io, home } = context;
-  const running = await liveEngine(home);
-  if (running !== undefined) {
-    io.stdout(
-      `Taskville is already running at ${running}\nFor a new pairing link, press p in that engine's terminal if it has one, or restart it.\n`,
-    );
-    return EXIT.ok;
+  const release = await acquireLock(home);
+  try {
+    const running = await liveEngine(home);
+    if (running !== undefined) {
+      io.stdout(
+        `Taskville is already running at ${running}\nFor a new pairing link, press p in that engine's terminal if it has one, or restart it.\n`,
+      );
+      release();
+      return EXIT.ok;
+    }
+    await prepare?.();
+  } catch (error) {
+    release();
+    throw error;
   }
-  await prepare?.();
   const now = io.now ?? (() => new Date());
   const quiet = io.stdoutIsTTY === true;
   const logging: LogRouting = {
@@ -405,6 +555,7 @@ export async function runEngine(
     const printLink = () => io.stdout(linkText(`${base}/#pair=${pairing.issueCode()}`));
     writeRuntimeInfo(home, base, now());
     wroteRuntime = true;
+    release();
     const firstLink = `${base}/#pair=${pairing.issueCode()}`;
     // The opener gets a 0600 redirect page, never the code: argv is visible to other local users.
     const page =
@@ -471,11 +622,13 @@ export async function runEngine(
     server = undefined;
     await listening.close();
     removeRuntimeInfo(home);
+    release();
     removePage();
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
     // Never leave the terminal raw, whatever failed.
+    release();
     keys?.restore();
     stopDrain.abort();
     await draining;

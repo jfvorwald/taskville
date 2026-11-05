@@ -112,42 +112,36 @@ async function askOnTerminal(question: string): Promise<boolean> {
   }
 }
 
-/** Runs a program with an argv array (never a shell string), detached; rejects if it cannot start. */
-function spawnDetached(command: string, args: string[]): Promise<void> {
+/**
+ * Runs a program with an argv array (never a shell string), detached. Resolves only when it
+ * exits 0; rejects on a nonzero exit or if it cannot start, so the caller can fall back.
+ */
+export function spawnOpener(
+  command: string,
+  args: string[],
+  spawnFn: typeof spawn = spawn,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { detached: true, stdio: "ignore" });
+    const child = spawnFn(command, args, { detached: true, stdio: "ignore" });
+    child.unref();
     child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
+    child.once("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`${command} exited with code ${code}`)),
+    );
   });
 }
 
 /** Opens a URL in the default browser. */
 function openUrl(url: string): Promise<void> {
   const { command, args } = openerCommand(process.platform, url);
-  return spawnDetached(command, args);
+  return spawnOpener(command, args);
 }
-
-/** cmd.exe metacharacters, percent-encoded so `start` sees plain URL characters. */
-const CMD_METACHARACTERS: Record<string, string> = {
-  "&": "%26",
-  "^": "%5E",
-  "(": "%28",
-  ")": "%29",
-  "!": "%21",
-  ",": "%2C",
-  ";": "%3B",
-  "=": "%3D",
-};
 
 /** The program and argv that open a URL on a platform. */
 export function openerCommand(platform: string, url: string): { command: string; args: string[] } {
   if (platform === "darwin") return { command: "open", args: [url] };
   if (platform === "win32") {
-    const encoded = url.replace(/[&^()!,;=]/g, (c) => CMD_METACHARACTERS[c] as string);
-    return { command: "cmd", args: ["/c", "start", "", encoded] };
+    return { command: "rundll32", args: ["url.dll,FileProtocolHandler", url] };
   }
   return { command: "xdg-open", args: [url] };
 }
