@@ -61,6 +61,35 @@
   color: var(--tv-text-muted);
 }
 
+.guidance {
+  padding: 6px 10px;
+  color: var(--tv-text-muted);
+}
+
+.guidance p {
+  margin: 0 0 6px;
+}
+
+.guidance a {
+  color: inherit;
+}
+
+.command {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.copy {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentcolor;
+  border-radius: 4px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel,
   .panel * {
