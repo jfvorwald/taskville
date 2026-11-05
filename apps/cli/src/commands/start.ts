@@ -4,6 +4,9 @@ import { parseCommand } from "../context.ts";
 import { CliError, EXIT } from "../errors.ts";
 import { parsePort, runEngine } from "./serve.ts";
 
+/** How many trailing lines of a failed build's stderr the error carries. */
+const BUILD_TAIL_LINES = 8;
+
 const USAGE = "taskville start [--port N] [--no-open] [--verbose] [--home <dir>]";
 
 /**
@@ -23,7 +26,7 @@ export async function start(io: Io, args: string[]): Promise<number> {
     },
     USAGE,
   );
-  const port = values.port === undefined ? undefined : parsePort(values.port as string);
+  const port = values.port === undefined ? undefined : parsePort(values.port as string, USAGE);
   return runEngine(
     context,
     port,
@@ -45,7 +48,15 @@ async function ensureWebClient(io: Io): Promise<void> {
   try {
     await io.buildWeb();
   } catch (error) {
-    throw new CliError(EXIT.failure, `Building the web client failed: ${(error as Error).message}`);
+    const stderr = (error as { stderr?: unknown }).stderr;
+    const tail =
+      typeof stderr === "string" && stderr.trim() !== ""
+        ? `\n${stderr.trimEnd().split("\n").slice(-BUILD_TAIL_LINES).join("\n")}`
+        : "";
+    throw new CliError(
+      EXIT.failure,
+      `Building the web client failed: ${(error as Error).message}${tail}`,
+    );
   }
   if (resolveWebDir(io.env).dir === undefined) {
     throw new CliError(
