@@ -7,7 +7,7 @@ import { CliError, EXIT } from "./errors.ts";
 
 export const DEFAULT_URL = "http://127.0.0.1:4807";
 
-/** Reads the token without creating it: only `taskville serve` creates the home. */
+/** Reads the token without creating it: only `taskville start` creates the home. */
 export function readToken(home: string): string {
   const path = join(home, "token");
   let token: string;
@@ -16,7 +16,7 @@ export function readToken(home: string): string {
   } catch {
     throw new CliError(
       EXIT.auth,
-      `No token at ${path}; start the engine with \`taskville serve\` (or pass --home)`,
+      `No token at ${path}; start the engine with \`taskville start\` (or pass --home)`,
     );
   }
   if (token === "") throw new CliError(EXIT.auth, `The token file ${path} is empty`);

@@ -33,12 +33,18 @@ function pidAlive(pid: number): boolean {
 }
 
 /** The running engine's URL from `<home>/engine.json`, or undefined unless it is loopback and alive. */
-function discoverUrl(io: Io, home: string): string | undefined {
+export function discoverUrl(io: Io, home: string): string | undefined {
   try {
     const record: unknown = JSON.parse(readFileSync(join(home, "engine.json"), "utf8"));
     if (typeof record !== "object" || record === null || Array.isArray(record)) return undefined;
     const { url, pid } = record as { url?: unknown; pid?: unknown };
-    if (typeof url !== "string" || typeof pid !== "number" || !Number.isSafeInteger(pid)) {
+    if (
+      typeof url !== "string" ||
+      typeof pid !== "number" ||
+      !Number.isInteger(pid) ||
+      pid < 1 ||
+      pid > 2147483647
+    ) {
       return undefined;
     }
     const parsed = new URL(url);
@@ -51,7 +57,7 @@ function discoverUrl(io: Io, home: string): string | undefined {
     ) {
       return undefined;
     }
-    return (io.isAlive ?? pidAlive)(pid) ? url : undefined;
+    return (io.isAlive ?? pidAlive)(pid) ? parsed.origin : undefined;
   } catch {
     return undefined;
   }

@@ -4,8 +4,8 @@ Global options: `--home <dir>` (default `$TASKVILLE_HOME` or `~/.taskville`),
 `--url <base>`, `--json` (machine output). The URL is resolved in order: `--url`,
 `$TASKVILLE_URL`, the `url` in `<home>/engine.json` (M7.08) when it is an `http:` URL on
 exactly `127.0.0.1` or `localhost` with an explicit port and no userinfo, and its `pid` is
-alive (`process.kill(pid, 0)`; EPERM counts as alive), then `http://127.0.0.1:4807`. A missing,
-malformed, stale or non-loopback `engine.json` is ignored silently. An unreachable engine exits 3
+alive (`process.kill(pid, 0)`; EPERM counts as alive; the pid must be a positive integer up to 2147483647, since 0 and negatives signal whole process groups), then `http://127.0.0.1:4807`. A missing,
+malformed, stale or non-loopback `engine.json` is ignored silently. Only the URL's origin is used. A stale file left by a crash whose pid was reused looks live, so commands fail with the unreachable error naming that URL. An unreachable engine exits 3
 and the message names the base URL and `taskville start`.
 Human output to stdout, diagnostics to stderr. Every request sends
 `Authorization: Bearer <token>` from `<home>/token` ([http-api.md](http-api.md)).

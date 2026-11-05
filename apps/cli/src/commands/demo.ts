@@ -174,7 +174,7 @@ async function start(io: Io, args: string[]): Promise<number> {
   };
   try {
     const summary = await runProducer(options);
-    report(io, context.json, summary);
+    report(io, context.json, seed, summary);
     return EXIT.ok;
   } catch (error) {
     if (isAbort(error) || io.signal?.aborted) return EXIT.ok;
@@ -203,9 +203,15 @@ async function start(io: Io, args: string[]): Promise<number> {
 function report(
   io: Io,
   json: boolean,
-  summary: { steps: number; events: number; accepted: number; duplicate: number },
+  seed: number,
+  summary: {
+    steps: number;
+    events: number;
+    accepted: number;
+    duplicate: number;
+  },
 ): void {
-  if (json) printJson(io, summary);
+  if (json) printJson(io, { seed, ...summary });
   else {
     io.stdout(
       `steps ${summary.steps} · events ${summary.events} · accepted ${summary.accepted} / duplicate ${summary.duplicate}\n`,
