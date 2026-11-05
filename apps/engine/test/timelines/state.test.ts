@@ -9,6 +9,7 @@ import type { StoredEnvelope } from "@taskville/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
 import { CHECKPOINT_INTERVAL } from "../../src/storage/checkpoints.ts";
+import { stateAtSequence } from "../../src/timelines/checkpoints.ts";
 import {
   addProject,
   bootInProcess,
@@ -148,10 +149,15 @@ describe("state at a sequence equals a full replay to it (day-sized log)", () =>
     // The 300 ms target is measured by tests/perf/seek.ts and posted in the PR. Elapsed time is not
     // asserted here: it measured the machine's load, not the seek (LESSONS L-206). What a slow seek
     // would mean is a seek that folds the whole log, so count the reducer steps it takes instead.
-    const { app, events } = day();
+    const { app, engine, events } = day();
     const at = (n: number) => `/v1/timelines/live:demo/state?at=${n}`;
-    // A first read backfills any checkpoint the seeded log lacks; the counted reads then use them.
-    expect((await get(app, at(events.length))).status).toBe(200);
+    // The seeded log has no checkpoints, and a head request reuses the stored projection without
+    // writing any. Backfill them here with the engine's own lazy path (a fold to the head writes
+    // every missing one), so this test does not depend on what earlier tests left in the cache.
+    stateAtSequence(engine.storage, "demo", events.length);
+    expect(engine.storage.checkpoints().sequences("demo").length).toBe(
+      Math.floor(events.length / CHECKPOINT_INTERVAL),
+    );
     const steps = vi.spyOn(domainReducer, "apply");
     try {
       for (const n of [events.length, 7777, 5001, 1]) {
