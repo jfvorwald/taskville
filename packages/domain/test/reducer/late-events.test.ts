@@ -107,6 +107,68 @@ describe("a late event against live session state", () => {
   });
 });
 
+describe("a late event against live tool calls and turns", () => {
+  it("a late turn boundary closes only calls that started before it", () => {
+    const emit = eventStream();
+    const live = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit(
+        "tool_call.started",
+        { toolCallId: "before", toolName: "Bash" },
+        { ...S, occurredAt: "2026-10-30T10:30:00Z" },
+      ),
+      emit(
+        "tool_call.started",
+        { toolCallId: "after", toolName: "Bash" },
+        { ...S, occurredAt: OPENED },
+      ),
+    ]);
+    const state = reduce(
+      live,
+      emit("session.turn_ended", {}, { ...S, late: true, occurredAt: OLDER }),
+    );
+    expect(state.toolCalls.after?.phase).toBe("running");
+    expect(state.toolCalls.before?.phase).toBe("unfinished");
+  });
+
+  it("a late turn_failed does not set trouble after a live prompt cleared the turn", () => {
+    const emit = eventStream();
+    const cleared = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit("session.turn_ended", {}, { ...S, occurredAt: OPENED }),
+      emit("session.prompt_submitted", {}, { ...S, occurredAt: NEWER }),
+    ]);
+    expect(cleared.agents.a1?.lastTurn).toBeUndefined();
+    expect(cleared.agents.a1?.lastTurnAt).toBe(NEWER);
+    const after = reduce(
+      cleared,
+      emit("session.turn_failed", {}, { ...S, late: true, occurredAt: OLDER }),
+    );
+    expect(after.agents.a1?.lastTurn).toBeUndefined();
+  });
+
+  const lateToolEvents: Array<[string, (emit: Emit, f: EnvelopeFields) => StoredEnvelope]> = [
+    [
+      "tool_call.started",
+      (emit, f) => emit("tool_call.started", { toolCallId: "t9", toolName: "Bash" }, f),
+    ],
+    [
+      "tool_call.finished (succeeded)",
+      (emit, f) => emit("tool_call.finished", { toolCallId: "t9", phase: "succeeded" }, f),
+    ],
+  ];
+
+  it.each(lateToolEvents)("a late %s does not clear a newer live last turn", (_, make) => {
+    const emit = eventStream();
+    const live = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit("session.turn_ended", {}, { ...S, occurredAt: OPENED }),
+    ]);
+    const after = reduce(live, make(emit, { ...S, late: true, occurredAt: OLDER }));
+    expect(after.agents.a1).toMatchObject({ lastTurn: "ended", lastTurnAt: OPENED });
+  });
+});
+
 describe("history replay guard", () => {
   it("crew.jsonl with no late events replays to the pinned state", () => {
     const uuid = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
