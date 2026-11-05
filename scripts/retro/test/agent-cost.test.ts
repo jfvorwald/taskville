@@ -68,18 +68,18 @@ describe("retro tokens and cost per agent", () => {
 
   it("shows one row per agent with its four token counts and cost", () => {
     const text = section(md);
-    expect(text).toContain(`| claude-code:${SESSION} | 1000 | 200 | 5000 | 300 | $0.40 |`);
+    expect(text).toContain(`| \`claude-code:${SESSION}\` | 1000 | 200 | 5000 | 300 | $0.40 |`);
     expect(text).toContain(
-      `| claude-code:${SESSION}:afdf84bea07a9064c | 400 | 90 | 2000 | 100 | $0.12 |`,
+      `| \`claude-code:${SESSION}:afdf84bea07a9064c\` | 400 | 90 | 2000 | 100 | $0.12 |`,
     );
     expect(text).toContain(
-      `| claude-code:${SESSION}:a0b4668e13e056653 | 500 | 100 | 2500 | 150 | $0.12 |`,
+      `| \`claude-code:${SESSION}:a0b4668e13e056653\` | 500 | 100 | 2500 | 150 | $0.12 |`,
     );
   });
 
   it("sorts by cost descending, then agent ID", () => {
     const text = section(md);
-    const at = (id: string) => text.indexOf(`| ${id} |`);
+    const at = (id: string) => text.indexOf(`| \`${id}\` |`);
     const lead = at(`claude-code:${SESSION}`);
     const b = at(`claude-code:${SESSION}:a0b4668e13e056653`);
     const a = at(`claude-code:${SESSION}:afdf84bea07a9064c`);
@@ -95,6 +95,41 @@ describe("retro tokens and cost per agent", () => {
   it("keeps the rest of the report intact and valid", () => {
     expect(md).not.toMatch(/\{\{|\}\}|undefined|NaN|null/);
     expect(md).toContain("## Quality signals");
+  });
+
+  it("escapes pipes, newlines and control characters in an agent ID, inside backticks", () => {
+    const hostile = "claude-code:x|y\nz\r\u0000\u001b[31m\u2028| 9 | 9 | 9 | 9 | $9.00 |";
+    const out = renderRetro({
+      snapshot: withCost([
+        {
+          agentId: hostile,
+          tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 },
+          costUsd: 1,
+        },
+      ]),
+      template,
+      now: NOW,
+      key: "M9",
+    });
+    const text = section(out);
+    const bad = [...text].filter((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return (
+        (code < 0x20 && code !== 0x0a) ||
+        code === 0x7f ||
+        code === 0x85 ||
+        code === 0x2028 ||
+        code === 0x2029
+      );
+    });
+    expect(bad).toEqual([]);
+    const rows = text.split("\n").filter((line) => line.startsWith("|"));
+    // header, separator, one agent, Total: the hostile ID added no row and no column.
+    expect(rows).toHaveLength(4);
+    for (const row of rows) expect(row.split(/(?<!\\)\|/)).toHaveLength(8);
+    const agentRow = rows[2] ?? "";
+    expect(agentRow).toMatch(/^\| `claude-code:x\\\|y/);
+    expect(agentRow).toMatch(/ \| 1 \| 2 \| 3 \| 4 \| \$1\.00 \|$/);
   });
 
   it("says not measured, not zero, when the snapshot has no cost data", () => {
