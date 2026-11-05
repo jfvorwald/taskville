@@ -44,7 +44,7 @@ function setup(
   codes: Record<string, number> = {},
   emit: Record<string, string> = {},
 ) {
-  const calls: { command: string; args: string[]; cwd: string; quiet?: boolean }[] = [];
+  const calls: { command: string; args: string[]; cwd: string; quiet?: boolean | undefined }[] = [];
   const questions: string[] = [];
   let out = "";
   let err = "";
