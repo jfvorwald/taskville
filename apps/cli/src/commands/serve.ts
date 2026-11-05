@@ -214,8 +214,8 @@ const RECLAIM_GRACE_MS = 5000;
 
 /**
  * Removes `path` if it still holds exactly `seen` (a lock judged stale), while holding
- * `<path>.reclaim`. Returns true when the caller should retry at once. A reclaim file whose pid is
- * dead, or that is older than RECLAIM_GRACE_MS, was left by a crashed taker and is cleared.
+ * `<path>.reclaim`. Returns true to retry at once, false when another live taker holds the mutex.
+ * A reclaim file is cleared only when its pid is dead (or it has no pid and is old).
  */
 async function reclaimStale(
   path: string,
@@ -230,16 +230,29 @@ async function reclaimStale(
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw new CliError(EXIT.failure, `Cannot create ${mutex}; check its permissions and retry.`);
     }
+    let stat: ReturnType<typeof lstatSync>;
+    let text: string;
     try {
-      const stat = lstatSync(mutex);
-      const pid = Number(readFileSync(mutex, "utf8").trim());
-      const dead = Number.isInteger(pid) && pid > 0 ? !alive(pid) : false;
-      if (dead || Date.now() - stat.mtimeMs > RECLAIM_GRACE_MS) rmSync(mutex, { force: true });
-    } catch {
-      // Gone already, or unreadable: wait for its holder.
+      stat = lstatSync(mutex);
+      if (!stat.isFile()) {
+        throw new CliError(EXIT.failure, `${mutex} is not a regular file; remove it and retry.`);
+      }
+      text = readFileSync(mutex, "utf8");
+    } catch (error) {
+      if (error instanceof CliError) throw error;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+      throw new CliError(EXIT.failure, `Cannot read ${mutex}; check its permissions and retry.`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    return true;
+    // Cleared only when its holder is gone: a dead pid, or no pid written long ago (a crash
+    // between create and write). A live holder is never preempted, however slow (roborev 7045).
+    const pid = Number(text.trim());
+    const gone =
+      Number.isInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - stat.mtimeMs > RECLAIM_GRACE_MS;
+    if (gone) {
+      rmSync(mutex, { force: true });
+      return true;
+    }
+    return false;
   }
   try {
     writeFileSync(fd, `${process.pid}`);
@@ -316,6 +329,7 @@ export async function acquireLock(
       // Reclaiming a stale lock is serialized by a second O_EXCL file, so no taker ever moves or
       // deletes a lock that another taker has just created (roborev 7034).
       if (await reclaimStale(path, seen, alive)) continue;
+      // Another taker is reclaiming: wait for it like any held lock, within the deadline.
     }
     if (Date.now() > deadline) {
       throw new CliError(EXIT.failure, `Another taskville start holds ${path}; try again shortly.`);
