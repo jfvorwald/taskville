@@ -30,6 +30,13 @@ vi.mock("../../audio/backend.ts", () => ({
 }));
 vi.mock("../../audio/loops.ts", () => ({ loadAmbientLoop: async () => new ArrayBuffer(0) }));
 
+// Full-scene tests on software WebGL: the work is real rendering, 1 to 3 s idle and 3 to 12 s at 24
+// busy processes on 8 cores, against the browser project's 15 s test default and the 1 s default
+// of `expect.element` and `vi.waitFor`. Every wait below ends the moment its condition holds, so a
+// long ceiling costs nothing on an idle machine (LESSONS L-206). No assertion measures time.
+const WAIT = { timeout: 30_000 };
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+
 it("keeps the pill separate from the real header and receives one live chime in the full scene", async () => {
   const transport = timelineEngine();
   const paths: string[] = [];
@@ -72,15 +79,15 @@ it("keeps the pill separate from the real header and receives one live chime in 
       }),
     );
   try {
-    await vi.waitFor(() => expect(paths).toContain(`/v1/projects/${PROJECT}/snapshot`));
+    await vi.waitFor(() => expect(paths).toContain(`/v1/projects/${PROJECT}/snapshot`), WAIT);
     act(() => dataStore.getState().applySnapshotState(stateAt(2)));
     feed("already");
     await getSoundscape().enable();
     expect(audio.cues).toEqual([]);
     await page.getByRole("button", { name: "History", exact: true }).click();
-    await expect.element(page.getByRole("slider", { name: "Timeline time" })).toBeVisible();
+    await expect.element(page.getByRole("slider", { name: "Timeline time" }), WAIT).toBeVisible();
     const pill = page.getByRole("button", { name: /^Back to live/ });
-    await expect.element(pill).toBeVisible();
+    await expect.element(pill, WAIT).toBeVisible();
     const header = document.querySelector('[data-slot="header"]');
     expect(header).not.toBeNull();
     const bounds = header?.getBoundingClientRect();
@@ -90,8 +97,8 @@ it("keeps the pill separate from the real header and receives one live chime in 
       .toBeGreaterThanOrEqual((bounds?.bottom ?? 0) + 8);
     expect(Math.abs(button.left + button.width / 2 - window.innerWidth / 2)).toBeLessThanOrEqual(2);
     feed("already", "new-live");
-    await expect.element(pill).toHaveAccessibleName("Back to live · 2 needs you");
-    await vi.waitFor(() => expect(audio.cues).toEqual(["chime"]));
+    await expect.element(pill, WAIT).toHaveAccessibleName("Back to live · 2 needs you");
+    await vi.waitFor(() => expect(audio.cues).toEqual(["chime"]), WAIT);
     feed("already", "new-live");
     expect(audio.cues).toEqual(["chime"]);
     act(() =>
@@ -109,21 +116,22 @@ it("keeps the pill separate from the real header and receives one live chime in 
         ),
       }),
     );
-    await expect.element(pill).toHaveAccessibleName("Back to live · 6 needs you");
+    await expect.element(pill, WAIT).toHaveAccessibleName("Back to live · 6 needs you");
     await expect
-      .poll(() => header?.getBoundingClientRect().bottom)
+      .poll(() => header?.getBoundingClientRect().bottom, WAIT)
       .toBeGreaterThan(bounds?.bottom ?? 0);
     await expect
       .poll(
         () =>
           pill.element().getBoundingClientRect().top -
           (header?.getBoundingClientRect().bottom ?? 0),
+        WAIT,
       )
       .toBeGreaterThanOrEqual(8);
     expect(audio.cues).toEqual(["chime", "chime"]);
     await pill.click();
     await expect
-      .element(page.getByRole("slider", { name: "Timeline time" }))
+      .element(page.getByRole("slider", { name: "Timeline time" }), WAIT)
       .not.toBeInTheDocument();
   } finally {
     await view.unmount();

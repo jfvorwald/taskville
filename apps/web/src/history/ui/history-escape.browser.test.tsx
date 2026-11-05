@@ -25,6 +25,13 @@ import { HistoryProvider, useHistoryPresentation } from "./HistoryProvider.tsx";
 // Intended RED today: the history handler exits to live, but the panel's and the city's Escape
 // listeners also run and clear the selection (a1), so the panel closes.
 
+// Full-scene tests on software WebGL: the work is real rendering, 1 to 3 s idle and 3 to 12 s at 24
+// busy processes on 8 cores, against the browser project's 15 s test default and the 1 s default
+// of `expect.element` and `vi.waitFor`. Every wait below ends the moment its condition holds, so a
+// long ceiling costs nothing on an idle machine (LESSONS L-206). No assertion measures time.
+const WAIT = { timeout: 30_000 };
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+
 const rig = createCameraRig();
 const anchors = createAnchorSource();
 const cleanups: Array<() => Promise<void>> = [];
@@ -105,12 +112,12 @@ const panel = () => page.getByTestId("agent-panel");
 
 async function selectAda() {
   selectionStore.select("a1");
-  await expect.element(selected()).toHaveTextContent("a1");
-  await expect.element(panel()).toBeVisible();
+  await expect.element(selected(), WAIT).toHaveTextContent("a1");
+  await expect.element(panel(), WAIT).toBeVisible();
 }
 async function enterHistory() {
   await page.getByRole("button", { name: "History", exact: true }).click();
-  await expect.element(mode()).toHaveTextContent("history");
+  await expect.element(mode(), WAIT).toHaveTextContent("history");
 }
 // The city rescans for the selected agent every half second; let it settle before pressing.
 const settle = () => new Promise((r) => setTimeout(r, 900));
@@ -122,10 +129,10 @@ describe("Escape in history mode (M6.09)", () => {
     await enterHistory(); // the history listener registers last: the worst order for the bug
     await settle();
     await userEvent.keyboard("{Escape}");
-    await expect.element(mode()).toHaveTextContent("live");
+    await expect.element(mode(), WAIT).toHaveTextContent("live");
     expect(selectionStore.getSnapshot()).toBe("a1");
-    await expect.element(selected()).toHaveTextContent("a1");
-    await expect.element(panel()).toBeVisible();
+    await expect.element(selected(), WAIT).toHaveTextContent("a1");
+    await expect.element(panel(), WAIT).toBeVisible();
   });
 
   it("does the same when focus is inside the panel", async () => {
@@ -137,9 +144,9 @@ describe("Escape in history mode (M6.09)", () => {
     (tab.element() as HTMLElement).focus();
     expect(panel().element().contains(document.activeElement)).toBe(true);
     await userEvent.keyboard("{Escape}");
-    await expect.element(mode()).toHaveTextContent("live");
+    await expect.element(mode(), WAIT).toHaveTextContent("live");
     expect(selectionStore.getSnapshot()).toBe("a1");
-    await expect.element(panel()).toBeVisible();
+    await expect.element(panel(), WAIT).toBeVisible();
   });
 
   it("guard: in live mode Escape still clears the selection and closes the panel", async () => {
@@ -147,8 +154,8 @@ describe("Escape in history mode (M6.09)", () => {
     await selectAda();
     await settle();
     await userEvent.keyboard("{Escape}");
-    await expect.element(selected()).toHaveTextContent("none");
+    await expect.element(selected(), WAIT).toHaveTextContent("none");
     expect(panel().elements()).toHaveLength(0);
-    await expect.element(mode()).toHaveTextContent("live");
+    await expect.element(mode(), WAIT).toHaveTextContent("live");
   });
 });
