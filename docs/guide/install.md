@@ -93,5 +93,5 @@ Everything lives in `~/.taskville` by default: the event log, the pairing record
 ## Updating and removing
 
 - After you pull new code, run `pnpm bootstrap` again. It is safe to repeat.
-- To stop watching a repository, run `taskville uninstall claude-code --scope project` in it. There is no command to remove a project from the city yet.
+- To stop Claude Code telemetry for a repository, run `taskville uninstall claude-code --scope project` in it. The engine still watches the repository's Git activity while the project is registered, and there is no command to remove a project yet.
 - To remove Taskville's hooks from user settings, run `taskville uninstall claude-code --scope user`.

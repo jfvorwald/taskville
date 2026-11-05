@@ -22,7 +22,7 @@ When Claude Code asks permission for a tool call, Taskville shows the agent as n
 
 - **Allow once** lets that one request through.
 - **Deny** refuses it. You can add a note the agent will read.
-- **Open session** copies the session and working directory so you can go to the terminal.
+- **Open session** runs your configured session opener, or, when none is configured, copies the session and working directory so you can go to the terminal.
 
 Taskville has no "always allow" and no bulk approval. Each request is answered on its own.
 
