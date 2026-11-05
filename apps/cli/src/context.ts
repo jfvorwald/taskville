@@ -31,6 +31,17 @@ export interface Io {
   sourceCheckout?: boolean | undefined;
   /** Builds the web client once (`start`, source checkout only). */
   buildWeb?: (() => Promise<void>) | undefined;
+  /** The facts `doctor` checks about the machine; each one left out falls back to the real probe (M7.10). */
+  doctor?: Partial<DoctorProbes> | undefined;
+}
+
+/** What `taskville doctor` asks the machine, injected so tests need no real engine or build. */
+export interface DoctorProbes {
+  nodeVersion: string;
+  webClientBuilt(): boolean;
+  engineHealthy(url: string): Promise<boolean>;
+  onPath(command: string): boolean;
+  listProjects(): Promise<{ id: string; name: string; roots: string[] }[]>;
 }
 
 function pidAlive(pid: number): boolean {

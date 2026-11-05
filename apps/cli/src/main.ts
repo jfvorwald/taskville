@@ -6,7 +6,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
+import { doctor } from "./commands/doctor.ts";
 import { events } from "./commands/events.ts";
+import { init } from "./commands/init.ts";
 import { install, uninstall } from "./commands/install.ts";
 import { project } from "./commands/projects.ts";
 import { requests } from "./commands/requests.ts";
@@ -25,6 +27,8 @@ export type { Io } from "./context.ts";
 const USAGE = `Usage: taskville <command> [options]
 
 Commands:
+  init [--name <name>] [--yes] [--no-hooks]   Add this Git repository as a project and offer the hooks
+  doctor                                      Check Node, web client, engine, hooks, shim, curl, project
   start [--port N] [--no-open] [--verbose]    Run the engine and open the browser to pair
   serve --headless [--port N] [--verbose]     Run the engine on 127.0.0.1
   project add --name <name> [--id <id>] [--root <dir>]...
@@ -53,6 +57,8 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   demo,
   install,
   uninstall,
+  init,
+  doctor,
 };
 
 export async function run(argv: string[], io: Io): Promise<number> {
