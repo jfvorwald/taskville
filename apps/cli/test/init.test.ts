@@ -206,4 +206,32 @@ describe("taskville init", () => {
     expect(dead.code).not.toBe(0);
     expect(dead.stderr).toContain("taskville start");
   });
+
+  // Real-use fix: init ends by saying what to do next. The engine is running (init needed it), so
+  // the next step is the URL to open; when hooks were skipped it also says how to watch sessions.
+  it("ends with the URL to open when the hooks were installed", async () => {
+    const sb = sandbox();
+    const r = await init(sb, ["--yes"]);
+    expect(r.code).toBe(0);
+    const last = r.stdout.trim().split("\n").at(-1) ?? "";
+    expect(last).toContain(url);
+    expect(last).toMatch(/open/i);
+    expect(r.stdout).not.toContain("To watch Claude Code sessions here later");
+  });
+
+  it("with --no-hooks it prints the URL to open and how to watch real sessions", async () => {
+    const sb = sandbox();
+    const r = await init(sb, ["--no-hooks"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout.split("\n").some((l) => l.includes(url) && /open/i.test(l))).toBe(true);
+    expect(r.stdout).toContain("taskville install claude-code --scope project");
+  });
+
+  it("prints the next step on an already set up project too", async () => {
+    const sb = sandbox();
+    await init(sb, ["--no-hooks"]);
+    const again = await init(sb, ["--no-hooks"]);
+    expect(again.stdout).toMatch(/already set up/i);
+    expect(again.stdout.split("\n").some((l) => l.includes(url) && /open/i.test(l))).toBe(true);
+  });
 });

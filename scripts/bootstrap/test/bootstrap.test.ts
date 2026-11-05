@@ -31,8 +31,20 @@ import { bootstrap } from "../src/bootstrap.ts";
 const ROOT = "/repo";
 const pkg = { engines: { node: ">=26.8.2 <27" }, packageManager: "pnpm@12.4.2" };
 
-function setup(over: Record<string, unknown> = {}, codes: Record<string, number> = {}) {
-  const calls: { command: string; args: string[]; cwd: string }[] = [];
+// Quiet-mode seam (real-use fix): run takes an optional 4th argument
+//   options?: { quiet?: boolean; output?: (chunk: string) => void }
+// With quiet: true the runner must not show the program's output; it passes every chunk of
+// stdout and stderr to options.output instead. bootstrap runs the web build quiet, prints
+// "Building the web client..." instead of the output, and on failure prints only the last ~30
+// lines of what it captured. `pnpm install` and `pnpm link` may stay visible (not quiet).
+type RunOptions = { quiet?: boolean; output?: (chunk: string) => void };
+
+function setup(
+  over: Record<string, unknown> = {},
+  codes: Record<string, number> = {},
+  emit: Record<string, string> = {},
+) {
+  const calls: { command: string; args: string[]; cwd: string; quiet?: boolean }[] = [];
   const questions: string[] = [];
   let out = "";
   let err = "";
@@ -47,8 +59,10 @@ function setup(over: Record<string, unknown> = {}, codes: Record<string, number>
     packageJson: pkg,
     nodeVersion: "26.8.2",
     pnpmVersion: "12.4.2" as string | undefined,
-    run: async (command: string, args: string[], cwd: string) => {
-      calls.push({ command, args, cwd });
+    run: async (command: string, args: string[], cwd: string, options?: RunOptions) => {
+      calls.push({ command, args, cwd, quiet: options?.quiet });
+      const text = emit[`${command} ${args.join(" ")}`];
+      if (text !== undefined) options?.output?.(text);
       return codes[`${command} ${args.join(" ")}`] ?? 0;
     },
     confirm: async (q: string) => {
@@ -162,5 +176,30 @@ describe("bootstrap wiring", () => {
       readFileSync(join(import.meta.dirname, "..", "..", "..", "package.json"), "utf8"),
     ) as { scripts: Record<string, string> };
     expect(root.scripts.bootstrap).toMatch(/^node scripts\/bootstrap\/src\/main\.ts/);
+  });
+});
+
+describe("bootstrap quiet build", () => {
+  const BUILD = "pnpm --filter @taskville/web build";
+  const noise = Array.from({ length: 300 }, (_, i) => `vite line ${i + 1}`).join("\n");
+
+  it("runs the web build quiet and shows a one-line progress message, not its output", async () => {
+    const s = setup({}, {}, { [BUILD]: noise });
+    expect(await bootstrap(["--yes"], s.io)).toBe(0);
+    const build = s.calls.find((c) => `${c.command} ${c.args.join(" ")}` === BUILD);
+    expect(build?.quiet).toBe(true);
+    expect(s.text()).toContain("Building the web client...");
+    expect(s.text()).not.toContain("vite line");
+  });
+
+  it("on failure shows only the last ~30 captured lines and names the step", async () => {
+    const s = setup({}, { [BUILD]: 2 }, { [BUILD]: noise });
+    expect(await bootstrap(["--yes"], s.io)).toBe(1);
+    expect(s.text()).toContain("vite line 300");
+    expect(s.text()).toContain("vite line 280");
+    expect(s.text()).not.toContain("vite line 200\n");
+    expect(s.text()).not.toMatch(/vite line 1\n/);
+    expect(s.text().split("\n").length).toBeLessThan(60);
+    expect(s.text()).toMatch(/web/i);
   });
 });
