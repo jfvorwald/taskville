@@ -207,5 +207,9 @@ export function clearLastTurn(
 ): Agent {
   if (agent.lastTurn === undefined || staleLate(agent, at, late)) return agent;
   if (by === "tool" && agent.lastTurn === "failed") return agent;
-  return omit(agent, ["lastTurn", "lastTurnAt"]);
+  // Keep lastTurnAt as the high-water mark so a later late event cannot revive an older turn.
+  const cleared = omit(agent, ["lastTurn"]);
+  if (late || at === "") return cleared;
+  const lastTurnAt = agent.lastTurnAt === undefined ? at : laterTimestamp(agent.lastTurnAt, at);
+  return { ...cleared, lastTurnAt };
 }

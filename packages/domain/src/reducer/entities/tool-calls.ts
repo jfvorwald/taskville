@@ -1,6 +1,7 @@
 import type { StoredEnvelopeOf } from "@taskville/protocol";
 import { clearLastTurn, updateAgent } from "./agents.ts";
 import { appendUnique, getOwn, optional, put, removeKeys } from "./maps.ts";
+import { compareTimestamps } from "./time.ts";
 import type { DomainEvent, EntitiesState, ToolCall } from "./types.ts";
 
 // Tool calls, bounded for SC-006: the projection keeps each agent's open calls (at most
@@ -56,7 +57,12 @@ export function applyToolCallStarted(
   const owner = call.agentId;
   const withCall = { ...s, toolCalls: put(s.toolCalls, call.id, call) };
   const counted = updateAgent(withCall, owner, (agent) =>
-    clearLastTurn({ ...agent, toolCallCount: agent.toolCallCount + 1 }, "tool"),
+    clearLastTurn(
+      { ...agent, toolCallCount: agent.toolCallCount + 1 },
+      "tool",
+      e.occurredAt,
+      e.late,
+    ),
   );
   return call.phase === "running" ? capOpenCalls(counted, owner) : counted;
 }
@@ -111,7 +117,12 @@ export function applyToolCallFinished(
       ...agent,
       consecutiveToolFailures: p.phase === "failed" ? agent.consecutiveToolFailures + 1 : 0,
     };
-    return clearLastTurn(counted, p.phase === "succeeded" ? "tool_succeeded" : "tool");
+    return clearLastTurn(
+      counted,
+      p.phase === "succeeded" ? "tool_succeeded" : "tool",
+      e.occurredAt,
+      e.late,
+    );
   });
 }
 
@@ -129,6 +140,10 @@ export function callsClosedAtBoundary(
   const ownsSession = sessionId !== undefined && getOwn(s.sessions, sessionId)?.agentId === agentId;
   const closes = (c: ToolCall): boolean => {
     if (c.phase !== "running") return false;
+    // A late boundary cannot close a call that started after it.
+    if (e.late && c.startedAt !== undefined && compareTimestamps(c.startedAt, e.occurredAt) > 0) {
+      return false;
+    }
     if (e.type === "session.ended" && sessionId !== undefined && c.sessionId === sessionId) {
       return true;
     }
