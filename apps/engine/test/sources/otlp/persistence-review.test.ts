@@ -89,7 +89,9 @@ const metricsOf = (...points: ReturnType<typeof costPoint>[]) => ({
   resourceMetrics: [
     {
       scopeMetrics: [
-        { metrics: [{ name: "claude_code.cost.usage", sum: { dataPoints: points } }] },
+        {
+          metrics: [{ name: "claude_code.cost.usage", sum: { dataPoints: points } }],
+        },
       ],
     },
   ],
@@ -148,6 +150,51 @@ describe("a full ledger evicts the least recently updated agent (MEDIUM)", () =>
   });
 });
 
+describe("a replayed point never evicts a current agent (HIGH)", () => {
+  // s1 reports a timestamped point, is evicted when s4 arrives, and the same export is then
+  // delivered again. The replay is a duplicate and must be rejected before the ledger makes room.
+  const point = (session: string, time: string) => metricsOf(costPoint({ session, time }));
+
+  async function fill(app: Parameters<typeof sendMetrics>[0]) {
+    const replayed = point("s1", tick());
+    expect((await sendMetrics(app, replayed)).status).toBe(200);
+    for (const s of ["s2", "s3"]) await send(app, s);
+    await send(app, "s4"); // ledger full: evicts s1
+    expect((await costOf(app, id("s1"))).status).toBe(404);
+    return replayed;
+  }
+
+  it("keeps every current agent when an evicted agent's counted point is replayed", async () => {
+    const { app } = await boot({ maxAgents: 3 });
+    const replayed = await fill(app);
+
+    const res = await sendMetrics(app, replayed);
+    expect(res.status).toBe(200);
+    for (const s of ["s2", "s3", "s4"]) {
+      expect((await readCost(app, id(s))).costUsd).toBeCloseTo(1, 6);
+    }
+    expect((await costOf(app, id("s1"))).status).toBe(404);
+    expect(
+      rawRows<{ agent_id: string }>("SELECT agent_id FROM otlp_cost")
+        .map((r) => r.agent_id)
+        .sort(),
+    ).toEqual([id("s2"), id("s3"), id("s4")]);
+  });
+
+  it("keeps every current agent across a restart after the replay", async () => {
+    const first = await boot({ maxAgents: 3 });
+    const replayed = await fill(first.app);
+    await sendMetrics(first.app, replayed);
+    first.storage.close();
+
+    const second = await boot({ maxAgents: 3 });
+    for (const s of ["s2", "s3", "s4"]) {
+      expect((await readCost(second.app, id(s))).costUsd).toBeCloseTo(1, 6);
+    }
+    expect((await costOf(second.app, id("s1"))).status).toBe(404);
+  });
+});
+
 describe("timeUnixNano is normalized (LOW-1)", () => {
   // Both spellings are within the 20 digit bound the identity accepts.
   const PLAIN = "1800000000000000";
@@ -178,7 +225,10 @@ describe("timeUnixNano is normalized (LOW-1)", () => {
                 {
                   timeUnixNano: time,
                   attributes: [
-                    { key: "event.name", value: { stringValue: "claude_code.api_request" } },
+                    {
+                      key: "event.name",
+                      value: { stringValue: "claude_code.api_request" },
+                    },
                     { key: "session.id", value: { stringValue: "lzlog" } },
                     { key: "cost_usd", value: { doubleValue: 0.5 } },
                   ],
@@ -240,7 +290,9 @@ describe("keys that are not well-formed Unicode are rejected (LOW-4)", () => {
       const { app } = await boot();
       const res = await sendMetrics(app, metricsOf(costPoint(options)));
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ partialSuccess: { rejectedDataPoints: "1" } });
+      expect(await res.json()).toEqual({
+        partialSuccess: { rejectedDataPoints: "1" },
+      });
       expect(rawRows("SELECT agent_id FROM otlp_cost")).toHaveLength(0);
     });
   }
@@ -278,7 +330,10 @@ describe("guards that hold today", () => {
 
     const storage = openStorage(dbPath());
     opened.push(storage);
-    expect(storage.project("demo")).toMatchObject({ id: "demo", roots: ["/repo"] });
+    expect(storage.project("demo")).toMatchObject({
+      id: "demo",
+      roots: ["/repo"],
+    });
     const { app } = await makeOtlpApp({ storage });
     await send(app, "after-migration");
     expect((await readCost(app, id("after-migration"))).costUsd).toBeCloseTo(1, 6);

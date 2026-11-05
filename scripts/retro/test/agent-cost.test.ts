@@ -59,7 +59,12 @@ const section = (md: string): string => {
 };
 
 describe("retro tokens and cost per agent", () => {
-  const md = renderRetro({ snapshot: withCost(FIXTURE_COST), template, now: NOW, key: "M9" });
+  const md = renderRetro({
+    snapshot: withCost(FIXTURE_COST),
+    template,
+    now: NOW,
+    key: "M9",
+  });
 
   it("has a Tokens and cost section before the written sections", () => {
     expect(md).toContain("## Tokens and cost");
@@ -130,6 +135,41 @@ describe("retro tokens and cost per agent", () => {
     const agentRow = rows[2] ?? "";
     expect(agentRow).toMatch(/^\| `claude-code:x\\\|y/);
     expect(agentRow).toMatch(/ \| 1 \| 2 \| 3 \| 4 \| \$1\.00 \|$/);
+  });
+
+  it("renders an agent ID with backticks as a literal code span", () => {
+    const longestRun = (text: string) =>
+      Math.max(0, ...(text.match(/`+/g) ?? []).map((r) => r.length));
+    for (const hostile of ["claude-code:a`b``c", "`claude-code:edge`", "claude-code:x```y`z"]) {
+      const out = renderRetro({
+        snapshot: withCost([
+          {
+            agentId: hostile,
+            tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 },
+            costUsd: 1,
+          },
+        ]),
+        template,
+        now: NOW,
+        key: "M9",
+      });
+      const rows = section(out)
+        .split("\n")
+        .filter((line) => line.startsWith("|"));
+      expect(rows).toHaveLength(4);
+      for (const row of rows) expect(row.split(/(?<!\\)\|/)).toHaveLength(8);
+      const agentRow = rows[2] ?? "";
+      const cell = (agentRow.split(/(?<!\\)\|/)[1] ?? "").trim();
+      // A code span: the opening run, the ID (one padding space each side allowed), the same run.
+      const match = /^(`+)(.*?)\1$/.exec(cell);
+      expect(match, `cell ${cell}`).not.toBeNull();
+      const delimiter = (match?.[1] ?? "").length;
+      let inner = match?.[2] ?? "";
+      if (inner.startsWith(" ") && inner.endsWith(" ")) inner = inner.slice(1, -1);
+      expect(inner).toBe(hostile);
+      expect(delimiter).toBeGreaterThan(longestRun(hostile));
+      expect(agentRow).toMatch(/ \| 1 \| 2 \| 3 \| 4 \| \$1\.00 \|$/);
+    }
   });
 
   it("says not measured, not zero, when the snapshot has no cost data", () => {
