@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_URL } from "../src/client.ts";
 import { discoverUrl, type Io } from "../src/context.ts";
-import { cli, freePort, freePorts, tempDir } from "./helpers.ts";
+import { cli, freePorts, tempDir } from "./helpers.ts";
 
 const homes: { remove: () => void }[] = [];
 afterEach(() => {
