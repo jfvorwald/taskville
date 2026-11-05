@@ -92,10 +92,7 @@ describe("attribute values used as ledger keys", () => {
 });
 
 describe("a full ledger", () => {
-  const warnings = (lines: string[]) =>
-    lines.map((l) => JSON.parse(l) as { level: number }).filter((l) => l.level === 40);
-
-  it("drops new agents visibly, warns once with counts only, and keeps updating known agents", async () => {
+  it("evicts the least recently updated agents for new ones, logs no IDs, and keeps updating known agents", async () => {
     const lines: string[] = [];
     const logger = pino({ level: "debug" }, { write: (line: string) => lines.push(line) });
     const { app } = await makeOtlpApp({ logger });
@@ -104,8 +101,8 @@ describe("a full ledger", () => {
     );
     const filled = await sendMetrics(app, metrics(COST, fill));
     expect(await filled.json()).toEqual({});
-    expect(warnings(lines)).toHaveLength(0);
 
+    // M5.29 review: a full ledger no longer refuses new agents forever; the oldest make room.
     const more = await sendMetrics(
       app,
       metrics(
@@ -114,25 +111,22 @@ describe("a full ledger", () => {
       ),
     );
     expect(more.status).toBe(200);
-    expect(((await more.json()) as Reply).partialSuccess?.rejectedDataPoints).toBe("5");
-    expect((await costOf(app, "claude-code:extra-0")).status).toBe(404);
+    expect(await more.json()).toEqual({});
+    expect((await readCost(app, "claude-code:extra-0")).costUsd).toBe(1);
+    for (let i = 0; i < 5; i++) {
+      expect((await costOf(app, `claude-code:fill-${i}`)).status).toBe(404);
+    }
+    expect((await costOf(app, "claude-code:fill-5")).status).toBe(200);
 
-    const again = await sendMetrics(
-      app,
-      metrics(COST, [costPoint({ "session.id": "extra-9" }, 1)]),
-    );
-    expect(((await again.json()) as Reply).partialSuccess?.rejectedDataPoints).toBe("1");
-
-    const warned = warnings(lines);
-    expect(warned).toHaveLength(1);
     const text = lines.join("\n");
     expect(text).not.toContain("extra-");
     expect(text).not.toContain("fill-");
 
     // A known agent keeps accumulating.
-    const known = await sendMetrics(app, metrics(COST, [costPoint({ "session.id": "fill-0" }, 2)]));
+    const last = `fill-${MAX_LEDGER_AGENTS - 1}`;
+    const known = await sendMetrics(app, metrics(COST, [costPoint({ "session.id": last }, 2)]));
     expect(await known.json()).toEqual({});
-    expect((await readCost(app, "claude-code:fill-0")).costUsd).toBe(3);
+    expect((await readCost(app, `claude-code:${last}`)).costUsd).toBe(3);
   }, 60_000);
 });
 

@@ -104,7 +104,39 @@ CREATE TABLE checkpoints (
 ) STRICT;
 `;
 
-const MIGRATIONS: readonly string[] = [V1, V2];
+// Telemetry cost (M5.29): per-agent token and cost totals from the OTLP receiver, and the hashed
+// identities of the data points already counted, so a re-delivered export is counted once. Both
+// are bounded by the receiver (agents and remembered identities are capped). Not event-log data.
+const V3 = `
+CREATE TABLE otlp_cost (
+  agent_id TEXT PRIMARY KEY CHECK (length(agent_id) <= 1024),
+  parent_agent_id TEXT CHECK (parent_agent_id IS NULL OR length(parent_agent_id) <= 256),
+  m_seen INTEGER NOT NULL CHECK (m_seen IN (0, 1)),
+  m_seen_tokens INTEGER NOT NULL CHECK (m_seen_tokens IN (0, 1)),
+  m_seen_cost INTEGER NOT NULL CHECK (m_seen_cost IN (0, 1)),
+  m_input REAL NOT NULL CHECK (m_input >= 0),
+  m_output REAL NOT NULL CHECK (m_output >= 0),
+  m_cache_read REAL NOT NULL CHECK (m_cache_read >= 0),
+  m_cache_creation REAL NOT NULL CHECK (m_cache_creation >= 0),
+  m_cost_usd REAL NOT NULL CHECK (m_cost_usd >= 0),
+  l_seen INTEGER NOT NULL CHECK (l_seen IN (0, 1)),
+  l_input REAL NOT NULL CHECK (l_input >= 0),
+  l_output REAL NOT NULL CHECK (l_output >= 0),
+  l_cache_read REAL NOT NULL CHECK (l_cache_read >= 0),
+  l_cache_creation REAL NOT NULL CHECK (l_cache_creation >= 0),
+  l_cost_usd REAL NOT NULL CHECK (l_cost_usd >= 0),
+  last_seen INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX otlp_cost_last_seen ON otlp_cost (last_seen);
+
+CREATE TABLE otlp_seen (
+  id INTEGER PRIMARY KEY,
+  digest TEXT NOT NULL UNIQUE CHECK (length(digest) = 64)
+) STRICT;
+`;
+
+const MIGRATIONS: readonly string[] = [V1, V2, V3];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 

@@ -47,6 +47,13 @@ export type MilestoneRecord = {
   dueOn: string | null;
 };
 
+/** Tokens and cost one agent reported through OpenTelemetry (the engine's persisted OTLP rows). */
+export type AgentCostRecord = {
+  agentId: string;
+  tokens: { input: number; output: number; cacheRead: number; cacheCreation: number };
+  costUsd: number;
+};
+
 export type Snapshot = {
   milestone: MilestoneRecord;
   issues: IssueRecord[];
@@ -56,6 +63,8 @@ export type Snapshot = {
   runs: RunRecord[];
   /** `docs/tasks/<KEY>.md` contents keyed by ticket key, for tickets that have one. */
   taskReports: Record<string, string>;
+  /** Tokens and cost per agent; absent when nothing was measured. */
+  agentCost?: AgentCostRecord[];
   /** When the snapshot was recorded with `--record`; the golden test renders as of this time. */
   recordedAt?: string;
 };

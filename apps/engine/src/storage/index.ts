@@ -8,6 +8,7 @@ export {
 } from "./checkpoints.ts";
 export { StorageError } from "./errors.ts";
 export { LATEST_SCHEMA_VERSION } from "./migrations.ts";
+export { type CostTotalsRow, MAX_SEEN_DIGESTS, SqliteOtlpCost } from "./otlp-cost.ts";
 export { SqlitePairingRecords } from "./pairings.ts";
 export { type ProjectionReducer, rebuildProjection, rebuildStaleProjections } from "./rebuild.ts";
 export {
