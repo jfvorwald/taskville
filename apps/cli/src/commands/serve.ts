@@ -137,6 +137,24 @@ interface RuntimeInfo {
 
 const RUNTIME_FILE = "engine.json";
 
+/**
+ * The loopback origin in an `engine.json` url, or undefined for anything else: the file is
+ * untrusted input, so no other host, scheme, path, query or user info is ever fetched or printed.
+ */
+function loopbackOrigin(raw: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  const plain = url.pathname === "/" && url.search === "" && url.hash === "";
+  const noUser = url.username === "" && url.password === "";
+  return plain && noUser && /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(url.origin)
+    ? url.origin
+    : undefined;
+}
+
 /** The URL of a live engine recorded in `<home>/engine.json`: its pid is alive and /health answers. */
 async function liveEngine(home: string): Promise<string | undefined> {
   let info: Partial<RuntimeInfo>;
@@ -146,6 +164,9 @@ async function liveEngine(home: string): Promise<string | undefined> {
     return undefined;
   }
   if (typeof info.url !== "string" || typeof info.pid !== "number") return undefined;
+  const origin = loopbackOrigin(info.url);
+  if (origin === undefined) return undefined;
+  if (!Number.isInteger(info.pid) || info.pid < 1 || info.pid > 2147483647) return undefined;
   try {
     process.kill(info.pid, 0);
   } catch (error) {
@@ -153,8 +174,8 @@ async function liveEngine(home: string): Promise<string | undefined> {
     if ((error as NodeJS.ErrnoException).code !== "EPERM") return undefined;
   }
   try {
-    await fetch(`${info.url}/health`, { signal: AbortSignal.timeout(2000) });
-    return info.url;
+    await fetch(`${origin}/health`, { signal: AbortSignal.timeout(2000) });
+    return origin;
   } catch {
     return undefined;
   }
@@ -336,7 +357,7 @@ export async function runEngine(
   const running = await liveEngine(home);
   if (running !== undefined) {
     io.stdout(
-      `Taskville is already running at ${running}\nPress p in the terminal where it runs for a new pairing link.\n`,
+      `Taskville is already running at ${running}\nFor a new pairing link, press p in that engine's terminal if it has one, or restart it.\n`,
     );
     return EXIT.ok;
   }
@@ -395,7 +416,9 @@ export async function runEngine(
       await io.openUrl(pathToFileURL(page.path).href).then(
         () => {
           io.stdout("Opened your browser to pair it.\n");
-          if (io.scheduleCleanup !== undefined) io.scheduleCleanup(page.remove);
+          io.stdout(`If no browser opened, open this link:\n${firstLink}\n`);
+          if (io.scheduleCleanup !== undefined)
+            io.scheduleCleanup(page.remove, PAIRING_CODE_TTL_MS);
           else setTimeout(page.remove, REDIRECT_PAGE_TTL_MS).unref();
         },
         () => {
@@ -423,9 +446,11 @@ export async function runEngine(
       interrupt: () => interrupt(),
     });
     io.stdout(
-      keys === undefined
-        ? `For a new pairing link later, restart taskville ${mode.command}. Ctrl-C stops the engine.\n`
-        : `Press p for a new pairing link (valid for ${minutes} minutes); Ctrl-C stops the engine.\n`,
+      keys === undefined && mode.command === "serve" && !quiet
+        ? "For a new pairing link later, restart taskville serve.\n"
+        : keys === undefined
+          ? `For a new pairing link later, restart taskville ${mode.command}. Ctrl-C stops the engine.\n`
+          : `Press p for a new pairing link (valid for ${minutes} minutes); Ctrl-C stops the engine.\n`,
     );
     try {
       await Promise.race([
@@ -481,9 +506,9 @@ function writeRedirectPage(
   const js = JSON.stringify(url).replace(/</g, "\\u003c");
   const html = `<!doctype html>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=${attr}">
 <title>Taskville</title>
 <script>location.replace(${js});</script>
+<noscript><meta http-equiv="refresh" content="0;url=${attr}"></noscript>
 `;
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });

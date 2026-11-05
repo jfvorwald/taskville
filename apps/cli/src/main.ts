@@ -78,7 +78,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
 
 if (import.meta.main) {
   const controller = new AbortController();
-  for (const signal of ["SIGINT", "SIGTERM"] as const)
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
     process.once(signal, () => controller.abort());
   run(process.argv.slice(2), {
     stdout: (text) => process.stdout.write(text),
@@ -90,8 +90,8 @@ if (import.meta.main) {
     stdin: process.stdin,
     stdoutIsTTY: process.stdout.isTTY === true,
     openUrl,
-    scheduleCleanup: (cleanup) => {
-      setTimeout(cleanup, 30_000).unref();
+    scheduleCleanup: (cleanup, delayMs) => {
+      setTimeout(cleanup, delayMs).unref();
     },
     sourceCheckout: existsSync(join(REPO_ROOT, "apps/web/package.json")),
     buildWeb,
@@ -126,21 +126,52 @@ function spawnDetached(command: string, args: string[]): Promise<void> {
 
 /** Opens a URL in the default browser. */
 function openUrl(url: string): Promise<void> {
-  if (process.platform === "darwin") return spawnDetached("open", [url]);
-  if (process.platform === "win32") return spawnDetached("cmd", ["/c", "start", "", url]);
-  return spawnDetached("xdg-open", [url]);
+  const { command, args } = openerCommand(process.platform, url);
+  return spawnDetached(command, args);
 }
+
+/** cmd.exe metacharacters, percent-encoded so `start` sees plain URL characters. */
+const CMD_METACHARACTERS: Record<string, string> = {
+  "&": "%26",
+  "^": "%5E",
+  "(": "%28",
+  ")": "%29",
+  "!": "%21",
+  ",": "%2C",
+  ";": "%3B",
+  "=": "%3D",
+};
+
+/** The program and argv that open a URL on a platform. */
+export function openerCommand(platform: string, url: string): { command: string; args: string[] } {
+  if (platform === "darwin") return { command: "open", args: [url] };
+  if (platform === "win32") {
+    const encoded = url.replace(/[&^()!,;=]/g, (c) => CMD_METACHARACTERS[c] as string);
+    return { command: "cmd", args: ["/c", "start", "", encoded] };
+  }
+  return { command: "xdg-open", args: [url] };
+}
+
+/** How much of the build's stderr is kept: the last 8 KB. */
+const BUILD_STDERR_BYTES = 8192;
 
 /** Builds the web client from the repository root (source checkout only). */
 function buildWeb(): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn("pnpm", ["--filter", "@taskville/web", "build"], {
       cwd: REPO_ROOT,
-      stdio: "ignore",
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderr = (stderr + chunk).slice(-BUILD_STDERR_BYTES);
     });
     child.once("error", reject);
     child.once("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`pnpm build exited with code ${code}`)),
+      code === 0
+        ? resolve()
+        : reject(Object.assign(new Error(`pnpm build exited with code ${code}`), { stderr })),
     );
   });
 }
