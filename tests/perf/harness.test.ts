@@ -1,6 +1,8 @@
 // Unit tests for the perf harness (roborev 5005). Run with `pnpm perf:unit`.
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { type RunningEngine, startEngine } from "./engine.ts";
 import { latencyPass, probe } from "./latency.ts";
@@ -102,6 +104,50 @@ describe("probe", () => {
     } as unknown as RunningEngine;
     await assert.rejects(probe(slow, viewer, "slow", 1, 0), /timed out/);
     viewer.close();
+  });
+});
+
+/** Node flags of the documented engine launch, `pnpm taskville` (the root package.json script). */
+function launchFlags(): string[] {
+  const root = resolve(import.meta.dirname, "../..");
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const [node, ...rest] = String(pkg.scripts.taskville).split(/\s+/);
+  assert.equal(node, "node");
+  return rest.filter((token) => token.startsWith("--"));
+}
+
+describe("engine memory flags (#166, SC-006)", () => {
+  it("the taskville launch caps V8's semi-spaces at 8 MiB", () => {
+    assert.ok(launchFlags().includes("--max-semi-space-size=8"), `flags: ${launchFlags()}`);
+  });
+
+  it("the launch flags hold the young generation at 16 MiB under churn (default grows to 64 MiB)", () => {
+    // Short-lived garbage with a little survival, as each ingest batch makes. Without the cap,
+    // V8 doubles the new space up to 64 MiB on this class of machine and never gives it back:
+    // that one-time step was most of SC-006's hour-1-to-8 RSS growth in the calm soak.
+    const churn = `
+      const v8 = require("node:v8");
+      let keep = [];
+      for (let i = 0; i < 6e6; i++) {
+        const o = { a: i, b: "x" + i, c: [i] };
+        if (i % 50 === 0) keep.push(o);
+        if (keep.length > 20000) keep = [];
+      }
+      const s = v8.getHeapSpaceStatistics().find((x) => x.space_name === "new_space");
+      process.stdout.write(String(s.space_size));`;
+    const bytes = Number(execFileSync(process.execPath, [...launchFlags(), "-e", churn]));
+    assert.ok(bytes <= 16 * 2 ** 20, `new space ${(bytes / 2 ** 20).toFixed(1)} MiB`);
+  });
+
+  it("startEngine launches the engine with the same node flags as `pnpm taskville`", async () => {
+    const engine = await startEngine();
+    try {
+      const args = execFileSync("ps", ["-o", "args=", "-p", String(engine.pid)]).toString();
+      assert.ok(args.includes("--max-semi-space-size=8"), args);
+      for (const flag of launchFlags()) assert.ok(args.includes(flag), `${flag} missing: ${args}`);
+    } finally {
+      await engine.stop();
+    }
   });
 });
 

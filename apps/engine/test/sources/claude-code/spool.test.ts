@@ -712,3 +712,181 @@ describe("ClaudeCodeSource receivedAt override", () => {
     expect(mapper.calls).toHaveLength(0);
   });
 });
+
+// M7.13 (#214): a drain must not hold the event loop. `serve` drains after listen; one run
+// ingests up to 2,000 hooks, and a loop of awaited, already-settled promises never lets the
+// event loop reach its I/O and timer phases, so live hook requests wait (measured ~2.9 s).
+// The pins count hooks per event-loop turn instead of elapsed time (L-206): a setImmediate
+// probe ticks once per turn, and every ingest records the tick it ran in.
+describe("drainSpool yields to live hooks (M7.13)", () => {
+  /** Hooks one event-loop turn may ingest: about 50 ms at the measured 1.35 ms per hook. */
+  const MAX_HOOKS_PER_TURN = 50;
+
+  /** Ticks a counter once per event-loop turn (setImmediate runs after the poll phase). */
+  function startProbe() {
+    let ticks = 0;
+    let running = true;
+    const tick = () => {
+      if (!running) return;
+      ticks += 1;
+      setImmediate(tick);
+    };
+    setImmediate(tick);
+    return {
+      ticks: () => ticks,
+      stop: () => {
+        running = false;
+      },
+    };
+  }
+
+  const stamp = (i: number) =>
+    new Date(Date.parse("2026-10-31T00:00:00Z") + i * 1000).toISOString();
+
+  function writeSpool(count: number, base = 0): string[] {
+    const ids = Array.from({ length: count }, () => uuid());
+    writeFileSync(
+      main(),
+      ids.map((sourceEventId, i) => line({ sourceEventId, spooledAt: stamp(base + i) })).join(""),
+      { mode: 0o600 },
+    );
+    return ids;
+  }
+
+  /** A source that settles at once, as the mapper-free part of a real ingest does. */
+  function instantSource() {
+    const seen: { id: string; tick: number }[] = [];
+    let tickOf = () => 0;
+    const source = {
+      ingestHook: (input: HookInput) => {
+        seen.push({ id: input.sourceEventId, tick: tickOf() });
+        return Promise.resolve({
+          projectId: "repo",
+          results: [{ status: "accepted" }],
+          heads: {},
+        });
+      },
+    } as unknown as ClaudeCodeSource;
+    return {
+      source,
+      seen,
+      bind: (ticks: () => number) => {
+        tickOf = ticks;
+      },
+    };
+  }
+
+  /** The longest run of consecutive ingests that shared one event-loop turn. */
+  function longestTurn(seen: { tick: number }[]): number {
+    let longest = 0;
+    let run = 0;
+    let last = -1;
+    for (const { tick } of seen) {
+      run = tick === last ? run + 1 : 1;
+      last = tick;
+      longest = Math.max(longest, run);
+    }
+    return longest;
+  }
+
+  it("never ingests more than a few dozen hooks without a turn of the event loop", async () => {
+    const ids = writeSpool(8000);
+    const fake = instantSource();
+    const probe = startProbe();
+    fake.bind(probe.ticks);
+    try {
+      await drainSpool({ spoolDir, source: fake.source, pauseMs: 1 });
+    } finally {
+      probe.stop();
+    }
+    expect(fake.seen).toHaveLength(ids.length);
+    expect(longestTurn(fake.seen)).toBeLessThanOrEqual(MAX_HOOKS_PER_TURN);
+  });
+
+  it("ingests a live hook posted mid-drain as live, within a few dozen spooled hooks", async () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        join(
+          import.meta.dirname,
+          "../../../../../fixtures/claude-code/permission/notification-permission-prompt.json",
+        ),
+        "utf8",
+      ),
+    ) as { body: Record<string, unknown> };
+    const livePayload = { ...fixture.body, session_id: "live-sess", cwd: "/work/repo" };
+    const liveId = uuid();
+
+    const real = realSource();
+    const { app } = makeApp();
+    let ingested = 0;
+    let atLive = -1;
+    let arrive: (res: Promise<Response>) => void = () => {};
+    const posted = new Promise<Response>((resolve) => {
+      arrive = (res) => resolve(res);
+    });
+    const OPEN_AFTER = 10;
+    const wrapped = {
+      ingestHook: (input: HookInput) => {
+        if (input.sourceEventId === liveId) {
+          atLive = ingested;
+        } else {
+          ingested += 1;
+          if (ingested === OPEN_AFTER) {
+            // A live request reaches the engine as an I/O callback, a later turn of the loop.
+            setImmediate(() => {
+              arrive(
+                Promise.resolve(
+                  app.request(
+                    `http://127.0.0.1:4807${CLAUDE_CODE_HOOKS_PATH}`,
+                    postJson({ sourceEventId: liveId, payload: livePayload }, bearer(CLI_TOKEN)),
+                  ),
+                ),
+              );
+            });
+          }
+        }
+        return real.ingestHook(input);
+      },
+    } as unknown as ClaudeCodeSource;
+    registerClaudeCodeRoutes(app, wrapped);
+
+    const count = 600;
+    writeSpool(count);
+    const total = await drainSpool({ spoolDir, source: wrapped, maxHooks: count, pauseMs: 1 });
+    expect(total).toMatchObject({ hooks: count, failed: false });
+    const res = await posted;
+    expect(res.status).toBe(200);
+
+    // The live hook ran soon after it arrived, not after the rest of the run.
+    expect(atLive).toBeGreaterThanOrEqual(OPEN_AFTER);
+    expect(atLive - OPEN_AFTER).toBeLessThanOrEqual(MAX_HOOKS_PER_TURN);
+
+    const liveOpened = repoEvents().filter(
+      (e) => e.type === "request.opened" && e.sourceEventId.startsWith(liveId),
+    );
+    expect(liveOpened).toHaveLength(1);
+    expect(liveOpened[0]?.late).toBe(false);
+    const state = db().projection<ProjectState>("repo")?.state;
+    const needsYou = attention(state as ProjectState, Date.parse("2026-10-31T12:00:00Z")).filter(
+      (a) => a.level === "needs_you",
+    );
+    expect(needsYou.length).toBeGreaterThan(0);
+  });
+
+  it("still ingests every spooled hook exactly once, oldest first, and empties the spool", async () => {
+    const ids = writeSpool(5000);
+    const fake = instantSource();
+    const probe = startProbe();
+    fake.bind(probe.ticks);
+    let total: SpoolReplayReport;
+    try {
+      total = await drainSpool({ spoolDir, source: fake.source, pauseMs: 1 });
+    } finally {
+      probe.stop();
+    }
+    expect(total).toMatchObject({ hooks: ids.length, deferredFiles: 0, failed: false });
+    expect(fake.seen.map((s) => s.id)).toEqual(ids);
+    expect(new Set(fake.seen.map((s) => s.id)).size).toBe(ids.length);
+    expect(spoolNames()).toEqual([]);
+  });
+});

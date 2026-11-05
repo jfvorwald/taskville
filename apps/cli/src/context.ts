@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { type ParseArgsConfig, parseArgs } from "node:util";
 import { resolveHome } from "@taskville/engine/src/config/home.ts";
 import { DEFAULT_URL, EngineClient, readToken } from "./client.ts";
@@ -17,6 +19,58 @@ export interface Io {
   confirm?: ((question: string) => Promise<boolean>) | undefined;
   /** The terminal's input, for `serve`'s keypress (M2.12). Used only when it is a TTY. */
   stdin?: KeyInput | undefined;
+  /** Whether a process is alive, for `<home>/engine.json`'s pid; defaults to `process.kill(pid, 0)`. */
+  isAlive?: ((pid: number) => boolean) | undefined;
+  /** Whether stdout is a terminal: quiet banner, log file, browser opening (M7.08). Absent is false. */
+  stdoutIsTTY?: boolean | undefined;
+  /** Opens a URL in the default browser; rejects on failure (`start`). */
+  openUrl?: ((url: string) => Promise<void>) | undefined;
+  /** Schedules deleting the redirect page `start` opened after `delayMs` (M7.08); absent means a short internal timer. */
+  scheduleCleanup?: ((cleanup: () => void, delayMs: number) => void) | undefined;
+  /** True when the CLI runs from a source checkout, so the web client can be built (`start`). */
+  sourceCheckout?: boolean | undefined;
+  /** Builds the web client once (`start`, source checkout only). */
+  buildWeb?: (() => Promise<void>) | undefined;
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** The running engine's URL from `<home>/engine.json`, or undefined unless it is loopback and alive. */
+export function discoverUrl(io: Io, home: string): string | undefined {
+  try {
+    const record: unknown = JSON.parse(readFileSync(join(home, "engine.json"), "utf8"));
+    if (typeof record !== "object" || record === null || Array.isArray(record)) return undefined;
+    const { url, pid } = record as { url?: unknown; pid?: unknown };
+    if (
+      typeof url !== "string" ||
+      typeof pid !== "number" ||
+      !Number.isInteger(pid) ||
+      pid < 1 ||
+      pid > 2147483647
+    ) {
+      return undefined;
+    }
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== "http:" ||
+      (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") ||
+      parsed.port === "" ||
+      parsed.username !== "" ||
+      parsed.password !== ""
+    ) {
+      return undefined;
+    }
+    return (io.isAlive ?? pidAlive)(pid) ? parsed.origin : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The part of `process.stdin` that `serve` uses. */
@@ -62,7 +116,11 @@ export function parseCommand(io: Io, args: string[], options: Options, usage: st
     throw new CliError(EXIT.failure, `${(error as Error).message}\nUsage: ${usage}`);
   }
   const home = resolveHome({ flag: values.home as string | undefined, env: io.env, cwd: io.cwd });
-  const url = (values.url as string | undefined) ?? io.env.TASKVILLE_URL ?? DEFAULT_URL;
+  const url =
+    (values.url as string | undefined) ??
+    io.env.TASKVILLE_URL ??
+    discoverUrl(io, home) ??
+    DEFAULT_URL;
   const context: Context = {
     io,
     home,

@@ -53,6 +53,12 @@ async function boot(search: string) {
   };
 }
 
+// boot() imports the whole app graph through the module transform, and the first test pays for
+// all of it: about 1 s idle and 2 s at 24 busy processes on 8 cores, but the 5 s default timed
+// out in a loaded `pnpm check` (seen 5+ times). The cost is import work, not behavior, so the
+// timeout is sized to it; no assertion here measures time (LESSONS L-206).
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
+
 let dispose: (() => void) | undefined;
 
 beforeEach(() => {

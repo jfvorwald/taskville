@@ -37,6 +37,7 @@ import {
 } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import { join } from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { compareTimestamps } from "@taskville/domain/reducer";
 import { timestampSchema } from "@taskville/protocol";
 import type { Logger } from "pino";
@@ -71,6 +72,8 @@ export const MAX_SPOOL_LINE_BYTES = MAX_HOOK_BODY_BYTES + 64 * 1024;
  * the development Mac), so a run before listen adds about 3 s at most.
  */
 export const DEFAULT_MAX_HOOKS = 2000;
+/** Hooks ingested between turns of the event loop, so live hooks are not starved by a drain. */
+const YIELD_EVERY_HOOKS = 25;
 /** ... or reads this many bytes, whichever comes first; the rest waits for the next run. */
 export const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
 /** How long to wait for a live shim to release the lock before leaving the main file. */
@@ -198,9 +201,15 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
   const retry = readRetry(spoolDir);
   const { attempts, quarantined } = retry;
   let attemptsChanged = false;
+  let sinceYield = 0;
   for (const entry of batch) {
     // Already in the poison file: a later failure kept its spool file, so it is read again.
     if (quarantined.has(entry.sourceEventId)) continue;
+    if (sinceYield >= YIELD_EVERY_HOOKS) {
+      sinceYield = 0;
+      await nextTurn();
+    }
+    sinceYield += 1;
     try {
       const res = await options.source.ingestHook({
         sourceEventId: entry.sourceEventId,

@@ -2,7 +2,7 @@ import { CALM, runOffline } from "@taskville/demo";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cli, freePort, startServe, tempDir } from "./helpers.ts";
 
-const HASH = /7:[0-9a-f]{64}/;
+const HASH = /8:[0-9a-f]{64}/;
 
 describe("demo run --offline (US3-1, quickstart section 4)", () => {
   it("prints the same stateHash twice for the same seed", async () => {
@@ -101,7 +101,6 @@ describe("demo run --offline (US3-1, quickstart section 4)", () => {
       ],
       /speed/,
     ],
-    [["demo", "start", "--seed", "1"], /--project/],
     [["demo", "start", "--project", "demo", "--seed", "1", "--speed", "0"], /speed/],
     [["demo", "dance"], /demo/],
   ])("rejects %j with exit 1", async (argv, message) => {
@@ -187,6 +186,47 @@ describe("demo start against a running engine", () => {
       .map((line) => JSON.parse(line) as { provenance: string; sourceId: string });
     expect(envelopes).toHaveLength(Number(summary?.[1]));
     expect(new Set(envelopes.map((e) => e.provenance))).toEqual(new Set(["demo"]));
+  });
+
+  it("`demo --speed 600 --duration 1m` with no --project or --seed lands in unsorted", async () => {
+    const result = await at("demo", "--speed", "600", "--duration", "1m");
+    expect(result.code).toBe(0);
+    const accepted = Number(/accepted (\d+) \/ duplicate/.exec(result.stdout)?.[1]);
+    expect(accepted).toBeGreaterThan(0);
+    const status = JSON.parse((await at("status", "--project", "unsorted", "--json")).stdout) as {
+      agents: unknown[];
+      cursor: number;
+    };
+    expect(status.agents.length).toBeGreaterThan(0);
+    expect(status.cursor).toBeGreaterThanOrEqual(accepted);
+  });
+
+  it("--json prints the summary with the seed (given)", async () => {
+    const result = await at(
+      "demo",
+      "start",
+      "--project",
+      "demo",
+      "--seed",
+      "9",
+      "--speed",
+      "600",
+      "--duration",
+      "1m",
+      "--json",
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ seed: 9 });
+  });
+
+  it("--json prints the summary with the random seed that was chosen", async () => {
+    const result = await at("demo", "--speed", "600", "--duration", "1m", "--json");
+    expect(result.code).toBe(0);
+    const body = JSON.parse(result.stdout) as { seed: number; accepted: number };
+    expect(Number.isSafeInteger(body.seed)).toBe(true);
+    expect(body.accepted).toBeGreaterThan(0);
+    // The banner goes to stderr in --json mode, and names the same seed.
+    expect(result.stderr).toContain(`Demo seed ${body.seed}`);
   });
 
   it("exits 2 for a project that was never added", async () => {
