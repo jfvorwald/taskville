@@ -51,6 +51,8 @@ function realProbes(context: Context): DoctorProbes {
     },
     onPath: (command) =>
       (context.io.env.PATH ?? process.env.PATH ?? "").split(delimiter).some((dir) => {
+        // An empty entry would resolve to the current folder, which a shell does not search here.
+        if (dir === "") return false;
         try {
           accessSync(join(dir, command), constants.X_OK);
           return true;
@@ -160,6 +162,9 @@ function checkShim(home: string): Check {
   }
 }
 
+/** Replaces control characters (an ESC sequence could rewrite the terminal) with a placeholder. */
+const visible = (text: string): string => text.replace(/\p{Cc}/gu, "�");
+
 async function checkProject(io: Io, probes: DoctorProbes): Promise<Check> {
   const here = [io.cwd];
   try {
@@ -171,7 +176,7 @@ async function checkProject(io: Io, probes: DoctorProbes): Promise<Check> {
     const found = (await probes.listProjects()).find((p) =>
       p.roots.some((root) => here.some((d) => d === root || d.startsWith(root + sep))),
     );
-    if (found !== undefined) return ok("project", `${found.name} (${found.id})`);
+    if (found !== undefined) return ok("project", visible(`${found.name} (${found.id})`));
     return fail("project", "this folder is not in any project", "taskville init");
   } catch {
     return fail("project", "could not list projects", "taskville start");

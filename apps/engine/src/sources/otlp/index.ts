@@ -71,7 +71,6 @@ export class CostLedger {
   readonly #store: SqliteOtlpCost | undefined;
   readonly #maxAgents: number;
   readonly #seen = new Set<string>();
-  #warned = false;
 
   constructor(store?: SqliteOtlpCost, maxAgents: number = MAX_LEDGER_AGENTS) {
     this.#store = store;
@@ -146,13 +145,6 @@ export class CostLedger {
       this.#load(); // the transaction rolled back, so memory must match the database again
       throw error;
     }
-  }
-
-  /** True once, the first time a new agent is refused because the ledger is full. */
-  noteFull(): boolean {
-    const first = !this.#warned;
-    this.#warned = true;
-    return first;
   }
 
   /** @internal */
@@ -250,25 +242,41 @@ function timeOf(raw: unknown): string | undefined {
   return normalized !== "" && normalized.length <= 20 ? normalized : undefined;
 }
 
-/** Identity of a data point for dedupe; undefined without a timestamp (never deduplicated). */
+/** A value with object keys sorted at every depth, so equal values serialize alike. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, canonical(value[key])]),
+  );
+}
+
+/**
+ * Identity of a data point for dedupe; undefined without a timestamp (never deduplicated). Built
+ * from the raw attribute list, every attribute with its type tag (`stringValue`, `boolValue`, ...),
+ * so `"5"` and `5`, or two points differing only in an attribute the reader ignores, stay apart.
+ */
 function identity(
   kind: "metric" | "log",
   name: string,
-  attrs: Map<string, string | number>,
+  rawAttributes: unknown,
   time: unknown,
 ): string | undefined {
   const at = timeOf(time);
   if (at === undefined) return undefined;
-  const sorted = [...attrs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return JSON.stringify([kind, text(attrs, "session.id"), name, sorted, at]);
+  const pairs = list(rawAttributes).map((item) =>
+    JSON.stringify([item.key, canonical(item.value)]),
+  );
+  return JSON.stringify([kind, name, pairs.sort(), at]);
 }
 
-/** The ledger entry for a data point; a refusal (too long, or ledger full) is reported as such. */
+/** The ledger entry for a data point; a refusal (an over-long key) is reported as such. */
 function entryFor(
   ledger: CostLedger,
   attrs: Map<string, string | number>,
   id: string | undefined,
-  onFull: () => void,
 ): Entry | "skip" | "rejected" {
   const who = whoOf(attrs);
   if (who === undefined) return "skip";
@@ -276,19 +284,15 @@ function entryFor(
   // A re-delivered point is dropped before an entry is created, so it never evicts an agent.
   if (id !== undefined && !ledger.claim(id)) return "skip";
   const entry = ledger.entry(who.agentId, who.parent);
-  if (entry === undefined) {
-    onFull();
-    return "rejected";
-  }
-  return entry;
+  return entry ?? "rejected";
 }
 
-type Ingest = (ledger: CostLedger, body: Json, onFull: () => void) => number;
+type Ingest = (ledger: CostLedger, body: Json) => number;
 
 const TOKEN_TYPES: ReadonlySet<string> = new Set(["input", "output", "cacheRead", "cacheCreation"]);
 
 /** Returns the number of data points refused (an over-long key, or a full ledger). */
-function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): number {
+function ingestMetrics(ledger: CostLedger, body: Json): number {
   let rejected = 0;
   for (const resource of list(body.resourceMetrics)) {
     for (const scope of list(resource.scopeMetrics)) {
@@ -304,8 +308,8 @@ function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): numb
           if (value === undefined) continue;
           const type = text(attrs, "type");
           if (isTokens && (type === undefined || !TOKEN_TYPES.has(type))) continue;
-          const id = identity("metric", String(metric.name), attrs, point.timeUnixNano);
-          const entry = entryFor(ledger, attrs, id, onFull);
+          const id = identity("metric", String(metric.name), point.attributes, point.timeUnixNano);
+          const entry = entryFor(ledger, attrs, id);
           if (entry === "skip") continue;
           if (entry === "rejected") {
             rejected += 1;
@@ -326,15 +330,20 @@ function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): numb
   return rejected;
 }
 
-function ingestLogs(ledger: CostLedger, body: Json, onFull: () => void): number {
+function ingestLogs(ledger: CostLedger, body: Json): number {
   let rejected = 0;
   for (const resource of list(body.resourceLogs)) {
     for (const scope of list(resource.scopeLogs)) {
       for (const record of list(scope.logRecords)) {
         const attrs = attributes(record.attributes);
         if (attrs.get("event.name") !== "claude_code.api_request") continue;
-        const id = identity("log", "claude_code.api_request", attrs, record.timeUnixNano);
-        const entry = entryFor(ledger, attrs, id, onFull);
+        const id = identity(
+          "log",
+          "claude_code.api_request",
+          record.attributes,
+          record.timeUnixNano,
+        );
+        const entry = entryFor(ledger, attrs, id);
         if (entry === "skip") continue;
         if (entry === "rejected") {
           rejected += 1;
@@ -396,13 +405,7 @@ export function registerOtlpRoutes(app: Hono<AppEnv>, options: OtlpRouteOptions 
         ) {
           return apiError(c, 400, "bad_request", "Expected an OTLP/HTTP JSON export");
         }
-        const rejected = ledger.batch(() =>
-          ingest(ledger, body, () => {
-            if (ledger.noteFull()) {
-              options.logger?.warn({ maxAgents: MAX_LEDGER_AGENTS }, "OTLP cost ledger is full");
-            }
-          }),
-        );
+        const rejected = ledger.batch(() => ingest(ledger, body));
         return c.json(
           rejected === 0 ? {} : { partialSuccess: { [rejectedKey]: String(rejected) } },
         );

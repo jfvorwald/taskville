@@ -172,10 +172,11 @@ const MAX_USER = 128;
 // Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
 // publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
 // tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
-// `sshpass`, 3 is `docker`, `podman`, `nerdctl` or `finch`, which count only when the same command has a whole
+// `sshpass`, 3 is a container or registry CLI (`docker`, `docker.exe`, `podman`, `nerdctl`, `finch`,
+// `helm`, `oras`, `skopeo`, `crane`, `buildah`), which counts only when the same command has a whole
 // `login` word after it (see scanLoginSegment). A path in front (`/usr/bin/mysql`) is fine.
 const PASSWORD_COMMAND =
-  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman|nerdctl|finch))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
+  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker\.exe|docker|podman|nerdctl|finch|helm|oras|skopeo|crane|buildah))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
 
 // A `{"name": "DB_PASSWORD", "value": "..."}` pair (Kubernetes env, the GitHub API, AWS
 // tags, `docker inspect`) written as text, in either property order and across lines.
