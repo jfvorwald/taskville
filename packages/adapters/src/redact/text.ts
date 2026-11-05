@@ -617,7 +617,7 @@ const PAIR_NAME_TEXT = /^[A-Za-z_][A-Za-z0-9_.-]{0,99}$/;
 function findObjectPairs(input: string, ends: Ends, out: Candidate[]): void {
   const frames: number[] = [];
   const doubleEnds = quoteEnds(input, '"');
-  const singleEnds = quoteEnds(input, "'");
+  const singleEnds = quoteEnds(input, "'", true);
   const sensitive = new Set<number>();
   const values: Array<{ frame: number; at: number }> = [];
   let nextFrame = 0;
@@ -829,8 +829,10 @@ function quotedEnd(input: string, from: number, quote: string): number {
 /**
  * For each index, what `quotedEnd(input, index, quote)` returns, from one backward pass, so
  * the close of any quoted segment is found in O(1) even in a long run of escaped quotes.
+ * `escapes` makes a backslash escape inside single quotes too (JSON-like text); shell rules
+ * leave it false, since a shell does not escape inside single quotes.
  */
-function quoteEnds(input: string, quote: string): Int32Array {
+function quoteEnds(input: string, quote: string, escapes = false): Int32Array {
   const n = input.length;
   const ends = new Int32Array(n + 2);
   ends[n] = n;
@@ -838,7 +840,7 @@ function quoteEnds(input: string, quote: string): Int32Array {
   for (let j = n - 1; j >= 0; j--) {
     const ch = input.charAt(j);
     if (ch === quote || ch === "\n" || ch === "\r") ends[j] = j;
-    else ends[j] = ends[j + (ch === "\\" && quote === '"' ? 2 : 1)] ?? n;
+    else ends[j] = ends[j + (ch === "\\" && (quote === '"' || escapes) ? 2 : 1)] ?? n;
   }
   return ends;
 }
