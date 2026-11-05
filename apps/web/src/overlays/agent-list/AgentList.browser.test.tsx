@@ -90,6 +90,6 @@ describe("AgentList selection state", () => {
 
     await userEvent.keyboard("{ArrowDown}");
     await userEvent.keyboard("{Enter}");
-    expect(picked).toEqual(["deliberately-broken"]);
+    expect(picked).toEqual(["b2"]);
   });
 });
