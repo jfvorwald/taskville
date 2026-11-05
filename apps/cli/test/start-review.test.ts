@@ -371,22 +371,20 @@ describe("6. openerCommand", () => {
     expect(openerCommand("linux", url)).toEqual({ command: "xdg-open", args: [url] });
   });
 
-  it("on win32 percent-encodes cmd metacharacters & ^ ( ) ! , ; = in the URL", () => {
-    const got = openerCommand("win32", "file:///C:/Users/A&B/.tv/x(1)^!,;=.html");
-    expect(got.command).toBe("cmd");
-    expect(got.args).toEqual([
-      "/c",
-      "start",
-      "",
-      "file:///C:/Users/A%26B/.tv/x%281%29%5E%21%2C%3B%3D.html",
-    ]);
+  it("on win32 uses rundll32 with the URL as one argument, never cmd.exe", () => {
+    const url = "file:///C:/Users/A%20B%20C/.tv/run/a&b(1)^!,;=.html";
+    expect(openerCommand("win32", url)).toEqual({
+      command: "rundll32",
+      args: ["url.dll,FileProtocolHandler", url],
+    });
   });
 
-  it("on win32 leaves no metacharacter in a URL built from C:\\Users\\A&B\\.tv", () => {
-    const got = openerCommand("win32", "file:///C:\\Users\\A&B\\.tv\\run\\p.html");
-    const arg = got.args[got.args.length - 1] as string;
-    expect(arg).not.toMatch(/[&^()!,;=]/);
-    expect(arg).toContain("A%26B");
+  it("on win32 passes a URL with several %20 and & through unchanged (no cmd percent expansion)", () => {
+    const url = "file:///C:/Users/Jane%20Q%20Doe/.tv/run/p.html?a=1&b=2";
+    const got = openerCommand("win32", url);
+    expect(got.command).not.toMatch(/cmd/i);
+    expect(got.args).not.toContain("/c");
+    expect(got.args[got.args.length - 1]).toBe(url);
   });
 });
 
