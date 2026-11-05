@@ -37,7 +37,7 @@ Commands:
   install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
   uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
   demo run --offline --seed <n> --duration <t> [--pace <pace>]
-  demo start --project <id> --seed <n> [--pace <pace>] [--speed <x>] [--duration <t>]
+  demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <t>]
 
 Global options: --home <dir>, --url <base>, --json
 `;

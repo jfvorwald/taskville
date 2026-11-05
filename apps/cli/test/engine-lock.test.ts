@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -176,5 +177,35 @@ describe("roborev 7034", () => {
     expect(readdirSync(h).filter((n) => n.includes(".stale."))).toEqual([]);
     expect(readFileSync(join(h, "engine.lock"), "utf8").trim()).toBe(`${process.pid}`);
     first?.();
+  });
+});
+
+// roborev 7045: a live reclaimer's mutex is never cleared by age, and a bad reclaim entry cannot
+// make reclamation loop past the deadline.
+describe("roborev 7045", () => {
+  it("does not clear a reclaim mutex held by a live process, however old", async () => {
+    const h = home();
+    const dead = deadPid();
+    writeFileSync(join(h, "engine.lock"), `${dead}\n`);
+    const reclaim = join(h, "engine.lock.reclaim");
+    writeFileSync(reclaim, `${process.pid}\n`);
+    utimesSync(reclaim, new Date(0), new Date(0));
+    await expect(
+      acquireLock(h, { waitMs: 200, pidAlive: (pid) => pid !== dead }),
+    ).rejects.toThrow();
+    expect(readFileSync(reclaim, "utf8").trim()).toBe(`${process.pid}`);
+    expect(readFileSync(join(h, "engine.lock"), "utf8").trim()).toBe(`${dead}`);
+  });
+
+  it("a directory at engine.lock.reclaim fails within the deadline", async () => {
+    const h = home();
+    const dead = deadPid();
+    writeFileSync(join(h, "engine.lock"), `${dead}\n`);
+    mkdirSync(join(h, "engine.lock.reclaim"));
+    const started = Date.now();
+    await expect(acquireLock(h, { waitMs: 200, pidAlive: (pid) => pid !== dead })).rejects.toThrow(
+      /engine\.lock\.reclaim/,
+    );
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });
