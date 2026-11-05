@@ -176,8 +176,8 @@ export function composeServe(io: Io, home: string, portFlag: number | undefined)
     // that answer them, and live PostToolUse telemetry closing a request answered in the terminal.
     wired = wirePermissionBridge({ app, engine, config, logger, now });
     registerClaudeCodeRoutes(app, claudeCode, { observeHook: wired.observeHook });
-    // Optional OpenTelemetry receiver (M5.12): tokens and cost, kept in memory.
-    registerOtlpRoutes(app, { logger });
+    // Optional OpenTelemetry receiver (M5.12): tokens and cost, persisted (M5.29).
+    registerOtlpRoutes(app, { logger, storage: engine.storage });
     // Agent feed, crew, and evidence reads (M5.01): the stream cap and shutdown are the engine's.
     registerFeedRoutes(app, {
       storage: engine.storage,

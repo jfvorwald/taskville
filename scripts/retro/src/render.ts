@@ -5,7 +5,7 @@ import { buildModel, type RetroModel, SIZES, type Ticket } from "./model.ts";
 import { milestoneKeyOf } from "./reduce.ts";
 import { mergeWrittenSections } from "./sections.ts";
 import { renderTemplate, type View } from "./template.ts";
-import type { Snapshot } from "./types.ts";
+import type { AgentCostRecord, Snapshot } from "./types.ts";
 
 export const NOT_MEASURED = "not measured";
 
@@ -90,6 +90,32 @@ function planVersusActual(model: RetroModel): string {
   ].join("\n");
 }
 
+function tokensAndCost(records: AgentCostRecord[] | undefined): string {
+  if (records === undefined || records.length === 0) {
+    return `Tokens and cost: ${NOT_MEASURED} (no OpenTelemetry data for this milestone).`;
+  }
+  const rows = [...records].sort(
+    (a, b) => b.costUsd - a.costUsd || (a.agentId < b.agentId ? -1 : a.agentId > b.agentId ? 1 : 0),
+  );
+  const line = (label: string, t: AgentCostRecord["tokens"], cost: number) =>
+    `| ${label} | ${t.input} | ${t.output} | ${t.cacheRead} | ${t.cacheCreation} | $${cost.toFixed(2)} |`;
+  const total = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
+  let totalCost = 0;
+  for (const r of rows) {
+    total.input += r.tokens.input;
+    total.output += r.tokens.output;
+    total.cacheRead += r.tokens.cacheRead;
+    total.cacheCreation += r.tokens.cacheCreation;
+    totalCost += r.costUsd;
+  }
+  return [
+    "| Agent | Input | Output | Cache read | Cache creation | Cost |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rows.map((r) => line(r.agentId, r.tokens, r.costUsd)),
+    line("Total", total, totalCost),
+  ].join("\n");
+}
+
 export function buildView(model: RetroModel, snapshot: Snapshot, now: Date, key: string): View {
   const reviewed =
     model.reviews.firstPass +
@@ -155,6 +181,7 @@ export function buildView(model: RetroModel, snapshot: Snapshot, now: Date, key:
     sec_med: NOT_MEASURED,
     sec_low: NOT_MEASURED,
     plan_vs_actual_table: planVersusActual(model),
+    tokens_cost_table: tokensAndCost(snapshot.agentCost),
   };
 }
 

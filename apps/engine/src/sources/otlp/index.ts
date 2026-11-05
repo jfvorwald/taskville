@@ -2,12 +2,16 @@
 // JSON export of tokens and cost, kept in an in-memory ledger keyed by agent ID and read back with
 // `GET /v1/agents/:id/cost`. Telemetry is a counter, not a fact the world replays, so nothing
 // here touches the event log or the reducer. Payload bodies and attribute values are never logged.
+import { createHash } from "node:crypto";
 import { MAX_BATCH_BYTES } from "@taskville/protocol";
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Logger } from "pino";
 import { type AppEnv, requireScope } from "../../http/app.ts";
 import { apiError } from "../../http/errors.ts";
+import type { SqliteOtlpCost } from "../../storage/otlp-cost.ts";
+import { MAX_SEEN_DIGESTS } from "../../storage/otlp-cost.ts";
+import type { Storage } from "../../storage/storage.ts";
 
 export const OTLP_METRICS_PATH = "/v1/otlp/v1/metrics";
 export const OTLP_LOGS_PATH = "/v1/otlp/v1/logs";
@@ -43,6 +47,7 @@ interface Totals {
 }
 
 interface Entry {
+  agentId: string;
   parentAgentId?: string;
   metrics: Totals;
   logs: Totals;
@@ -56,10 +61,75 @@ const emptyTotals = (): Totals => ({
   costUsd: 0,
 });
 
-/** Tokens and cost per agent, in memory. Metrics win over logs so spend is never counted twice. */
+/**
+ * Tokens and cost per agent. Metrics win over logs so spend is never counted twice. Held in memory
+ * and, given a store (M5.29), written through to it and read back at construction. A data point
+ * with a timestamp is counted once: its identity is remembered (the latest MAX_SEEN_DIGESTS).
+ */
 export class CostLedger {
   readonly #entries = new Map<string, Entry>();
+  readonly #store: SqliteOtlpCost | undefined;
+  readonly #seen = new Set<string>();
   #warned = false;
+
+  constructor(store?: SqliteOtlpCost) {
+    this.#store = store;
+    for (const row of store?.load(MAX_LEDGER_AGENTS) ?? []) {
+      const totals = (t: typeof row.logs): CostTokens => ({
+        input: t.input,
+        output: t.output,
+        cacheRead: t.cacheRead,
+        cacheCreation: t.cacheCreation,
+      });
+      this.#entries.set(row.agentId, {
+        agentId: row.agentId,
+        ...(row.parentAgentId === undefined ? {} : { parentAgentId: row.parentAgentId }),
+        metrics: {
+          seen: row.metrics.seen,
+          seenTokens: row.metrics.seenTokens,
+          seenCost: row.metrics.seenCost,
+          tokens: totals(row.metrics),
+          costUsd: row.metrics.costUsd,
+        },
+        logs: {
+          seen: row.logs.seen,
+          seenTokens: false,
+          seenCost: false,
+          tokens: totals(row.logs),
+          costUsd: row.logs.costUsd,
+        },
+      });
+    }
+  }
+
+  /** True when the data point `identity` is new (and remembers it); false for a re-delivery. */
+  claim(identity: string): boolean {
+    const digest = createHash("sha256").update(identity).digest("hex");
+    if (this.#store !== undefined) return this.#store.claim(digest);
+    if (this.#seen.has(digest)) return false;
+    this.#seen.add(digest);
+    if (this.#seen.size > MAX_SEEN_DIGESTS) {
+      this.#seen.delete(this.#seen.values().next().value as string);
+    }
+    return true;
+  }
+
+  /** Writes an entry through to the store, if any. */
+  save(entry: Entry): void {
+    const { metrics: m, logs: l } = entry;
+    const row = (t: Totals) => ({ seen: t.seen, ...t.tokens, costUsd: t.costUsd });
+    this.#store?.save({
+      agentId: entry.agentId,
+      ...(entry.parentAgentId === undefined ? {} : { parentAgentId: entry.parentAgentId }),
+      metrics: { ...row(m), seenTokens: m.seenTokens, seenCost: m.seenCost },
+      logs: row(l),
+    });
+  }
+
+  /** Runs one export's changes as a single store transaction. */
+  batch<T>(work: () => T): T {
+    return this.#store === undefined ? work() : this.#store.transaction(work);
+  }
 
   /** True once, the first time a new agent is refused because the ledger is full. */
   noteFull(): boolean {
@@ -73,7 +143,7 @@ export class CostLedger {
     let entry = this.#entries.get(agentId);
     if (entry === undefined) {
       if (this.#entries.size >= MAX_LEDGER_AGENTS) return undefined;
-      entry = { metrics: emptyTotals(), logs: emptyTotals() };
+      entry = { agentId, metrics: emptyTotals(), logs: emptyTotals() };
       this.#entries.set(agentId, entry);
     }
     if (parentAgentId !== undefined) entry.parentAgentId = parentAgentId;
@@ -147,6 +217,27 @@ function whoOf(
   };
 }
 
+/** `timeUnixNano` as a decimal string; undefined when absent, zero, or not an unsigned integer. */
+function timeOf(raw: unknown): string | undefined {
+  const value = typeof raw === "number" && Number.isSafeInteger(raw) ? String(raw) : raw;
+  return typeof value === "string" && /^[0-9]{1,20}$/.test(value) && /[1-9]/.test(value)
+    ? value
+    : undefined;
+}
+
+/** Identity of a data point for dedupe; undefined without a timestamp (never deduplicated). */
+function identity(
+  kind: "metric" | "log",
+  name: string,
+  attrs: Map<string, string | number>,
+  time: unknown,
+): string | undefined {
+  const at = timeOf(time);
+  if (at === undefined) return undefined;
+  const sorted = [...attrs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify([kind, text(attrs, "session.id"), name, sorted, at]);
+}
+
 /** The ledger entry for a data point; a refusal (too long, or ledger full) is reported as such. */
 function entryFor(
   ledger: CostLedger,
@@ -191,6 +282,8 @@ function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): numb
             rejected += 1;
             continue;
           }
+          const id = identity("metric", String(metric.name), attrs, point.timeUnixNano);
+          if (id !== undefined && !ledger.claim(id)) continue;
           entry.metrics.seen = true;
           if (isTokens) entry.metrics.seenTokens = true;
           else entry.metrics.seenCost = true;
@@ -198,6 +291,7 @@ function ingestMetrics(ledger: CostLedger, body: Json, onFull: () => void): numb
             const key = type as keyof CostTokens;
             entry.metrics.tokens[key] = add(entry.metrics.tokens[key], value);
           } else entry.metrics.costUsd = add(entry.metrics.costUsd, value);
+          ledger.save(entry);
         }
       }
     }
@@ -218,6 +312,8 @@ function ingestLogs(ledger: CostLedger, body: Json, onFull: () => void): number 
           rejected += 1;
           continue;
         }
+        const id = identity("log", "claude_code.api_request", attrs, record.timeUnixNano);
+        if (id !== undefined && !ledger.claim(id)) continue;
         const logs = entry.logs;
         logs.seen = true;
         const num = (key: string) => number(attrs.get(key)) ?? 0;
@@ -226,6 +322,7 @@ function ingestLogs(ledger: CostLedger, body: Json, onFull: () => void): number 
         logs.tokens.cacheRead = add(logs.tokens.cacheRead, num("cache_read_tokens"));
         logs.tokens.cacheCreation = add(logs.tokens.cacheCreation, num("cache_creation_tokens"));
         logs.costUsd = add(logs.costUsd, num("cost_usd"));
+        ledger.save(entry);
       }
     }
   }
@@ -234,6 +331,8 @@ function ingestLogs(ledger: CostLedger, body: Json, onFull: () => void): number 
 
 export interface OtlpRouteOptions {
   ledger?: CostLedger;
+  /** The engine's storage: totals persist across a restart. Without it the ledger is in memory. */
+  storage?: Storage;
   /** For the one warning when the ledger is full (counts only, never an ID). */
   logger?: Logger;
 }
@@ -244,7 +343,7 @@ export interface OtlpRouteOptions {
  * Origin and credential middleware already ran. Errors never echo the input.
  */
 export function registerOtlpRoutes(app: Hono<AppEnv>, options: OtlpRouteOptions = {}): CostLedger {
-  const ledger = options.ledger ?? new CostLedger();
+  const ledger = options.ledger ?? new CostLedger(options.storage?.otlpCost());
   const receive = (path: string, ingest: Ingest, rejectedKey: string) =>
     app.post(
       path,
@@ -269,11 +368,13 @@ export function registerOtlpRoutes(app: Hono<AppEnv>, options: OtlpRouteOptions 
         ) {
           return apiError(c, 400, "bad_request", "Expected an OTLP/HTTP JSON export");
         }
-        const rejected = ingest(ledger, body, () => {
-          if (ledger.noteFull()) {
-            options.logger?.warn({ maxAgents: MAX_LEDGER_AGENTS }, "OTLP cost ledger is full");
-          }
-        });
+        const rejected = ledger.batch(() =>
+          ingest(ledger, body, () => {
+            if (ledger.noteFull()) {
+              options.logger?.warn({ maxAgents: MAX_LEDGER_AGENTS }, "OTLP cost ledger is full");
+            }
+          }),
+        );
         return c.json(
           rejected === 0 ? {} : { partialSuccess: { [rejectedKey]: String(rejected) } },
         );
