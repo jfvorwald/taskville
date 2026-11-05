@@ -4,7 +4,7 @@ import { parseInputEvent, type StoredEnvelope, storedEnvelopeSchema } from "@tas
 import { describe, expect, it } from "vitest";
 import { loadFixture } from "../../../../fixtures/events/loader.ts";
 import { initialState, reduce, replay } from "../../src/reducer/index.ts";
-import { attention } from "../../src/selectors/index.ts";
+import { attentionCounts } from "../../src/selectors/index.ts";
 import { type Emit, type EnvelopeFields, eventStream } from "./events.ts";
 
 // M7.15 (#391): a late (replayed) event keeps its old occurredAt but arrives after live ones. It
@@ -48,7 +48,7 @@ describe("a late event against an open request", () => {
       make(emit, { ...S, late: true, occurredAt: OLDER }),
     ]);
     expect(state.requests.r1?.state).toBe("open");
-    expect(attention(state, "2026-10-30T12:00:00Z").counts.needsYou).toBe(1);
+    expect(attentionCounts(state, Date.parse("2026-10-30T12:00:00Z")).needsYou).toBe(1);
   });
 
   it.each(lateEvents)("late %s newer than openedAt still closes it", (_, make) => {
