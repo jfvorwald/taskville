@@ -252,3 +252,40 @@ describe("M7.12 review L4: docker-compatible CLIs", () => {
     expectMasked(input, pw);
   });
 });
+
+describe("M7.12 round 2: stray quotes and single-quoted brackets", () => {
+  it.each([
+    [
+      "stray double quote earlier on the line",
+      `Got 5" screen: {"name":"DB_PASSWORD","type":"secure","value":"${["hunter", "2x"].join("")}"}`,
+      ["hunter", "2x"].join(""),
+    ],
+    [
+      "leading stray double quote",
+      `x" {"name":"DB_PASSWORD","type":"t","value":"${["hunter", "2x"].join("")}"}`,
+      ["hunter", "2x"].join(""),
+    ],
+    [
+      "single-quoted open brace in hint",
+      `{'name':'DB_PASSWORD','note':'a {b','value':'${["hunter", "2x"].join("")}'}`,
+      ["hunter", "2x"].join(""),
+    ],
+    [
+      "single-quoted close brace in value before name",
+      `{'value':'${["pa}ss", "1234"].join("")}','type':'t','name':'DB_PASSWORD'}`,
+      ["pa}ss", "1234"].join(""),
+    ],
+  ])("masks %s", (_name, input, secret) => {
+    expectMasked(input, secret);
+  });
+});
+
+describe("M7.12 round 2 guards: quoted inner commands", () => {
+  it("masks --password= inside a quoted inner command", () => {
+    const secret = ["hunter", "2x"].join("");
+    expectMasked(`sh -c 'docker login --password=${secret} reg'`, secret);
+  });
+  it("masks -p after a CRLF continuation inside a quoted inner command", () => {
+    expectMasked(`sh -c 'docker login \\\r\n  -p ${pw} reg'`, pw);
+  });
+});
