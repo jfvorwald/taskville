@@ -468,10 +468,37 @@ function skipBlanks(input: string, at: number): number {
   return i;
 }
 
+/**
+ * If the value at `from` opens with an escaped quote (`\"` or `\'`, a quoted word one level
+ * down inside a double-quoted `sh -c` word), the index just after the matching escaped quote;
+ * otherwise `from`. The search stops at a line break, `;`, `&`, `|`, a backtick, or MAX_USER
+ * characters, so an unmatched one falls back to the plain word end and stays bounded.
+ */
+function escapedQuoteEnd(input: string, from: number): number {
+  if (input.charAt(from) !== "\\") return from;
+  const quote = input.charAt(from + 1);
+  if (quote !== '"' && quote !== "'") return from;
+  const stop = Math.min(input.length, from + MAX_USER);
+  for (let i = from + 2; i < stop; i++) {
+    const ch = input.charAt(i);
+    if (ch === "\n" || ch === "\r" || ch === ";" || ch === "&" || ch === "|" || ch === "`") break;
+    if (ch === "\\" && input.charAt(i + 1) === quote) return i + 2;
+  }
+  return from;
+}
+
 /** Marks a shell word as a password, dropping quotes that wrap all of it. */
 function pushPassword(input: string, from: number, to: number, out: Candidate[]): void {
   let start = from;
   let end = to;
+  const closeEnd = escapedQuoteEnd(input, start);
+  if (closeEnd > end) {
+    // `\"hunter 2\"` inside a double-quoted `sh -c` word: mask what is between the escaped quotes.
+    start += 2;
+    end = closeEnd - 2;
+    if (!isPlaceholder(input, start, end)) out.push({ start, end, kind: "sensitive-value" });
+    return;
+  }
   const first = input.charAt(start);
   if (
     (first === '"' || first === "'") &&
