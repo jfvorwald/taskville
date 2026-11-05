@@ -1,7 +1,12 @@
 # Contract: `taskville` CLI (feature 001 subset)
 
 Global options: `--home <dir>` (default `$TASKVILLE_HOME` or `~/.taskville`),
-`--url <base>` (default `http://127.0.0.1:4807`), `--json` (machine output).
+`--url <base>`, `--json` (machine output). The URL is resolved in order: `--url`,
+`$TASKVILLE_URL`, the `url` in `<home>/engine.json` (M7.08) when it is an `http:` URL on
+exactly `127.0.0.1` or `localhost` with an explicit port and no userinfo, and its `pid` is
+alive (`process.kill(pid, 0)`; EPERM counts as alive; the pid must be a positive integer up to 2147483647, since 0 and negatives signal whole process groups), then `http://127.0.0.1:4807`. A missing,
+malformed, stale or non-loopback `engine.json` is ignored silently. Only the URL's origin is used. A stale file left by a crash whose pid was reused looks live, so commands fail with the unreachable error naming that URL. An unreachable engine exits 3
+and the message names the base URL and `taskville start`.
 Human output to stdout, diagnostics to stderr. Every request sends
 `Authorization: Bearer <token>` from `<home>/token` ([http-api.md](http-api.md)).
 
@@ -18,7 +23,7 @@ Human output to stdout, diagnostics to stderr. Every request sends
 | `taskville unpair` | Revokes every paired browser session (`POST /v1/pairing/revoke`) and prints the count | 0 ok, 3 unreachable, 5 auth failure |
 | `taskville install claude-code --scope user\|project [--project-dir <dir>] [--yes] [--dry-run]` | M2.08. Adds one async command hook (`"async": true`) per ARCHITECTURE.md 8.1 telemetry event (not PermissionRequest, which is M4.04). Each hook points at a copy of the shim in `<home>/hooks/taskville-claude-code-shim.sh`, with `TASKVILLE_HOME` and `TASKVILLE_URL` always set in the command, so values inherited from the environment never win. User scope writes `$CLAUDE_CONFIG_DIR/settings.json` or `$HOME/.claude/settings.json`, following a symlink. Project scope writes `<dir>/.claude/settings.local.json` and refuses symlinks (decision #190). Prints the redacted diff and asks; `--yes` skips the question, and `--dry-run` writes nothing. Idempotent | 0 ok or already installed, 1 refused, declined, or invalid settings |
 | `taskville uninstall claude-code --scope user\|project [--project-dir <dir>] [--yes] [--dry-run]` | Removes only the hook entries install wrote, recognized by their exact command. Restores the original byte for byte from `<settings>.taskville-backup` when nothing else changed since install, and otherwise rewrites the file without Taskville's entries. Leaves the shim copy in place | 0 ok or not installed, 1 refused or declined |
-| `taskville demo start --project <id> --seed <n> [--pace <pace>] [--speed <x>] [--duration <sim-time>]` | Runs the seeded producer against the engine; `--speed` multiplies the virtual clock | 0 when duration ends or SIGINT, 2 unknown project, 3 unreachable |
+| `taskville demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <sim-time>]` | Runs the seeded producer against the engine; `--speed` multiplies the virtual clock. `--project` defaults to `unsorted`; `--seed` defaults to a random safe integer, printed as `Demo seed <n>` (batches carry sourceId `demo:<seed>`, so the printed seed reproduces the run). `demo` alone or with only options runs `demo start`; an unknown subcommand exits 1 | 0 when duration ends or SIGINT, 2 unknown project, 3 unreachable |
 | `taskville demo run --seed <n> --duration <sim-time> --offline [--pace <pace>]` | Runs the scenario through the reducer in-process without an engine and prints the final `stateHash` (determinism check) | 0 |
 
 Exit code 5 covers `401` and `403` responses (missing or invalid token, bad Host).
