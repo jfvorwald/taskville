@@ -349,14 +349,32 @@ describe("M7.12 re-review: escaped quotes around a spaced password inside sh -c"
 
   it.each([
     ["docker -p, escaped double quotes", `sh -c "docker login -p ${q}${spaced}${q} reg"`],
-    ["docker --password, escaped double quotes", `sh -c "docker login --password ${q}${spaced}${q} reg"`],
-    ["docker --password=, escaped double quotes", `sh -c "docker login --password=${q}${spaced}${q} reg"`],
+    [
+      "docker --password, escaped double quotes",
+      `sh -c "docker login --password ${q}${spaced}${q} reg"`,
+    ],
+    [
+      "docker --password=, escaped double quotes",
+      `sh -c "docker login --password=${q}${spaced}${q} reg"`,
+    ],
     ["podman -p, escaped double quotes", `sh -c "podman login -p ${q}${spaced}${q} reg"`],
-    ["podman --password, escaped double quotes", `sh -c "podman login --password ${q}${spaced}${q} reg"`],
-    ["podman --password=, escaped double quotes", `sh -c "podman login --password=${q}${spaced}${q} reg"`],
+    [
+      "podman --password, escaped double quotes",
+      `sh -c "podman login --password ${q}${spaced}${q} reg"`,
+    ],
+    [
+      "podman --password=, escaped double quotes",
+      `sh -c "podman login --password=${q}${spaced}${q} reg"`,
+    ],
     ["docker -p, single quotes inside double", `sh -c "docker login -p '${spaced}' reg"`],
-    ["docker --password, single quotes inside double", `sh -c "docker login --password '${spaced}' reg"`],
-    ["docker --password=, single quotes inside double", `sh -c "docker login --password='${spaced}' reg"`],
+    [
+      "docker --password, single quotes inside double",
+      `sh -c "docker login --password '${spaced}' reg"`,
+    ],
+    [
+      "docker --password=, single quotes inside double",
+      `sh -c "docker login --password='${spaced}' reg"`,
+    ],
     ["mysql attached -p, escaped double quotes", `sh -c "mysql -p${q}${spaced}${q} db"`],
     ["mysql attached -p, single quotes inside double", `sh -c "mysql -p'${spaced}' db"`],
   ])("masks every part of the password: %s", (_name, input) => {
