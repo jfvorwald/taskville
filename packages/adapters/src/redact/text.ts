@@ -645,11 +645,7 @@ function findObjectPairs(input: string, ends: Ends, out: Candidate[]): void {
       }
       const colon = skipSpace(close + 1);
       const frame = frames.at(-1);
-      if (input.charAt(colon) !== ":" || frame === undefined) {
-        // A double-quoted string is read whole, so brackets inside it are not counted.
-        if (ch === '"') i = close + 1;
-        continue;
-      }
+      if (input.charAt(colon) !== ":" || frame === undefined) continue;
       const key = input.slice(i, close).toLowerCase();
       const at = skipSpace(colon + 1);
       if (key === "value") {
@@ -664,7 +660,15 @@ function findObjectPairs(input: string, ends: Ends, out: Candidate[]): void {
           }
         }
       }
-      i = colon + 1;
+      // A quoted value is read whole, so brackets inside it are not counted. Only strings in
+      // value position are skipped: a stray quote elsewhere must not desync key recognition.
+      const opener = input.charAt(at);
+      const valueClose =
+        opener === '"' ? doubleEnds[at + 1] : opener === "'" ? singleEnds[at + 1] : undefined;
+      i =
+        valueClose !== undefined && input.charAt(valueClose) === opener
+          ? valueClose + 1
+          : colon + 1;
     }
   }
   // A value that never closes runs to the end of the text; what it covers is masked once.
