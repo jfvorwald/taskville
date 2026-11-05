@@ -15,6 +15,9 @@ export function readAgentCost(dbPath: string): AgentCostRecord[] {
   if (!existsSync(dbPath)) return [];
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
+    // Older schemas have no otlp_cost table; cost is optional, so that reads as nothing measured.
+    const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?");
+    if (table.get("otlp_cost") === undefined) return [];
     const rows = db.prepare("SELECT * FROM otlp_cost ORDER BY agent_id").all() as Row[];
     const records: AgentCostRecord[] = [];
     for (const row of rows) {
