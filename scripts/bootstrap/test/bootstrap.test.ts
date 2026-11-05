@@ -32,12 +32,12 @@ const ROOT = "/repo";
 const pkg = { engines: { node: ">=26.8.2 <27" }, packageManager: "pnpm@12.4.2" };
 
 // Quiet-mode seam (real-use fix): run takes an optional 4th argument
-//   options?: { quiet?: boolean; output?: (chunk: string) => void }
+//   options?: { quiet?: boolean | undefined; output?: (chunk: string) => void }
 // With quiet: true the runner must not show the program's output; it passes every chunk of
 // stdout and stderr to options.output instead. bootstrap runs the web build quiet, prints
 // "Building the web client..." instead of the output, and on failure prints only the last ~30
 // lines of what it captured. `pnpm install` and `pnpm link` may stay visible (not quiet).
-type RunOptions = { quiet?: boolean; output?: (chunk: string) => void };
+type RunOptions = { quiet?: boolean | undefined; output?: (chunk: string) => void };
 
 function setup(
   over: Record<string, unknown> = {},
