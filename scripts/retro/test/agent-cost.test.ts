@@ -95,7 +95,7 @@ describe("retro tokens and cost per agent", () => {
 
   it("says the totals are engine-lifetime and machine-wide, not this milestone alone", () => {
     expect(section(md)).toContain(
-      "Engine lifetime totals for every project on this machine, not only this milestone.",
+      "Engine lifetime totals for every project in this Taskville home, not only this milestone.",
     );
   });
 

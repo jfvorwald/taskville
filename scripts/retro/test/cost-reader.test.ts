@@ -114,4 +114,12 @@ describe("readAgentCost (M5.29 follow-up)", () => {
     expect(await readAgentCost(path)).toEqual([]);
     expect(await readAgentCost(join(dir, "absent.db"))).toEqual([]);
   });
+
+  it("returns [] for an existing database that has no otlp_cost table", async () => {
+    const path = join(dir, "old.db");
+    const db = new DatabaseSync(path);
+    db.exec("CREATE TABLE other (x INTEGER)");
+    db.close();
+    expect(await readAgentCost(path)).toEqual([]);
+  });
 });

@@ -127,7 +127,7 @@ function tokensAndCost(records: AgentCostRecord[] | undefined): string {
   }
   return [
     // otlp_cost keeps one lifetime row per agent with no milestone column (roborev 7077).
-    "Engine lifetime totals for every project on this machine, not only this milestone.",
+    "Engine lifetime totals for every project in this Taskville home, not only this milestone.",
     "",
     "| Agent | Input | Output | Cache read | Cache creation | Cost |",
     "| --- | --- | --- | --- | --- | --- |",
