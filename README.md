@@ -100,15 +100,7 @@ taskville init     # adds the repository as a project and offers the Claude Code
 
 No real session handy? `taskville demo` plays a seeded crew so you can see agents. If something is off, `taskville doctor` checks each piece and prints the command that fixes it.
 
-`taskville init` runs the hook install for you. To do it by hand, or at user scope, install the hook shim. It edits Claude Code's settings, so look at it first with `--dry-run`:
-
-```sh
-pnpm taskville install claude-code --scope user --dry-run
-pnpm taskville install claude-code --scope user
-pnpm taskville uninstall claude-code --scope user   # to remove it again
-```
-
-Taskville state lives in `~/.taskville` (override with `--home` or `$TASKVILLE_HOME`).
+Full setup, pairing, privacy, and troubleshooting are in the **[user guide](docs/guide/README.md)**: [install](docs/guide/install.md), [pairing and answering prompts](docs/guide/pairing-and-prompts.md), [privacy](docs/guide/privacy.md), [agent teams](docs/guide/agent-teams.md), and [troubleshooting](docs/guide/troubleshooting.md).
 
 Run the project checks with `pnpm check` (typecheck, lint, and unit tests).
 
