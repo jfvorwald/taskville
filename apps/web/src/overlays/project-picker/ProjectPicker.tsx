@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   type ProjectSummary,
   pickDefaultProject,
+  projectSelection,
   selectProject,
   useCurrentProjectId,
 } from "../../data/project.ts";
@@ -40,6 +41,8 @@ function PairedProjectPicker({ secret }: { secret: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    const startedOn = projectSelection.getState().projectId;
+    let unsubscribe: (() => void) | undefined;
     void (async () => {
       try {
         const response = await globalThis.fetch("/v1/projects", {
@@ -50,12 +53,22 @@ function PairedProjectPicker({ secret }: { secret: string }) {
         const body = (await response.json()) as { projects: ProjectSummary[] };
         if (controller.signal.aborted) return;
         setProjects(body.projects);
-        selectProject(pickDefaultProject(body.projects, readRemembered()));
+        // A chip clicked while the list was loading is the viewer's choice; keep it.
+        if (projectSelection.getState().projectId === startedOn) {
+          selectProject(pickDefaultProject(body.projects, readRemembered()));
+        }
+        // From here every change (picker, chip, Back to Unsorted) is the viewer's and is remembered.
+        unsubscribe = projectSelection.subscribe((state, previous) => {
+          if (state.projectId !== previous.projectId) remember(state.projectId);
+        });
       } catch {
         // The city stays on its current project; the picker stays empty.
       }
     })();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      unsubscribe?.();
+    };
   }, [secret]);
 
   if (projects.length === 0) return null;
@@ -65,10 +78,7 @@ function PairedProjectPicker({ secret }: { secret: string }) {
         className={styles.picker}
         aria-label="Project"
         value={currentProjectId}
-        onChange={(event) => {
-          selectProject(event.target.value);
-          remember(event.target.value);
-        }}
+        onChange={(event) => selectProject(event.target.value)}
       >
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
