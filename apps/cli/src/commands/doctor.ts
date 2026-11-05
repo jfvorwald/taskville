@@ -1,5 +1,5 @@
 import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
-import { delimiter, join, sep } from "node:path";
+import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveWebDir } from "@taskville/engine/src/config/web-dir.ts";
 import type { ProjectsResponse } from "@taskville/protocol";
@@ -32,15 +32,15 @@ function realProbes(context: Context): DoctorProbes {
     nodeVersion: process.versions.node,
     webClientBuilt: () => resolveWebDir(context.io.env).dir !== undefined,
     engineHealthy: async (url) => {
-      let token: string;
+      let token: string | undefined;
       try {
         token = readToken(context.home);
       } catch {
-        return "unauthorized";
+        token = undefined; // Probe anyway: no answer must not be reported as a token problem.
       }
       try {
         const response = await fetch(`${url}/health`, {
-          headers: { Authorization: `Bearer ${token}` },
+          ...(token === undefined ? {} : { headers: { Authorization: `Bearer ${token}` } }),
           signal: AbortSignal.timeout(2000),
         });
         if (response.status === 401 || response.status === 403) return "unauthorized";
@@ -136,9 +136,13 @@ function checkHooks(io: Io, home: string, url: string): Check {
         : join(io.env.HOME, ".claude");
   const user = userDir === undefined ? undefined : readJson(join(userDir, "settings.json"));
   if (hooksMatch(user, home, url)) return ok("hooks", `installed in user settings for ${url}`);
-  const project = readJson(join(io.cwd, ".claude", "settings.local.json"));
-  if (hooksMatch(project, home, url))
-    return ok("hooks", `installed in project settings for ${url}`);
+  // Project settings live at the project root; look in this folder and each parent.
+  for (let dir = resolve(io.cwd); ; dir = dirname(dir)) {
+    const project = readJson(join(dir, ".claude", "settings.local.json"));
+    if (hooksMatch(project, home, url))
+      return ok("hooks", `installed in project settings for ${url}`);
+    if (dirname(dir) === dir) break;
+  }
   return fail(
     "hooks",
     `no Claude Code hooks point at ${home} and ${url}`,

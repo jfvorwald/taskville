@@ -360,3 +360,37 @@ describe("taskville doctor real engine probe", () => {
     expect(engine).toMatch(/\n {6}fix: taskville start/);
   });
 });
+
+// roborev 7058: project hooks are found from a subfolder, and a missing token does not hide an
+// unreachable engine.
+describe("roborev 7058", () => {
+  it("finds project-scope hooks when run from a subfolder of the project", async () => {
+    const s = await healthy({ hooks: "project" });
+    const sub = join(s.project, "src", "deep");
+    mkdirSync(sub, { recursive: true });
+    const r = await s.run([], {}, sub);
+    expect(line(r.stdout, "hooks")).toMatch(/^ok hooks/);
+  });
+
+  it("an unreachable engine with no token file says no answer, not a token problem", async () => {
+    const home = tempDir("taskville-doctor-notoken-");
+    dirs.push(home);
+    const r = await cli(
+      ["doctor", "--home", home.path, "--url", `http://127.0.0.1:${await freePort()}`],
+      {
+        env: { HOME: home.path },
+        cwd: home.path,
+        isAlive: () => true,
+        doctor: {
+          nodeVersion: "26.8.2",
+          webClientBuilt: () => true,
+          onPath: () => true,
+          listProjects: async () => [],
+        },
+      } as Parameters<typeof cli>[1],
+    );
+    const engine = line(r.stdout, "engine") ?? "";
+    expect(engine).toMatch(/^fail engine/);
+    expect(engine).toMatch(/no answer/i);
+  });
+});
