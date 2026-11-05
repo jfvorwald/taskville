@@ -185,6 +185,8 @@ function closeSession(state: RequestsState, event: StoredEnvelope): RequestsStat
  */
 export function closesRequest(request: PendingRequest, event: StoredEnvelope): boolean {
   if (request.answerable) return false;
+  // A late (replayed) event older than the request is history, not an answer to it.
+  if (event.late && compareTimestamps(event.occurredAt, request.openedAt) < 0) return false;
   if (
     event.type === "session.turn_ended" ||
     event.type === "session.prompt_submitted" ||
