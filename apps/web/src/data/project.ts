@@ -18,6 +18,28 @@ export const projectSelection = createStore<ProjectSelection>()((set) => ({
   select: (projectId) => set((s) => (s.projectId === projectId ? s : { projectId })),
 }));
 
+/** One row of `GET /v1/projects`. */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  roots: string[];
+  builtin: boolean;
+  head: number;
+}
+
+/**
+ * The project the city opens on: the viewer's remembered choice while it still exists, else the
+ * user project with the highest head (most recently active), else Unsorted.
+ */
+export function pickDefaultProject(projects: ProjectSummary[], remembered: string | null): string {
+  if (remembered !== null && projects.some((p) => p.id === remembered)) return remembered;
+  let best: ProjectSummary | undefined;
+  for (const p of projects) {
+    if (!p.builtin && (best === undefined || p.head > best.head)) best = p;
+  }
+  return best?.id ?? DEFAULT_PROJECT_ID;
+}
+
 export function useCurrentProjectId(): string {
   return useStore(projectSelection, (s) => s.projectId);
 }
