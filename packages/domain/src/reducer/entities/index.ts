@@ -99,7 +99,7 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       if (e.type === "session.started") s = applySessionStarted(s, e, agentId, sessionId);
       else if (e.type === "session.ended") s = applySessionEnded(s, e, agentId, sessionId);
       else s = applySessionSeen(s, e, agentId, sessionId);
-      s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt));
+      s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt, e.late));
       if (CLOSES_UNFINISHED.has(e.type)) s = closeUnfinishedCalls(s, e, agentId);
       return refreshActivity(s, e, agentId);
     }
@@ -174,16 +174,17 @@ function turnEffect<A extends Parameters<typeof clearLastTurn>[0]>(
   agent: A,
   type: DomainEvent["type"],
   at: string,
+  late: boolean,
 ) {
   switch (type) {
     case "session.turn_ended":
-      return setLastTurn(agent, "ended", at);
+      return setLastTurn(agent, "ended", at, late);
     case "session.turn_failed":
-      return setLastTurn(agent, "failed", at);
+      return setLastTurn(agent, "failed", at, late);
     case "session.idle_prompt":
-      return setLastTurn(agent, "idle_prompt", at);
+      return setLastTurn(agent, "idle_prompt", at, late);
     case "session.prompt_submitted":
-      return clearLastTurn(agent, "prompt");
+      return clearLastTurn(agent, "prompt", at, late);
     default:
       return agent;
   }

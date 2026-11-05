@@ -1,6 +1,6 @@
 import type { StoredEnvelopeOf } from "@taskville/protocol";
 import { getOwn, omit, optional, put } from "./maps.ts";
-import { earlierTimestamp, laterTimestamp } from "./time.ts";
+import { compareTimestamps, earlierTimestamp, laterTimestamp } from "./time.ts";
 import type { Agent, DomainEvent, EntitiesState, Team } from "./types.ts";
 
 // Agents and teams. Identity is `(sourceId, sourceAgentId)` and is never merged on name
@@ -180,16 +180,32 @@ export function applyTeamEnded(s: EntitiesState, e: StoredEnvelopeOf<"team.ended
 }
 
 /** Records the agent's latest turn event (session.turn_ended, turn_failed, idle_prompt). */
-export const setLastTurn = (agent: Agent, lastTurn: Agent["lastTurn"], at: string): Agent =>
-  lastTurn === undefined ? agent : { ...agent, lastTurn, lastTurnAt: at };
+export const setLastTurn = (
+  agent: Agent,
+  lastTurn: Agent["lastTurn"],
+  at: string,
+  late = false,
+): Agent =>
+  lastTurn === undefined || staleLate(agent, at, late)
+    ? agent
+    : { ...agent, lastTurn, lastTurnAt: at };
+
+/** A late (replayed) event older than the recorded turn must not overwrite or clear it. */
+const staleLate = (agent: Agent, at: string, late: boolean): boolean =>
+  late && agent.lastTurnAt !== undefined && compareTimestamps(at, agent.lastTurnAt) < 0;
 
 /**
  * Clears the latest turn per the attention rules (data-model.md): a prompt clears any turn; a
  * tool call starting or failing clears `ended` and `idle_prompt` but not `failed`; a succeeded
  * tool call clears all of them.
  */
-export function clearLastTurn(agent: Agent, by: "prompt" | "tool" | "tool_succeeded"): Agent {
-  if (agent.lastTurn === undefined) return agent;
+export function clearLastTurn(
+  agent: Agent,
+  by: "prompt" | "tool" | "tool_succeeded",
+  at = "",
+  late = false,
+): Agent {
+  if (agent.lastTurn === undefined || staleLate(agent, at, late)) return agent;
   if (by === "tool" && agent.lastTurn === "failed") return agent;
   return omit(agent, ["lastTurn", "lastTurnAt"]);
 }

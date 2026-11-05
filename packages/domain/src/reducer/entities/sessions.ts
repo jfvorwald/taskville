@@ -164,6 +164,9 @@ export function setActivity(
     state = ensureSession(state, e, agentId, sessionId);
     target = ownSession(state, agentId, sessionId);
   }
+  // A late (replayed) entry older than the activity it would replace must not regress it.
+  const held = target !== undefined ? target.activity : getOwn(state.activity, agentId);
+  if (e.late && held !== undefined && compareTimestamps(e.occurredAt, held.since) < 0) return state;
   if (target !== undefined) {
     return { ...state, sessions: put(state.sessions, target.id, { ...target, activity: entry }) };
   }
