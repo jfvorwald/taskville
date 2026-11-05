@@ -139,12 +139,137 @@ describe("a late event against live tool calls and turns", () => {
       emit("session.prompt_submitted", {}, { ...S, occurredAt: NEWER }),
     ]);
     expect(cleared.agents.a1?.lastTurn).toBeUndefined();
-    expect(cleared.agents.a1?.lastTurnAt).toBe(NEWER);
+    // lastTurnAt is the time of the current lastTurn and goes with it, as on main.
+    expect(cleared.agents.a1?.lastTurnAt).toBeUndefined();
     const after = reduce(
       cleared,
       emit("session.turn_failed", {}, { ...S, late: true, occurredAt: OLDER }),
     );
     expect(after.agents.a1?.lastTurn).toBeUndefined();
+  });
+
+  it("a late turn_failed does not set trouble after a live prompt when no turn was held", () => {
+    const emit = eventStream();
+    const prompted = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit("session.prompt_submitted", {}, { ...S, occurredAt: NEWER }),
+    ]);
+    const after = reduce(
+      prompted,
+      emit("session.turn_failed", {}, { ...S, late: true, occurredAt: OLDER }),
+    );
+    expect(after.agents.a1?.lastTurn).toBeUndefined();
+    expect(attentionCounts(after, Date.parse(NEWER)).trouble).toBe(0);
+  });
+
+  it("a late prompt that clears a turn also blocks an even older late turn", () => {
+    const emit = eventStream();
+    const state = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit("session.turn_ended", {}, { ...S, occurredAt: "2026-10-30T10:50:00Z" }),
+      emit("session.prompt_submitted", {}, { ...S, late: true, occurredAt: OLDER }),
+      emit("session.turn_failed", {}, { ...S, late: true, occurredAt: "2026-10-30T10:55:00Z" }),
+    ]);
+    expect(state.agents.a1?.lastTurn).toBeUndefined();
+  });
+
+  it("a late boundary does not displace the agent's newer finished call", () => {
+    const emit = eventStream();
+    const live = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit(
+        "tool_call.started",
+        { toolCallId: "old", toolName: "Bash" },
+        { ...S, occurredAt: "2026-10-30T10:30:00Z" },
+      ),
+      emit(
+        "tool_call.started",
+        { toolCallId: "new", toolName: "Bash" },
+        { ...S, occurredAt: "2026-10-30T11:04:00Z" },
+      ),
+      emit(
+        "tool_call.finished",
+        { toolCallId: "new", phase: "succeeded" },
+        { ...S, occurredAt: OPENED },
+      ),
+    ]);
+    const state = reduce(
+      live,
+      emit("session.turn_ended", {}, { ...S, late: true, occurredAt: OLDER }),
+    );
+    expect(state.toolCalls.new).toMatchObject({ phase: "succeeded", finishedAt: OPENED });
+    // The older call is closed; the bounded projection keeps only the newer finished one.
+    expect(state.toolCalls.old).toBeUndefined();
+  });
+
+  it("a late finish does not displace the newer finished call or the failure streak", () => {
+    const emit = eventStream();
+    const live = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit(
+        "tool_call.started",
+        { toolCallId: "old", toolName: "Bash" },
+        { ...S, occurredAt: "2026-10-30T10:30:00Z" },
+      ),
+      emit(
+        "tool_call.started",
+        { toolCallId: "new", toolName: "Bash" },
+        { ...S, occurredAt: "2026-10-30T11:04:00Z" },
+      ),
+      emit(
+        "tool_call.finished",
+        { toolCallId: "new", phase: "succeeded" },
+        { ...S, occurredAt: OPENED },
+      ),
+    ]);
+    const state = reduce(
+      live,
+      emit(
+        "tool_call.finished",
+        { toolCallId: "old", phase: "failed" },
+        { ...S, late: true, occurredAt: OLDER },
+      ),
+    );
+    expect(state.toolCalls.new).toMatchObject({ phase: "succeeded", finishedAt: OPENED });
+    expect(state.toolCalls.old).toBeUndefined();
+    expect(state.agents.a1?.consecutiveToolFailures).toBe(0);
+  });
+
+  it("a late session.ended older than the session's activity does not end it", () => {
+    const emit = eventStream();
+    const live = fold([
+      emit("session.started", {}, { ...S, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit("activity.started", { activity: "testing" }, { ...S, occurredAt: OPENED }),
+    ]);
+    const state = reduce(live, emit("session.ended", {}, { ...S, late: true, occurredAt: OLDER }));
+    expect(state.sessions.s1?.endedAt).toBeUndefined();
+    expect(state.activity.a1).toMatchObject({
+      activity: "testing",
+      since: OPENED,
+      sessionId: "s1",
+    });
+  });
+
+  it("late events still apply in order where nothing newer is held", () => {
+    const emit = eventStream();
+    const state = fold([
+      emit("session.started", {}, { ...S, late: true, occurredAt: "2026-10-30T10:00:00Z" }),
+      emit(
+        "tool_call.started",
+        { toolCallId: "t1", toolName: "Bash" },
+        { ...S, late: true, occurredAt: "2026-10-30T10:10:00Z" },
+      ),
+      emit(
+        "tool_call.finished",
+        { toolCallId: "t1", phase: "failed" },
+        { ...S, late: true, occurredAt: "2026-10-30T10:11:00Z" },
+      ),
+      emit("session.turn_failed", {}, { ...S, late: true, occurredAt: "2026-10-30T10:20:00Z" }),
+      emit("session.ended", {}, { ...S, late: true, occurredAt: OLDER }),
+    ]);
+    expect(state.toolCalls.t1).toMatchObject({ phase: "failed" });
+    expect(state.agents.a1).toMatchObject({ lastTurn: "failed", consecutiveToolFailures: 1 });
+    expect(state.sessions.s1?.endedAt).toBe(OLDER);
   });
 
   const lateToolEvents: Array<[string, (emit: Emit, f: EnvelopeFields) => StoredEnvelope]> = [

@@ -773,8 +773,7 @@ describe("turns", () => {
       emit("tool_call.finished", { toolCallId: "t2", phase: "succeeded" }, s),
     ]);
     expect(recovered.agents.a1?.lastTurn).toBeUndefined();
-    // M7.15: lastTurnAt stays as the high-water mark after a clear, so a late older turn cannot revive.
-    expect(recovered.agents.a1?.lastTurnAt).toBeDefined();
+    expect(recovered.agents.a1?.lastTurnAt).toBeUndefined();
 
     const idle = [...base, emit("session.idle_prompt", {}, s)];
     expect(run(idle).agents.a1?.lastTurn).toBe("idle_prompt");
