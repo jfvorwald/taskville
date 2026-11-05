@@ -21,6 +21,8 @@ export interface Io {
   stdoutIsTTY?: boolean | undefined;
   /** Opens a URL in the default browser; rejects on failure (`start`). */
   openUrl?: ((url: string) => Promise<void>) | undefined;
+  /** Schedules deleting the redirect page `start` opened (M7.08); absent means a short internal timer. */
+  scheduleCleanup?: ((cleanup: () => void) => void) | undefined;
   /** True when the CLI runs from a source checkout, so the web client can be built (`start`). */
   sourceCheckout?: boolean | undefined;
   /** Builds the web client once (`start`, source checkout only). */

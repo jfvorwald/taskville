@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
   chmodSync,
@@ -8,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   PAIRING_CODE_TTL_MS,
   type PairingRecords,
@@ -346,6 +348,7 @@ export async function runEngine(
     stderr: !quiet || mode.verbose,
   };
   let wroteRuntime = false;
+  let removePage: () => void = () => {};
   let parts: ServeParts | undefined;
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   let keys: { restore: () => void } | undefined;
@@ -382,10 +385,23 @@ export async function runEngine(
     writeRuntimeInfo(home, base, now());
     wroteRuntime = true;
     const firstLink = `${base}/#pair=${pairing.issueCode()}`;
-    if (mode.open && quiet && io.openUrl !== undefined) {
-      await io.openUrl(firstLink).then(
-        () => io.stdout("Opened your browser to pair it.\n"),
-        () => io.stdout(linkText(firstLink)),
+    // The opener gets a 0600 redirect page, never the code: argv is visible to other local users.
+    const page =
+      mode.open && quiet && io.openUrl !== undefined
+        ? writeRedirectPage(home, firstLink)
+        : undefined;
+    if (page !== undefined && io.openUrl !== undefined) {
+      removePage = page.remove;
+      await io.openUrl(pathToFileURL(page.path).href).then(
+        () => {
+          io.stdout("Opened your browser to pair it.\n");
+          if (io.scheduleCleanup !== undefined) io.scheduleCleanup(page.remove);
+          else setTimeout(page.remove, REDIRECT_PAGE_TTL_MS).unref();
+        },
+        () => {
+          page.remove();
+          io.stdout(linkText(firstLink));
+        },
       );
     } else {
       io.stdout(linkText(firstLink));
@@ -430,6 +446,7 @@ export async function runEngine(
     server = undefined;
     await listening.close();
     removeRuntimeInfo(home);
+    removePage();
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
@@ -441,9 +458,41 @@ export async function runEngine(
     // A failure after listening (a closed terminal, say) must not leave the port open.
     await server?.close().catch(() => {});
     if (wroteRuntime) removeRuntimeInfo(home);
+    removePage();
     if (error instanceof CliError) throw error;
     throw new CliError(EXIT.failure, `Cannot start the engine: ${(error as Error).message}`);
   }
+}
+
+/** How long the redirect page lives when the caller schedules no cleanup. */
+const REDIRECT_PAGE_TTL_MS = 30_000;
+
+/**
+ * Writes `<home>/run/<random>.html` (dir 0700, file 0600) that sends the browser to `url`, so the
+ * one-time code never appears in the opener's argv. Returns undefined when it cannot be written.
+ */
+function writeRedirectPage(
+  home: string,
+  url: string,
+): { path: string; remove: () => void } | undefined {
+  const dir = join(home, "run");
+  const path = join(dir, `${randomBytes(18).toString("base64url")}.html`);
+  const attr = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const js = JSON.stringify(url).replace(/</g, "\\u003c");
+  const html = `<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${attr}">
+<title>Taskville</title>
+<script>location.replace(${js});</script>
+`;
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    chmodSync(dir, 0o700);
+    writeFileSync(path, html, { mode: 0o600, flag: "wx" });
+  } catch {
+    return undefined;
+  }
+  return { path, remove: () => rmSync(path, { force: true }) };
 }
 
 /**

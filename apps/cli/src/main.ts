@@ -90,6 +90,9 @@ if (import.meta.main) {
     stdin: process.stdin,
     stdoutIsTTY: process.stdout.isTTY === true,
     openUrl,
+    scheduleCleanup: (cleanup) => {
+      setTimeout(cleanup, 30_000).unref();
+    },
     sourceCheckout: existsSync(join(REPO_ROOT, "apps/web/package.json")),
     buildWeb,
   }).then((code) => {
