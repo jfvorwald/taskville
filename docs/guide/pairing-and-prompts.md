@@ -28,8 +28,8 @@ Taskville has no "always allow" and no bulk approval. Each request is answered o
 
 Some things to know:
 
-- Taskville holds the request for up to 90 seconds by default. If no answer comes, Claude Code shows its normal prompt in the terminal, and you can answer there.
-- The terminal prompt stays available while Taskville holds the request. Whichever you answer first wins; the card then says the prompt was answered and disables its buttons.
+- Taskville holds the request for up to 90 seconds by default. While it is held, Claude Code waits and shows no terminal prompt. If no answer comes from the browser in that time, Claude Code shows its normal prompt in the terminal, and you can answer there.
+- After you choose in the card, it shows **Sent, unconfirmed** until the engine sees the agent move on.
 - If the engine is down or no browser is paired, nothing is held. Claude Code behaves as if Taskville were not installed.
 - If an agent shows as needing you but the card offers only **Open session**, Taskville saw the prompt in telemetry but cannot answer it. Answer it in the terminal. The usual cause is a Claude Code launched without `TASKVILLE_BRIDGE_TOKEN` (see [install](install.md#let-the-browser-answer-prompts)).
 - Prompts that arrive while the engine was down are shown from the spool as past events. They never open a new prompt, because the moment has passed.

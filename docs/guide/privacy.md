@@ -6,8 +6,8 @@ Taskville is local and single user. It has no account, no cloud service, and no 
 
 - Claude Code hooks send each hook's raw JSON to the engine on `127.0.0.1`. Nothing leaves your machine.
 - The engine stores events in a SQLite log under your Taskville home (`~/.taskville` by default). Tool inputs and outputs are kept as bounded excerpts, not whole files.
-- Credentials and sensitive environment values are stripped at ingest, before anything is stored. Secret-looking values are masked in the panel and the action card.
-- If the engine is down, the hook writes the event to a local spool file in the home folder. The engine reads it on its next start.
+- Credentials and sensitive environment values are stripped when the engine ingests an event, before it is written to the event log.
+- If the engine is down, the hook writes the raw event to a spool file in the home folder (readable only by your user) and the engine redacts it when it reads the spool on its next start. Until then the spool can hold unredacted secrets, so treat the home folder as private.
 
 ## Who can reach the engine
 
@@ -20,7 +20,7 @@ Taskville is local and single user. It has no account, no cloud service, and no 
 
 Code is visible only in the agent panel (the Live and Files tabs). The city itself never shows code.
 
-To hide code bodies, turn on **Hide code in the city** in the settings panel. Taskville keeps file names and edit counts and hides the code itself. Use this for screen sharing or an office display. It is off by default, and the setting is remembered in the browser.
+To hide code bodies, turn on **Hide code in the city** in the settings panel. Taskville keeps file names and edit counts and hides the code itself in the Live and Files tabs. A permission action card still shows the exact tool input it asks about, which can include code or other sensitive text, so close or answer cards before you share your screen. It is off by default, and the setting is remembered in the browser.
 
 ## Removing what Taskville recorded
 
