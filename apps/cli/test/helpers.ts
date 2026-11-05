@@ -79,9 +79,11 @@ export async function cli(argv: string[], io: Partial<Io> = {}): Promise<CliResu
     cwd: io.cwd ?? process.cwd(),
     ...io,
     // Without --home or TASKVILLE_HOME the CLI would read the developer's real ~/.taskville.
-    env: argv.includes("--home")
-      ? (io.env ?? {})
-      : { TASKVILLE_HOME: sandboxTaskvilleHome(), ...io.env },
+    // A test that sets HOME (the install tests) or TASKVILLE_HOME already names its own home.
+    env:
+      argv.includes("--home") || io.env?.HOME !== undefined || io.env?.TASKVILLE_HOME !== undefined
+        ? (io.env ?? {})
+        : { TASKVILLE_HOME: sandboxTaskvilleHome(), ...io.env },
   });
   return { code, stdout, stderr };
 }
