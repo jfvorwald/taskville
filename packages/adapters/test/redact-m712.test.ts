@@ -338,3 +338,57 @@ describe("M7.12 round 3: escaped quotes inside object values", () => {
     expectMasked(input, secret);
   });
 });
+
+describe("M7.12 re-review: escaped quotes around a spaced password inside sh -c", () => {
+  const spaced = "hunter 2";
+  const q = String.raw`\"`;
+  const noPart = (text: string) => {
+    expect(text).not.toContain("hunter");
+    expect(text).not.toMatch(/(^|[^A-Za-z0-9])2(?![0-9])\s*(\\"|'|reg|$)/);
+  };
+
+  it.each([
+    ["docker -p, escaped double quotes", `sh -c "docker login -p ${q}${spaced}${q} reg"`],
+    ["docker --password, escaped double quotes", `sh -c "docker login --password ${q}${spaced}${q} reg"`],
+    ["docker --password=, escaped double quotes", `sh -c "docker login --password=${q}${spaced}${q} reg"`],
+    ["podman -p, escaped double quotes", `sh -c "podman login -p ${q}${spaced}${q} reg"`],
+    ["podman --password, escaped double quotes", `sh -c "podman login --password ${q}${spaced}${q} reg"`],
+    ["podman --password=, escaped double quotes", `sh -c "podman login --password=${q}${spaced}${q} reg"`],
+    ["docker -p, single quotes inside double", `sh -c "docker login -p '${spaced}' reg"`],
+    ["docker --password, single quotes inside double", `sh -c "docker login --password '${spaced}' reg"`],
+    ["docker --password=, single quotes inside double", `sh -c "docker login --password='${spaced}' reg"`],
+    ["mysql attached -p, escaped double quotes", `sh -c "mysql -p${q}${spaced}${q} db"`],
+    ["mysql attached -p, single quotes inside double", `sh -c "mysql -p'${spaced}' db"`],
+  ])("masks every part of the password: %s", (_name, input) => {
+    const result = redactText(input);
+    noPart(result.text);
+    expect(result.spans.length).toBeGreaterThan(0);
+  });
+
+  it("masks the second word of the password, not only the first", () => {
+    const input = `sh -c "docker login -p ${q}hunter zq9${q} reg"`;
+    const result = redactText(input);
+    expect(result.text).not.toContain("hunter");
+    expect(result.text).not.toContain("zq9");
+  });
+
+  it.each([
+    ["docker -p", `sh -c "docker login -p ${q}${spaced}${q} reg"`],
+    ["docker --password=", `sh -c "docker login --password=${q}${spaced}${q} reg"`],
+    ["single inside double", `sh -c "docker login -p '${spaced}' reg"`],
+  ])("guard: the argument after the password stays readable: %s", (_name, input) => {
+    expect(redactText(input).text).toContain("reg");
+  });
+
+  it("guard: an unbalanced escaped quote does not mask past the end of its segment", () => {
+    const input = `sh -c "docker login -p ${q}hunter 2 reg"; echo after-marker ${"word ".repeat(40)}tail-marker`;
+    const text = redactText(input).text;
+    expect(text).toContain("after-marker");
+    expect(text).toContain("tail-marker");
+  });
+
+  it("guard: an unbalanced escaped quote does not mask the next line", () => {
+    const input = `sh -c "docker login -p ${q}hunter 2 reg\nnext-line-marker ${"word ".repeat(40)}"`;
+    expect(redactText(input).text).toContain("next-line-marker");
+  });
+});
