@@ -93,6 +93,12 @@ describe("retro tokens and cost per agent", () => {
     expect(b).toBeLessThan(a);
   });
 
+  it("says the totals are engine-lifetime and machine-wide, not this milestone alone", () => {
+    expect(section(md)).toContain(
+      "Engine lifetime totals for every project on this machine, not only this milestone.",
+    );
+  });
+
   it("totals every column", () => {
     expect(section(md)).toContain("| Total | 1900 | 390 | 9500 | 550 | $0.64 |");
   });
