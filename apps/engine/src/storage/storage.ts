@@ -5,6 +5,7 @@ import { SqliteCheckpoints } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import { secureDatabaseFiles } from "./file-mode.ts";
 import { currentSchemaVersion, migrate } from "./migrations.ts";
+import { SqliteOtlpCost } from "./otlp-cost.ts";
 import { SqlitePairingRecords } from "./pairings.ts";
 import { Database, type Statement } from "./sqlite.ts";
 
@@ -203,6 +204,7 @@ export class Storage implements StorageReads {
   readonly #stmt: Statements;
   #pairings: SqlitePairingRecords | undefined;
   #checkpoints: SqliteCheckpoints | undefined;
+  #otlpCost: SqliteOtlpCost | undefined;
 
   constructor(db: Database, now: () => Date) {
     this.#db = db;
@@ -358,6 +360,12 @@ export class Storage implements StorageReads {
   checkpoints(): SqliteCheckpoints {
     this.#checkpoints ??= new SqliteCheckpoints(this.#db);
     return this.#checkpoints;
+  }
+
+  /** Telemetry cost totals and counted data-point identities (M5.29). */
+  otlpCost(): SqliteOtlpCost {
+    this.#otlpCost ??= new SqliteOtlpCost(this.#db);
+    return this.#otlpCost;
   }
 
   close(): void {

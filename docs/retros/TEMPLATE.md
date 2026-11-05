@@ -81,6 +81,10 @@ pie title Reviews
 
 {{plan_vs_actual_table}}
 
+## Tokens and cost
+
+{{tokens_cost_table}}
+
 ## What went well *(written)*
 
 ## What hurt *(written)*
