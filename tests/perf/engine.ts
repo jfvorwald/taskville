@@ -18,8 +18,11 @@ const CLI_MAIN = resolve(ROOT, "apps/cli/src/main.ts");
  */
 export function engineNodeFlags(): string[] {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-  const [, ...rest] = String(pkg.scripts.taskville).split(/\s+/);
-  return rest.filter((token) => token.startsWith("--"));
+  const [node, ...rest] = String(pkg.scripts.taskville).trim().split(/\s+/);
+  if (node !== "node") throw new Error(`taskville script must start with node, got ${node}`);
+  const script = rest.findIndex((token) => !token.startsWith("--"));
+  if (script === -1) throw new Error("taskville script names no entry point");
+  return rest.slice(0, script);
 }
 
 export interface RunningEngine {
