@@ -26,7 +26,7 @@ export async function start(io: Io, args: string[]): Promise<number> {
     },
     USAGE,
   );
-  const port = values.port === undefined ? undefined : parsePort(values.port as string);
+  const port = values.port === undefined ? undefined : parsePort(values.port as string, USAGE);
   return runEngine(
     context,
     port,
