@@ -6,7 +6,9 @@ import {
 } from "@taskville/domain/reducer";
 import { attention } from "@taskville/domain/selectors";
 import type { StoredEnvelope } from "@taskville/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { domainReducer } from "../../src/ingest/index.ts";
+import { CHECKPOINT_INTERVAL } from "../../src/storage/checkpoints.ts";
 import {
   addProject,
   bootInProcess,
@@ -37,6 +39,12 @@ import {
 //   equal a full replay of the project's events 1..at. `attention` is evaluated at the replay
 //   clock (the `receivedAt` of event `at`; the engine clock for position 0), not the engine
 //   clock; `computedAt` is the engine clock.
+
+// Every test here replays up to 10,000 events through the reducer, some of them several times (the
+// edge test checks 15 positions against a full replay each). That is about 1 s of work idle and 8 s
+// at 24 busy processes on 8 cores, so the 5 s default measured the machine. Sized to the work: a
+// ceiling for a stuck test, not a speed bound (the seek test below counts work instead).
+vi.setConfig({ testTimeout: 60_000 });
 
 const day = useDayEngine();
 const dbPath = useDbPath();
@@ -136,15 +144,25 @@ describe("state at a sequence equals a full replay to it (day-sized log)", () =>
     // machine), not a speed bound. The speed guard is the test below.
   }, 30_000);
 
-  it("answers a seek in the day-sized log well under a generous bound", async () => {
-    // The 300 ms target is measured by tests/perf/seek.ts and posted in the PR; this only guards
-    // against a pathological regression, so the bound is deliberately loose.
+  it("replays at most one checkpoint interval of events for a seek in the day-sized log", async () => {
+    // The 300 ms target is measured by tests/perf/seek.ts and posted in the PR. Elapsed time is not
+    // asserted here: it measured the machine's load, not the seek (LESSONS L-206). What a slow seek
+    // would mean is a seek that folds the whole log, so count the reducer steps it takes instead.
     const { app, events } = day();
-    const started = performance.now();
-    const res = await get(app, `/v1/timelines/live:demo/state?at=${events.length}`);
-    const elapsed = performance.now() - started;
-    expect(res.status).toBe(200);
-    expect(elapsed).toBeLessThan(3000);
+    const at = (n: number) => `/v1/timelines/live:demo/state?at=${n}`;
+    // A first read backfills any checkpoint the seeded log lacks; the counted reads then use them.
+    expect((await get(app, at(events.length))).status).toBe(200);
+    const steps = vi.spyOn(domainReducer, "apply");
+    try {
+      for (const n of [events.length, 7777, 5001, 1]) {
+        steps.mockClear();
+        const res = await get(app, at(n));
+        expect(res.status, `at=${n}`).toBe(200);
+        expect(steps.mock.calls.length, `at=${n}`).toBeLessThanOrEqual(CHECKPOINT_INTERVAL);
+      }
+    } finally {
+      steps.mockRestore();
+    }
   });
 });
 
