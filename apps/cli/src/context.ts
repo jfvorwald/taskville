@@ -21,6 +21,16 @@ export interface Io {
   stdin?: KeyInput | undefined;
   /** Whether a process is alive, for `<home>/engine.json`'s pid; defaults to `process.kill(pid, 0)`. */
   isAlive?: ((pid: number) => boolean) | undefined;
+  /** Whether stdout is a terminal: quiet banner, log file, browser opening (M7.08). Absent is false. */
+  stdoutIsTTY?: boolean | undefined;
+  /** Opens a URL in the default browser; rejects on failure (`start`). */
+  openUrl?: ((url: string) => Promise<void>) | undefined;
+  /** Schedules deleting the redirect page `start` opened after `delayMs` (M7.08); absent means a short internal timer. */
+  scheduleCleanup?: ((cleanup: () => void, delayMs: number) => void) | undefined;
+  /** True when the CLI runs from a source checkout, so the web client can be built (`start`). */
+  sourceCheckout?: boolean | undefined;
+  /** Builds the web client once (`start`, source checkout only). */
+  buildWeb?: (() => Promise<void>) | undefined;
 }
 
 function pidAlive(pid: number): boolean {
