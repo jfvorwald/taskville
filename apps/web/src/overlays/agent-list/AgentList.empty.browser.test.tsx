@@ -56,9 +56,9 @@ describe("AgentList empty city guidance (live)", () => {
     await render(<AgentList {...props()} />);
     const region = guidance();
     await expect.element(region).toBeVisible();
-    await expect.element(region).toHaveTextContent(/see the city at work/i);
-    await expect.element(region).toHaveTextContent(/watch your claude code sessions/i);
-    await expect.element(region).toHaveTextContent(/repository/i);
+    await expect.element(region).toMatchTextContent(/see the city at work/i);
+    await expect.element(region).toMatchTextContent(/watch your claude code sessions/i);
+    await expect.element(region).toMatchTextContent(/repository/i);
   });
 
   it("puts each command in a code element", async () => {
