@@ -2,11 +2,13 @@
 // `taskville`: the command-line client and the engine launcher (contracts/cli.md).
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
+import { doctor } from "./commands/doctor.ts";
 import { events } from "./commands/events.ts";
+import { init } from "./commands/init.ts";
 import { install, uninstall } from "./commands/install.ts";
 import { project } from "./commands/projects.ts";
 import { requests } from "./commands/requests.ts";
@@ -25,6 +27,8 @@ export type { Io } from "./context.ts";
 const USAGE = `Usage: taskville <command> [options]
 
 Commands:
+  init [--name <name>] [--yes] [--no-hooks]   Add this Git repository as a project and offer the hooks
+  doctor                                      Check Node, web client, engine, hooks, shim, curl, project
   start [--port N] [--no-open] [--verbose]    Run the engine and open the browser to pair
   serve --headless [--port N] [--verbose]     Run the engine on 127.0.0.1
   project add --name <name> [--id <id>] [--root <dir>]...
@@ -53,7 +57,28 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   demo,
   install,
   uninstall,
+  init,
+  doctor,
 };
+
+/** The folder the user ran the command from: pnpm sets INIT_CWD to it before changing directory. */
+export function resolveCwd(
+  env: Record<string, string | undefined>,
+  processCwd: string,
+  checkoutRoot?: string,
+): string {
+  const initCwd = env.INIT_CWD;
+  // pnpm moves the process into the checkout; anywhere else INIT_CWD is a stale inherited value.
+  const underPnpm = checkoutRoot === undefined || resolve(processCwd) === resolve(checkoutRoot);
+  if (underPnpm && initCwd !== undefined && initCwd !== "" && isAbsolute(initCwd)) {
+    try {
+      if (statSync(initCwd).isDirectory()) return initCwd;
+    } catch {
+      // Missing or unreadable: use the process folder.
+    }
+  }
+  return processCwd;
+}
 
 export async function run(argv: string[], io: Io): Promise<number> {
   const [name, ...args] = argv;
@@ -84,7 +109,7 @@ if (import.meta.main) {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
     env: process.env,
-    cwd: process.cwd(),
+    cwd: resolveCwd(process.env, process.cwd(), REPO_ROOT),
     signal: controller.signal,
     confirm: process.stdin.isTTY ? askOnTerminal : undefined,
     stdin: process.stdin,

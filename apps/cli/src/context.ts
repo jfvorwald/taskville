@@ -31,6 +31,18 @@ export interface Io {
   sourceCheckout?: boolean | undefined;
   /** Builds the web client once (`start`, source checkout only). */
   buildWeb?: (() => Promise<void>) | undefined;
+  /** The facts `doctor` checks about the machine; each one left out falls back to the real probe (M7.10). */
+  doctor?: Partial<DoctorProbes> | undefined;
+}
+
+/** What `taskville doctor` asks the machine, injected so tests need no real engine or build. */
+export interface DoctorProbes {
+  nodeVersion: string;
+  webClientBuilt(): boolean;
+  /** true or false (nothing answered); "unauthorized" when the engine rejected the CLI token. */
+  engineHealthy(url: string): Promise<boolean | "unauthorized">;
+  onPath(command: string): boolean;
+  listProjects(): Promise<{ id: string; name: string; roots: string[] }[]>;
 }
 
 function pidAlive(pid: number): boolean {
@@ -103,6 +115,25 @@ export interface Context {
 export type Values = Record<string, string | boolean | (string | boolean)[] | undefined>;
 
 /** Parses a command's own options plus the global ones; no positionals. Usage errors exit 1. */
+/** True for http://127.0.0.1:<port> or http://localhost:<port>, with no userinfo, path or query. */
+export function isLoopbackUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return (
+      u.protocol === "http:" &&
+      (u.hostname === "127.0.0.1" || u.hostname === "localhost") &&
+      u.port !== "" &&
+      u.username === "" &&
+      u.password === "" &&
+      (u.pathname === "/" || u.pathname === "") &&
+      u.search === "" &&
+      u.hash === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function parseCommand(io: Io, args: string[], options: Options, usage: string) {
   let values: Values;
   try {
@@ -116,11 +147,15 @@ export function parseCommand(io: Io, args: string[], options: Options, usage: st
     throw new CliError(EXIT.failure, `${(error as Error).message}\nUsage: ${usage}`);
   }
   const home = resolveHome({ flag: values.home as string | undefined, env: io.env, cwd: io.cwd });
-  const url =
-    (values.url as string | undefined) ??
-    io.env.TASKVILLE_URL ??
-    discoverUrl(io, home) ??
-    DEFAULT_URL;
+  const explicit = (values.url as string | undefined) ?? io.env.TASKVILLE_URL;
+  if (explicit !== undefined && !isLoopbackUrl(explicit)) {
+    // The engine listens on loopback only; never send the CLI token anywhere else.
+    throw new CliError(
+      EXIT.failure,
+      `The engine URL must be http://127.0.0.1:<port> or http://localhost:<port>, got ${JSON.stringify(explicit)}.\nUsage: ${usage}`,
+    );
+  }
+  const url = explicit ?? discoverUrl(io, home) ?? DEFAULT_URL;
   const context: Context = {
     io,
     home,

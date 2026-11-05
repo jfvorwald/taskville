@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 const names = ["protocol", "domain", "adapters", "demo"].map((n) => `packages/${n}`);
 const apps = ["engine", "cli", "web"].map((n) => `apps/${n}`);
-const scripts = ["retro"].map((n) => `scripts/${n}`);
+const scripts = ["retro", "bootstrap"].map((n) => `scripts/${n}`);
 
 export default defineConfig({
   test: {
