@@ -205,13 +205,19 @@ function pidAlive(pid: number): boolean {
 
 /**
  * Takes `<home>/engine.lock` (O_EXCL, 0600, the pid as text), waiting a bounded time for a live
- * holder and taking over one whose pid is dead. O_EXCL never follows a symlink at the path, and
- * a non-regular file there is removed as stale. Returns an idempotent release.
+ * holder and taking over one whose pid is dead. O_EXCL never follows a symlink at the path. A
+ * stale lock is renamed aside first (only one taker's rename succeeds) and checked before it is
+ * dropped, so a lock another start just created is never removed. A non-regular file at the path
+ * fails at once. Every retry awaits. Returns an idempotent release.
  */
-async function acquireLock(home: string): Promise<() => void> {
+export async function acquireLock(
+  home: string,
+  deps: { pidAlive?: (pid: number) => boolean; waitMs?: number } = {},
+): Promise<() => void> {
+  const alive = deps.pidAlive ?? pidAlive;
   const path = join(home, LOCK_FILE);
   mkdirSync(home, { recursive: true, mode: 0o700 });
-  const deadline = Date.now() + LOCK_WAIT_MS;
+  const deadline = Date.now() + (deps.waitMs ?? LOCK_WAIT_MS);
   for (;;) {
     try {
       const fd = openSync(path, "wx", 0o600);
@@ -233,27 +239,47 @@ async function acquireLock(home: string): Promise<() => void> {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    let stale = false;
+    let seen: string | undefined;
     try {
       const stat = lstatSync(path);
       if (!stat.isFile()) {
-        stale = true;
-      } else {
-        const pid = Number(readFileSync(path, "utf8").trim());
-        stale =
-          Number.isInteger(pid) && pid > 0
-            ? !pidAlive(pid)
-            : Date.now() - stat.mtimeMs > LOCK_UNPARSABLE_GRACE_MS;
+        throw new CliError(EXIT.failure, `${path} is not a regular file; remove it and retry.`);
       }
-    } catch {
+      seen = readFileSync(path, "utf8");
+      const pid = Number(seen.trim());
+      const stale =
+        Number.isInteger(pid) && pid > 0
+          ? !alive(pid)
+          : Date.now() - stat.mtimeMs > LOCK_UNPARSABLE_GRACE_MS;
+      if (!stale) seen = undefined;
+    } catch (error) {
+      if (error instanceof CliError) throw error;
       continue;
     }
-    if (stale) {
+    if (seen !== undefined) {
+      const aside = `${path}.stale.${process.pid}.${randomBytes(4).toString("hex")}`;
+      let moved: string | undefined;
       try {
-        unlinkSync(path);
+        renameSync(path, aside);
+        moved = readFileSync(aside, "utf8");
       } catch {
-        // Someone else took it over first.
+        // Someone else moved it first, or it is unreadable: not ours to drop.
       }
+      if (moved !== undefined && moved !== seen) {
+        // Not the lock we judged stale: put it back if the path is free, else leave it.
+        try {
+          lstatSync(path);
+        } catch {
+          try {
+            renameSync(aside, path);
+            moved = undefined;
+          } catch {
+            // Lost the race for the path; the new lock there stands.
+          }
+        }
+      }
+      if (moved !== undefined) rmSync(aside, { force: true });
+      await new Promise((resolve) => setTimeout(resolve, 0));
       continue;
     }
     if (Date.now() > deadline) {
