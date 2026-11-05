@@ -7,6 +7,12 @@ import { defineConfig } from "vitest/config";
 // (`pnpm exec playwright install chromium`) and the check gate must stay fast and browser-free.
 export default defineConfig({
   plugins: [react()],
+  // Pre-bundle deps the start-up scan misses. Otherwise Vite finds them partway through the run
+  // ("optimized dependencies changed. reloading"), reloads the browser, and kills in-flight test
+  // iframes, so a cold-cache run (CI, a fresh clone) aborts with "iframe did not become ready".
+  optimizeDeps: {
+    include: ["react-dom/client"],
+  },
   test: {
     name: "@taskville/web-browser",
     include: ["src/**/*.browser.test.tsx"],
