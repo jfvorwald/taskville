@@ -289,3 +289,52 @@ describe("M7.12 round 2 guards: quoted inner commands", () => {
     expectMasked(`sh -c 'docker login \\\r\n  -p ${pw} reg'`, pw);
   });
 });
+
+describe("M7.12 round 3: escaped quotes inside object values", () => {
+  const secret = ["hunter", "2x"].join("");
+  const raw = String.raw;
+
+  it.each([
+    [
+      "single-quoted hint, escaped apostrophe before a close brace",
+      raw`{'name':'DB_PASSWORD','hint':'can\'t }','value':'${secret}'}`,
+    ],
+    [
+      "double-quoted hint, escaped quotes around a close brace",
+      raw`{"name":"DB_PASSWORD","hint":"say \"}\" ok","value":"${secret}"}`,
+    ],
+    [
+      "single-quoted hint, escaped apostrophe before a close bracket",
+      raw`{'name':'DB_PASSWORD','hint':'it\'s ]','value':'${secret}'}`,
+    ],
+    [
+      "double-quoted hint, escaped quote before a close bracket",
+      raw`{"name":"DB_PASSWORD","hint":"a\"]","value":"${secret}"}`,
+    ],
+    [
+      "single-quoted value before the name, escaped apostrophe and brace",
+      raw`{'value':'${secret}','hint':'can\'t }','name':'DB_PASSWORD'}`,
+    ],
+    [
+      "double-quoted value before the name, escaped quote and brace",
+      raw`{"value":"${secret}","hint":"say \"}\" ok","name":"DB_PASSWORD"}`,
+    ],
+    [
+      "single-quoted key holding an escaped apostrophe and brace",
+      raw`{'k\'}':1,'name':'DB_PASSWORD','value':'${secret}'}`,
+    ],
+    [
+      "double-quoted key holding an escaped quote and brace",
+      raw`{"k\"}":1,"name":"DB_PASSWORD","value":"${secret}"}`,
+    ],
+  ])("masks %s", (_name, input) => {
+    expectMasked(input, secret);
+  });
+
+  it.each([
+    ["single", raw`{'name':'DB_PASSWORD','hint':'a\\','value':'${secret}'}`],
+    ["double", raw`{"name":"DB_PASSWORD","hint":"a\\","value":"${secret}"}`],
+  ])("guard: an escaped backslash before the closing %s quote still closes it", (_n, input) => {
+    expectMasked(input, secret);
+  });
+});
