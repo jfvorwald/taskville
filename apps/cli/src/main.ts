@@ -2,8 +2,8 @@
 // `taskville`: the command-line client and the engine launcher (contracts/cli.md).
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
 import { doctor } from "./commands/doctor.ts";
@@ -61,6 +61,19 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   doctor,
 };
 
+/** The folder the user ran the command from: pnpm sets INIT_CWD to it before changing directory. */
+export function resolveCwd(env: Record<string, string | undefined>, processCwd: string): string {
+  const initCwd = env.INIT_CWD;
+  if (initCwd !== undefined && initCwd !== "" && isAbsolute(initCwd)) {
+    try {
+      if (statSync(initCwd).isDirectory()) return initCwd;
+    } catch {
+      // Missing or unreadable: use the process folder.
+    }
+  }
+  return processCwd;
+}
+
 export async function run(argv: string[], io: Io): Promise<number> {
   const [name, ...args] = argv;
   const command = name === undefined ? undefined : COMMANDS[name];
@@ -90,7 +103,7 @@ if (import.meta.main) {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
     env: process.env,
-    cwd: process.cwd(),
+    cwd: resolveCwd(process.env, process.cwd()),
     signal: controller.signal,
     confirm: process.stdin.isTTY ? askOnTerminal : undefined,
     stdin: process.stdin,

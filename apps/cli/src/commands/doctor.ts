@@ -3,6 +3,7 @@ import { delimiter, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveWebDir } from "@taskville/engine/src/config/web-dir.ts";
 import type { ProjectsResponse } from "@taskville/protocol";
+import { readToken } from "../client.ts";
 import { type Context, type DoctorProbes, discoverUrl, type Io, parseCommand } from "../context.ts";
 import { EXIT } from "../errors.ts";
 import { isTaskvilleHook, SHIM_NAME, shellQuote } from "./install-settings.ts";
@@ -31,8 +32,19 @@ function realProbes(context: Context): DoctorProbes {
     nodeVersion: process.versions.node,
     webClientBuilt: () => resolveWebDir(context.io.env).dir !== undefined,
     engineHealthy: async (url) => {
+      let token: string;
       try {
-        return (await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) })).ok;
+        token = readToken(context.home);
+      } catch {
+        return "unauthorized";
+      }
+      try {
+        const response = await fetch(`${url}/health`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(2000),
+        });
+        if (response.status === 401 || response.status === 403) return "unauthorized";
+        return response.ok;
       } catch {
         return false;
       }
@@ -180,8 +192,17 @@ export async function doctor(io: Io, args: string[]): Promise<number> {
 
   const asked = (values.url as string | undefined) ?? io.env.TASKVILLE_URL;
   const engineUrl = asked ?? discoverUrl(io, context.home);
-  if (engineUrl !== undefined && (await probes.engineHealthy(engineUrl))) {
+  const health = engineUrl === undefined ? false : await probes.engineHealthy(engineUrl);
+  if (health === true) {
     checks.push(ok("engine", `running at ${engineUrl}`));
+  } else if (health === "unauthorized") {
+    checks.push(
+      fail(
+        "engine",
+        `the engine at ${engineUrl} rejected the token in ${context.home}`,
+        "taskville start  (use the same --home as the running engine)",
+      ),
+    );
   } else {
     checks.push(
       fail(
@@ -209,9 +230,8 @@ export async function doctor(io: Io, args: string[]): Promise<number> {
     io.stdout(`${JSON.stringify(checks, null, 2)}\n`);
   } else {
     for (const c of checks) {
-      io.stdout(
-        `${c.status} ${c.id}: ${c.message}${c.fix === undefined ? "" : ` fix: ${c.fix}`}\n`,
-      );
+      io.stdout(`${c.status} ${c.id}: ${c.message}\n`);
+      if (c.fix !== undefined) io.stdout(`      fix: ${c.fix}\n`);
     }
   }
   return checks.some((c) => c.status === "fail") ? EXIT.failure : EXIT.ok;

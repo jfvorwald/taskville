@@ -13,7 +13,12 @@ export interface BootstrapIo {
   /** Undefined when pnpm was not found. */
   pnpmVersion: string | undefined;
   /** Runs a program with an argv array and resolves its exit code. */
-  run(command: string, args: string[], cwd: string): Promise<number>;
+  run(
+    command: string,
+    args: string[],
+    cwd: string,
+    options?: { quiet?: boolean; output?: (chunk: string) => void },
+  ): Promise<number>;
   /** Absent when not on a terminal. */
   confirm?: ((question: string) => Promise<boolean>) | undefined;
 }
@@ -55,18 +60,32 @@ export async function bootstrap(argv: string[], io: BootstrapIo): Promise<number
     return 1;
   }
 
-  const steps: { name: string; args: string[]; cwd: string }[] = [
+  const steps: { name: string; args: string[]; cwd: string; quiet?: boolean }[] = [
     { name: "pnpm install", args: ["install"], cwd: io.root },
     {
       name: "the web client build",
       args: ["--filter", "@taskville/web", "build"],
       cwd: io.root,
+      quiet: true,
     },
   ];
   for (const step of steps) {
-    io.stdout(`Running ${step.name}...\n`);
-    const code = await io.run("pnpm", step.args, step.cwd);
+    io.stdout(step.quiet === true ? "Building the web client...\n" : `Running ${step.name}...\n`);
+    let captured = "";
+    const code = await io.run(
+      "pnpm",
+      step.args,
+      step.cwd,
+      step.quiet === true ? { quiet: true, output: (chunk) => (captured += chunk) } : undefined,
+    );
     if (code !== 0) {
+      if (step.quiet === true) {
+        const tail = captured
+          .split("\n")
+          .filter((l) => l !== "")
+          .slice(-30);
+        io.stderr(`${tail.join("\n")}\n`);
+      }
       io.stderr(
         `${step.name} failed (exit ${code}); fix the error above and run pnpm bootstrap again.\n`,
       );

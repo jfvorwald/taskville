@@ -74,11 +74,15 @@ export async function init(io: Io, args: string[]): Promise<number> {
     io.stdout(`Added project ${created.name} (${created.id}) for ${top}.\n`);
   }
 
-  if (values["no-hooks"] === true) return EXIT.ok;
+  const next = `Next: open ${context.url} in your browser.\n`;
+  if (values["no-hooks"] === true) {
+    io.stdout(`${next}${LATER}\n`);
+    return EXIT.ok;
+  }
   const yes = values.yes === true;
   const ask = io.confirm;
   if (!yes && ask === undefined) {
-    io.stdout(`${LATER}\n`);
+    io.stdout(`${next}${LATER}\n`);
     return EXIT.ok;
   }
   let declined = false;
@@ -91,7 +95,7 @@ export async function init(io: Io, args: string[]): Promise<number> {
     },
   };
   try {
-    return await install(asking, [
+    const code = await install(asking, [
       "claude-code",
       "--scope",
       "project",
@@ -103,9 +107,11 @@ export async function init(io: Io, args: string[]): Promise<number> {
       context.url,
       ...(yes ? ["--yes"] : []),
     ]);
+    io.stdout(next);
+    return code;
   } catch (error) {
     if (!declined) throw error;
-    io.stdout(`${LATER}\n`);
+    io.stdout(`${next}${LATER}\n`);
     return EXIT.ok;
   }
 }

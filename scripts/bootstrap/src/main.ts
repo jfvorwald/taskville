@@ -29,9 +29,19 @@ bootstrap(process.argv.slice(2), {
   packageJson: JSON.parse(readFileSync(`${root}package.json`, "utf8")),
   nodeVersion: process.versions.node,
   pnpmVersion: pnpmVersion(),
-  run: (command, args, cwd) =>
+  run: (command, args, cwd, options) =>
     new Promise((resolve) => {
-      const child = spawn(command, args, { cwd, stdio: "inherit" });
+      const quiet = options?.quiet === true;
+      const child = spawn(command, args, {
+        cwd,
+        stdio: quiet ? ["inherit", "pipe", "pipe"] : "inherit",
+      });
+      if (quiet) {
+        for (const stream of [child.stdout, child.stderr]) {
+          stream?.setEncoding("utf8");
+          stream?.on("data", (chunk: string) => options?.output?.(chunk));
+        }
+      }
       child.once("error", () => resolve(1));
       child.once("close", (code) => resolve(code ?? 1));
     }),

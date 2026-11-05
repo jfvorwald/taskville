@@ -39,7 +39,8 @@ export interface Io {
 export interface DoctorProbes {
   nodeVersion: string;
   webClientBuilt(): boolean;
-  engineHealthy(url: string): Promise<boolean>;
+  /** true or false (nothing answered); "unauthorized" when the engine rejected the CLI token. */
+  engineHealthy(url: string): Promise<boolean | "unauthorized">;
   onPath(command: string): boolean;
   listProjects(): Promise<{ id: string; name: string; roots: string[] }[]>;
 }
