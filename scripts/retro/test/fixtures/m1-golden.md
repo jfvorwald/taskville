@@ -101,6 +101,10 @@ From the roborev field of each merged ticket's task report: a medium or higher f
 
 Planned tickets were created by the first commit of the milestone (2026-10-31T01:15 UTC); added ones after it. Splits are not recorded in GitHub data. Dropped means closed as not planned.
 
+## Tokens and cost
+
+Tokens and cost: not measured (no OpenTelemetry data for this milestone).
+
 ## What went well *(written)*
 
 ## What hurt *(written)*
