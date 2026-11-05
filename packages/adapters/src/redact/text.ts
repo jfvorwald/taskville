@@ -172,10 +172,10 @@ const MAX_USER = 128;
 // Commands whose short `-p` flag carries a password. Everywhere else `-p` is a port or
 // publish flag (`ssh -p 2222`, `docker run -p 8080:80`, `psql -p 5432`), so the rule is
 // tied to these commands and nothing else. Group 1 is `mysql` or `mysqldump`, 2 is
-// `sshpass`, 3 is `docker` or `podman`, which count only when the same command has a whole
+// `sshpass`, 3 is `docker`, `podman`, `nerdctl` or `finch`, which count only when the same command has a whole
 // `login` word after it (see scanLoginSegment). A path in front (`/usr/bin/mysql`) is fine.
 const PASSWORD_COMMAND =
-  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
+  /(?<![A-Za-z0-9_.-])(?:(mysqldump|mysql)|(sshpass)|(docker|podman|nerdctl|finch))(?![A-Za-z0-9_-]|\.[A-Za-z0-9])/g;
 
 // A `{"name": "DB_PASSWORD", "value": "..."}` pair (Kubernetes env, the GitHub API, AWS
 // tags, `docker inspect`) written as text, in either property order and across lines.
@@ -616,6 +616,8 @@ const PAIR_NAME_TEXT = /^[A-Za-z_][A-Za-z0-9_.-]{0,99}$/;
  */
 function findObjectPairs(input: string, ends: Ends, out: Candidate[]): void {
   const frames: number[] = [];
+  const doubleEnds = quoteEnds(input, '"');
+  const singleEnds = quoteEnds(input, "'");
   const sensitive = new Set<number>();
   const values: Array<{ frame: number; at: number }> = [];
   let nextFrame = 0;
@@ -636,24 +638,30 @@ function findObjectPairs(input: string, ends: Ends, out: Candidate[]): void {
     } else if (ch === "}" || ch === "]") {
       frames.pop();
     } else if ((ch === '"' || ch === "'") && i > (unpaired.get(ch) ?? -1)) {
-      const close = quotedEnd(input, i, ch);
+      const close = (ch === '"' ? doubleEnds : singleEnds)[i] ?? input.length;
       if (input.charAt(close) !== ch) {
         unpaired.set(ch, close);
         continue;
       }
       const colon = skipSpace(close + 1);
       const frame = frames.at(-1);
-      if (input.charAt(colon) !== ":" || frame === undefined) continue;
+      if (input.charAt(colon) !== ":" || frame === undefined) {
+        // A double-quoted string is read whole, so brackets inside it are not counted.
+        if (ch === '"') i = close + 1;
+        continue;
+      }
       const key = input.slice(i, close).toLowerCase();
       const at = skipSpace(colon + 1);
       if (key === "value") {
         values.push({ frame, at });
       } else if (key === "name" || key === "key") {
         const quote = input.charAt(at);
-        const end = quotedEnd(input, at + 1, quote);
-        if ((quote === '"' || quote === "'") && input.charAt(end) === quote) {
-          const name = input.slice(at + 1, end);
-          if (PAIR_NAME_TEXT.test(name) && isSensitiveName(name)) sensitive.add(frame);
+        if (quote === '"' || quote === "'") {
+          const end = (quote === '"' ? doubleEnds : singleEnds)[at + 1] ?? input.length;
+          if (input.charAt(end) === quote) {
+            const name = input.slice(at + 1, end);
+            if (PAIR_NAME_TEXT.test(name) && isSensitiveName(name)) sensitive.add(frame);
+          }
         }
       }
       i = colon + 1;
@@ -787,7 +795,11 @@ function shellWordEnd(input: string, at: number, flat = false): number {
     // A backslash outside quotes escapes the next character: `pa\ ss` is one word, and a
     // backslash before a line break continues the word on the next line.
     if (ch === "\\") {
-      i += 2;
+      i += input.startsWith("\r\n", i + 1) ? 3 : 2;
+      continue;
+    }
+    if (flat && (ch === '"' || ch === "'")) {
+      i += 1;
       continue;
     }
     if (UNQUOTED_STOP.has(ch) || /\s/.test(ch)) return i;
@@ -808,6 +820,23 @@ function quotedEnd(input: string, from: number, quote: string): number {
     j += ch === "\\" && quote === '"' ? 2 : 1;
   }
   return input.length;
+}
+
+/**
+ * For each index, what `quotedEnd(input, index, quote)` returns, from one backward pass, so
+ * the close of any quoted segment is found in O(1) even in a long run of escaped quotes.
+ */
+function quoteEnds(input: string, quote: string): Int32Array {
+  const n = input.length;
+  const ends = new Int32Array(n + 2);
+  ends[n] = n;
+  ends[n + 1] = n;
+  for (let j = n - 1; j >= 0; j--) {
+    const ch = input.charAt(j);
+    if (ch === quote || ch === "\n" || ch === "\r") ends[j] = j;
+    else ends[j] = ends[j + (ch === "\\" && quote === '"' ? 2 : 1)] ?? n;
+  }
+  return ends;
 }
 
 /** Masks from the first parameter of a parameterized Authorization scheme to the line end. */
