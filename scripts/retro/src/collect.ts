@@ -2,7 +2,10 @@
 // to a Snapshot. Everything after this is pure and tested against a recorded snapshot.
 
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
+import { readAgentCost } from "./cost.ts";
 import {
   milestoneKeyOf,
   redactSnapshot,
@@ -157,6 +160,10 @@ export async function collect({ key, project, now }: CollectOptions): Promise<Sn
     if (report !== null) taskReports[ticketKey] = report;
   }
 
+  // Tokens and cost the engine measured, when this machine has its database (else none).
+  const home = process.env.TASKVILLE_HOME || join(homedir(), ".taskville");
+  const agentCost = readAgentCost(join(home, "taskville.db"));
+
   // The owner's login appears in links inside task reports; the report never needs it.
   return redactSnapshot<Snapshot>(
     {
@@ -166,6 +173,7 @@ export async function collect({ key, project, now }: CollectOptions): Promise<Sn
       board: Object.fromEntries(Object.entries(board).filter(([n]) => ticketNumbers.has(n))),
       runs,
       taskReports,
+      ...(agentCost.length > 0 ? { agentCost } : {}),
       recordedAt: now.toISOString(),
     },
     [owner],

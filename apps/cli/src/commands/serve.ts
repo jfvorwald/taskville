@@ -1,16 +1,18 @@
 import { randomBytes } from "node:crypto";
 import {
-  appendFileSync,
   chmodSync,
   closeSync,
+  constants,
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   unlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,7 +23,7 @@ import {
 } from "@taskville/engine/src/auth/pairing.ts";
 import { wirePermissionBridge } from "@taskville/engine/src/bridge/wire.ts";
 import { loadConfig } from "@taskville/engine/src/config/config.ts";
-import { ensureHome } from "@taskville/engine/src/config/home.ts";
+import { ensureHome, ensurePrivateDir } from "@taskville/engine/src/config/home.ts";
 import { resolveWebDir } from "@taskville/engine/src/config/web-dir.ts";
 import { type EvidenceStore, openEvidenceStore } from "@taskville/engine/src/evidence/index.ts";
 import { registerFeedRoutes } from "@taskville/engine/src/feed/index.ts";
@@ -106,19 +108,44 @@ export interface LogRouting {
   stderr: boolean;
 }
 
+/** An `engine.log` over this size is moved to `engine.log.1` when the next engine starts. */
+const LOG_ROTATE_BYTES = 10 * 1024 * 1024;
+/** Append, create, never follow a symlink at the path (ELOOP). */
+const LOG_FLAGS =
+  constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
+
+/** Appends to the log without following a symlink at `path`. */
+function appendLog(path: string, text: string): void {
+  const fd = openSync(path, LOG_FLAGS, 0o600);
+  try {
+    writeSync(fd, text);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function rotateLog(path: string): void {
+  try {
+    const stat = lstatSync(path);
+    if (stat.isFile() && stat.size > LOG_ROTATE_BYTES) renameSync(path, `${path}.1`);
+  } catch {
+    // Absent: nothing to rotate.
+  }
+}
+
 function logDestination(io: Io, home: string, logging: LogRouting) {
   let logFile: string | undefined;
   if (logging.file) {
     const dir = join(home, "logs");
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    chmodSync(dir, 0o700);
+    ensurePrivateDir(dir);
     logFile = join(dir, "engine.log");
-    appendFileSync(logFile, "", { mode: 0o600 });
+    rotateLog(logFile);
+    appendLog(logFile, "");
     chmodSync(logFile, 0o600);
   }
   return {
     write: (line: string) => {
-      if (logFile !== undefined) appendFileSync(logFile, line);
+      if (logFile !== undefined) appendLog(logFile, line);
       if (logging.stderr) io.stderr(line);
     },
   };
@@ -137,6 +164,8 @@ interface RuntimeInfo {
   url: string;
   pid: number;
   startedAt: string;
+  /** True when the engine reads the p key, so "already running" can say how to get a new link. */
+  keyListener?: boolean;
 }
 
 const RUNTIME_FILE = "engine.json";
@@ -159,8 +188,10 @@ function loopbackOrigin(raw: string): string | undefined {
     : undefined;
 }
 
-/** The URL of a live engine recorded in `<home>/engine.json`: its pid is alive and /health answers. */
-async function liveEngine(home: string): Promise<string | undefined> {
+/** A live engine recorded in `<home>/engine.json`: its pid is alive and /health answers. */
+async function liveEngine(
+  home: string,
+): Promise<{ origin: string; keyListener: boolean | undefined } | undefined> {
   let info: Partial<RuntimeInfo>;
   try {
     const parsed: unknown = JSON.parse(readFileSync(join(home, RUNTIME_FILE), "utf8"));
@@ -181,7 +212,10 @@ async function liveEngine(home: string): Promise<string | undefined> {
   }
   try {
     await fetch(`${origin}/health`, { signal: AbortSignal.timeout(2000) });
-    return origin;
+    return {
+      origin,
+      keyListener: typeof info.keyListener === "boolean" ? info.keyListener : undefined,
+    };
   } catch {
     return undefined;
   }
@@ -338,8 +372,13 @@ export async function acquireLock(
   }
 }
 
-function writeRuntimeInfo(home: string, url: string, startedAt: Date): void {
-  const info: RuntimeInfo = { url, pid: process.pid, startedAt: startedAt.toISOString() };
+function writeRuntimeInfo(home: string, url: string, startedAt: Date, keyListener: boolean): void {
+  const info: RuntimeInfo = {
+    url,
+    pid: process.pid,
+    startedAt: startedAt.toISOString(),
+    keyListener,
+  };
   const path = join(home, RUNTIME_FILE);
   const temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify(info)}\n`, { mode: 0o600 });
@@ -516,7 +555,14 @@ export async function runEngine(
     const running = await liveEngine(home);
     if (running !== undefined) {
       io.stdout(
-        `Taskville is already running at ${running}\nFor a new pairing link, press p in that engine's terminal if it has one, or restart it.\n`,
+        `Taskville is already running at ${running.origin}\n${
+          running.keyListener === true
+            ? "For a new pairing link, press p in that engine's terminal."
+            : running.keyListener === false
+              ? "For a new pairing link, restart it."
+              : // An engine started before engine.json recorded this: it is not known.
+                "For a new pairing link, press p in that engine's terminal if it has one, or restart it."
+        }\n`,
       );
       release();
       return EXIT.ok;
@@ -541,6 +587,7 @@ export async function runEngine(
   let draining: Promise<unknown> = Promise.resolve();
   try {
     parts = composeServe(io, home, portFlag, logging);
+    sweepRunDir(home, now().getTime());
     const { pairing, spool } = parts;
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
@@ -567,7 +614,22 @@ export async function runEngine(
     const linkText = (url: string) =>
       `Pair a browser (one-time link, valid for ${minutes} minutes): ${url}\n`;
     const printLink = () => io.stdout(linkText(`${base}/#pair=${pairing.issueCode()}`));
-    writeRuntimeInfo(home, base, now());
+    let interrupt: () => void = () => {};
+    const interrupted = new Promise<void>((resolve) => {
+      interrupt = resolve;
+    });
+    let lastKeyCode = Number.NEGATIVE_INFINITY;
+    keys = listenForKeys(io.stdin, {
+      pair: () => {
+        const t = now().getTime();
+        // A clock that went back does not lock the key out.
+        if (t - lastKeyCode < PAIRING_KEY_INTERVAL_MS && t >= lastKeyCode) return;
+        lastKeyCode = t;
+        printLink();
+      },
+      interrupt: () => interrupt(),
+    });
+    writeRuntimeInfo(home, base, now(), keys !== undefined);
     wroteRuntime = true;
     release();
     const firstLink = `${base}/#pair=${pairing.issueCode()}`;
@@ -595,21 +657,6 @@ export async function runEngine(
       io.stdout(linkText(firstLink));
     }
 
-    let interrupt: () => void = () => {};
-    const interrupted = new Promise<void>((resolve) => {
-      interrupt = resolve;
-    });
-    let lastKeyCode = Number.NEGATIVE_INFINITY;
-    keys = listenForKeys(io.stdin, {
-      pair: () => {
-        const t = now().getTime();
-        // A clock that went back does not lock the key out.
-        if (t - lastKeyCode < PAIRING_KEY_INTERVAL_MS && t >= lastKeyCode) return;
-        lastKeyCode = t;
-        printLink();
-      },
-      interrupt: () => interrupt(),
-    });
     io.stdout(
       keys === undefined && mode.command === "serve" && !quiet
         ? "For a new pairing link later, restart taskville serve.\n"
@@ -656,6 +703,23 @@ export async function runEngine(
   }
 }
 
+/** Deletes pairing pages in `<home>/run` (a crash skips the cleanup) older than the code TTL. */
+function sweepRunDir(home: string, nowMs: number): void {
+  const dir = join(home, "run");
+  try {
+    if (!lstatSync(dir).isDirectory()) return;
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".html")) continue;
+      const path = join(dir, name);
+      const stat = lstatSync(path);
+      if (stat.isFile() && nowMs - stat.mtimeMs > PAIRING_CODE_TTL_MS)
+        rmSync(path, { force: true });
+    }
+  } catch {
+    // Absent or unreadable: a sweep is housekeeping only.
+  }
+}
+
 /** How long the redirect page lives when the caller schedules no cleanup. */
 const REDIRECT_PAGE_TTL_MS = 30_000;
 
@@ -678,8 +742,7 @@ function writeRedirectPage(
 <noscript><meta http-equiv="refresh" content="0;url=${attr}"></noscript>
 `;
   try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    chmodSync(dir, 0o700);
+    ensurePrivateDir(dir);
     writeFileSync(path, html, { mode: 0o600, flag: "wx" });
   } catch {
     return undefined;
