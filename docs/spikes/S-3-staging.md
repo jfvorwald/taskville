@@ -23,9 +23,9 @@ So staging has two jobs, and they need different shapes:
 | Runtime | Node 26.8+ with `node:sqlite` | `package.json` engines, `apps/engine/src/storage/sqlite.ts` |
 | Network | one loopback port; no outbound calls | ARCHITECTURE.md section 13 |
 
-`packages/demo`, `packages/domain` and `packages/protocol` import nothing from `node:`. The deterministic demo producer (`taskville demo run --seed`) and the domain reducer can run in a Worker or a browser unchanged.
+`packages/demo`, `packages/domain` and `packages/protocol` import nothing from `node:`. The deterministic demo producer (`taskville demo run --seed <n> --duration <sim-time> --offline`, the `runOffline` API in `packages/demo`) and the domain reducer can run in a Worker or a browser unchanged.
 
-The web client reads `/v1/projects`, `/v1/projects/<id>/snapshot`, the project and attention SSE streams, `/v1/evidence/`, and posts `/v1/pairing`, `/v1/commands`, and `/v1/requests/`.
+The web client reads `/v1/projects`, `/v1/projects/<id>/snapshot`, the project and attention SSE streams, `/v1/agents/...` (feed and agent panel), `/v1/timelines/...` (history), and `/v1/evidence/...`, and posts `/v1/pairing`, `/v1/commands`, and `/v1/requests/...`.
 
 ## Options
 
@@ -47,11 +47,11 @@ Run the engine on a spare Mac or VPS, expose it with `cloudflared` and an Access
 
 Two parts, matching the two jobs:
 
-1. **Review staging (hosted).** A Worker named `taskville-staging` at `taskville-staging.jaqstudios.com`, behind the existing App Launcher and its owner-only Access policy, with `workers.dev` and version preview URLs disabled, exactly like JAQ Studios and EPOCH. It serves the frozen `apps/web/dist` from the release unchanged, plus a small read-only `/v1` implementation backed by `packages/demo` and `packages/domain`: projects, snapshots and SSE streams fed by a seeded demo run. Pairing auto-succeeds for the Access-authenticated session. `/v1/commands` and `/v1/requests/` answer with synthetic outcomes and reach nothing: there is no permission bridge, no hook shim, no real agent. A staging banner and the release ID show in the header.
+1. **Review staging (hosted).** A Worker named `taskville-staging` at `taskville-staging.jaqstudios.com`, behind the existing App Launcher and its owner-only Access policy, with `workers.dev` and version preview URLs disabled, exactly like JAQ Studios and EPOCH. It serves the frozen `apps/web/dist` from the release unchanged, plus a small read-only `/v1` implementation backed by `packages/demo` and `packages/domain`: projects, snapshots, SSE streams, agent feeds, timelines and evidence, all fed by a seeded demo run. Every browser read route above is served or answers an explicit empty result, never a 404 the client treats as a failure. **First-visit pairing:** the unchanged client needs a one-time `#pair=` code. A request to `/` without a paired session (Access has already authenticated it, and the Worker verifies the Access JWT) gets a redirect to `/#pair=<code>`, a fresh single-use code with a 10 minute TTL bound to that Access identity; `POST /v1/pairing` exchanges it for a session secret exactly as the engine does. Nothing is pairable without a valid Access JWT. The staging browser check in M7.04 covers first visit, reload and a revoked session. `/v1/commands` and `/v1/requests/` answer with synthetic outcomes and reach nothing: there is no permission bridge, no hook shim, no real agent. A staging banner and the release ID show in the header.
 2. **Artifact check (local-first "production").** M7.02 packages the CLI and engine as a frozen release (a tarball with a manifest of hashes and a release ID). A CI job installs that exact tarball on a clean runner with a fresh `TASKVILLE_HOME` and runs `start --no-open`, pairing through the printed link in headless Chromium, `init --yes` in a throwaway repo, `doctor`, a replayed hook fixture, and `demo`. It records a receipt next to the release. Promotion means publishing that same tarball (a GitHub release), never a rebuild.
 
 - For: no change to the engine's security model. Fits the existing release helper, receipts, portal and Access setup with no new spend. Section 13's "never connected to real agents' permission bridges" holds structurally, not by configuration. The artifact check covers what a hosted engine would, on the path users actually take.
-- Against: review staging does not run the Node engine, so engine bugs show up in the artifact check rather than in the browser on staging. The in-Worker `/v1` is a second implementation of the read API that can drift. Mitigation: it reuses the protocol schemas, and a contract test runs the web client's snapshot and stream fixtures against both.
+- Against: review staging does not run the Node engine, so engine bugs show up in the artifact check rather than in the browser on staging. The in-Worker `/v1` is a second implementation of the read API that can drift. Mitigation: it reuses the protocol schemas, and a contract test runs every route the web client calls (the list above, kept in sync by a test that greps the client for `/v1/` paths) against both.
 
 ## Recommendation
 
