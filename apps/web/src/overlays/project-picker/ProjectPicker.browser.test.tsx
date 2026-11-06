@@ -97,4 +97,37 @@ describe("ProjectPicker", () => {
     await vi.waitFor(() => expect(projectSelection.getState().projectId).toBe("beta"));
     await expect.element(picker()).toHaveValue("beta");
   });
+
+  it("keeps and remembers choices made while the list is loading, even away and back", async () => {
+    let release: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      ),
+    );
+    await mount();
+    selectProject("alpha");
+    selectProject(DEFAULT_PROJECT_ID);
+    release(new Response(JSON.stringify({ projects }), { status: 200 }));
+    await expect.element(picker()).toBeVisible();
+    expect(projectSelection.getState().projectId).toBe(DEFAULT_PROJECT_ID);
+    expect(window.localStorage.getItem("taskville.project")).toBe(DEFAULT_PROJECT_ID);
+  });
+
+  it("refreshes the list when the picker gets focus, without moving the city", async () => {
+    stubProjects(projects);
+    await mount();
+    await vi.waitFor(() => expect(projectSelection.getState().projectId).toBe("beta"));
+    stubProjects([
+      ...projects,
+      { id: "gamma", name: "Gamma", roots: ["/g"], builtin: false, head: 999 },
+    ]);
+    (picker().element() as HTMLSelectElement).focus();
+    await expect.element(page.getByRole("option", { name: "Gamma" })).toBeInTheDocument();
+    expect(projectSelection.getState().projectId).toBe("beta");
+  });
 });

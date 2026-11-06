@@ -35,41 +35,62 @@ export function ProjectPicker() {
   return secret === null ? null : <PairedProjectPicker secret={secret} />;
 }
 
+async function fetchProjects(
+  secret: string,
+  signal?: AbortSignal,
+): Promise<ProjectSummary[] | null> {
+  const response = await globalThis.fetch("/v1/projects", {
+    headers: { [SESSION_HEADER]: secret },
+    signal: signal ?? null,
+  });
+  if (!response.ok) return null;
+  return ((await response.json()) as { projects: ProjectSummary[] }).projects;
+}
+
 function PairedProjectPicker({ secret }: { secret: string }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const currentProjectId = useCurrentProjectId();
 
   useEffect(() => {
     const controller = new AbortController();
-    const startedOn = projectSelection.getState().projectId;
-    let unsubscribe: (() => void) | undefined;
+    // Every change from here on (picker, chip, Back to Unsorted) is the viewer's and is
+    // remembered, including changes made while the list is still loading. The fetched default
+    // applies only when the viewer made no choice at all before it arrived.
+    let viewerChose = false;
+    let applyingDefault = false;
+    const unsubscribe = projectSelection.subscribe((state, previous) => {
+      if (state.projectId === previous.projectId || applyingDefault) return;
+      viewerChose = true;
+      remember(state.projectId);
+    });
     void (async () => {
       try {
-        const response = await globalThis.fetch("/v1/projects", {
-          headers: { [SESSION_HEADER]: secret },
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-        const body = (await response.json()) as { projects: ProjectSummary[] };
-        if (controller.signal.aborted) return;
-        setProjects(body.projects);
-        // A chip clicked while the list was loading is the viewer's choice; keep it.
-        if (projectSelection.getState().projectId === startedOn) {
-          selectProject(pickDefaultProject(body.projects, readRemembered()));
+        const list = await fetchProjects(secret, controller.signal);
+        if (list === null || controller.signal.aborted) return;
+        setProjects(list);
+        if (!viewerChose) {
+          applyingDefault = true;
+          selectProject(pickDefaultProject(list, readRemembered()));
+          applyingDefault = false;
         }
-        // From here every change (picker, chip, Back to Unsorted) is the viewer's and is remembered.
-        unsubscribe = projectSelection.subscribe((state, previous) => {
-          if (state.projectId !== previous.projectId) remember(state.projectId);
-        });
       } catch {
         // The city stays on its current project; the picker stays empty.
       }
     })();
     return () => {
       controller.abort();
-      unsubscribe?.();
+      unsubscribe();
     };
   }, [secret]);
+
+  // Projects added with the CLI while the page is open show up the next time the picker is used.
+  const refresh = () => {
+    void fetchProjects(secret)
+      .then((list) => {
+        if (list !== null) setProjects(list);
+      })
+      .catch(() => {});
+  };
 
   if (projects.length === 0) return null;
   return (
@@ -78,6 +99,7 @@ function PairedProjectPicker({ secret }: { secret: string }) {
         className={styles.picker}
         aria-label="Project"
         value={currentProjectId}
+        onFocus={refresh}
         onChange={(event) => selectProject(event.target.value)}
       >
         {projects.map((p) => (
