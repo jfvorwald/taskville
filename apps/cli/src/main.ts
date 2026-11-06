@@ -114,7 +114,10 @@ if (import.meta.main) {
     confirm: process.stdin.isTTY ? askOnTerminal : undefined,
     stdin: process.stdin,
     stdoutIsTTY: process.stdout.isTTY === true,
-    openUrl,
+    openUrl: (url: string) => openUrl(url),
+    scheduleCleanup: (cleanup, delayMs) => {
+      setTimeout(cleanup, delayMs).unref();
+    },
     sourceCheckout: existsSync(join(REPO_ROOT, "apps/web/package.json")),
     buildWeb,
   }).then((code) => {
@@ -153,15 +156,43 @@ export function spawnOpener(
   });
 }
 
-/** Opens a URL in the default browser. */
-function openUrl(url: string): Promise<void> {
-  const { command, args } = openerCommand(process.platform, url);
-  return spawnOpener(command, args);
+/** An AppleScript `open location` statement for `url`; backslash and double quote are escaped. */
+export function appleScriptOpenLocation(url: string): string {
+  return `open location "${url.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-/** The program and argv that open a URL on a platform. */
+/**
+ * Opens a URL in the default browser. On macOS the URL goes to `osascript` on stdin, never on
+ * argv, because argv is visible to other local users and the http link carries the one-time
+ * pairing code (roborev 7127). Elsewhere the platform opener gets `url`, which `start` makes the
+ * file:// URL of a private redirect page.
+ */
+export function openUrl(
+  url: string,
+  platform: string = process.platform,
+  spawnFn: typeof spawn = spawn,
+): Promise<void> {
+  if (platform !== "darwin") {
+    const { command, args } = openerCommand(platform, url);
+    return spawnOpener(command, args, spawnFn);
+  }
+  return new Promise((resolve, reject) => {
+    const { command, args } = openerCommand(platform, url);
+    const child = spawnFn(command, args, { detached: true, stdio: ["pipe", "ignore", "ignore"] });
+    child.unref();
+    child.once("error", reject);
+    child.once("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`${command} exited with code ${code}`)),
+    );
+    // A dead child must surface as its exit code, not as an unhandled EPIPE.
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(`${appleScriptOpenLocation(url)}\n`);
+  });
+}
+
+/** The program and argv that open a URL on a platform. macOS reads its script from stdin. */
 export function openerCommand(platform: string, url: string): { command: string; args: string[] } {
-  if (platform === "darwin") return { command: "open", args: [url] };
+  if (platform === "darwin") return { command: "osascript", args: ["-"] };
   if (platform === "win32") {
     return { command: "rundll32", args: ["url.dll,FileProtocolHandler", url] };
   }

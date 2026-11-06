@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -5,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -13,6 +15,7 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   PAIRING_CODE_TTL_MS,
   type PairingRecords,
@@ -576,6 +579,7 @@ export async function runEngine(
     stderr: !quiet || mode.verbose,
   };
   let wroteRuntime = false;
+  let removePage: () => void = () => {};
   let parts: ServeParts | undefined;
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   let keys: { restore: () => void } | undefined;
@@ -583,6 +587,7 @@ export async function runEngine(
   let draining: Promise<unknown> = Promise.resolve();
   try {
     parts = composeServe(io, home, portFlag, logging);
+    sweepRunDir(home, Date.now()); // file mtimes are real time, not the injected clock
     const { pairing, spool } = parts;
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
@@ -632,9 +637,29 @@ export async function runEngine(
     wroteRuntime = true;
     release();
     const firstLink = pairLink();
-    if (mode.open && quiet && io.openUrl !== undefined) {
-      // The opener gets the http link itself: a file:// redirect page was the weak hop (M7.19).
-      // The one-time code is therefore on the opener's argv (loopback only, single use, TTL).
+    const darwin = (io.platform ?? process.platform) === "darwin";
+    // Off macOS the opener gets a 0600 redirect page, never the code: argv is visible to other
+    // local users. On macOS the real opener passes the http link to osascript on stdin instead.
+    const page =
+      mode.open && quiet && io.openUrl !== undefined && !darwin
+        ? writeRedirectPage(home, firstLink)
+        : undefined;
+    if (page !== undefined && io.openUrl !== undefined) {
+      removePage = page.remove;
+      await io.openUrl(pathToFileURL(page.path).href).then(
+        () => {
+          io.stdout("Opened your browser to pair it.\n");
+          io.stdout(`If no browser opened, open this link:\n${firstLink}\n`);
+          if (io.scheduleCleanup !== undefined)
+            io.scheduleCleanup(page.remove, PAIRING_CODE_TTL_MS);
+          else setTimeout(page.remove, REDIRECT_PAGE_TTL_MS).unref();
+        },
+        () => {
+          page.remove();
+          io.stdout(linkText(firstLink));
+        },
+      );
+    } else if (mode.open && quiet && io.openUrl !== undefined && darwin) {
       await io.openUrl(firstLink).then(
         () => {
           io.stdout("Opened your browser to pair it.\n");
@@ -673,6 +698,7 @@ export async function runEngine(
     await listening.close();
     removeRuntimeInfo(home);
     release();
+    removePage();
     io.stdout("Taskville engine stopped\n");
     return EXIT.ok;
   } catch (error) {
@@ -685,9 +711,57 @@ export async function runEngine(
     // A failure after listening (a closed terminal, say) must not leave the port open.
     await server?.close().catch(() => {});
     if (wroteRuntime) removeRuntimeInfo(home);
+    removePage();
     if (error instanceof CliError) throw error;
     throw new CliError(EXIT.failure, `Cannot start the engine: ${(error as Error).message}`);
   }
+}
+
+/** Deletes pairing pages in `<home>/run` (a crash skips the cleanup) older than the code TTL. */
+function sweepRunDir(home: string, nowMs: number): void {
+  const dir = join(home, "run");
+  try {
+    if (!lstatSync(dir).isDirectory()) return;
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".html")) continue;
+      const path = join(dir, name);
+      const stat = lstatSync(path);
+      if (stat.isFile() && nowMs - stat.mtimeMs > PAIRING_CODE_TTL_MS)
+        rmSync(path, { force: true });
+    }
+  } catch {
+    // Absent or unreadable: a sweep is housekeeping only.
+  }
+}
+
+/** How long the redirect page lives when the caller schedules no cleanup. */
+const REDIRECT_PAGE_TTL_MS = 30_000;
+
+/**
+ * Writes `<home>/run/<random>.html` (dir 0700, file 0600) that sends the browser to `url`, so the
+ * one-time code never appears in the opener's argv. Returns undefined when it cannot be written.
+ */
+function writeRedirectPage(
+  home: string,
+  url: string,
+): { path: string; remove: () => void } | undefined {
+  const dir = join(home, "run");
+  const path = join(dir, `${randomBytes(18).toString("base64url")}.html`);
+  const attr = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const js = JSON.stringify(url).replace(/</g, "\\u003c");
+  const html = `<!doctype html>
+<meta charset="utf-8">
+<title>Taskville</title>
+<script>location.replace(${js});</script>
+<noscript><meta http-equiv="refresh" content="0;url=${attr}"></noscript>
+`;
+  try {
+    ensurePrivateDir(dir);
+    writeFileSync(path, html, { mode: 0o600, flag: "wx" });
+  } catch {
+    return undefined;
+  }
+  return { path, remove: () => rmSync(path, { force: true }) };
 }
 
 /**

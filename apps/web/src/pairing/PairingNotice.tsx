@@ -4,12 +4,25 @@ import type { PairingState } from "./pair.ts";
 
 type Refused = Exclude<PairingState, { status: "paired" }>;
 
+/** How to get a new link: p when this engine reads keys, otherwise a restart (M7.19). */
+function Recovery({ keyListener }: { keyListener: boolean }) {
+  return keyListener ? (
+    <>To get a new link, press p in the terminal running taskville.</>
+  ) : (
+    <>
+      To get a new link, stop taskville (Ctrl+C) in the terminal running it, then run{" "}
+      <code>taskville start</code> again.
+    </>
+  );
+}
+
 const COPY = {
   unpaired: {
     title: "Not paired",
-    body: () => (
+    body: (keyListener: boolean) => (
       <>
-        Run <code>taskville start</code> and open the one-time link it prints or opens for you.
+        Open the one-time link that taskville prints or opens for you.{" "}
+        <Recovery keyListener={keyListener} />
       </>
     ),
     retry: false,
@@ -18,17 +31,16 @@ const COPY = {
     title: "Pairing link not accepted",
     body: (keyListener: boolean) => (
       <>
-        The link is invalid, already used, or expired. Run <code>taskville start</code> for a new
-        one{keyListener ? ", or press p in its terminal" : ""}.
+        The link is invalid, already used, or expired. <Recovery keyListener={keyListener} />
       </>
     ),
     retry: false,
   },
   network: {
     title: "Cannot reach the engine",
-    body: () => (
+    body: (keyListener: boolean) => (
       <>
-        Check that <code>taskville start</code> is running, then try again.
+        Check that taskville is running, then try again. <Recovery keyListener={keyListener} />
       </>
     ),
     retry: true,
@@ -37,9 +49,8 @@ const COPY = {
     title: "Could not finish pairing",
     body: (keyListener: boolean) => (
       <>
-        The engine did not answer. Open the pairing link again; if it was already used, run{" "}
-        <code>taskville start</code> for a new one
-        {keyListener ? ", or press p in its terminal" : ""}.
+        The engine did not answer. Open the pairing link again; a link that was already used will
+        not work. <Recovery keyListener={keyListener} />
       </>
     ),
     retry: false,
