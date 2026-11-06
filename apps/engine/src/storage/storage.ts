@@ -159,6 +159,9 @@ function prepareStatements(db: Database) {
     project: prepare("SELECT * FROM projects WHERE id = ?"),
     projects: prepare("SELECT * FROM projects ORDER BY id"),
     head: prepare("SELECT head FROM projects WHERE id = ?"),
+    lastEventAt: prepare(
+      "SELECT received_at FROM events WHERE project_id = ? ORDER BY ingest_sequence DESC LIMIT 1",
+    ),
     insertProject: prepare(
       "INSERT INTO projects (id, name, created_at, roots_json, builtin) VALUES (?, ?, ?, ?, ?)",
     ),
@@ -237,6 +240,12 @@ export class Storage implements StorageReads {
   head(projectId: string): number | undefined {
     const row = this.#stmt.head.get(projectId) as { head: number } | undefined;
     return row?.head;
+  }
+
+  /** The receivedAt of the project's last event (a primary-key lookup), or undefined with none. */
+  lastEventAt(projectId: string): string | undefined {
+    const row = this.#stmt.lastEventAt.get(projectId) as { received_at: string } | undefined;
+    return row?.received_at;
   }
 
   projection<S = unknown>(projectId: string): ProjectionRecord<S> | undefined {

@@ -69,6 +69,7 @@ export function registerStreamRoutes(app: Hono<AppEnv>, options: StreamRouteOpti
         roots,
         builtin,
         head,
+        lastEventAt: storage.lastEventAt(id) ?? null,
       })),
     };
     return c.json(body);

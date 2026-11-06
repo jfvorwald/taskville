@@ -34,3 +34,27 @@ describe("pickDefaultProject", () => {
     expect(pickDefaultProject([], null)).toBe(DEFAULT_PROJECT_ID);
   });
 });
+
+// M7.22: the default follows last activity time, not event count. `lastEventAt` is an ISO string
+// on each `GET /v1/projects` row. The protocol type does not carry it yet, so the rows are loosely
+// typed here.
+describe("pickDefaultProject by last activity", () => {
+  const withTime = (p: typeof alpha, lastEventAt: string) => ({ ...p, lastEventAt }) as typeof p;
+  const oldBusy = withTime({ ...alpha, id: "old-busy", head: 5000 }, "2026-01-05T09:00:00.000Z");
+  const recentQuiet = withTime(
+    { ...beta, id: "recent-quiet", head: 3 },
+    "2026-11-05T17:30:00.000Z",
+  );
+
+  it("prefers a recent quiet project over an old busy one", () => {
+    expect(pickDefaultProject([unsorted, oldBusy, recentQuiet], null)).toBe("recent-quiet");
+  });
+
+  it("does not depend on list order", () => {
+    expect(pickDefaultProject([recentQuiet, oldBusy, unsorted], null)).toBe("recent-quiet");
+  });
+
+  it("still lets a remembered choice win over recency", () => {
+    expect(pickDefaultProject([unsorted, oldBusy, recentQuiet], "old-busy")).toBe("old-busy");
+  });
+});
