@@ -168,3 +168,48 @@ describe("leading globals with subcommands and targets", () => {
     });
   }
 });
+
+// roborev 7132: the same option given before and after the command keeps last-wins order, so the
+// trailing value (the one nearest the end of the command line) wins.
+describe("repeated global options keep last-wins order", () => {
+  const URL_LEAD = "http://127.0.0.1:4000";
+  const URL_TRAIL = "http://127.0.0.1:5000";
+
+  function otherHome(sb: ReturnType<typeof sandbox>, url: string) {
+    const tv = join(sb.root, "other", ".taskville");
+    mkdirSync(tv, { recursive: true });
+    writeFileSync(
+      join(tv, "engine.json"),
+      JSON.stringify({ url, pid: 4242, startedAt: "2026-11-04T10:00:00.000Z" }),
+    );
+    return tv;
+  }
+
+  it("--url leading and trailing on doctor: only the trailing URL is probed", async () => {
+    const sb = sandbox();
+    const r = await sb.run(["--url", URL_LEAD, "doctor", "--home", sb.tv, "--url", URL_TRAIL]);
+    expect(r.stderr).not.toContain("Usage:");
+    expect(sb.probed).toEqual([URL_TRAIL]);
+    expect(r.stdout).toContain(URL_TRAIL);
+    expect(r.stdout).not.toContain(URL_LEAD);
+  });
+
+  it("--home leading and trailing on doctor: the trailing home is read", async () => {
+    const sb = sandbox();
+    const trailing = otherHome(sb, "http://127.0.0.1:4777");
+    const r = await sb.run(["--home", sb.tv, "doctor", "--home", trailing]);
+    expect(r.stderr).not.toContain("Usage:");
+    expect(sb.probed).toEqual(["http://127.0.0.1:4777"]);
+    expect(r.stdout).not.toContain(URL_OK);
+  });
+
+  it("--home leading and trailing with a subcommand: project list uses the trailing home", async () => {
+    const sb = sandbox();
+    const trailing = otherHome(sb, "http://127.0.0.1:4777");
+    const r = await sb.run(["--home", sb.tv, "project", "list", "--home", trailing]);
+    expect(r.stderr).not.toMatch(/Unknown project command|Usage: taskville <command>/);
+    // Neither home has a token, so the error names the home that was actually read.
+    expect(r.stderr).toContain(join(trailing, "token"));
+    expect(r.stderr).not.toContain(join(sb.tv, "token"));
+  });
+});
