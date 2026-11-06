@@ -2,16 +2,22 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-06 23:30 UTC. **Main:** b001847. **State:** M7 local-setup batch continuing. M5 and M6 still await owner review at [G5 #76](https://github.com/jfvorwald/taskville/issues/76) and [G6 #80](https://github.com/jfvorwald/taskville/issues/80) (both still OPEN on GitHub); they block M7.01 (#81) and the staging tickets M7.02 to M7.06. No other ready M7 work remains.
+**Updated:** 2026-11-07 00:10 UTC. **Main:** 0cb5778. **State:** G5 #76 and G6 #80 closed by the owner on 2026-11-06. M7 staging work unblocked: the staging spike M7.01 is merged and its decision is open at [#415](https://github.com/jfvorwald/taskville/issues/415) (default: option C, static staging Worker plus a clean-machine artifact check). Next: M7.02 packaging on the default. M7.25 (#419) in CI.
 
 ## Done in M7 Private staging (local-setup batch, 2026-11-06)
 
 | Ticket | PR | Outcome |
 | --- | --- | --- |
+| M7.25 #418 permission e2e open-only under load | #419 | test hold window 30 s for answer tests, 3 s kept for hold-end tests; reproduced with 25x CPU throttling; roborev 7178 PASS; [report](tasks/M7.25.md) |
+| M7.24 #413 main session named after the person running it | #417 | owner request; engine passes the OS username; ARCHITECTURE 8.1 sentence updated; roborev PASS; existing sessions keep their old name; [report](tasks/M7.24.md) |
+| M7.23 #412 main session leaves idle during a turn | #416 | REDUCER_VERSION 9; roborev High (Working label hid unknown, constitution) fixed by reverting the label; confirm PASS; [report](tasks/M7.23.md) |
+| M7.01 #81 staging spike | #414 | [S-3](spikes/S-3-staging.md): option C recommended; decision #415 open, #81 stays open until answered; three review rounds (6 medium, 1 low) fixed; [report](tasks/M7.01.md) |
 | M7.22 #405 default project by last activity | #410 | `lastEventAt` on /v1/projects; roborev 7124 PASS; [report](tasks/M7.22.md) |
 | M7.20 #402 CrewHighlight lift test on the owner's Mac | #407 | cause: SwiftShader draw gaps under load; tests pin the clock; roborev 7119 PASS; CI shim spool test flaked once (passed on rerun); [report](tasks/M7.20.md) |
 | M7.18 #399 global options before the command | #406 | roborev 7116 and 7132 fixed test-first; post-commit 7139 PASS (no third panel per cap); [report](tasks/M7.18.md) |
 | M7.19 #400 start pairs the opened browser (P0) | #409 | osascript stdin on macOS, 0600 redirect page elsewhere; recovery copy names p only with a key listener; roborev 7127 fixed, 7138 PASS; decision #408 closed; real owner-browser run pending owner; [report](tasks/M7.19.md) |
+
+Wave run on main bc0457f (M7 local-setup batch): `pnpm check` 4,927 of 4,927; browser 934 of 937, 3 load flakes (CityCrew.anchors, ConnectedPrivacySearch, LiveEvidenceWindow; all passed alone, 32 of 32); app e2e passed (first attempt blocked by an orphaned demo engine from 2026-11-04 holding port 4817, stopped); web smoke 4 of 4; crews 5 of 5; telemetry replay passed; permission e2e failed twice (finding #418, fixed in #419). The earlier attempt on 97c9243 hit the 1 hour background limit; its partial result (24 unit failures) did not reproduce on bc0457f.
 
 Earlier M7 merges: M7.07 to M7.17, M7.21 (see task reports).
 
