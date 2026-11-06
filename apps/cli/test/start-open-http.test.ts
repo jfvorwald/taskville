@@ -84,7 +84,10 @@ async function start(io: Partial<Io>) {
     port,
     opened,
     out: () => out,
-    stop: () => (controller.abort(), exited),
+    stop: () => {
+      controller.abort();
+      return exited;
+    },
   };
 }
 

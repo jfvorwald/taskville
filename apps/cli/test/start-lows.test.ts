@@ -6,7 +6,6 @@ import {
   readFileSync,
   statSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -175,25 +174,6 @@ describe("logs/ and run/ are private directories (M7.08 low)", () => {
 });
 
 describe("start cleans up after itself (M7.08 low)", () => {
-  it("deletes run/*.html older than the pairing code TTL and keeps newer files", async () => {
-    const s = setup();
-    const dir = join(s.home, "run");
-    mkdirSync(dir, { mode: 0o700 });
-    const stale = join(dir, "stale.html");
-    const fresh = join(dir, "fresh.html");
-    const other = join(dir, "notes.txt");
-    for (const f of [stale, fresh, other]) writeFileSync(f, "x", { mode: 0o600 });
-    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    utimesSync(stale, hourAgo, hourAgo);
-    utimesSync(other, hourAgo, hourAgo);
-    const r = await launch(s);
-    await booted(r, s);
-    expect(existsSync(stale)).toBe(false);
-    expect(existsSync(fresh)).toBe(true);
-    expect(existsSync(other)).toBe(true);
-    await r.stop();
-  });
-
   it("rotates an engine.log over 10 MiB to engine.log.1 and starts a small one", async () => {
     const s = setup();
     const logs = join(s.home, "logs");

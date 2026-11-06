@@ -23,7 +23,11 @@ describe("browserEnv", () => {
       throw new DOMException("denied", "SecurityError");
     });
     const env = browserEnv();
-    expect(await establishSession(env)).toEqual({ status: "failed", reason: "storage" });
+    expect(await establishSession(env)).toEqual({
+      status: "failed",
+      reason: "storage",
+      keyListener: false,
+    });
   });
 
   it("treats blocked storage as unpaired when there is no pairing code", async () => {

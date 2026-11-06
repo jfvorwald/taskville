@@ -7,7 +7,7 @@ describe("PairingNotice", () => {
   it("tells an unpaired browser how to pair, without offering data", async () => {
     await render(<PairingNotice state={{ status: "unpaired" }} onRetry={() => {}} />);
     await expect.element(page.getByRole("heading", { name: "Not paired" })).toBeVisible();
-    await expect.element(page.getByText(/taskville serve/)).toBeVisible();
+    await expect.element(page.getByText(/taskville start/)).toBeVisible();
     expect(page.getByRole("button", { name: "Try again" }).elements()).toHaveLength(0);
   });
 
