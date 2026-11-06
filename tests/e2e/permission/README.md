@@ -10,7 +10,9 @@ Push tier. It is not part of `pnpm check`. There is no package script for it (th
 ## Replay (no model, no `claude`, about a minute)
 
 `permission.spec.ts` starts a real `taskville serve --headless` in a throwaway home with
-`bridge.holdWindowSeconds` set to 3, pairs a real Chromium to the built web client, and acts as
+`bridge.holdWindowSeconds` set to 30 (3 for the two tests tagged `@short-hold`, "no viewer" and
+"viewer, no answer", which watch the hold end; a 3-second hold ran out before the viewer's click
+on a loaded machine, M7.25), pairs a real Chromium to the built web client, and acts as
 Claude Code: it posts the recorded spike S-1 `PermissionRequest` payload
 (`fixtures/claude-code/permission/permission-request.json`, `cwd` pointed at the throwaway
 project) to `/v1/bridge/claude-code/permission` with the bridge token and keeps the connection
