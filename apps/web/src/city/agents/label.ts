@@ -22,7 +22,7 @@ const ACTIVITY_TEXT: Record<ActivityView, string> = {
   dispatching: "Dispatching",
   handing_off: "Handing off",
   waiting: "Waiting",
-  unknown: "Unknown",
+  unknown: "Working",
 };
 
 export function agentLabel(v: AgentView): AgentLabel {

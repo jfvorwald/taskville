@@ -177,6 +177,22 @@ export function setActivity(
   return { ...state, activity: put(state.activity, agentId, { ...viewBase(current), ...entry }) };
 }
 
+/**
+ * An event that proves the agent is mid-turn (a prompt, a tool call) takes its session out of
+ * idle, to unknown, until a classified activity arrives. Any activity other than idle is kept.
+ */
+export function leaveIdle(
+  s: EntitiesState,
+  e: DomainEvent,
+  agentId: string,
+  sessionId: string | undefined,
+): EntitiesState {
+  const target =
+    sessionId === undefined ? primarySession(s, agentId) : ownSession(s, agentId, sessionId);
+  if (target === undefined || target.activity.activity !== "idle") return s;
+  return setActivity(s, e, agentId, target.id, unknownActivity(e.occurredAt));
+}
+
 export function setLatestEvidence(
   s: EntitiesState,
   agentId: string,
