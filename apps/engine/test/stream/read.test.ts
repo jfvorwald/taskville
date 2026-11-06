@@ -22,6 +22,26 @@ afterEach(() => {
 const AT = Date.parse("2026-10-30T11:00:00Z");
 
 describe("GET /v1/projects", () => {
+  // M7.22: each project reports when its last event was stored (ISO string, the protocol's
+  // timestamp format), so a client can rank projects by recent activity instead of event count.
+  it("includes lastEventAt: the receivedAt of each project's last event, as an ISO string", async () => {
+    const booted = bootInProcess(dbPath());
+    engine = booted.engine;
+    addProject(engine.storage, "demo");
+    await ingest(booted.app, [input("e1"), input("e2")]);
+
+    const res = await booted.app.request(`${BASE}/v1/projects`, { headers: bearer(CLI_TOKEN) });
+    expect(res.status).toBe(200);
+    // Raw JSON: the strict protocol schema does not know the field yet.
+    const body = (await res.json()) as { projects: { id: string; lastEventAt?: unknown }[] };
+    for (const project of body.projects) {
+      const events = [...engine.storage.events(project.id)];
+      const last = events[events.length - 1];
+      expect(last).toBeDefined();
+      expect(project.lastEventAt, `lastEventAt of ${project.id}`).toBe(last?.receivedAt);
+    }
+  });
+
   it("lists every project with roots, builtin flag, and head; Unsorted always", async () => {
     const booted = bootInProcess(dbPath());
     engine = booted.engine;
