@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { DEFAULT_PROJECT_ID, selectProject, useCurrentProjectId } from "../../data/project.ts";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { ProjectPicker } from "../project-picker/ProjectPicker.tsx";
 import { selectAttentionHeader } from "./attention.ts";
 import { AttentionChips } from "./attentionChips.tsx";
 import { useAttentionFeed, useAttentionReady } from "./attentionSync.ts";
@@ -34,6 +35,7 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
       >
         {formatCounts(shown)}
       </p>
+      <ProjectPicker />
       {otherProjects.length > 0 || away ? (
         <InteractiveRegion
           className={styles.chips}
@@ -41,7 +43,7 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
         >
           <AttentionChips otherProjects={otherProjects} onSwitch={selectProject} />
           {away ? (
-            // Until a project switcher exists, a chip is the only way in, so there must be a way back.
+            // Kept alongside the picker: one click home, and the only way back when unpaired.
             <button
               type="button"
               className={styles.chip}
