@@ -96,7 +96,7 @@ describe("sessions", () => {
     expect(types(r)).toEqual(["agent.registered", "session.started"]);
     expect(only(r, "agent.registered").payload).toEqual({
       sourceAgentId: SID,
-      displayName: "proj",
+      displayName: "Claude Code",
       role: "main",
       kind: "session",
     });
@@ -112,6 +112,20 @@ describe("sessions", () => {
     const r = map({ session_id: SID, hook_event_name: "SessionStart" });
     expect(only(r, "agent.registered").payload.displayName).toBe("Claude Code");
     expect(only(r, "session.started").payload).toEqual({});
+  });
+
+  // M7.24: the main session is named after the person running it, never the project directory.
+  it("names a session without a session name after the configured owner, not the cwd", () => {
+    const r = map(
+      { ...base, hook_event_name: "SessionStart", source: "startup" },
+      { ownerName: "jfvorwald" },
+    );
+    expect(only(r, "agent.registered").payload.displayName).toBe("jfvorwald");
+  });
+
+  it("falls back to Claude Code with no session name and no owner, never the cwd", () => {
+    const r = map({ ...base, hook_event_name: "SessionStart", source: "startup" });
+    expect(only(r, "agent.registered").payload.displayName).toBe("Claude Code");
   });
 
   it("SessionEnd closes the session with its reason", () => {

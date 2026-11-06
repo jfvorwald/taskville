@@ -145,7 +145,7 @@
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "sourceAgentId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
-          "displayName": "proj",
+          "displayName": "owner",
           "role": "lead",
           "kind": "lead",
           "teamId": "claude-code:team:session-cf46f41b"
@@ -218,7 +218,7 @@
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "sourceAgentId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
-          "displayName": "proj",
+          "displayName": "owner",
           "role": "lead",
           "kind": "lead",
           "teamId": "claude-code:team:session-cf46f41b"

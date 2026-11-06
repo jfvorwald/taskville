@@ -117,7 +117,12 @@ describe("team/in-process", () => {
         type: "agent.registered",
         agentId: lead,
         // Same sourceAgentId and name as the core mapper's SessionStart registration.
-        payload: { kind: "lead", teamId: team, sourceAgentId: lead.slice(12), displayName: "proj" },
+        payload: {
+          kind: "lead",
+          teamId: team,
+          sourceAgentId: lead.slice(12),
+          displayName: "owner",
+        },
       },
       {
         type: "agent.registered",

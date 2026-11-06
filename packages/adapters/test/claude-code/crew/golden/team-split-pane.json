@@ -49,7 +49,7 @@
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
           "sourceAgentId": "a7286c33-05b8-4a44-af6b-76733867aab0",
-          "displayName": "proj",
+          "displayName": "owner",
           "role": "lead",
           "kind": "lead",
           "teamId": "claude-code:team:session-a7286c33"
@@ -109,7 +109,7 @@
         "sessionId": "a7286c33-05b8-4a44-af6b-76733867aab0",
         "payload": {
           "sourceAgentId": "a7286c33-05b8-4a44-af6b-76733867aab0",
-          "displayName": "proj",
+          "displayName": "owner",
           "role": "lead",
           "kind": "lead",
           "teamId": "claude-code:team:session-a7286c33"

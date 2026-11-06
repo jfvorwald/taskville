@@ -18,6 +18,7 @@ describe.each(STREAMS)("mapClaudeCodeHook over %s", (name) => {
     line,
     result: mapClaudeCodeHook(line.input, {
       projectId: PROJECT,
+      ownerName: "owner",
       sourceEventId: line.sourceEventId,
       receivedAt: line.receivedAt,
       late: false,
@@ -59,6 +60,7 @@ describe("core and crew events for one hook", () => {
     if (line === undefined) throw new Error("seq 19 missing");
     const { events, evidence } = mapClaudeCodeHook(line.input, {
       projectId: PROJECT,
+      ownerName: "owner",
       sourceEventId: line.sourceEventId,
       receivedAt: line.receivedAt,
       late: false,

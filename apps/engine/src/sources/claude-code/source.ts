@@ -1,3 +1,4 @@
+import { userInfo } from "node:os";
 import { type EventBatchResponse, type IngestResult, parseInputEvent } from "@taskville/protocol";
 import type { Logger } from "pino";
 import { type IngestPipeline, normalizePayload } from "../../ingest/index.ts";
@@ -25,6 +26,8 @@ export interface MapContext {
   receivedAt: string;
   /** True only for hooks replayed from the spool (M2.07). */
   late: boolean;
+  /** The OS user running the engine; names the main session (#413). */
+  ownerName?: string;
 }
 
 /** A tool call's raw input and output, for the evidence store (M2.06). Unmasked. */
@@ -102,11 +105,13 @@ export class ClaudeCodeSource {
   readonly #options: ClaudeCodeSourceOptions;
   readonly #evidence: EvidenceSink;
   readonly #now: () => Date;
+  readonly #ownerName: string | undefined;
 
   constructor(options: ClaudeCodeSourceOptions) {
     this.#options = options;
     this.#evidence = options.evidence ?? noopEvidenceSink;
     this.#now = options.now ?? (() => new Date());
+    this.#ownerName = osUserName();
   }
 
   async ingestHook(input: HookInput): Promise<HookIngestResponse> {
@@ -119,6 +124,7 @@ export class ClaudeCodeSource {
       sourceEventId: input.sourceEventId,
       receivedAt: input.receivedAt ?? this.#now().toISOString(),
       late,
+      ...(this.#ownerName === undefined ? {} : { ownerName: this.#ownerName }),
     };
     const mapped = this.#options.mapper(input.payload, ctx);
     if (mapped.events.length === 0) {
@@ -222,4 +228,13 @@ function compareWithLogged(
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The OS user name, or undefined when the OS cannot say (no passwd entry in a container). */
+function osUserName(): string | undefined {
+  try {
+    return userInfo().username;
+  } catch {
+    return undefined;
+  }
 }

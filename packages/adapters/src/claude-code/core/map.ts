@@ -3,15 +3,7 @@ import { activityForTool } from "./activity.ts";
 import { attributeHook } from "./attribution.ts";
 import { isRecord, own, ownString } from "./fields.ts";
 import { isHookId, MAX_SOURCE_EVENT_ID, MAX_TOOL_USE_ID, requestIdFor, SOURCE_ID } from "./ids.ts";
-import {
-  baseName,
-  cleanReason,
-  cleanText,
-  firstLine,
-  NAME_MAX,
-  PATH_MAX,
-  SUMMARY_MAX,
-} from "./text.ts";
+import { cleanReason, cleanText, firstLine, NAME_MAX, PATH_MAX, SUMMARY_MAX } from "./text.ts";
 import type { HookContext, HookSubject, MapResult, ToolEvidence } from "./types.ts";
 
 // The core Claude Code mapper (M2.03): sessions, prompts, tool calls, notifications, turn ends,
@@ -126,11 +118,10 @@ function isSessionHook(hook: string, payload: Record<string, unknown>): boolean 
 
 function sessionStart(m: Mapping): MapResult {
   const cwd = cleanText(own(m.payload, "cwd"), PATH_MAX);
-  const name = cwd === undefined ? undefined : cleanText(baseName(cwd), NAME_MAX);
   return result([
     event(m, "agent.registered", {
       sourceAgentId: m.subject.sessionId,
-      displayName: name ?? "Claude Code",
+      displayName: cleanText(m.ctx.ownerName, NAME_MAX) ?? "Claude Code",
       role: cleanText(own(m.payload, "agent_type"), NAME_MAX) ?? "main",
       kind: "session",
     }),

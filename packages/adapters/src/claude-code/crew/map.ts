@@ -5,13 +5,7 @@ import {
   SOURCE_ID,
   subagentAgentId,
 } from "../core/index.ts";
-import {
-  baseName,
-  NAME_MAX as CORE_NAME_MAX,
-  cleanReason,
-  cleanText,
-  PATH_MAX,
-} from "../core/text.ts";
+import { NAME_MAX as CORE_NAME_MAX, cleanReason, cleanText } from "../core/text.ts";
 import { type Attribution, attributeHook, NAME_MAX } from "./attribution.ts";
 import { idToken, own, ownRecord, ownString, safeText } from "./fields.ts";
 
@@ -31,6 +25,8 @@ export interface CrewContext {
   /** Engine receive time; hooks carry no timestamp, so it is also `occurredAt`. */
   receivedAt: string;
   late: boolean;
+  /** The OS user running the engine; names the lead like the main session (#413). */
+  ownerName?: string;
 }
 
 /**
@@ -126,7 +122,7 @@ function draftsFor(
       return teamTask(hook, p, who);
     case "PostToolUse": {
       const tool = ownString(p, "tool_name");
-      if (tool === "Agent" || tool === "Task") return agentSpawned(p, who);
+      if (tool === "Agent" || tool === "Task") return agentSpawned(p, who, ctx);
       if (tool === "SendMessage") return messageSent(p, who);
       return "not a crew tool";
     }
@@ -215,10 +211,11 @@ function teammateIdle(p: unknown, who: Attribution): Draft[] {
  * phantom; it is linked later from its own session. Any other response with `agentId` names a
  * subagent the caller launched, which is the recorded parent link (S-2).
  */
-function agentSpawned(p: unknown, who: Attribution): Draft[] | string {
+function agentSpawned(p: unknown, who: Attribution, ctx: CrewContext): Draft[] | string {
   const response = ownRecord(p, "tool_response");
   if (response === undefined) return "Agent call without a response";
-  if (own(response, "status") === "teammate_spawned") return teammateSpawned(p, response, who);
+  if (own(response, "status") === "teammate_spawned")
+    return teammateSpawned(response, who, ctx.ownerName);
 
   const child = idToken(own(response, "agentId"), MAX_AGENT_ID);
   if (child === undefined) return "Agent response without agentId";
@@ -244,9 +241,9 @@ function agentSpawned(p: unknown, who: Attribution): Draft[] | string {
 }
 
 function teammateSpawned(
-  p: unknown,
   response: Record<string, unknown>,
   who: Attribution,
+  ownerName: string | undefined,
 ): Draft[] | string {
   // Teammates cannot spawn teammates, so only a session's own agent can lead.
   if (who.role !== "session") return "teammate spawn from a non-session agent";
@@ -266,7 +263,7 @@ function teammateSpawned(
         sourceAgentId: who.sourceAgentId,
         // The same name the core mapper gives the session on SessionStart, so becoming a lead
         // does not rename it.
-        displayName: sessionDisplayName(p),
+        displayName: cleanText(ownerName, CORE_NAME_MAX) ?? "Claude Code",
         role: "lead",
         kind: "lead",
         teamId,
@@ -342,12 +339,6 @@ function messageSent(p: unknown, who: Attribution): Draft[] | string {
     });
   }
   return drafts;
-}
-
-/** The core mapper's session name (core/map.ts sessionStart), so becoming a lead keeps it. */
-function sessionDisplayName(p: unknown): string {
-  const cwd = cleanText(own(p, "cwd"), PATH_MAX);
-  return (cwd === undefined ? undefined : cleanText(baseName(cwd), CORE_NAME_MAX)) ?? "Claude Code";
 }
 
 // "pip needs permission for Bash" (S-2 answer 3). English text a Claude Code update could change.

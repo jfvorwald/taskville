@@ -1,5 +1,5 @@
 #0 SessionStart
-  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 cf46f41b-8048-4a06-b955-b342dd0c7f31 {"workingDirectory":"/tmp/spike-s2/proj"}
 #1 UserPromptSubmit
   session.prompt_submitted claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 cf46f41b-8048-4a06-b955-b342dd0c7f31 {}

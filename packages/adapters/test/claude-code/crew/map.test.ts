@@ -181,6 +181,31 @@ describe("context", () => {
   });
 });
 
+describe("lead name (M7.24: same name the core mapper gives the session)", () => {
+  const spawn = (extra: object = {}) => ({
+    session_id: SESSION,
+    cwd: "/tmp/some/proj",
+    hook_event_name: "PostToolUse",
+    tool_name: "Agent",
+    tool_response: {
+      status: "teammate_spawned",
+      team_name: "session-1469cdbe",
+      is_splitpane: true,
+    },
+    ...extra,
+  });
+  const leadName = (payload: unknown, c: Partial<CrewContext> = {}) =>
+    map(payload, c).events.find((e) => e.type === "agent.registered")?.payload.displayName;
+
+  it("names the lead after the configured owner, not the cwd", () => {
+    expect(leadName(spawn(), { ownerName: "jfvorwald" })).toBe("jfvorwald");
+  });
+
+  it("falls back to Claude Code with no session name and no owner, never the cwd", () => {
+    expect(leadName(spawn())).toBe("Claude Code");
+  });
+});
+
 describe("composed IDs stay within the 200-character protocol limit", () => {
   const longest = (n: number) => "a".repeat(n);
 

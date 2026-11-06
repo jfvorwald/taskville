@@ -105,6 +105,7 @@ export function replay(
     const at = new Date(BASE_MS + Math.round(hook.offsetMs)).toISOString();
     const mapped = mapClaudeCodeHook(hook.input, {
       projectId: "proj-attention",
+      ownerName: "owner",
       sourceEventId: `h-${hook.seq}`,
       receivedAt: at,
       late: false,
