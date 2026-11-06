@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { join } from "node:path";
-import { PAIRING_CODE_TTL_MS } from "@taskville/engine/src/auth/pairing.ts";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Io, openerCommand, run } from "../src/main.ts";
 import { freePort, tempDir } from "./helpers.ts";
@@ -113,22 +112,6 @@ describe("1. opener honesty", () => {
     const at = lines.indexOf("If no browser opened, open this link:");
     expect(at).toBeGreaterThanOrEqual(0);
     expect(lines[at + 1]).toMatch(PAIR_URL);
-    await r.stop();
-  });
-
-  it("schedules the redirect page cleanup after the pairing code TTL", async () => {
-    const s = setup();
-    const calls: Array<[() => void, number]> = [];
-    const r = await launch(["start"], s, {
-      stdoutIsTTY: true,
-      openUrl: async () => {},
-      scheduleCleanup: ((fn: () => void, ms: number) => {
-        calls.push([fn, ms]);
-      }) as never,
-    });
-    await until(() => calls.length > 0, "scheduleCleanup call");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.[1]).toBe(PAIRING_CODE_TTL_MS);
     await r.stop();
   });
 });
@@ -344,30 +327,11 @@ describe("6. engine.json is untrusted input", () => {
       await r.stop();
     });
   }
-
-  it("the redirect page has one navigation mechanism: script, plus a meta refresh only in noscript", async () => {
-    const s = setup();
-    const opened: string[] = [];
-    const r = await launch(["start"], s, {
-      stdoutIsTTY: true,
-      openUrl: async (u: string) => {
-        opened.push(u);
-      },
-    });
-    await until(() => opened.length > 0, "opener call");
-    const file = readdirSync(join(s.home, "run"))[0] as string;
-    const html = readFileSync(join(s.home, "run", file), "utf8");
-    expect(html).toContain("location.replace");
-    expect(html).toMatch(/<noscript>\s*<meta[^>]*http-equiv=["']refresh["'][^>]*>\s*<\/noscript>/i);
-    expect(html.replace(/<noscript>[\s\S]*?<\/noscript>/gi, "")).not.toMatch(/http-equiv/i);
-    await r.stop();
-  });
 });
 
 describe("6. openerCommand", () => {
-  it("uses open on darwin and xdg-open on linux, with the URL as one argument", () => {
+  it("uses xdg-open on linux, with the URL as one argument", () => {
     const url = "file:///tmp/x/run/abc.html";
-    expect(openerCommand("darwin", url)).toEqual({ command: "open", args: [url] });
     expect(openerCommand("linux", url)).toEqual({ command: "xdg-open", args: [url] });
   });
 

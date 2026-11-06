@@ -587,7 +587,7 @@ export async function runEngine(
   let draining: Promise<unknown> = Promise.resolve();
   try {
     parts = composeServe(io, home, portFlag, logging);
-    sweepRunDir(home, now().getTime());
+    sweepRunDir(home, Date.now()); // file mtimes are real time, not the injected clock
     const { pairing, spool } = parts;
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
@@ -613,7 +613,10 @@ export async function runEngine(
     // The code is printed to this terminal only, never logged.
     const linkText = (url: string) =>
       `Pair a browser (one-time link, valid for ${minutes} minutes): ${url}\n`;
-    const printLink = () => io.stdout(linkText(`${base}/#pair=${pairing.issueCode()}`));
+    // `keys=1` tells the web app that pressing p in this terminal can issue a new link.
+    let keysFlag = "";
+    const pairLink = () => `${base}/#pair=${pairing.issueCode()}${keysFlag}`;
+    const printLink = () => io.stdout(linkText(pairLink()));
     let interrupt: () => void = () => {};
     const interrupted = new Promise<void>((resolve) => {
       interrupt = resolve;
@@ -629,13 +632,16 @@ export async function runEngine(
       },
       interrupt: () => interrupt(),
     });
+    keysFlag = keys !== undefined ? "&keys=1" : "";
     writeRuntimeInfo(home, base, now(), keys !== undefined);
     wroteRuntime = true;
     release();
-    const firstLink = `${base}/#pair=${pairing.issueCode()}`;
-    // The opener gets a 0600 redirect page, never the code: argv is visible to other local users.
+    const firstLink = pairLink();
+    const darwin = (io.platform ?? process.platform) === "darwin";
+    // Off macOS the opener gets a 0600 redirect page, never the code: argv is visible to other
+    // local users. On macOS the real opener passes the http link to osascript on stdin instead.
     const page =
-      mode.open && quiet && io.openUrl !== undefined
+      mode.open && quiet && io.openUrl !== undefined && !darwin
         ? writeRedirectPage(home, firstLink)
         : undefined;
     if (page !== undefined && io.openUrl !== undefined) {
@@ -652,6 +658,14 @@ export async function runEngine(
           page.remove();
           io.stdout(linkText(firstLink));
         },
+      );
+    } else if (mode.open && quiet && io.openUrl !== undefined && darwin) {
+      await io.openUrl(firstLink).then(
+        () => {
+          io.stdout("Opened your browser to pair it.\n");
+          io.stdout(`If no browser opened, open this link:\n${firstLink}\n`);
+        },
+        () => io.stdout(linkText(firstLink)),
       );
     } else {
       io.stdout(linkText(firstLink));

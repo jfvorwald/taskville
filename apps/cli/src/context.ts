@@ -25,6 +25,8 @@ export interface Io {
   stdoutIsTTY?: boolean | undefined;
   /** Opens a URL in the default browser; rejects on failure (`start`). */
   openUrl?: ((url: string) => Promise<void>) | undefined;
+  /** The OS platform; absent is `process.platform`. macOS opens the http link, others a redirect page (M7.19). */
+  platform?: string | undefined;
   /** Schedules deleting the redirect page `start` opened after `delayMs` (M7.08); absent means a short internal timer. */
   scheduleCleanup?: ((cleanup: () => void, delayMs: number) => void) | undefined;
   /** True when the CLI runs from a source checkout, so the web client can be built (`start`). */

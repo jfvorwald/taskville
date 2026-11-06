@@ -60,7 +60,11 @@ const json = (status: number, body: unknown) =>
 
 describe("readPairingCode", () => {
   it("reads the code from the URL fragment", () => {
-    expect(readPairingCode(`#pair=${CODE}`)).toEqual({ present: true, code: CODE });
+    expect(readPairingCode(`#pair=${CODE}`)).toEqual({
+      present: true,
+      code: CODE,
+      keyListener: false,
+    });
   });
 
   it("never reads the query string or a lookalike key", () => {
@@ -71,10 +75,18 @@ describe("readPairingCode", () => {
   });
 
   it("flags a present but malformed code without returning it", () => {
-    expect(readPairingCode("#pair=")).toEqual({ present: true, code: null });
-    expect(readPairingCode("#pair=a b")).toEqual({ present: true, code: null });
-    expect(readPairingCode(`#pair=${"a".repeat(257)}`)).toEqual({ present: true, code: null });
-    expect(readPairingCode("#pair=%3Cscript%3E")).toEqual({ present: true, code: null });
+    expect(readPairingCode("#pair=")).toEqual({ present: true, code: null, keyListener: false });
+    expect(readPairingCode("#pair=a b")).toEqual({ present: true, code: null, keyListener: false });
+    expect(readPairingCode(`#pair=${"a".repeat(257)}`)).toEqual({
+      present: true,
+      code: null,
+      keyListener: false,
+    });
+    expect(readPairingCode("#pair=%3Cscript%3E")).toEqual({
+      present: true,
+      code: null,
+      keyListener: false,
+    });
   });
 });
 
@@ -104,7 +116,7 @@ describe("establishSession: pairing from the fragment", () => {
       json(401, { error: { code: "invalid_pairing_code" } }),
     );
     const state = await establishSession(h.env);
-    expect(state).toEqual({ status: "failed", reason: "invalid_code" });
+    expect(state).toEqual({ status: "failed", reason: "invalid_code", keyListener: false });
     expect(h.storage.getItem(SESSION_KEY)).toBeNull();
     expect(h.env.location.hash).toBe("");
   });
@@ -112,7 +124,7 @@ describe("establishSession: pairing from the fragment", () => {
   it("clears a malformed fragment without calling the engine", async () => {
     const h = harness({ hash: "#pair=a b" }, () => json(200, { session: "x" }));
     const state = await establishSession(h.env);
-    expect(state).toEqual({ status: "failed", reason: "invalid_code" });
+    expect(state).toEqual({ status: "failed", reason: "invalid_code", keyListener: false });
     expect(h.requests).toEqual([]);
     expect(h.env.location.hash).toBe("");
   });
@@ -124,11 +136,13 @@ describe("establishSession: pairing from the fragment", () => {
     expect(await establishSession(down.env)).toEqual({
       status: "failed",
       reason: "pairing_network",
+      keyListener: false,
     });
     const odd = harness({ hash: `#pair=${CODE}` }, () => json(200, { session: 7 }));
     expect(await establishSession(odd.env)).toEqual({
       status: "failed",
       reason: "pairing_network",
+      keyListener: false,
     });
     expect(odd.storage.getItem(SESSION_KEY)).toBeNull();
   });
@@ -145,7 +159,11 @@ describe("establishSession: pairing from the fragment", () => {
     h.env.storage.setItem = () => {
       throw new DOMException("quota", "QuotaExceededError");
     };
-    expect(await establishSession(h.env)).toEqual({ status: "failed", reason: "storage" });
+    expect(await establishSession(h.env)).toEqual({
+      status: "failed",
+      reason: "storage",
+      keyListener: false,
+    });
   });
 });
 
