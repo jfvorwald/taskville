@@ -39,44 +39,63 @@ describe("PairingNotice", () => {
     expect(page.getByRole("button", { name: "Try again" }).elements()).toHaveLength(0);
   });
 
-  // M7.19 (#400): copy names `taskville start`, and mentions pressing p only when the engine
-  // listens for it. The flag arrives as `keyListener` on a failed state (from `&keys=1` in the link).
-  it("unpaired: names taskville start and never mentions pressing p", async () => {
-    await render(<PairingNotice state={{ status: "unpaired" }} onRetry={() => {}} />);
-    await expect.element(page.getByText(/taskville start/)).toBeVisible();
-    expect(document.body.textContent).not.toMatch(/\bpress(ing)? p\b/i);
-  });
+  // M7.19 (#400), roborev 7127 (medium): recovery copy. With a key listener the page says to
+  // press p in the terminal running taskville. Otherwise it says to stop taskville (Ctrl+C) and
+  // run `taskville start` again. It never implies that a plain `taskville start` issues a new
+  // link while an engine is running. `keyListener` arrives on a failed state (`&keys=1`).
+  const PRESS_P = /press p in the terminal running taskville/i;
+  const STOP_AND_RERUN = /stop taskville \(Ctrl\+C\)[\s\S]*run taskville start again/i;
+  const SOME_P = /\bpress(ing)? p\b/i;
+  const text = () => document.body.textContent ?? "";
 
-  it("rejected without a key listener: names taskville start, no p", async () => {
+  type Failed = Extract<Parameters<typeof PairingNotice>[0]["state"], { status: "failed" }>;
+  const reasons: Failed["reason"][] = ["invalid_code", "pairing_network", "network"];
+
+  for (const reason of reasons) {
+    it(`${reason} with a key listener: says press p in the terminal running taskville`, async () => {
+      await render(
+        <PairingNotice
+          state={{ status: "failed", reason, keyListener: true }}
+          onRetry={() => {}}
+        />,
+      );
+      expect(text()).toMatch(PRESS_P);
+    });
+
+    it(`${reason} without a key listener: says stop taskville (Ctrl+C) and run taskville start again`, async () => {
+      await render(
+        <PairingNotice
+          state={{ status: "failed", reason, keyListener: false }}
+          onRetry={() => {}}
+        />,
+      );
+      expect(text()).toMatch(STOP_AND_RERUN);
+      expect(text()).not.toMatch(SOME_P);
+      expect(text()).not.toMatch(/taskville serve/);
+    });
+  }
+
+  it("a network failure with no flag at all gives the stop-and-rerun recovery", async () => {
     await render(
-      <PairingNotice
-        state={{ status: "failed", reason: "invalid_code", keyListener: false }}
-        onRetry={() => {}}
-      />,
+      <PairingNotice state={{ status: "failed", reason: "network" }} onRetry={() => {}} />,
     );
-    await expect.element(page.getByText(/taskville start/)).toBeVisible();
-    expect(document.body.textContent).not.toMatch(/\bpress(ing)? p\b/i);
+    expect(text()).toMatch(STOP_AND_RERUN);
+    expect(text()).not.toMatch(SOME_P);
   });
 
-  it("rejected with a key listener: names taskville start and says press p", async () => {
+  it("unpaired: stop-and-rerun recovery, never press p", async () => {
+    await render(<PairingNotice state={{ status: "unpaired" }} onRetry={() => {}} />);
+    expect(text()).toMatch(STOP_AND_RERUN);
+    expect(text()).not.toMatch(SOME_P);
+  });
+
+  it("the p-key screens do not tell the user to run a bare taskville start for a new link", async () => {
     await render(
       <PairingNotice
         state={{ status: "failed", reason: "invalid_code", keyListener: true }}
         onRetry={() => {}}
       />,
     );
-    await expect.element(page.getByText(/taskville start/)).toBeVisible();
-    expect(document.body.textContent).toMatch(/press p\b/i);
-  });
-
-  it("pairing_network follows the same rule", async () => {
-    await render(
-      <PairingNotice
-        state={{ status: "failed", reason: "pairing_network", keyListener: false }}
-        onRetry={() => {}}
-      />,
-    );
-    expect(document.body.textContent).not.toMatch(/\bpress(ing)? p\b/i);
-    expect(document.body.textContent).not.toMatch(/taskville serve/);
+    expect(text()).not.toMatch(/run taskville start for a new/i);
   });
 });

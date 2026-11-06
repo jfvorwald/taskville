@@ -62,6 +62,7 @@ async function start(io: Partial<Io>) {
     now: () => new Date("2026-11-04T12:00:00Z"),
     sourceCheckout: false,
     stdoutIsTTY: true,
+    platform: "darwin",
     ...io,
     openUrl: async (url: string) => {
       opened.push(url);
@@ -137,8 +138,8 @@ describe("start hands the opener the http link (M7.19)", () => {
     await s.stop();
   });
 
-  it("opens with the platform opener and the URL unchanged on macOS", () => {
+  it("on macOS the opener command never carries the URL in argv (roborev 7127)", () => {
     const url = "http://127.0.0.1:4455/#pair=abc_DEF-123&keys=1";
-    expect(openerCommand("darwin", url)).toEqual({ command: "open", args: [url] });
+    expect(JSON.stringify(openerCommand("darwin", url))).not.toContain("abc_DEF-123");
   });
 });

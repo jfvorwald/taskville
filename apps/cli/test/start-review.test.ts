@@ -330,9 +330,8 @@ describe("6. engine.json is untrusted input", () => {
 });
 
 describe("6. openerCommand", () => {
-  it("uses open on darwin and xdg-open on linux, with the URL as one argument", () => {
+  it("uses xdg-open on linux, with the URL as one argument", () => {
     const url = "file:///tmp/x/run/abc.html";
-    expect(openerCommand("darwin", url)).toEqual({ command: "open", args: [url] });
     expect(openerCommand("linux", url)).toEqual({ command: "xdg-open", args: [url] });
   });
 
