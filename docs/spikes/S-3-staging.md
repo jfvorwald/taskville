@@ -25,7 +25,7 @@ So staging has two jobs, and they need different shapes:
 
 `packages/demo`, `packages/domain` and `packages/protocol` import nothing from `node:`. The deterministic demo producer (`taskville demo run --seed <n> --duration <sim-time> --offline`, the `runOffline` API in `packages/demo`) and the domain reducer can run in a Worker or a browser unchanged.
 
-The web client reads `/v1/projects`, `/v1/projects/<id>/snapshot`, the project and attention SSE streams, `/v1/agents/...` (feed and agent panel), `/v1/timelines/...` (history), and `/v1/evidence/...`, and posts `/v1/pairing`, `/v1/commands`, and `/v1/requests/...`.
+The web client reads `GET /health` (validates a stored session on reload), `/v1/projects`, `/v1/projects/<id>/timelines` (entering history), `/v1/projects/<id>/snapshot`, the project and attention SSE streams, `/v1/agents/...` (feed and agent panel), `/v1/timelines/...` (history), and `/v1/evidence/...`, and posts `/v1/pairing`, `/v1/commands`, and `/v1/requests/...`.
 
 ## Options
 
@@ -51,7 +51,7 @@ Two parts, matching the two jobs:
 2. **Artifact check (local-first "production").** M7.02 packages the CLI, the engine and the built web client as one frozen release (a single installable tarball whose web `dist` sits where `taskville start` resolves `index.html`, plus a manifest of hashes and a release ID). A CI job installs that exact tarball on a clean runner with a fresh `TASKVILLE_HOME` and runs `start --no-open`, pairing through the printed link in headless Chromium, `init --yes` in a throwaway repo, `doctor`, a replayed hook fixture, and `demo`. It records a receipt next to the release. Promotion means publishing that same tarball (a GitHub release), never a rebuild.
 
 - For: no change to the engine's security model. Fits the existing release helper, receipts, portal and Access setup with no new spend. Section 13's "never connected to real agents' permission bridges" holds structurally, not by configuration. The artifact check covers what a hosted engine would, on the path users actually take.
-- Against: review staging does not run the Node engine, so engine bugs show up in the artifact check rather than in the browser on staging. The in-Worker `/v1` is a second implementation of the read API that can drift. Mitigation: it reuses the protocol schemas, and a contract test runs every route the web client calls (the list above, kept in sync by a test that greps the client for `/v1/` paths) against both.
+- Against: review staging does not run the Node engine, so engine bugs show up in the artifact check rather than in the browser on staging. The in-Worker `/v1` is a second implementation of the read API that can drift. Mitigation: it reuses the protocol schemas, and a contract test runs every route the web client calls (the list above, kept in sync by a test that greps the client for `/v1/` and `/health` paths) against both.
 
 ## Recommendation
 
