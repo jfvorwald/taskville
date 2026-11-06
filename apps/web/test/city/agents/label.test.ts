@@ -34,7 +34,7 @@ describe("agentLabel", () => {
       ["handing_off", "Handing off"],
       ["waiting", "Waiting"],
       ["idle", "Idle"],
-      ["unknown", "Working"],
+      ["unknown", "Unknown"],
     ] as const;
     for (const [activity, text] of acts) {
       expect(agentLabel(view({ activity })).status).toBe(text);
@@ -48,8 +48,8 @@ describe("agentLabel", () => {
     expect(agentLabel(view({ attention: { level: "waiting" } })).status).toBe("Waiting");
   });
 
-  it("renders unknown activity as Working, never as Unknown", () => {
-    expect(agentLabel(view({ activity: "unknown" })).status).toBe("Working");
+  it("keeps an unknown source state visible as Unknown, never as Working", () => {
+    expect(agentLabel(view({ activity: "unknown" })).status).toBe("Unknown");
   });
 
   it("labels heuristic trouble as possible, with the selector's detail", () => {
