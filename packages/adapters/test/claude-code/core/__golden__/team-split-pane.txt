@@ -1,5 +1,5 @@
 #0 SessionStart
-  agent.registered claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"sourceAgentId":"a7286c33-05b8-4a44-af6b-76733867aab0","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"sourceAgentId":"a7286c33-05b8-4a44-af6b-76733867aab0","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"workingDirectory":"/tmp/spike-s2/proj"}
 #1 UserPromptSubmit
   session.prompt_submitted claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {}
@@ -11,7 +11,7 @@
   tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01DJRwAsdUbchfj3k7E85pRP","phase":"succeeded","durationMs":165}
   evidence toolu_01DJRwAsdUbchfj3k7E85pRP output
 #4 SessionStart
-  agent.registered claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"sourceAgentId":"cf7d0732-a271-4cf7-9a11-d0918b72fbd0","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"sourceAgentId":"cf7d0732-a271-4cf7-9a11-d0918b72fbd0","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:cf7d0732-a271-4cf7-9a11-d0918b72fbd0 cf7d0732-a271-4cf7-9a11-d0918b72fbd0 {"workingDirectory":"/tmp/spike-s2/proj"}
 #5 PreToolUse:Agent
   tool_call.started claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01EV5vxARZTa3DrrQo5xex7K","toolName":"Agent","summary":"Spawn teammate bo"}
@@ -22,7 +22,7 @@
   tool_call.finished claude-code:a7286c33-05b8-4a44-af6b-76733867aab0 a7286c33-05b8-4a44-af6b-76733867aab0 {"toolCallId":"toolu_01EV5vxARZTa3DrrQo5xex7K","phase":"succeeded","durationMs":196}
   evidence toolu_01EV5vxARZTa3DrrQo5xex7K output
 #8 SessionStart
-  agent.registered claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"sourceAgentId":"f1b7a717-fe78-44d8-b68b-a12643262b81","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"sourceAgentId":"f1b7a717-fe78-44d8-b68b-a12643262b81","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:f1b7a717-fe78-44d8-b68b-a12643262b81 f1b7a717-fe78-44d8-b68b-a12643262b81 {"workingDirectory":"/tmp/spike-s2/proj"}
 #9 MessageDisplay  (ignored: MessageDisplay belongs to the agent feed (M5))
 #10 Stop

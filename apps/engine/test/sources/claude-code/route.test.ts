@@ -70,9 +70,17 @@ describe("POST /v1/sources/claude-code/hooks", () => {
       ],
       heads: { repo: 2 },
     });
+    // ownerName is the real OS user (M7.24), so it is matched by type, never by value.
     expect(mapper.calls).toEqual([
-      { projectId: "repo", sourceEventId: hookId("u-1"), receivedAt: T0, late: false },
+      expect.objectContaining({
+        projectId: "repo",
+        sourceEventId: hookId("u-1"),
+        receivedAt: T0,
+        late: false,
+      }),
     ]);
+    const ownerName = (mapper.calls[0] as { ownerName?: unknown }).ownerName;
+    if (ownerName !== undefined) expect(ownerName).toEqual(expect.any(String));
     const [event] = storedEvents("repo");
     expect(event).toMatchObject({
       agentId: "claude-code:sess-1",

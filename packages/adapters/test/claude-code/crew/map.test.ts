@@ -187,7 +187,11 @@ describe("lead name (M7.24: same name the core mapper gives the session)", () =>
     cwd: "/tmp/some/proj",
     hook_event_name: "PostToolUse",
     tool_name: "Agent",
-    tool_response: { status: "teammate_spawned", team_name: "session-1469cdbe", is_splitpane: true },
+    tool_response: {
+      status: "teammate_spawned",
+      team_name: "session-1469cdbe",
+      is_splitpane: true,
+    },
     ...extra,
   });
   const leadName = (payload: unknown, c: Partial<CrewContext> = {}) =>

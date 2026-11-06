@@ -1,5 +1,5 @@
 #0 SessionStart
-  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"sourceAgentId":"6effc000-24c8-436e-ae5e-33152b820f83","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"sourceAgentId":"6effc000-24c8-436e-ae5e-33152b820f83","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {"workingDirectory":"/tmp/spike-s2/proj"}
 #1 UserPromptSubmit
   session.prompt_submitted claude-code:6effc000-24c8-436e-ae5e-33152b820f83 {}

@@ -1,5 +1,5 @@
 #0 SessionStart
-  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"workingDirectory":"/tmp/spike-s2/proj"}
 #1 UserPromptSubmit
   session.prompt_submitted claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {}
@@ -35,7 +35,7 @@
 #19 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01XkXnwFCZF2AdoS7hdg5DKp","phase":"succeeded","durationMs":29}
   team.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"teamId":"claude-code:team:session-cf46f41b","leadAgentId":"claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31","name":"session-cf46f41b"}
-  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"proj","role":"lead","kind":"lead","teamId":"claude-code:team:session-cf46f41b"}
+  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"owner","role":"lead","kind":"lead","teamId":"claude-code:team:session-cf46f41b"}
   agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"sourceAgentId":"apip-5cb5e9bb3f2f1097","displayName":"pip","role":"teammate","kind":"teammate","teamId":"claude-code:team:session-cf46f41b"}
 #20 SubagentStart  (ignored)
 #21 PreToolUse
@@ -44,7 +44,7 @@
 #22 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01HEWi6XLG2KFwavs25N3PYe","phase":"succeeded","durationMs":115}
   team.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"teamId":"claude-code:team:session-cf46f41b","leadAgentId":"claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31","name":"session-cf46f41b"}
-  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"proj","role":"lead","kind":"lead","teamId":"claude-code:team:session-cf46f41b"}
+  agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"sourceAgentId":"cf46f41b-8048-4a06-b955-b342dd0c7f31","displayName":"owner","role":"lead","kind":"lead","teamId":"claude-code:team:session-cf46f41b"}
   agent.registered claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"sourceAgentId":"abo-4381c522227780d5","displayName":"bo","role":"teammate","kind":"teammate","teamId":"claude-code:team:session-cf46f41b"}
 #23 SubagentStart  (ignored)
 #24 PreToolUse

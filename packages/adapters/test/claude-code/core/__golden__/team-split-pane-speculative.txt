@@ -1,5 +1,5 @@
 #0 SessionStart
-  agent.registered claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c a127629f-0c4d-49ad-b316-3e9dc4eaa48c {"sourceAgentId":"a127629f-0c4d-49ad-b316-3e9dc4eaa48c","displayName":"proj","role":"main","kind":"session"}
+  agent.registered claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c a127629f-0c4d-49ad-b316-3e9dc4eaa48c {"sourceAgentId":"a127629f-0c4d-49ad-b316-3e9dc4eaa48c","displayName":"owner","role":"main","kind":"session"}
   session.started claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c a127629f-0c4d-49ad-b316-3e9dc4eaa48c {"workingDirectory":"/tmp/spike-s2/proj"}
 #1 UserPromptSubmit
   session.prompt_submitted claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c a127629f-0c4d-49ad-b316-3e9dc4eaa48c {}
@@ -23,7 +23,7 @@
   tool_call.finished claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c a127629f-0c4d-49ad-b316-3e9dc4eaa48c {"toolCallId":"toolu_01YFig9QAzQRJqKduZPdqME7","phase":"succeeded","durationMs":121}
   evidence toolu_01YFig9QAzQRJqKduZPdqME7 output
 #8 SessionStart
-  agent.registered claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec cb581bf9-f41d-40bf-85fb-b4258ba029ec {"sourceAgentId":"cb581bf9-f41d-40bf-85fb-b4258ba029ec","displayName":"proj","role":"general-purpose","kind":"session"}
+  agent.registered claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec cb581bf9-f41d-40bf-85fb-b4258ba029ec {"sourceAgentId":"cb581bf9-f41d-40bf-85fb-b4258ba029ec","displayName":"owner","role":"general-purpose","kind":"session"}
   session.started claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec cb581bf9-f41d-40bf-85fb-b4258ba029ec {"workingDirectory":"/tmp/spike-s2/proj"}
 #9 PreToolUse:Agent
   tool_call.started claude-code:a127629f-0c4d-49ad-b316-3e9dc4eaa48c a127629f-0c4d-49ad-b316-3e9dc4eaa48c {"toolCallId":"toolu_01FndwShyUjmrG8b7HPYk78V","toolName":"Agent","summary":"Spawn teammate bo"}
@@ -41,7 +41,7 @@
   tool_call.finished claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec cb581bf9-f41d-40bf-85fb-b4258ba029ec {"toolCallId":"toolu_014DNdVDgrkL3YQmBuSPAG6d","phase":"succeeded","durationMs":22}
   evidence toolu_014DNdVDgrkL3YQmBuSPAG6d output
 #14 SessionStart
-  agent.registered claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"sourceAgentId":"404ff3da-af4b-4a7d-aca5-6cc063afc1e4","displayName":"proj","role":"general-purpose","kind":"session"}
+  agent.registered claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"sourceAgentId":"404ff3da-af4b-4a7d-aca5-6cc063afc1e4","displayName":"owner","role":"general-purpose","kind":"session"}
   session.started claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"workingDirectory":"/tmp/spike-s2/proj"}
 #15 PreToolUse:Bash
   tool_call.started claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec cb581bf9-f41d-40bf-85fb-b4258ba029ec {"toolCallId":"toolu_01MXcrpqx56513rdg41EtXJZ","toolName":"Bash","summary":"Create empty file perm-pip.txt in working directory"}

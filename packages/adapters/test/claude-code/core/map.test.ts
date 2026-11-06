@@ -96,7 +96,7 @@ describe("sessions", () => {
     expect(types(r)).toEqual(["agent.registered", "session.started"]);
     expect(only(r, "agent.registered").payload).toEqual({
       sourceAgentId: SID,
-      displayName: "proj",
+      displayName: "Claude Code",
       role: "main",
       kind: "session",
     });
