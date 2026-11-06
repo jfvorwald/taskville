@@ -25,17 +25,30 @@ export interface ProjectSummary {
   roots: string[];
   builtin: boolean;
   head: number;
+  /** When the project's last event was stored (ISO 8601); null or absent when it has no events. */
+  lastEventAt?: string | null;
+}
+
+const activityTime = (p: ProjectSummary): number =>
+  p.lastEventAt ? Date.parse(p.lastEventAt) : Number.NEGATIVE_INFINITY;
+
+/** Whether `a` was active more recently than `b`: later lastEventAt, then higher head. */
+function moreRecent(a: ProjectSummary, b: ProjectSummary): boolean {
+  const at = activityTime(a);
+  const bt = activityTime(b);
+  return at !== bt ? at > bt : a.head > b.head;
 }
 
 /**
  * The project the city opens on: the viewer's remembered choice while it still exists, else the
- * user project with the highest head (most recently active), else Unsorted.
+ * user project with the most recent last event (ties and projects with no events fall back to
+ * head), else Unsorted.
  */
 export function pickDefaultProject(projects: ProjectSummary[], remembered: string | null): string {
   if (remembered !== null && projects.some((p) => p.id === remembered)) return remembered;
   let best: ProjectSummary | undefined;
   for (const p of projects) {
-    if (!p.builtin && (best === undefined || p.head > best.head)) best = p;
+    if (!p.builtin && (best === undefined || moreRecent(p, best))) best = p;
   }
   return best?.id ?? DEFAULT_PROJECT_ID;
 }

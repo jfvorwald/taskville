@@ -80,6 +80,8 @@ export const projectSummarySchema = z.strictObject({
   roots: z.array(absolutePathSchema),
   builtin: z.boolean(),
   head: nonNegativeIntSchema,
+  /** When the project's last event was stored (its receivedAt); null for a project with no events. */
+  lastEventAt: timestampSchema.nullable(),
 });
 export type ProjectSummary = z.output<typeof projectSummarySchema>;
 
