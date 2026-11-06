@@ -13,6 +13,7 @@ import {
   applySessionEnded,
   applySessionSeen,
   applySessionStarted,
+  leaveIdle,
   refreshActivity,
   setActivity,
   setLatestEvidence,
@@ -104,6 +105,7 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       else s = applySessionSeen(s, e, agentId, sessionId);
       if (!stale) s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt));
       if (CLOSES_UNFINISHED.has(e.type)) s = closeUnfinishedCalls(s, e, agentId);
+      if (e.type === "session.prompt_submitted" && !stale) s = leaveIdle(s, e, agentId, sessionId);
       return refreshActivity(s, e, agentId);
     }
     case "task.created":
@@ -146,7 +148,9 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       return refreshActivity(setActivity(s, e, agentId, e.sessionId, entry), e, agentId);
     }
     case "tool_call.started":
-      return agentId === undefined ? s : applyToolCallStarted(s, e, agentId, stale);
+      if (agentId === undefined) return s;
+      s = applyToolCallStarted(s, e, agentId, stale);
+      return stale ? s : refreshActivity(leaveIdle(s, e, agentId, e.sessionId), e, agentId);
     case "tool_call.finished":
       return agentId === undefined ? s : applyToolCallFinished(s, e, agentId, stale);
     case "test.result":
