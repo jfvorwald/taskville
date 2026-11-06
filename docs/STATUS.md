@@ -2,7 +2,18 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-04 17:00 UTC. **Main:** 51feb7f. **State:** M5 and M6 complete to their gates, awaiting owner review: [G5 #76](https://github.com/jfvorwald/taskville/issues/76) and [G6 #80](https://github.com/jfvorwald/taskville/issues/80) (summaries posted, `waiting:user`). Open owner decisions: #376 (hold M5.14), #374 (OTel credential), #360 (OTLP payload source). Work is stopped at the gates.
+**Updated:** 2026-11-06 23:30 UTC. **Main:** b001847. **State:** M7 local-setup batch continuing. M5 and M6 still await owner review at [G5 #76](https://github.com/jfvorwald/taskville/issues/76) and [G6 #80](https://github.com/jfvorwald/taskville/issues/80) (both still OPEN on GitHub); they block M7.01 (#81) and the staging tickets M7.02 to M7.06. No other ready M7 work remains.
+
+## Done in M7 Private staging (local-setup batch, 2026-11-06)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.22 #405 default project by last activity | #410 | `lastEventAt` on /v1/projects; roborev 7124 PASS; [report](tasks/M7.22.md) |
+| M7.20 #402 CrewHighlight lift test on the owner's Mac | #407 | cause: SwiftShader draw gaps under load; tests pin the clock; roborev 7119 PASS; CI shim spool test flaked once (passed on rerun); [report](tasks/M7.20.md) |
+| M7.18 #399 global options before the command | #406 | roborev 7116 and 7132 fixed test-first; post-commit 7139 PASS (no third panel per cap); [report](tasks/M7.18.md) |
+| M7.19 #400 start pairs the opened browser (P0) | #409 | osascript stdin on macOS, 0600 redirect page elsewhere; recovery copy names p only with a key listener; roborev 7127 fixed, 7138 PASS; decision #408 closed; real owner-browser run pending owner; [report](tasks/M7.19.md) |
+
+Earlier M7 merges: M7.07 to M7.17, M7.21 (see task reports).
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 

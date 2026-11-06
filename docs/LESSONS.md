@@ -20,6 +20,24 @@ Entry format:
 
 ## Entries
 
+### L-218: A security tradeoff the lead accepts can still be wrong; let the reviewer overrule it
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #400 · **Recorded by:** Claude (lead)
+- **What happened:** The lead accepted putting the one-time pairing code on the opener's argv (decision #408, default accepted). roborev 7127 rated it High: another local user can read the process list and exchange the code first for a persistent session. The fix (osascript stdin on macOS, 0600 redirect page elsewhere) was small.
+- **Lesson:** Before accepting a credential-exposure tradeoff as a default, look for a channel that avoids it (stdin, a 0600 file); a cheap alternative usually exists.
+- **Action:** #409; decision #408 closed.
+
+### L-217: Normalizing argv before dispatch has to respect subcommands and last-wins order
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #399 · **Recorded by:** Claude (lead)
+- **What happened:** M7.18 moved leading global options after the command name, which collided with subcommands (`--json project list`), then appended them at the end, which reversed precedence for repeated options. Two roborev rounds.
+- **Lesson:** When reordering argv, insert leading globals before the first option of the remaining arguments, and test commands with subcommands, positional targets and repeated options.
+- **Action:** #406.
+
+### L-216: Pin the clock for one-shot animations in browser tests
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #402 · **Recorded by:** Claude (lead)
+- **What happened:** A CrewHighlight test failed every time on the owner's Mac and passed in CI. A 450 ms one-shot hop was missed because SwiftShader draws on a loaded CPU came more than 450 ms apart.
+- **Lesson:** Do not poll wall-clock one-shot animations with waitFor; pin `performance.now` (or whatever clock the code reads) per draw. Reproduce "fails only locally" with CPU hogs (`yes` processes).
+- **Action:** #407.
+
 ### L-215: Call the domain's rule instead of copying it
 - **Date:** 2026-11-04 · **Milestone:** M6 · **Ticket:** #79 · **Recorded by:** CTO (Opus 5.5)
 - **What happened:** M6.07's crewRuns re-derived registration rules; each review found a new mismatch (guesses overwriting recorded links, dropped finishes) until it folded registrations through the domain's exported applyRegistration.
