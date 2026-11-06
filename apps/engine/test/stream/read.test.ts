@@ -52,8 +52,22 @@ describe("GET /v1/projects", () => {
     expect(res.status).toBe(200);
     const body = projectsResponseSchema.parse(await res.json());
     expect(body.projects).toEqual([
-      { id: "demo", name: "demo", roots: [], builtin: false, head: 3 },
-      { id: "unsorted", name: "Unsorted", roots: [], builtin: true, head: 1 },
+      {
+        id: "demo",
+        name: "demo",
+        roots: [],
+        builtin: false,
+        head: 3,
+        lastEventAt: expect.any(String),
+      },
+      {
+        id: "unsorted",
+        name: "Unsorted",
+        roots: [],
+        builtin: true,
+        head: 1,
+        lastEventAt: expect.any(String),
+      },
     ]);
   });
 

@@ -104,14 +104,35 @@ describe("projects", () => {
     ).toEqual({ id: "tv", name: "T", roots: ["/r"], head: 1 });
   });
 
-  it("lists projects with builtin and head", () => {
+  it("lists projects with builtin, head, and last event time", () => {
     const body = {
-      projects: [{ id: "unsorted", name: "Unsorted", roots: [], builtin: true, head: 1 }],
+      projects: [
+        {
+          id: "unsorted",
+          name: "Unsorted",
+          roots: [],
+          builtin: true,
+          head: 1,
+          lastEventAt: "2026-10-30T12:00:00Z",
+        },
+      ],
     };
     expect(projectsResponseSchema.parse(body)).toEqual(body);
     expect(
       projectsResponseSchema.safeParse({ projects: [{ id: "x", name: "X", roots: [] }] }).success,
     ).toBe(false);
+  });
+
+  it("accepts a null lastEventAt and rejects a non-ISO one", () => {
+    const row = { id: "x", name: "X", roots: [], builtin: false, head: 0 };
+    expect(
+      projectsResponseSchema.safeParse({ projects: [{ ...row, lastEventAt: null }] }).success,
+    ).toBe(true);
+    expect(
+      projectsResponseSchema.safeParse({ projects: [{ ...row, lastEventAt: "yesterday" }] })
+        .success,
+    ).toBe(false);
+    expect(projectsResponseSchema.safeParse({ projects: [row] }).success).toBe(false);
   });
 });
 
