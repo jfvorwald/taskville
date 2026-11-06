@@ -38,4 +38,45 @@ describe("PairingNotice", () => {
       .toBeVisible();
     expect(page.getByRole("button", { name: "Try again" }).elements()).toHaveLength(0);
   });
+
+  // M7.19 (#400): copy names `taskville start`, and mentions pressing p only when the engine
+  // listens for it. The flag arrives as `keyListener` on a failed state (from `&keys=1` in the link).
+  it("unpaired: names taskville start and never mentions pressing p", async () => {
+    await render(<PairingNotice state={{ status: "unpaired" }} onRetry={() => {}} />);
+    await expect.element(page.getByText(/taskville start/)).toBeVisible();
+    expect(document.body.textContent).not.toMatch(/\bpress(ing)? p\b/i);
+  });
+
+  it("rejected without a key listener: names taskville start, no p", async () => {
+    await render(
+      <PairingNotice
+        state={{ status: "failed", reason: "invalid_code", keyListener: false }}
+        onRetry={() => {}}
+      />,
+    );
+    await expect.element(page.getByText(/taskville start/)).toBeVisible();
+    expect(document.body.textContent).not.toMatch(/\bpress(ing)? p\b/i);
+  });
+
+  it("rejected with a key listener: names taskville start and says press p", async () => {
+    await render(
+      <PairingNotice
+        state={{ status: "failed", reason: "invalid_code", keyListener: true }}
+        onRetry={() => {}}
+      />,
+    );
+    await expect.element(page.getByText(/taskville start/)).toBeVisible();
+    expect(document.body.textContent).toMatch(/press p\b/i);
+  });
+
+  it("pairing_network follows the same rule", async () => {
+    await render(
+      <PairingNotice
+        state={{ status: "failed", reason: "pairing_network", keyListener: false }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(document.body.textContent).not.toMatch(/\bpress(ing)? p\b/i);
+    expect(document.body.textContent).not.toMatch(/taskville serve/);
+  });
 });
