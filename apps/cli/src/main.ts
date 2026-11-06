@@ -81,7 +81,22 @@ export function resolveCwd(
 }
 
 export async function run(argv: string[], io: Io): Promise<number> {
-  const [name, ...args] = argv;
+  // Global options may lead: move them in front of the first option (after any subcommand and
+  // positional target), so options written later, including repeated globals, still win.
+  const leading: string[] = [];
+  let at = 0;
+  while (at < argv.length) {
+    const arg = argv[at] as string;
+    if (arg === "--json" || /^--(home|url)=/.test(arg)) leading.push(arg);
+    else if ((arg === "--home" || arg === "--url") && at + 1 < argv.length)
+      leading.push(arg, argv[++at] as string);
+    else break;
+    at++;
+  }
+  const [name, ...rest] = argv.slice(at);
+  const firstOption = rest.findIndex((arg) => arg.startsWith("-"));
+  const insertAt = firstOption === -1 ? rest.length : firstOption;
+  const args = [...rest.slice(0, insertAt), ...leading, ...rest.slice(insertAt)];
   const command = name === undefined ? undefined : COMMANDS[name];
   if (command === undefined || !Object.hasOwn(COMMANDS, name ?? "")) {
     io.stderr(
