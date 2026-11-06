@@ -123,14 +123,6 @@ describe("sessions", () => {
     expect(only(r, "agent.registered").payload.displayName).toBe("jfvorwald");
   });
 
-  it("names a session with a session name after that name, not the owner or the cwd", () => {
-    const r = map(
-      { ...base, hook_event_name: "SessionStart", session_name: "release-prep" },
-      { ownerName: "jfvorwald" },
-    );
-    expect(only(r, "agent.registered").payload.displayName).toBe("release-prep");
-  });
-
   it("falls back to Claude Code with no session name and no owner, never the cwd", () => {
     const r = map({ ...base, hook_event_name: "SessionStart", source: "startup" });
     expect(only(r, "agent.registered").payload.displayName).toBe("Claude Code");

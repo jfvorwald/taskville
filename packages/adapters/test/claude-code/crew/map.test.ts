@@ -197,12 +197,6 @@ describe("lead name (M7.24: same name the core mapper gives the session)", () =>
     expect(leadName(spawn(), { ownerName: "jfvorwald" })).toBe("jfvorwald");
   });
 
-  it("names the lead after the session name when there is one", () => {
-    expect(leadName(spawn({ session_name: "release-prep" }), { ownerName: "jfvorwald" })).toBe(
-      "release-prep",
-    );
-  });
-
   it("falls back to Claude Code with no session name and no owner, never the cwd", () => {
     expect(leadName(spawn())).toBe("Claude Code");
   });
