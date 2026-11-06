@@ -81,7 +81,8 @@ export function resolveCwd(
 }
 
 export async function run(argv: string[], io: Io): Promise<number> {
-  // Global options may lead: append them to the end of the arguments, where the commands read them.
+  // Global options may lead: move them in front of the first option (after any subcommand and
+  // positional target), so options written later, including repeated globals, still win.
   const leading: string[] = [];
   let at = 0;
   while (at < argv.length) {
@@ -93,7 +94,9 @@ export async function run(argv: string[], io: Io): Promise<number> {
     at++;
   }
   const [name, ...rest] = argv.slice(at);
-  const args = [...rest, ...leading];
+  const firstOption = rest.findIndex((arg) => arg.startsWith("-"));
+  const insertAt = firstOption === -1 ? rest.length : firstOption;
+  const args = [...rest.slice(0, insertAt), ...leading, ...rest.slice(insertAt)];
   const command = name === undefined ? undefined : COMMANDS[name];
   if (command === undefined || !Object.hasOwn(COMMANDS, name ?? "")) {
     io.stderr(
