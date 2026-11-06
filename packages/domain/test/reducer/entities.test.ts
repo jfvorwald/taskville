@@ -581,6 +581,63 @@ describe("sessions and activity", () => {
     });
   });
 
+  it("returns a session to idle when its turn ends", () => {
+    const emit = eventStream();
+    const s = { agentId: "a1", sessionId: "s1" };
+    const state = run([
+      registered(emit, "a1", "session"),
+      emit("session.started", {}, s),
+      emit("session.prompt_submitted", {}, s),
+      emit("tool_call.started", { toolCallId: "t1", toolName: "Bash" }, s),
+      // The Claude Code Stop hook maps to turn_ended plus activity.ended.
+      emit("session.turn_ended", {}, s),
+      emit("activity.ended", {}, s),
+    ]);
+    expect(state.sessions.s1?.activity).toMatchObject({ activity: "idle" });
+    expect(state.activity.a1).toMatchObject({ activity: "idle", sessionId: "s1" });
+  });
+
+  it("moves an idle session out of idle when a prompt is submitted", () => {
+    const emit = eventStream();
+    const s = { agentId: "a1", sessionId: "s1" };
+    const base = [
+      registered(emit, "a1", "session"),
+      emit("session.started", {}, s),
+      emit("session.turn_ended", {}, s),
+      emit("activity.ended", {}, s),
+    ];
+    expect(run(base).activity.a1).toMatchObject({ activity: "idle" });
+    const state = run([...base, emit("session.prompt_submitted", {}, s)]);
+    expect(state.sessions.s1?.activity.activity).toBe("unknown");
+    expect(state.activity.a1).toMatchObject({ activity: "unknown", sessionId: "s1" });
+  });
+
+  it("moves an idle session out of idle on an unclassified tool call", () => {
+    const emit = eventStream();
+    const s = { agentId: "a1", sessionId: "s1" };
+    const base = [
+      registered(emit, "a1", "session"),
+      emit("session.started", {}, s),
+      emit("session.turn_ended", {}, s),
+      emit("activity.ended", {}, s),
+    ];
+    expect(run(base).activity.a1).toMatchObject({ activity: "idle" });
+    const state = run([
+      ...base,
+      emit("tool_call.started", { toolCallId: "t1", toolName: "Bash" }, s),
+    ]);
+    expect(state.sessions.s1?.activity.activity).toBe("unknown");
+    expect(state.activity.a1).toMatchObject({ activity: "unknown", sessionId: "s1" });
+    // The turn ending brings it back to idle.
+    const ended = run([
+      ...base,
+      emit("tool_call.started", { toolCallId: "t1", toolName: "Bash" }, s),
+      emit("session.turn_ended", {}, s),
+      emit("activity.ended", {}, s),
+    ]);
+    expect(ended.activity.a1).toMatchObject({ activity: "idle" });
+  });
+
   it("applies activity without a session to the primary session, or to the agent if none", () => {
     const emit = eventStream();
     const noSession = run([
