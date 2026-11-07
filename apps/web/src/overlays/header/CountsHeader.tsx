@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_PROJECT_ID, selectProject, useCurrentProjectId } from "../../data/project.ts";
+import { useRelease } from "../../release/identity.ts";
+import { ReleaseBadge, ReleaseBanner } from "../../release/ReleaseBadge.tsx";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
 import { ProjectPicker } from "../project-picker/ProjectPicker.tsx";
@@ -25,8 +27,10 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
   const needsYou = mode === "live" && ready ? needsYouTotal : value.needsYou;
   const shown = { ...value, needsYou };
   const away = currentProjectId !== DEFAULT_PROJECT_ID;
+  const release = useRelease();
   return (
     <div className={styles.row}>
+      <ReleaseBanner release={release} />
       <p
         className={styles.counts}
         role="status"
@@ -54,6 +58,7 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
           ) : null}
         </InteractiveRegion>
       ) : null}
+      <ReleaseBadge release={release} />
     </div>
   );
 }

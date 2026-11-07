@@ -195,6 +195,20 @@ describe("pairing and health", () => {
     expect(healthResponseSchema.safeParse({ ...ok, db: "maybe" }).success).toBe(false);
   });
 
+  it("parses the release identity block (M7.26)", () => {
+    const base = { status: "ok", db: "ok", walMode: true, uptimeSeconds: 12, version: "0.0.0" };
+    for (const environment of ["development", "staging", "production"]) {
+      const body = { ...base, release: { id: "20261106-abc1234", version: "1.4.0", environment } };
+      expect(healthResponseSchema.parse(body)).toEqual(body);
+    }
+    // A body without it still parses (older engines), but the block is strict and validated.
+    expect(healthResponseSchema.safeParse(base).success).toBe(true);
+    const bad = (release: unknown) => healthResponseSchema.safeParse({ ...base, release }).success;
+    expect(bad({ id: "r", version: "1", environment: "moon" })).toBe(false);
+    expect(bad({ id: "", version: "1", environment: "staging" })).toBe(false);
+    expect(bad({ id: "r", version: "1", environment: "staging", commit: "abc" })).toBe(false);
+  });
+
   it("accepts the process-only health an engine reports before storage is wired", () => {
     // apps/engine (M1.10) omits db and walMode without a storage health hook, and version
     // when none is configured.
