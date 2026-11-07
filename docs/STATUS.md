@@ -2,7 +2,17 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-07 03:10 UTC. **Main:** 86c8e34. **State:** M7 staging batch in progress toward G7 #88. Decision #415 answered (accept defaults: option C, `taskville-staging.jaqstudios.com`). Packaging, release identity, the staging Worker and the clean-machine install check are merged. **Blocked on the owner:** M7.04 (#86) needs a Cloudflare API token with Access: Apps and Policies Edit to create the staging Access application before the first deploy; release `38c0d20bcd1aa799` is built and its deploy dry run passed. Waiting on that: the M7.05 rehearsal (#85, draft PR #429) and M7.06 push tier (#87). Follow-up #428 (lockfile guard residue, P2).
+**Updated:** 2026-11-07 21:00 UTC. **Main:** 78b70c0. **State:** M7 at review gate [G7 #88](https://github.com/jfvorwald/taskville/issues/88), awaiting the owner. The owner held the Cloudflare deploy on 2026-11-07 (decision [#432](https://github.com/jfvorwald/taskville/issues/432), defaults in force): M7.04 (#86) blocked, the M7.03 Worker merged but undeployed, the runbook rehearsed locally, the push tier run against the tarball, and the G7 release candidate is release `14a645aaf0280aa8` (production, main 78b70c0), which passed the clean-machine install check. Retro: [retros/M7.md](retros/M7.md). Open follow-ups: #434 (M7.30), #435 (M7.31).
+
+## Done in M7 Private staging (close-out, 2026-11-07)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.06 #87 push tier and release security review | lead M7 close PR | release `14a645aaf0280aa8`: clean-machine install PASS, `pnpm check` 5,128 of 5,128, release 67 of 67, browser 939 of 940 (LiveFollowPins flake, passed alone), app e2e, web smoke 4, crews 5, permission replay 6, telemetry replay 7; security review PASS WITH FINDINGS (3 low, filed #434 and #435); manifest hashes and `pnpm audit --prod` clean; cross-browser and live runs NOT RUN; [report](tasks/M7.06.md) |
+| M7.05 #85 runbook | #429 | rehearsed locally per #432 D1 (upgrade, rollback, restore byte-identical); staging sections held; roborev 7251 high and 7252, 7255 mediums fixed, post-commit 7256 PASS; [report](tasks/M7.05.md) |
+| M7.29 #428 lockfile guard residue | #433 | platform-aware omissions, committed keys checked; roborev 7242 medium (unpinned platform on Linux CI) fixed, 7246 PASS; [report](tasks/M7.29.md) |
+| M7.04 #86 staging access control | none | held by the owner (decision #432); labeled blocked |
+| M7.RT #101 retro | lead M7 close PR | [retros/M7.md](retros/M7.md); lessons L-225 to L-228 |
 
 ## Done in M7 Private staging (staging batch, 2026-11-07)
 
