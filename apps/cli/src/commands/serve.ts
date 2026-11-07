@@ -15,7 +15,7 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   PAIRING_CODE_TTL_MS,
   type PairingRecords,
@@ -34,6 +34,7 @@ import {
   ProjectInputError,
   registerProjectRoutes,
 } from "@taskville/engine/src/projects/index.ts";
+import { loadRelease } from "@taskville/engine/src/release/index.ts";
 import {
   ClaudeCodeSource,
   drainSpool,
@@ -51,6 +52,13 @@ import { type Context, parseCommand } from "../context.ts";
 import { CliError, EXIT } from "../errors.ts";
 
 const USAGE = "taskville serve --headless [--port N] [--verbose] [--home <dir>]";
+
+/**
+ * Where `release.json` lives (M7.26): the parent of the directory holding the CLI entry file
+ * (`src/main.ts`, one level above this folder). That is `apps/cli` in a checkout, which has no
+ * release.json, and the package root in a release tarball.
+ */
+export const RELEASE_DIR = fileURLToPath(new URL("../../", import.meta.url));
 
 /**
  * `taskville serve --headless`: runs the engine in the foreground on 127.0.0.1 only (contracts/
@@ -475,6 +483,7 @@ export function composeServe(
       logger,
       ...(web.dir === undefined ? {} : { staticDir: web.dir }),
       version: packageJson.version,
+      release: loadRelease({ dir: RELEASE_DIR, version: packageJson.version, logger }),
       health: () => engine?.health() ?? { db: "error", walMode: false },
     });
     engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now, pairing });

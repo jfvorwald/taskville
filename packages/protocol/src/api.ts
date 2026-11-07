@@ -149,5 +149,13 @@ export const healthResponseSchema = z.strictObject({
   walMode: z.boolean().optional(),
   uptimeSeconds: z.number().nonnegative(),
   version: z.string().min(1).optional(),
+  /** Which build is running (M7.26). Absent from engines that predate it. */
+  release: z
+    .strictObject({
+      id: z.string().min(1),
+      version: z.string(),
+      environment: z.enum(["development", "staging", "production"]),
+    })
+    .optional(),
 });
 export type HealthResponse = z.output<typeof healthResponseSchema>;
