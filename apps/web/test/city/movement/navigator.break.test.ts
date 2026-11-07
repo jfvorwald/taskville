@@ -223,4 +223,109 @@ describe("navigator break trips", () => {
     nav.tick(32);
     expect(dist(must(nav, "a"), slot("workshop:0"))).toBeLessThan(1e-6);
   });
+  // Plaza nodes are shared ground: a needs-you safe point and a plaza break never stack agents.
+  // Rule: a plaza break never takes a node held as a needs-you safe point (that agent keeps it;
+  // the break agent stays at its workstation), and a needs-you agent never picks a safe point on a
+  // node another agent is on or heading to for a break (the break agent is not displaced).
+  describe("plaza nodes are never shared", () => {
+    const twoSeated = (ids: string[]) => {
+      const nav = createNavigator();
+      const clock = { t: 0 };
+      nav.sync(
+        ids.map((id) => waiting(id, "workshop")),
+        { place: true },
+      );
+      nav.tick(clock.t);
+      return { nav, clock };
+    };
+    const atNode = (a: NavAgent) => plazaNodes.findIndex((n) => dist(n, a) < 1e-6);
+    /** The plaza node index agent "a" takes as its safe point when alone and needs-you. */
+    function safeIndexOfA(): number {
+      const { nav, clock } = twoSeated(["a", "b"]);
+      nav.sync([waiting("a", "workshop", { breakSpot: BAR }), waiting("b", "workshop")]);
+      run(nav, clock, 90_000);
+      nav.sync([waiting("a", "workshop", { hold: true }), waiting("b", "workshop")]);
+      run(nav, clock, 90_000);
+      const k = atNode(must(nav, "a"));
+      expect(k).toBeGreaterThanOrEqual(0);
+      return k;
+    }
+
+    it("keeps a plaza break off a node held as a needs-you safe point", () => {
+      const k = safeIndexOfA();
+      const { nav, clock } = twoSeated(["a", "b"]);
+      nav.sync([waiting("a", "workshop", { breakSpot: BAR }), waiting("b", "workshop")]);
+      run(nav, clock, 90_000);
+      nav.sync([waiting("a", "workshop", { hold: true }), waiting("b", "workshop")]);
+      run(nav, clock, 90_000);
+      const heldAt = { x: must(nav, "a").x, z: must(nav, "a").z };
+      nav.sync([
+        waiting("a", "workshop", { hold: true }),
+        waiting("b", "workshop", { breakSpot: { kind: "plaza", index: k } }),
+      ]);
+      run(nav, clock, 90_000);
+      const a = must(nav, "a");
+      const b = must(nav, "b");
+      expect(dist(a, heldAt)).toBeLessThan(1e-6);
+      expect(a.state).toBe("stuck");
+      expect(dist(a, b)).toBeGreaterThan(0.1);
+      // The rule: b yields and waits at its own workstation.
+      expect(dist(b, slot("workshop:1"))).toBeLessThan(1e-6);
+    });
+
+    it("keeps a needs-you agent off a node a break agent is standing on", () => {
+      const k = safeIndexOfA();
+      const { nav, clock } = twoSeated(["a", "b"]);
+      nav.sync([
+        waiting("a", "workshop", { breakSpot: BAR }),
+        waiting("b", "workshop", { breakSpot: { kind: "plaza", index: k } }),
+      ]);
+      run(nav, clock, 90_000);
+      const bAt = { x: must(nav, "b").x, z: must(nav, "b").z };
+      expect(atNode(must(nav, "b"))).toBe(k);
+      nav.sync([
+        waiting("a", "workshop", { hold: true }),
+        waiting("b", "workshop", { breakSpot: { kind: "plaza", index: k } }),
+      ]);
+      run(nav, clock, 90_000);
+      const a = must(nav, "a");
+      const b = must(nav, "b");
+      // The rule: b is not displaced and a holds a different plaza node.
+      expect(dist(b, bAt)).toBeLessThan(1e-6);
+      expect(a.state).toBe("stuck");
+      expect(atNode(a)).toBeGreaterThanOrEqual(0);
+      expect(dist(a, b)).toBeGreaterThan(0.1);
+    });
+
+    it("never puts two agents on the same plaza node (seeded sequence)", () => {
+      const ids = ["a", "b", "c", "d"];
+      const { nav, clock } = twoSeated(ids);
+      let seed = 20260711;
+      const rnd = () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed / 2 ** 32;
+      };
+      for (let step = 0; step < 40; step++) {
+        nav.sync(
+          ids.map((id) => {
+            const r = rnd();
+            if (r < 0.35) return waiting(id, "workshop", { hold: true });
+            if (r < 0.8) {
+              const index = Math.floor(rnd() * 3);
+              return waiting(id, "workshop", { breakSpot: { kind: "plaza", index } });
+            }
+            return waiting(id, "workshop");
+          }),
+        );
+        run(nav, clock, 60_000);
+        const resting = ids.map((id) => must(nav, id)).filter((x) => !isWalking(x));
+        for (const x of resting) {
+          const k = atNode(x);
+          if (k < 0) continue;
+          const sharing = resting.filter((y) => y !== x && dist(x, y) < 1e-6);
+          expect(sharing.length, `step ${step}: ${x.id} shares plaza node ${k}`).toBe(0);
+        }
+      }
+    });
+  });
 });
