@@ -112,7 +112,8 @@ type Goal =
   | { kind: "queue"; area: AreaId }
   | { kind: "safe"; node: string }
   | { kind: "spot"; node: string }
-  | { kind: "home"; node: string }
+  /** Walking back to the plaza with no area; `node` is null while no plaza node is free. */
+  | { kind: "home"; node: string | null }
   | { kind: "exit"; node: string };
 
 interface Walker {
@@ -173,7 +174,6 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
   const walkers = new Map<string, Walker>();
   let listCache: NavAgent[] | null = null;
   const slotOwner = new Map<string, string>();
-  const safeOwner = new Map<string, string>();
   const queues = new Map<AreaId, string[]>();
   const slotsByArea = new Map<AreaId, WorkstationSlot[]>();
   for (const s of layout.slots) {
@@ -278,7 +278,6 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
   }
 
   function releaseSafe(w: Walker) {
-    if (w.safeNode !== null) safeOwner.delete(w.safeNode);
     w.safeNode = null;
   }
 
@@ -321,9 +320,10 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         const spot = queueSpot(g.area, Math.max(0, index));
         return { node: spot.node, free: spot };
       }
+      case "home":
+        return g.node === null ? null : { node: g.node };
       case "safe":
       case "spot":
-      case "home":
       case "exit":
         return { node: g.node };
     }
@@ -335,9 +335,11 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     w.blockedMs = 0;
     const t = targetOf(w);
     if (t === null) {
-      // Stop where it stands: at the waypoint just reached, or the next one when mid-street.
+      // Stop where it stands: at the waypoint just reached, or the next one when mid-street,
+      // unless another agent holds that plaza node; then right where it is.
       const next = w.path[0];
-      w.path = next && dist(next, { x: w.lx, z: w.lz }) > 1e-9 ? [next] : [];
+      const ahead = next && dist(next, { x: w.lx, z: w.lz }) > 1e-9;
+      w.path = next && ahead && (next.free || !heldByOther(w, next.node)) ? [next] : [];
       return;
     }
     const best = cheapest(w, t.node);
@@ -354,30 +356,39 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     w.path = path;
   }
 
-  /** Another agent is on this plaza node, or is heading to it, for a break. */
-  function breakHeld(w: Walker, node: string): boolean {
-    for (const o of walkers.values()) {
-      if (o === w || o.view.gone) continue;
-      if (o.goal.kind === "spot" && o.goal.node === node) return true;
-    }
-    return false;
+  // Plaza reservations: the one source of truth for who holds a plaza node. A node is held by the
+  // agent heading to it or standing on it for any reason: a needs-you safe point, a plaza break, the
+  // walk home of an agent with no area, or an agent told to stay that stops on it. Claims follow
+  // goals, so leaving, a new goal or departing releases them. Every chooser asks `heldByOther`, and
+  // `reconcile` gives a freed node to an agent that was denied one.
+
+  /** The plaza node `w` holds or is heading to, or null. */
+  function plazaClaim(w: Walker): string | null {
+    if (w.departing || w.view.gone) return null;
+    const g = w.goal;
+    const node = g.kind === "safe" || g.kind === "spot" || g.kind === "home" ? g.node : null;
+    if (node !== null) return plazaNodes.includes(node) ? node : null;
+    if (g.kind !== "stay" && g.kind !== "home") return null;
+    // Told to stay: the plaza node it stops at, if it stops on one.
+    const end = w.path[w.path.length - 1] ?? w.last;
+    if (end.free || !plazaNodes.includes(end.node)) return null;
+    if (w.path.length === 0 && dist(end, { x: w.lx, z: w.lz }) > 1e-9) return null;
+    return end.node;
   }
 
-  /** A plaza break node is held as another agent's safe point or claimed by another break. */
-  function breakShared(w: Walker, node: string): boolean {
-    const owner = safeOwner.get(node);
-    return (
-      plazaNodes.includes(node) &&
-      (breakHeld(w, node) || (owner !== undefined && owner !== w.view.id))
-    );
+  /** Another agent holds this plaza node or is heading to it. False for any other node. */
+  function heldByOther(w: Walker, node: string): boolean {
+    if (!plazaNodes.includes(node)) return false;
+    for (const o of walkers.values()) {
+      if (o !== w && plazaClaim(o) === node) return true;
+    }
+    return false;
   }
 
   function nearestFreeSafe(w: Walker): string | null {
     let best: { node: string; total: number } | null = null;
     for (const node of plazaNodes) {
-      const owner = safeOwner.get(node);
-      if (owner !== undefined && owner !== w.view.id) continue;
-      if (breakHeld(w, node)) continue;
+      if (heldByOther(w, node)) continue;
       const p = cheapest(w, node);
       if (p !== null && (best === null || p.total < best.total - 1e-9)) {
         best = { node, total: p.total };
@@ -386,22 +397,14 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     return best?.node ?? null;
   }
 
-  /**
-   * The plaza node an area-less agent walks back to: its own, never one held as a safe point or
-   * claimed by a break or by another returning agent. Null when none is free.
-   */
+  /** The plaza node an area-less agent walks back to: its own, held by nobody else. Null when none is free. */
   function homeNode(w: Walker): string | null {
-    const claimed = (node: string) => {
-      for (const o of walkers.values()) {
-        if (o !== w && !o.view.gone && o.goal.kind === "home" && o.goal.node === node) return true;
-      }
-      return false;
-    };
-    const free = (node: string) => !breakShared(w, node) && !claimed(node);
-    if (w.goal.kind === "home" && free(w.goal.node)) return w.goal.node;
+    if (w.goal.kind === "home" && w.goal.node !== null && !heldByOther(w, w.goal.node)) {
+      return w.goal.node;
+    }
     let best: { node: string; total: number } | null = null;
     for (const node of plazaNodes) {
-      if (!free(node)) continue;
+      if (heldByOther(w, node)) continue;
       const p = cheapest(w, node);
       if (p !== null && (best === null || p.total < best.total - 1e-9)) {
         best = { node, total: p.total };
@@ -411,6 +414,41 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
   }
 
   const atRest = (w: Walker) => w.path.length === 0;
+
+  /**
+   * Can `w` now take a plaza node it was denied? A plaza break that yielded, a needs-you agent with
+   * no safe point, or an area-less agent with no home, once a node it may take is free.
+   */
+  function deniedAndFree(w: Walker): boolean {
+    if (w.departing) return false;
+    if (w.hold) return w.safeNode === null && w.goal.kind === "stay" && nearestFreeSafe(w) !== null;
+    const node = w.breakNode;
+    if (
+      node !== null &&
+      plazaNodes.includes(node) &&
+      w.goal.kind !== "spot" &&
+      (w.area === null || w.goal.kind === "slot") &&
+      !heldByOther(w, node)
+    ) {
+      return true;
+    }
+    return (
+      w.area === null && w.goal.kind === "home" && w.goal.node === null && homeNode(w) !== null
+    );
+  }
+
+  /** After claims change: agents denied a plaza node take the ones that freed, in agent order. */
+  function reconcile() {
+    for (let pass = 0; pass <= walkers.size; pass++) {
+      let changed = false;
+      for (const w of walkers.values()) {
+        if (!deniedAndFree(w)) continue;
+        retarget(w);
+        changed = true;
+      }
+      if (!changed) return;
+    }
+  }
 
   function retarget(w: Walker) {
     if (w.departing) {
@@ -437,9 +475,8 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         atRest(w) &&
         w.goal.kind === "spot" &&
         plazaNodes.includes(w.goal.node) &&
-        !safeOwner.has(w.goal.node)
+        !heldByOther(w, w.goal.node)
       ) {
-        safeOwner.set(w.goal.node, w.view.id);
         w.safeNode = w.goal.node;
         w.goal = { kind: "safe", node: w.goal.node };
         plan(w);
@@ -449,7 +486,6 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       if (node === null) {
         w.goal = { kind: "stay" };
       } else {
-        safeOwner.set(node, w.view.id);
         w.safeNode = node;
         w.goal = { kind: "safe", node };
       }
@@ -460,12 +496,11 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     const area = w.area;
     if (area === null) {
       // No workstation to hold: a break goes straight to its spot, and the walk back is to the plaza.
-      if (w.breakNode !== null && !breakShared(w, w.breakNode)) {
+      if (w.breakNode !== null && !heldByOther(w, w.breakNode)) {
         w.goal = { kind: "spot", node: w.breakNode };
       } else if (w.goal.kind === "spot" || w.goal.kind === "home") {
-        // Its own free plaza node; with none free it stays at the break spot's access.
-        const node = homeNode(w);
-        w.goal = node === null ? { kind: "stay" } : { kind: "home", node };
+        // Its own free plaza node; with none free it stays where it is until one frees.
+        w.goal = { kind: "home", node: homeNode(w) };
       } else {
         w.goal = { kind: "stay" };
       }
@@ -487,7 +522,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     // A plaza node held as another agent's safe point is not shared: the break agent yields.
     if (w.breakNode !== null && w.goal.kind === "slot") {
       const node = w.breakNode;
-      if (!breakShared(w, node)) {
+      if (!heldByOther(w, node)) {
         w.goal = { kind: "spot", node };
       }
     }
@@ -531,7 +566,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         cost: t === null ? i : (findPath(layout, node, t.node)?.length ?? Number.POSITIVE_INFINITY),
       }))
       .sort((a, b) => a.cost - b.cost || a.i - b.i);
-    const free = ranked.find((r) => !safeOwner.has(r.node) && !taken(pos(r.node)));
+    const free = ranked.find((r) => !heldByOther(w, r.node) && !taken(pos(r.node)));
     if (free) return point(free.node);
     // Every plaza point is taken: a free spot on a ring inside the plaza, joined to its center.
     const c = pos(layout.plazaNodeId);
@@ -767,17 +802,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         if (spotKey !== undefined && area !== w.area) cancelledSpot.set(intent.id, spotKey);
         const spot = cancelledSpot.has(intent.id) ? undefined : intent.breakSpot;
         const breakNode = area === w.area ? breakNodeOf(spot) : null;
-        // A plaza break that yielded resumes once its node frees.
-        const resumable =
-          breakNode !== null && w.goal.kind !== "spot" && !breakShared(w, breakNode);
-        if (
-          !isNew &&
-          !revived &&
-          !resumable &&
-          hold === w.hold &&
-          area === w.area &&
-          breakNode === w.breakNode
-        ) {
+        if (!isNew && !revived && hold === w.hold && area === w.area && breakNode === w.breakNode) {
           continue;
         }
         // Leaving the bar on foot starts the wobbly walk back; any other change ends it.
@@ -817,6 +842,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         w.hold = false;
         retarget(w);
       }
+      reconcile();
       if (syncOptions.place === true) {
         for (const w of fresh) snap(w);
       }
