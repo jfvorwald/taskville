@@ -57,8 +57,8 @@ Commands:
   unpair                                      Revoke every paired browser
   install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
   uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
-  demo run --offline --seed <n> --duration <t> [--pace <pace>]
-  demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <t>]
+  demo run --offline --seed <n> --duration <t> [--pace <pace>] [--scenario <default|breaks>]
+  demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <t>] [--scenario <default|breaks>]
 
 Global options: --home <dir>, --url <base>, --json
 `;
