@@ -2,7 +2,7 @@
 // `taskville`: the command-line client and the engine launcher (contracts/cli.md).
 
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
@@ -22,7 +22,26 @@ import { CliError, EXIT } from "./errors.ts";
 /** The repository root when running from a source checkout (this file is apps/cli/src/main.ts). */
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
+/** apps/cli in a checkout, the package root once installed: package.json and release.json live there. */
+const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
+
 export type { Io } from "./context.ts";
+
+function readField(file: string, field: string): string | undefined {
+  try {
+    const value = (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)[field];
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `taskville <version> (<release id>)`; the release id is "dev" where no release.json exists. */
+export function versionLine(packageRoot: string = PACKAGE_ROOT): string {
+  const version = readField(join(packageRoot, "package.json"), "version") ?? "unknown";
+  const releaseId = readField(join(packageRoot, "release.json"), "id") ?? "dev";
+  return `taskville ${version} (${releaseId})\n`;
+}
 
 const USAGE = `Usage: taskville <command> [options]
 
@@ -92,6 +111,10 @@ export async function run(argv: string[], io: Io): Promise<number> {
       leading.push(arg, argv[++at] as string);
     else break;
     at++;
+  }
+  if (argv[at] === "--version") {
+    io.stdout(versionLine());
+    return EXIT.ok;
   }
   const [name, ...rest] = argv.slice(at);
   const firstOption = rest.findIndex((arg) => arg.startsWith("-"));
