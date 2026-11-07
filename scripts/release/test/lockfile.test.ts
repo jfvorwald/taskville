@@ -172,7 +172,10 @@ describe("checkInstalledLock omissions (roborev 7219)", () => {
 
   it("accepts an optional dependency pnpm skipped for this platform", () => {
     expect(importerWithOptional).not.toBe(committed);
-    expect(() => checkInstalledLock(importerWithOptional, healthy)).not.toThrow();
+    // Pinned: the linux-x64 binary is legitimately absent on macOS arm64 (M7.29).
+    expect(() =>
+      checkInstalledLock(importerWithOptional, healthy, { os: "darwin", cpu: "arm64" }),
+    ).not.toThrow();
   });
 
   it("refuses an omitted optional dependency whose package is still installed", () => {
@@ -180,6 +183,146 @@ describe("checkInstalledLock omissions (roborev 7219)", () => {
     const unrestricted = importerWithOptional
       .replace("    os: [linux]\n", "")
       .replace("    cpu: [x64]\n", "");
-    expect(() => checkInstalledLock(unrestricted, committed)).toThrow(/importer/i);
+    expect(() =>
+      checkInstalledLock(unrestricted, committed, { os: "darwin", cpu: "arm64" }),
+    ).toThrow(/importer/i);
+  });
+});
+
+// M7.29 (#428): the guard takes an optional third argument pinning the platform so tests do not
+// depend on the host. Assumed signature:
+//   checkInstalledLock(committedYaml: string, installedYaml: string,
+//     platform?: { os: string; cpu: string; libc?: string }): void
+// defaulting to the real platform (process.platform, process.arch, detected libc).
+type Platform = { os: string; cpu: string; libc?: string };
+const MAC: Platform = { os: "darwin", cpu: "arm64" };
+const LINUX: Platform = { os: "linux", cpu: "x64", libc: "glibc" };
+
+interface Binary {
+  name: string;
+  version: string;
+  restrictions: string[];
+}
+
+const BINARIES: Binary[] = [
+  { name: "bin-darwin-arm64", version: "1.0.0", restrictions: ["cpu: [arm64]", "os: [darwin]"] },
+  {
+    name: "bin-linux-x64-gnu",
+    version: "1.0.0",
+    restrictions: ["cpu: [x64]", "os: [linux]", "libc: [glibc]"],
+  },
+  {
+    name: "bin-linux-x64-musl",
+    version: "1.0.0",
+    restrictions: ["cpu: [x64]", "os: [linux]", "libc: [musl]"],
+  },
+  { name: "bin-not-windows", version: "1.0.0", restrictions: ["os: ['!win32']"] },
+];
+
+function lock(options: {
+  binaries: Binary[];
+  extraPackage?: boolean;
+  extraSnapshot?: boolean;
+}): string {
+  const optional = options.binaries
+    .map(
+      (b) => `      ${b.name}:\n        specifier: ${b.version}\n        version: ${b.version}\n`,
+    )
+    .join("");
+  const packages = options.binaries
+    .map(
+      (b) =>
+        `  ${b.name}@${b.version}:\n    resolution: {integrity: sha512-${b.name}}\n${b.restrictions.map((r) => `    ${r}\n`).join("")}\n`,
+    )
+    .join("");
+  const snapshots = options.binaries
+    .map((b) => `  ${b.name}@${b.version}:\n    optional: true\n\n`)
+    .join("");
+  const transitivePackage =
+    options.extraPackage === false
+      ? ""
+      : "  shared-dep@2.0.0:\n    resolution: {integrity: sha512-SHARED}\n\n";
+  const transitiveSnapshot = options.extraSnapshot === false ? "" : "  shared-dep@2.0.0: {}\n\n";
+  return `${HEADER}
+importers:
+
+  .:
+    dependencies:
+      is-odd:
+        specifier: ^3.0.1
+        version: 3.0.1
+    optionalDependencies:
+${optional}
+packages:
+
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-AAAA}
+
+${transitivePackage}${packages}snapshots:
+
+  is-odd@3.0.1: {}
+
+${transitiveSnapshot}${snapshots}`;
+}
+
+const names = (...n: string[]) => BINARIES.filter((b) => n.includes(b.name));
+
+describe("checkInstalledLock platform omissions (M7.29)", () => {
+  const all = lock({ binaries: BINARIES });
+
+  it("refuses an omitted optional dependency whose restriction includes this platform", () => {
+    // darwin/arm64 must install bin-darwin-arm64; omitting it is a stale install.
+    const installed = lock({
+      binaries: names("bin-linux-x64-gnu", "bin-linux-x64-musl", "bin-not-windows"),
+    });
+    expect(() => checkInstalledLock(all, installed, MAC)).toThrow(/lock\.yaml|importer/i);
+  });
+
+  it("refuses an omitted optional dependency whose negated os list includes this platform", () => {
+    // os: ['!win32'] applies on linux, so bin-not-windows must be installed there.
+    const installed = lock({ binaries: names("bin-linux-x64-gnu") });
+    expect(() => checkInstalledLock(all, installed, LINUX)).toThrow(/lock\.yaml|importer/i);
+  });
+
+  it("refuses an omitted optional dependency when only libc matches this platform", () => {
+    // Same os and cpu on linux/x64; the glibc variant must be there, only the musl one may be absent.
+    const installed = lock({ binaries: names("bin-not-windows", "bin-linux-x64-musl") });
+    expect(() => checkInstalledLock(all, installed, LINUX)).toThrow(/lock\.yaml|importer/i);
+  });
+
+  it("accepts an omitted optional dependency whose restriction excludes this platform", () => {
+    const onlyWindows = lock({ binaries: names("bin-linux-x64-gnu") });
+    const committedWithWindowsOnly = lock({
+      binaries: [
+        ...names("bin-linux-x64-gnu"),
+        { name: "bin-win32-x64", version: "1.0.0", restrictions: ["cpu: [x64]", "os: [win32]"] },
+      ],
+    });
+    expect(() => checkInstalledLock(committedWithWindowsOnly, onlyWindows, LINUX)).not.toThrow();
+  });
+
+  it("refuses a package key the installed lockfile omits while importers are unchanged", () => {
+    const installed = all.replace(
+      "  shared-dep@2.0.0:\n    resolution: {integrity: sha512-SHARED}\n\n",
+      "",
+    );
+    expect(installed).not.toBe(all);
+    expect(() => checkInstalledLock(all, installed, MAC)).toThrow(/lock\.yaml|shared-dep/i);
+  });
+
+  it("refuses a snapshot key the installed lockfile omits while importers are unchanged", () => {
+    const installed = all.replace("  shared-dep@2.0.0: {}\n\n", "");
+    expect(installed).not.toBe(all);
+    expect(() => checkInstalledLock(all, installed, MAC)).toThrow(/lock\.yaml|shared-dep/i);
+  });
+
+  it("accepts a healthy macOS arm64 install", () => {
+    const installed = lock({ binaries: names("bin-darwin-arm64", "bin-not-windows") });
+    expect(() => checkInstalledLock(all, installed, MAC)).not.toThrow();
+  });
+
+  it("accepts a healthy Linux x64 glibc install", () => {
+    const installed = lock({ binaries: names("bin-linux-x64-gnu", "bin-not-windows") });
+    expect(() => checkInstalledLock(all, installed, LINUX)).not.toThrow();
   });
 });
