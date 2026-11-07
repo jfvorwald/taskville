@@ -3,6 +3,7 @@ import type { Agent, Attention } from "../../data/domain.ts";
 import { useData } from "../../data/react.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { getSettingsStore } from "../../overlays/settings/store.ts";
+import { applyStrictAttribution } from "../crew/strict-attribution/index.ts";
 import { CITY_LAYOUT, type CityLayout } from "../layout/index.ts";
 import { lightingController } from "../lighting/instance.ts";
 import { computeLighting, localMinutes } from "../lighting/phase.ts";
@@ -33,6 +34,17 @@ export interface PlanSource {
 function restOf(level: Attention["level"] | null, activity: string | undefined): BreakRest {
   if (level === "waiting" || activity === "waiting") return "waiting";
   return activity === "idle" ? "idle" : "working";
+}
+
+/**
+ * The attention view the city draws: strict attribution drops heuristic needs-you records, so the
+ * planner sees the agent as waiting exactly when the city does. Strict off returns the input.
+ */
+export function plannerAttention(
+  attention: readonly Attention[],
+  strict: boolean,
+): readonly Attention[] {
+  return applyStrictAttribution({ agents: {}, teams: undefined, attention }, strict).attention;
 }
 
 export function planInputs(source: PlanSource): BreakPlanInput {
@@ -143,7 +155,7 @@ export function useBreakPlan({
   const attention = useData((s) => s.attention, store);
   const state = useData((s) => s.state, store);
   const settings = getSettingsStore();
-  const { breakTime } = useSyncExternalStore(
+  const { breakTime, strictAttribution } = useSyncExternalStore(
     settings.subscribe,
     settings.getSnapshot,
     settings.getSnapshot,
@@ -165,7 +177,7 @@ export function useBreakPlan({
       layout,
       agents: agents as readonly Agent[],
       activity: state?.activity ?? {},
-      attention,
+      attention: plannerAttention(attention, strictAttribution),
       sessions: state?.sessions ?? {},
     }),
   );
