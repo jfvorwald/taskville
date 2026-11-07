@@ -69,9 +69,16 @@ function useBubbles(
           anchors.project(agentAnchorId(c.agentId), { margin: ANCHOR_MARGIN })?.visible === true,
       );
       const eventIds = new Map(candidates.map((c) => [c.agentId, c.eventId]));
+      const isVisible = (agentId: string) =>
+        anchors.project(agentAnchorId(agentId), { margin: ANCHOR_MARGIN })?.visible === true;
       const picked = selectBubblesWithBreaks(
         candidates,
-        { conversations: plan.conversations, agents: plan.agents, chatterEnabled: breakTime },
+        {
+          conversations: plan.conversations,
+          agents: plan.agents,
+          chatterEnabled: breakTime,
+          isVisible,
+        },
         { selectedAgentId, now, theme },
       );
       const next = picked.map((bubble) => {
@@ -83,14 +90,27 @@ function useBubbles(
         );
         const sinceMs =
           (candidate?.sinceMs ?? now) + (record?.kind === "silent" ? SILENT_THRESHOLD_MS : 0);
+        // A break bubble's paused frame matches live: the time since its turn or segment began.
+        const breakStart =
+          bubble.level === "chatter"
+            ? plan.conversations.find((c) => c.a === bubble.agentId || c.b === bubble.agentId)
+                ?.turnStartedAt
+            : bubble.level === "activity"
+              ? plan.agents.get(bubble.agentId)?.startedAt
+              : undefined;
         return {
           key:
             bubble.level === "chatter" || bubble.level === "activity"
               ? `${bubble.agentId}:${bubble.level}:${bubble.line}`
               : `${bubble.agentId}:${eventIds.get(bubble.agentId)}`,
           bubble,
-          elapsedMs:
-            history && candidate ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0) : undefined,
+          elapsedMs: !history
+            ? undefined
+            : breakStart !== undefined
+              ? Math.max(0, now - breakStart)
+              : candidate
+                ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0)
+                : undefined,
         };
       });
       setBubbles((prev) => (same(prev, next) ? prev : next));

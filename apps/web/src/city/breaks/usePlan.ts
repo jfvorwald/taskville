@@ -23,7 +23,7 @@ export interface PlanSource {
   /** The store's agents, in store order; finished agents are skipped. */
   agents: readonly Agent[];
   /** The store's `state.activity`: the activity label per agent id. */
-  activity: Readonly<Record<string, { activity: string } | undefined>>;
+  activity: Readonly<Record<string, { activity: string; since?: string } | undefined>>;
   /** The store's attention records, most urgent first. */
   attention: readonly Attention[];
   /** The store's `state.sessions`; an agent has a live session when one of its sessions has no `endedAt`. */
@@ -62,13 +62,21 @@ export function planInputs(source: PlanSource): BreakPlanInput {
     if (agent.finishedAt !== undefined) continue;
     const record = firstRecord.get(agent.id);
     const level = record?.level ?? null;
-    const since = record?.level === "waiting" ? Date.parse(record.since) : Number.NaN;
+    const entry = source.activity[agent.id];
+    const rest = restOf(level, entry?.activity);
+    // An idle agent with no waiting record is seeded from the activity's own `since`.
+    const seed = record?.level !== "waiting" && rest === "idle" ? entry?.since : undefined;
+    const since = Date.parse(record?.level === "waiting" ? record.since : (seed ?? ""));
     agents.push({
       id: agent.id,
-      rest: restOf(level, source.activity[agent.id]?.activity),
+      rest,
       level,
       waitingEventId:
-        record?.level === "waiting" ? (record.requestId ?? `${record.kind}@${record.since}`) : null,
+        record?.level === "waiting"
+          ? (record.requestId ?? `${record.kind}@${record.since}`)
+          : seed === undefined
+            ? null
+            : `activity@${seed}`,
       waitingSince: Number.isNaN(since) ? null : since,
       liveSession: live.has(agent.id),
     });

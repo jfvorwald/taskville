@@ -112,7 +112,7 @@ type Goal =
   | { kind: "queue"; area: AreaId }
   | { kind: "safe"; node: string }
   | { kind: "spot"; node: string }
-  | { kind: "home" }
+  | { kind: "home"; node: string }
   | { kind: "exit"; node: string };
 
 interface Walker {
@@ -314,8 +314,6 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     switch (g.kind) {
       case "stay":
         return null;
-      case "home":
-        return { node: layout.plazaNodeId };
       case "slot":
         return { node: g.slot.nodeId };
       case "queue": {
@@ -325,6 +323,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       }
       case "safe":
       case "spot":
+      case "home":
       case "exit":
         return { node: g.node };
     }
@@ -387,6 +386,30 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     return best?.node ?? null;
   }
 
+  /**
+   * The plaza node an area-less agent walks back to: its own, never one held as a safe point or
+   * claimed by a break or by another returning agent. Null when none is free.
+   */
+  function homeNode(w: Walker): string | null {
+    const claimed = (node: string) => {
+      for (const o of walkers.values()) {
+        if (o !== w && !o.view.gone && o.goal.kind === "home" && o.goal.node === node) return true;
+      }
+      return false;
+    };
+    const free = (node: string) => !breakShared(w, node) && !claimed(node);
+    if (w.goal.kind === "home" && free(w.goal.node)) return w.goal.node;
+    let best: { node: string; total: number } | null = null;
+    for (const node of plazaNodes) {
+      if (!free(node)) continue;
+      const p = cheapest(w, node);
+      if (p !== null && (best === null || p.total < best.total - 1e-9)) {
+        best = { node, total: p.total };
+      }
+    }
+    return best?.node ?? null;
+  }
+
   const atRest = (w: Walker) => w.path.length === 0;
 
   function retarget(w: Walker) {
@@ -439,9 +462,11 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       // No workstation to hold: a break goes straight to its spot, and the walk back is to the plaza.
       if (w.breakNode !== null && !breakShared(w, w.breakNode)) {
         w.goal = { kind: "spot", node: w.breakNode };
-      } else if (w.goal.kind === "spot") {
-        w.goal = { kind: "home" };
-      } else if (w.goal.kind !== "home") {
+      } else if (w.goal.kind === "spot" || w.goal.kind === "home") {
+        // Its own free plaza node; with none free it stays at the break spot's access.
+        const node = homeNode(w);
+        w.goal = node === null ? { kind: "stay" } : { kind: "home", node };
+      } else {
         w.goal = { kind: "stay" };
       }
       plan(w);
