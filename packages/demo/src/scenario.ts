@@ -139,7 +139,8 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
   const projectId = options.projectId ?? "demo";
   const startAtMs = options.startAtMs ?? DEMO_EPOCH_MS;
   const rng: Rng = seededRng(seed);
-  const prefix = `d${seed}`;
+  // Scenario-specific, so a non-default scenario never shares entity IDs with the default (M9.06).
+  const prefix = scenario === "default" ? `d${seed}` : `d${seed}b`;
   // The run tag keys this run's events and per-run IDs: the same seed and start time repeat as
   // duplicates; any other start time, even a millisecond apart, is a new run.
   const run = `r${startAtMs.toString(36)}`;
