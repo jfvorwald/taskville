@@ -1,4 +1,5 @@
 import {
+  ANSWER_HOLD_WINDOW_SECONDS,
   agentIdOf,
   denyBodyWith,
   eventsOfType,
@@ -33,11 +34,18 @@ const SESSION_ID = String(recordedPermissionRequest("/").session_id);
 const AGENT_ID = agentIdOf(SESSION_ID);
 const COMMAND_TEXT = "touch exp1.txt";
 
+/** Tags a test that watches the hold end, so its engine runs the short hold window. */
+const SHORT_HOLD = "@short-hold";
+
 let engine: PermissionEngine;
 let context: BrowserContext | undefined;
 
+// A viewer that answers needs a hold that outlasts the browser on a loaded machine; only the tests
+// that watch the hold end run the short window.
 test.beforeEach(async () => {
-  engine = await startPermissionEngine();
+  engine = await startPermissionEngine(
+    test.info().tags.includes(SHORT_HOLD) ? HOLD_WINDOW_SECONDS : ANSWER_HOLD_WINDOW_SECONDS,
+  );
 });
 
 test.afterEach(async () => {
@@ -142,7 +150,9 @@ test("Deny with a note answers the held hook with a deny that carries the note",
   expect(eventsOfType(engine.home, "command.delivered")).toHaveLength(1);
 });
 
-test("with no viewer connected the hook gets the empty 2xx and nothing is decided", async () => {
+test("with no viewer connected the hook gets the empty 2xx and nothing is decided", {
+  tag: SHORT_HOLD,
+}, async () => {
   // No browser is paired, so no stream is open on the project: the bridge does not hold the hook.
   await registerSession(engine, SESSION_ID);
   const hook = raiseRequest();
@@ -161,9 +171,9 @@ test("with no viewer connected the hook gets the empty 2xx and nothing is decide
   expect(eventsOfType(engine.home, "command.delivered")).toHaveLength(0);
 });
 
-test("a viewer that never answers lets the hook fall through, and the next click finds out", async ({
-  browser,
-}) => {
+test("a viewer that never answers lets the hook fall through, and the next click finds out", {
+  tag: SHORT_HOLD,
+}, async ({ browser }) => {
   const page = await openCity(browser);
   const hook = raiseRequest();
   await openCard(page);
