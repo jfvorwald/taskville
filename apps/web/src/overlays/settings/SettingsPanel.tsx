@@ -3,6 +3,7 @@ import { Button, Label, Radio, RadioGroup, Switch } from "react-aria-components"
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
 import { StrictAttributionSection } from "./attribution/StrictAttributionSection.tsx";
+import { BreakTimeSection } from "./breaks/BreakTimeSection.tsx";
 import { useSettingsOpen, useToggleSettings } from "./open.tsx";
 import { SoundSection } from "./SoundSection.tsx";
 import styles from "./settings.module.css";
@@ -136,6 +137,7 @@ export function SettingsPanel({
             Hide code in the city
           </label>
           <StrictAttributionSection store={store} />
+          <BreakTimeSection store={store} />
         </div>
       ) : null}
     </InteractiveRegion>

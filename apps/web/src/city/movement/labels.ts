@@ -19,6 +19,11 @@ export interface MovementLabel {
    * tag in the world, so the world labels leave it out. Absent for every other agent.
    */
   readonly kind?: "subagent";
+  /**
+   * M9.04: the break plan says this agent is on a break. Only a Waiting status ever shows the
+   * "on break" note, and only with the Break time setting on. Absent when not on break.
+   */
+  readonly onBreak?: boolean;
 }
 
 export interface Presentation {
@@ -73,7 +78,8 @@ const sameRow = (a: MovementLabel, b: MovementLabel) =>
   a.onTheWay === b.onTheWay &&
   a.state === b.state &&
   a.urgent === b.urgent &&
-  a.kind === b.kind;
+  a.kind === b.kind &&
+  (a.onBreak ?? false) === (b.onBreak ?? false);
 
 export function createLabelStore(): LabelStore {
   let rows: readonly MovementLabel[] = [];

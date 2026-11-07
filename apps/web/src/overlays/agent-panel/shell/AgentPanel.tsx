@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Button, Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import { breakNote } from "../../../city/agents/label.ts";
 import {
   FEED_REQUEST_TTL_MS,
   type FeedFocus,
@@ -60,6 +61,8 @@ export interface AgentPanelProps extends OverlayProps {
   costRefreshMs?: number;
   /** A clicked envelope asks for its sender's Live feed; defaults to the app-wide hand-off. */
   feedFocus?: FeedFocus;
+  /** M9.04: ids of agents the break plan has on a break; the header adds an "on break" note. */
+  onBreak?: ReadonlySet<string>;
 }
 
 /** "handing_off" is read as "Handing off", the same words the world labels use. */
@@ -101,11 +104,12 @@ export function AgentPanel({
   costSource,
   costRefreshMs,
   feedFocus = sharedFeedFocus,
+  onBreak,
 }: AgentPanelProps) {
   const state = useData((s) => s.state, store);
   const attention = useData((s) => s.attention, store);
   const settings = getSettingsStore();
-  const { privacyMode } = useSyncExternalStore(
+  const { privacyMode, breakTime } = useSyncExternalStore(
     settings.subscribe,
     settings.getSnapshot,
     settings.getSnapshot,
@@ -198,6 +202,7 @@ export function AgentPanel({
     : recorded?.heuristic === true
       ? `Possibly ${activityText(recorded.activity).toLowerCase()}`
       : activityText(recorded?.activity ?? "unknown");
+  const note = breakTime ? breakNote(status, onBreak?.has(agent.id) === true) : null;
   const elapsed = elapsedMs(agent, nowMs);
   const file = currentFile(agent.id, state.toolCalls);
   const crumbs = familyPath(agent.id, agents, teams);
@@ -243,6 +248,7 @@ export function AgentPanel({
           <span data-testid="agent-panel-status" data-urgent={needsYou ? "true" : undefined}>
             {status}
           </span>
+          {note === null ? null : <span data-testid="agent-panel-on-break">{note}</span>}
           {elapsed === null ? null : (
             <span data-testid="agent-panel-elapsed">{formatElapsed(elapsed)}</span>
           )}
