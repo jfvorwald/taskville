@@ -1,10 +1,12 @@
+import { breakNote } from "../../city/agents/label.ts";
 import type { MovementLabel } from "../../city/movement/labels.ts";
 
 export interface AgentListRow {
   readonly id: string;
   readonly name: string;
   /**
-   * What a screen reader hears: `Name, Status`, plus `, on the way` while it walks. A subagent
+   * What a screen reader hears: `Name, Status`, plus `, on break` for a waiting agent on a break
+   * (Break time on) and `, on the way` while it walks. A subagent
    * adds its kind: `Name, subagent, Status`.
    */
   readonly description: string;
@@ -16,10 +18,12 @@ export interface AgentListRow {
 }
 
 /** The scene's label rows as list rows: agents that need you first, then by name. */
-export function agentListRows(labels: readonly MovementLabel[]): AgentListRow[] {
+export function agentListRows(labels: readonly MovementLabel[], breakTime = true): AgentListRow[] {
   return labels
     .map((l) => {
-      const detail = l.onTheWay ? `${l.status}, on the way` : l.status;
+      const note = breakTime ? breakNote(l.status, l.onBreak === true) : null;
+      const withNote = note === null ? l.status : `${l.status}, ${note}`;
+      const detail = l.onTheWay ? `${withNote}, on the way` : withNote;
       return {
         id: l.id,
         name: l.name,

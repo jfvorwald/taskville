@@ -5,6 +5,7 @@ import { movementLabels } from "../../city/movement/labels.ts";
 import type { DataStore } from "../../data/store.ts";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { getSettingsStore } from "../settings/store.ts";
 import styles from "./agent-list.module.css";
 import { agentListRows } from "./rows.ts";
 
@@ -54,7 +55,13 @@ export function AgentList({ mode, selection, store }: OverlayProps & { store?: D
     movementLabels.getSnapshot,
     movementLabels.getSnapshot,
   );
-  const rows = useMemo(() => agentListRows(labels), [labels]);
+  const settings = getSettingsStore();
+  const { breakTime } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
+  const rows = useMemo(() => agentListRows(labels, breakTime), [labels, breakTime]);
   const selectedId = selection.selectedId;
   const selectedKeys = useMemo(() => (selectedId === null ? [] : [selectedId]), [selectedId]);
   return (
