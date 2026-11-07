@@ -56,19 +56,6 @@ describe("seeded demo reads", () => {
     expect(Object.keys(agents).length).toBeGreaterThan(0);
   });
 
-  it("is deterministic: two fresh Workers serve the same state hash", async () => {
-    const a = makeStaging();
-    const b = makeStaging();
-    const [sa, sb] = [await pair(a), await pair(b)];
-    const [pa, pb] = [await firstProjectId(a, sa), await firstProjectId(b, sb)];
-    const [na, nb] = [
-      await snapshotOf(a, sa, pa.project.id),
-      await snapshotOf(b, sb, pb.project.id),
-    ];
-    expect(na.stateHash).toBe(nb.stateHash);
-    expect(na.cursor).toBe(nb.cursor);
-  });
-
   it("streams project events in the engine's SSE format, gap-free, matching the snapshot", async () => {
     const staging = makeStaging();
     const session = await pair(staging);

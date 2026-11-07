@@ -2,63 +2,23 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createAccessVerifier } from "../src/access.ts";
-
-const DOMAIN = "team.cloudflareaccess.com";
-const AUD = "aud-tag-1234";
-const NOW_MS = Date.parse("2026-11-06T12:00:00Z");
-const NOW = NOW_MS / 1000;
-const ENV = { ACCESS_TEAM_DOMAIN: DOMAIN, ACCESS_AUD: AUD } as never;
-
-const encoder = new TextEncoder();
-
-function b64url(bytes: Uint8Array | string): string {
-  const raw = typeof bytes === "string" ? encoder.encode(bytes) : bytes;
-  return Buffer.from(raw).toString("base64url");
-}
-
-async function keyPair() {
-  return crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["sign", "verify"],
-  );
-}
-
-async function sign(
-  privateKey: CryptoKey,
-  claims: Record<string, unknown>,
-  header: Record<string, unknown> = { alg: "RS256", kid: "k1", typ: "JWT" },
-): Promise<string> {
-  const input = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    privateKey,
-    encoder.encode(input),
-  );
-  return `${input}.${b64url(new Uint8Array(signature))}`;
-}
-
-const good = {
-  iss: `https://${DOMAIN}`,
-  aud: [AUD],
-  email: "owner@example.com",
-  exp: NOW + 3600,
-  iat: NOW - 60,
-};
+import {
+  AUD,
+  b64url,
+  DOMAIN,
+  ENV,
+  good,
+  jwkOf,
+  keyPair,
+  NOW,
+  NOW_MS,
+  sign,
+} from "./access-support.ts";
 
 async function setup() {
   const pair = await keyPair();
   const other = await keyPair();
-  const jwk = {
-    ...(await crypto.subtle.exportKey("jwk", pair.publicKey)),
-    kid: "k1",
-    alg: "RS256",
-  };
+  const jwk = await jwkOf(pair, "k1");
   const fetch = vi.fn(async (_url: string) => Response.json({ keys: [jwk] }));
   const verify = createAccessVerifier({ fetch, now: () => NOW_MS });
   return { pair, other, fetch, verify };

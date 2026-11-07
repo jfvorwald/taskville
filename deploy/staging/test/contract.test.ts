@@ -136,7 +136,7 @@ describe("web client contract", () => {
                   projectId,
                   requestId: "r1",
                   idempotencyKey: "k1",
-                  context: { mode: "ambient" },
+                  context: { mode: "live" },
                   decision: { behavior: "allow" },
                 }),
               }
@@ -154,8 +154,12 @@ describe("web client contract", () => {
           return;
         }
         expect(response.status).not.toBe(404);
-        // The one non-2xx the client handles as a normal answer: a held request that expired.
-        const ok = response.ok || (route.pattern.endsWith("/input") && response.status === 410);
+        // The one non-2xx the client handles as a normal answer: a request that is no longer
+        // held (nothing is, here), for a held-request read and for a decision on one.
+        const expired =
+          (route.pattern.endsWith("/input") || route.pattern.endsWith("/commands")) &&
+          response.status === 410;
+        const ok = response.ok || expired;
         expect(ok, `status ${response.status}`).toBe(true);
         const type = response.headers.get("content-type") ?? "";
         if (route.kind === "sse") {

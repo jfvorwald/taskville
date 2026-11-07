@@ -18,50 +18,68 @@ afterEach(() => {
 const json = { "Content-Type": "application/json", Origin: ORIGIN };
 
 describe("staging isolation", () => {
-  it("answers POST /v1/commands with a synthetic outcome and reaches nothing", async () => {
+  it("answers a permission command with the engine's expired answer and reaches nothing", async () => {
     const staging = makeStaging();
     const session = await pair(staging);
-    for (const body of [
-      {
-        type: "permission.decide",
-        projectId: "demo",
-        requestId: "r1",
-        idempotencyKey: "k1",
-        context: { mode: "ambient" },
-        decision: { behavior: "allow" },
-      },
-      {
-        type: "session.open",
-        projectId: "demo",
-        requestId: "r2",
-        sessionId: "s1",
-        idempotencyKey: "k2",
-        context: { mode: "ambient" },
-      },
-    ]) {
-      const response = await staging.call(
-        "/v1/commands",
-        withSession(session, { method: "POST", headers: json, body: JSON.stringify(body) }),
-      );
-      expect(response.status).toBe(200);
-      const parsed = (await response.json()) as { command?: { id?: unknown; status?: unknown } };
-      expect(typeof parsed.command?.id).toBe("string");
-      expect(typeof parsed.command?.status).toBe("string");
-    }
+    const response = await staging.call(
+      "/v1/commands",
+      withSession(session, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          type: "permission.decide",
+          projectId: "demo",
+          requestId: "r1",
+          idempotencyKey: "k1",
+          context: { mode: "live" },
+          decision: { behavior: "allow" },
+        }),
+      }),
+    );
+    expect(response.status).toBe(410);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "request_expired",
+    );
     expect(outbound).toHaveBeenCalledTimes(0);
   });
 
-  it("answers GET /v1/requests/... synthetically and reaches nothing", async () => {
+  it("answers session.open with a client error, never success, and reaches nothing", async () => {
+    const staging = makeStaging();
+    const session = await pair(staging);
+    const response = await staging.call(
+      "/v1/commands",
+      withSession(session, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          type: "session.open",
+          projectId: "demo",
+          requestId: "r2",
+          sessionId: "s1",
+          idempotencyKey: "k2",
+          context: { mode: "live" },
+        }),
+      }),
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.status).toBeLessThan(500);
+    expect(typeof ((await response.json()) as { error: { code: unknown } }).error.code).toBe(
+      "string",
+    );
+    expect(outbound).toHaveBeenCalledTimes(0);
+  });
+
+  it("answers GET /v1/requests/:id/input with 410 request_expired and reaches nothing", async () => {
     const staging = makeStaging();
     const session = await pair(staging);
     const response = await staging.call(
       "/v1/requests/r1/input?projectId=demo",
       withSession(session),
     );
-    expect(response.status).not.toBe(404);
-    expect(response.status).toBeLessThan(500);
-    const body = (await response.json()) as { requestId?: string };
-    if (response.status === 200) expect(body.requestId).toBe("r1");
+    expect(response.status).toBe(410);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "request_expired",
+    );
     expect(outbound).toHaveBeenCalledTimes(0);
   });
 

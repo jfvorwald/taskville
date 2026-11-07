@@ -53,8 +53,15 @@ export const DEFAULT_FILES: Record<string, FakeAsset> = {
  * `PairingStore` class, constructed the standard way (`new PairingStore(state, env)`) over an
  * in-memory `state.storage`, so one instance serves every request like the real one.
  */
-export function fakePairingNamespace(env: object = {}) {
+export function fakePairingNamespace(
+  env: object = {},
+  StoreClass: typeof PairingStore = PairingStore,
+) {
   const map = new Map<string, unknown>();
+  /** Every `storage.list` call's options, so tests can see what the store scans. */
+  const listCalls: ({ prefix?: string } | undefined)[] = [];
+  /** Every request that reached the Durable Object. */
+  const stubCalls: Request[] = [];
   const state = {
     storage: {
       get: async (key: string) => map.get(key),
@@ -62,19 +69,29 @@ export function fakePairingNamespace(env: object = {}) {
         map.set(key, value);
       },
       delete: async (key: string) => map.delete(key),
-      list: async () => new Map(map),
+      list: async (options?: { prefix?: string }) => {
+        listCalls.push(options);
+        const prefix = options?.prefix ?? "";
+        return new Map([...map].filter(([key]) => key.startsWith(prefix)));
+      },
     },
     blockConcurrencyWhile: async <T>(fn: () => Promise<T>) => fn(),
   };
-  const store = new PairingStore(state as never, env as never);
+  const store = new StoreClass(state as never, env as never);
   const stub = {
-    fetch: (input: Request | string | URL, init?: RequestInit) =>
-      store.fetch(input instanceof Request ? input : new Request(input, init)),
+    fetch: (input: Request | string | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      stubCalls.push(request.clone());
+      return store.fetch(request);
+    },
   };
   return {
     idFromName: (name: string) => name,
     get: () => stub,
     getByName: () => stub,
+    map,
+    listCalls,
+    stubCalls,
   };
 }
 
@@ -82,28 +99,48 @@ export function fakeVerifier() {
   return vi.fn(async (jwt: string) => (jwt === VALID_JWT ? { email: "owner@example.com" } : null));
 }
 
-export function makeStaging(files: Record<string, FakeAsset> = DEFAULT_FILES) {
+interface WorkerModule {
+  createWorker: typeof createWorker;
+  PairingStore: typeof PairingStore;
+}
+
+/** A staging Worker built from a given load of the module (tests reload it for new isolates). */
+export function makeStagingFrom(
+  mod: WorkerModule,
+  files: Record<string, FakeAsset> = DEFAULT_FILES,
+) {
   const assets = fakeAssets(files);
+  const pairing = fakePairingNamespace({}, mod.PairingStore);
   const env = {
     ASSETS: assets,
-    PAIRING: fakePairingNamespace(),
+    PAIRING: pairing,
     RELEASE_ID,
     RELEASE_VERSION: "0.0.0-test",
     APP_ENV: "staging",
   };
   const verifyAccess = fakeVerifier();
-  const worker = createWorker({ verifyAccess });
+  const worker = mod.createWorker({ verifyAccess });
   return {
     assets,
     env,
+    pairing,
     verifyAccess,
     worker,
     call: (path: string, init: RequestInit = {}) =>
       worker.fetch(new Request(`${ORIGIN}${path}`, init), env as never),
+    /** The same request with some bindings replaced (for example `ACCESS_ALLOWED_EMAIL`). */
+    callWith: (extra: Record<string, unknown>, path: string, init: RequestInit = {}) =>
+      worker.fetch(new Request(`${ORIGIN}${path}`, init), { ...env, ...extra } as never),
   };
 }
 
+export function makeStaging(files: Record<string, FakeAsset> = DEFAULT_FILES) {
+  return makeStagingFrom({ createWorker, PairingStore }, files);
+}
+
 export type Staging = ReturnType<typeof makeStaging>;
+
+export const JSON_POST = { "Content-Type": "application/json", Origin: ORIGIN };
 
 /** The first-visit flow the App Launcher link starts: `/pair` with Access, then the exchange. */
 export async function pair(staging: Staging): Promise<string> {
@@ -196,4 +233,26 @@ function parseFrame(raw: string): RawFrame {
     else if (line.startsWith("data: ")) data.push(line.slice(6));
   }
   return { raw, event, id, data: data.join("\n") };
+}
+
+/** Every event of a project, read from its SSE stream from the start. */
+export async function fetchEvents(
+  staging: Staging,
+  session: string,
+  projectId = "demo",
+): Promise<Record<string, unknown>[]> {
+  const projects = (await (await staging.call("/v1/projects", withSession(session))).json()) as {
+    projects: { id: string; head: number }[];
+  };
+  const head = projects.projects.find((p) => p.id === projectId)?.head ?? 0;
+  const response = await staging.call(
+    `/v1/projects/${projectId}/events?after=0`,
+    withSession(session),
+  );
+  const frames = await readSse(
+    response,
+    (all) => all.filter((f) => f.event === "event").length >= head,
+    15_000,
+  );
+  return frames.filter((f) => f.event === "event").map((f) => JSON.parse(f.data));
 }
