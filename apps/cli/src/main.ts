@@ -2,7 +2,7 @@
 // `taskville`: the command-line client and the engine launcher (contracts/cli.md).
 
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
@@ -18,11 +18,28 @@ import { status } from "./commands/status.ts";
 import { unpair } from "./commands/unpair.ts";
 import type { Io } from "./context.ts";
 import { CliError, EXIT } from "./errors.ts";
+import { PACKAGE_ROOT } from "./package-root.ts";
 
 /** The repository root when running from a source checkout (this file is apps/cli/src/main.ts). */
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 export type { Io } from "./context.ts";
+
+function readField(file: string, field: string): string | undefined {
+  try {
+    const value = (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)[field];
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `taskville <version> (<release id>)`; the release id is "dev" where no release.json exists. */
+export function versionLine(packageRoot: string = PACKAGE_ROOT): string {
+  const version = readField(join(packageRoot, "package.json"), "version") ?? "unknown";
+  const releaseId = readField(join(packageRoot, "release.json"), "id") ?? "dev";
+  return `taskville ${version} (${releaseId})\n`;
+}
 
 const USAGE = `Usage: taskville <command> [options]
 
@@ -93,6 +110,10 @@ export async function run(argv: string[], io: Io): Promise<number> {
     else break;
     at++;
   }
+  if (argv[at] === "--version") {
+    io.stdout(versionLine());
+    return EXIT.ok;
+  }
   const [name, ...rest] = argv.slice(at);
   const firstOption = rest.findIndex((arg) => arg.startsWith("-"));
   const insertAt = firstOption === -1 ? rest.length : firstOption;
@@ -117,6 +138,10 @@ export async function run(argv: string[], io: Io): Promise<number> {
 }
 
 if (import.meta.main) {
+  // An installed release package (release.json beside package.json) always serves its own client:
+  // an inherited TASKVILLE_WEB_DIR must not swap in another one, and there is no source to build.
+  const installedRelease = existsSync(join(PACKAGE_ROOT, "release.json"));
+  if (installedRelease) delete process.env.TASKVILLE_WEB_DIR;
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
     process.once(signal, () => controller.abort());
@@ -133,7 +158,7 @@ if (import.meta.main) {
     scheduleCleanup: (cleanup, delayMs) => {
       setTimeout(cleanup, delayMs).unref();
     },
-    sourceCheckout: existsSync(join(REPO_ROOT, "apps/web/package.json")),
+    sourceCheckout: !installedRelease && existsSync(join(REPO_ROOT, "apps/web/package.json")),
     buildWeb,
   }).then((code) => {
     process.exitCode = code;
