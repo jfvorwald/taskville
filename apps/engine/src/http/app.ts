@@ -4,6 +4,7 @@ import { secureHeaders } from "hono/secure-headers";
 import pino, { type Logger } from "pino";
 import { z } from "zod";
 import type { PairingStore } from "../auth/pairing.ts";
+import { devRelease, type ReleaseIdentity } from "../release/index.ts";
 import { apiError } from "./errors.ts";
 import {
   type AppEnv,
@@ -35,6 +36,8 @@ export interface AppOptions {
   /** Storage health, supplied by the storage module. Without it /health reports the process only. */
   health?: () => { db: "ok" | "error"; walMode: boolean };
   version?: string;
+  /** Reported on /health. Without it the dev identity. */
+  release?: ReleaseIdentity;
 }
 
 const PAIRING_EXCHANGE = "/v1/pairing";
@@ -82,6 +85,7 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
         ...storage,
         uptimeSeconds: Math.floor(process.uptime()),
         ...(options.version === undefined ? {} : { version: options.version }),
+        release: options.release ?? devRelease(options.version ?? "0.0.0"),
       },
       healthy ? 200 : 503,
     );

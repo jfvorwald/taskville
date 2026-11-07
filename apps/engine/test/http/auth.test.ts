@@ -425,6 +425,7 @@ describe("GET /health", () => {
       walMode: true,
       uptimeSeconds: expect.any(Number),
       version: "0.1.0",
+      release: { id: "dev", version: "0.1.0", environment: "development" },
     });
   });
 
