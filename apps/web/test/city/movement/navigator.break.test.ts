@@ -444,3 +444,213 @@ describe("area-less agents ending breaks", () => {
     }
   });
 });
+
+// roborev 7351 and the three reviews before it (7314, 7331, 7349) are one bug: plaza nodes were
+// claimed through separate mechanisms (the safe-point owner map, break goals, home goals, agents
+// standing still) and each chooser checked a different subset. Rule: every chooser (needs-you
+// safe point, plaza break, walk home, spawn) honors every claim on a plaza node, and an agent
+// denied a node takes it as soon as it frees, in the same sync.
+describe("plaza nodes have one reservation source", () => {
+  const barSpots = L.breakSites[0]?.spots ?? [];
+  const smokeSpots = L.breakSites[1]?.spots ?? [];
+  const site = (s: { nodeId: string } | undefined): BreakDestination => {
+    if (!s) throw new Error("layout has too few break spots");
+    return { kind: "site", nodeId: s.nodeId };
+  };
+  const loose = (id: string, extra: Partial<NavIntent> = {}): NavIntent => ({
+    id,
+    area: null,
+    rest: "waiting",
+    ...extra,
+  });
+  const atNode = (a: NavAgent) => plazaNodes.findIndex((n) => dist(n, a) < 1e-6);
+
+  it("keeps a needs-you agent off the node an area-less agent walked home to (roborev 7351)", () => {
+    const nav = createNavigator();
+    const clock = { t: 0 };
+    const h = (extra: Partial<NavIntent> = {}) =>
+      waiting("h", "workshop", { breakSpot: site(barSpots[1]), ...extra });
+    nav.sync([loose("r", { breakSpot: site(barSpots[0]) }), h()], { place: true });
+    nav.tick(clock.t);
+    nav.sync([loose("r"), h()]);
+    run(nav, clock, 90_000);
+    const home = atNode(must(nav, "r"));
+    expect(home, "r walked home to a plaza node").toBeGreaterThanOrEqual(0);
+
+    // r's intent never changes again; h at the bar gets needs-you.
+    nav.sync([loose("r"), h({ hold: true })]);
+    run(nav, clock, 90_000);
+    const r = must(nav, "r");
+    const held = must(nav, "h");
+    expect(atNode(r)).toBe(home);
+    expect(held.state).toBe("stuck");
+    expect(atNode(held), "h holds a plaza node").toBeGreaterThanOrEqual(0);
+    expect(dist(r, held), "r and h share a plaza node").toBeGreaterThan(0.1);
+  });
+
+  it("keeps a needs-you agent off the node an area-less agent stands on", () => {
+    const nav = createNavigator();
+    const clock = { t: 0 };
+    nav.sync([loose("s"), waiting("h", "workshop", { breakSpot: site(barSpots[0]) })], {
+      place: true,
+    });
+    nav.tick(clock.t);
+    const at = atNode(must(nav, "s"));
+    expect(at).toBeGreaterThanOrEqual(0);
+    nav.sync([loose("s"), waiting("h", "workshop", { hold: true })]);
+    run(nav, clock, 90_000);
+    expect(atNode(must(nav, "s"))).toBe(at);
+    expect(atNode(must(nav, "h"))).toBeGreaterThanOrEqual(0);
+    expect(dist(must(nav, "s"), must(nav, "h"))).toBeGreaterThan(0.1);
+  });
+
+  it("resumes a yielded plaza break in the sync that frees its node", () => {
+    const nav = createNavigator();
+    const clock = { t: 0 };
+    nav.sync([waiting("a", "workshop"), waiting("b", "workshop")], { place: true });
+    nav.tick(clock.t);
+    // A seated agent holds at its workstation, so a reaches a plaza safe point from the bar.
+    nav.sync([
+      waiting("a", "workshop", { breakSpot: site(barSpots[0]) }),
+      waiting("b", "workshop"),
+    ]);
+    run(nav, clock, 90_000);
+    nav.sync([waiting("a", "workshop", { hold: true }), waiting("b", "workshop")]);
+    run(nav, clock, 90_000);
+    const k = atNode(must(nav, "a"));
+    expect(k).toBeGreaterThanOrEqual(0);
+    const bIntent = waiting("b", "workshop", { breakSpot: { kind: "plaza", index: k } });
+    nav.sync([waiting("a", "workshop", { hold: true }), bIntent]);
+    run(nav, clock, 90_000);
+    expect(dist(must(nav, "b"), slot("workshop:1"))).toBeLessThan(1e-6);
+
+    // One sync: a's hold clears; b's unchanged intent comes first and no further sync comes.
+    nav.sync([bIntent, waiting("a", "workshop")]);
+    run(nav, clock, 90_000);
+    expect(atNode(must(nav, "b"))).toBe(k);
+    expect(dist(must(nav, "a"), slot("workshop:0"))).toBeLessThan(1e-6);
+  });
+
+  it("walks an area-less agent home once a node frees, when none was free at first", () => {
+    const nav = createNavigator();
+    const clock = { t: 0 };
+    const holders = plazaNodes.map((_, i) => `p${i}`);
+    nav.sync(
+      [
+        ...holders.map((id) => loose(id, { hold: true })),
+        loose("r", { breakSpot: site(barSpots[0]) }),
+      ],
+      { place: true },
+    );
+    nav.tick(clock.t);
+    for (const id of holders) expect(atNode(must(nav, id))).toBeGreaterThanOrEqual(0);
+    nav.sync([...holders.map((id) => loose(id, { hold: true })), loose("r")]);
+    run(nav, clock, 90_000);
+    expect(atNode(must(nav, "r")), "no plaza node is free").toBe(-1);
+
+    // p0 leaves the city; r's intent is unchanged and takes the freed node.
+    const freed = atNode(must(nav, "p0"));
+    nav.sync([...holders.slice(1).map((id) => loose(id, { hold: true })), loose("r")]);
+    run(nav, clock, 90_000);
+    nav.prune();
+    expect(atNode(must(nav, "r"))).toBe(freed);
+    expect(isWalking(must(nav, "r"))).toBe(false);
+  });
+
+  /**
+   * Seeded random runs mixing needs-you holds, plaza breaks, site breaks, area-less agents, area
+   * changes and removals. Five agents never need more than the five plaza nodes, so every agent
+   * must also reach a legal resting place by the end of each step.
+   */
+  for (const seed0 of [7351, 20261107, 424242]) {
+    it(`never stacks resting agents on a plaza node and settles everyone (seed ${seed0})`, () => {
+      let seed = seed0;
+      const rnd = () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed / 2 ** 32;
+      };
+      const areas = ["workshop", "archives", "dispatch"] as const;
+      const ids = ["a0", "a1", "a2", "a3", "a4"];
+      const arealess = new Set(["a0", "a1"]);
+      const siteOf: Record<string, BreakDestination> = {
+        a0: site(barSpots[0]),
+        a1: site(barSpots[1]),
+        a2: site(barSpots[2]),
+        a3: site(barSpots[3]),
+        a4: site(smokeSpots[0]),
+      };
+      const areaOf: Record<string, NavIntent["area"]> = {
+        a0: null,
+        a1: null,
+        a2: "workshop",
+        a3: "workshop",
+        a4: "archives",
+      };
+      const intentFor = (id: string): NavIntent | null => {
+        const r = rnd();
+        if (r < 0.06) return null;
+        if (!arealess.has(id) && rnd() < 0.2) {
+          areaOf[id] = areas[Math.floor(rnd() * areas.length)] as NavIntent["area"];
+        }
+        const base = { id, area: areaOf[id] ?? null, rest: "waiting" as const };
+        if (r < 0.3) return { ...base, hold: true };
+        if (r < 0.5) {
+          return {
+            ...base,
+            breakSpot: { kind: "plaza", index: Math.floor(rnd() * plazaNodes.length) },
+          };
+        }
+        if (r < 0.78) return { ...base, breakSpot: siteOf[id] as BreakDestination };
+        return base;
+      };
+      const nav = createNavigator();
+      const clock = { t: 0 };
+      nav.sync(
+        ids.map((id) => ({ id, area: areaOf[id] ?? null, rest: "waiting" as const })),
+        { place: true },
+      );
+      nav.tick(clock.t);
+      const siteNodes = [...barSpots, ...smokeSpots];
+      const noSharing = (label: string) => {
+        const resting = nav.list().filter((x) => !x.gone && !isWalking(x));
+        for (const x of resting) {
+          const k = atNode(x);
+          if (k < 0) continue;
+          const other = resting.find((y) => y !== x && dist(x, y) < 1e-6);
+          expect(other, `${label}: ${x.id} and ${other?.id} share plaza node ${k}`).toBeUndefined();
+        }
+      };
+      for (let step = 0; step < 50; step++) {
+        const intents = ids.map(intentFor).filter((x): x is NavIntent => x !== null);
+        nav.sync(intents);
+        noSharing(`step ${step} sync`);
+        run(nav, clock, 90_000, () => noSharing(`step ${step} t=${clock.t}`));
+        nav.prune();
+        for (const intent of intents) {
+          const a = must(nav, intent.id);
+          const label = `step ${step}: ${a.id} ${JSON.stringify(intent)} at (${a.x.toFixed(2)}, ${a.z.toFixed(2)})`;
+          expect(isWalking(a), `${label} still walking`).toBe(false);
+          const ownSlot = a.slotId !== null && dist(a, slot(a.slotId)) < 1e-6;
+          const onPlaza = atNode(a) >= 0;
+          const onSite = siteNodes.find((s) => dist(s, a) < 1e-6);
+          const legal =
+            ownSlot ||
+            a.queued ||
+            onPlaza ||
+            (onSite !== undefined &&
+              intent.breakSpot?.kind === "site" &&
+              intent.breakSpot.nodeId === onSite.nodeId);
+          expect(legal, `${label} is not at a legal resting place`).toBe(true);
+          if (intent.hold) {
+            expect(a.state, label).toBe("stuck");
+            expect(ownSlot || a.queued || onPlaza, `${label} holds off the plaza`).toBe(true);
+          } else if (intent.area === null && intent.breakSpot?.kind !== "site") {
+            expect(onPlaza, `${label} area-less and not home`).toBe(true);
+          } else if (intent.area !== null && intent.breakSpot === undefined) {
+            expect(ownSlot || a.queued, `${label} not at work`).toBe(true);
+          }
+        }
+      }
+    });
+  }
+});
