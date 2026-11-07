@@ -143,6 +143,8 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
   // The run tag keys this run's events and per-run IDs: the same seed and start time repeat as
   // duplicates; any other start time, even a millisecond apart, is a new run.
   const run = `r${startAtMs.toString(36)}`;
+  // Each scenario is its own source, so keys and sequences never overlap across scenarios.
+  const sourceId = scenario === "default" ? `demo:${seed}` : `demo:${scenario}:${seed}`;
   let at = 0;
   let sequence = 0;
   let counter = 0;
@@ -157,7 +159,7 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
     const event: Record<string, unknown> = {
       schemaVersion: 1,
       projectId,
-      sourceId: `demo:${seed}`,
+      sourceId,
       sourceEventId: `${run}-e${sequence}`,
       sourceSequence: sequence,
       occurredAt: isoFromMs(startAtMs + at),
