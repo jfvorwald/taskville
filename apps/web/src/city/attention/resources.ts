@@ -80,8 +80,54 @@ const EMOTE_COLORS: Record<Emote, string> = {
   "...": "#e6e9ef",
   zzz: "#9ec5ff",
   sweat: "#7cc6ff",
+  puff: "#d5d9e0",
+  mug: "#f5c451",
+  sparkle: "#ffe27a",
+  note: "#b7a6ff",
 };
 const emoteMaterials = new Map<Emote, SpriteMaterial>();
+
+/** The break icons are drawn as shapes; returns false for the text emotes. */
+function drawBreakEmote(ctx: CanvasRenderingContext2D, emote: Emote, c: number): boolean {
+  switch (emote) {
+    case "puff":
+      for (const [dx, dy, r] of [
+        [-9, 6, 8],
+        [6, 8, 9],
+        [-2, -6, 10],
+      ] as const) {
+        ctx.beginPath();
+        ctx.arc(c + dx, c + dy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return true;
+    case "mug":
+      ctx.fillRect(c - 14, c - 12, 22, 26);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = EMOTE_COLORS.mug;
+      ctx.beginPath();
+      ctx.arc(c + 10, c + 1, 8, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+      return true;
+    case "sparkle":
+      ctx.beginPath();
+      ctx.moveTo(c, c - 20);
+      ctx.quadraticCurveTo(c, c, c + 20, c);
+      ctx.quadraticCurveTo(c, c, c, c + 20);
+      ctx.quadraticCurveTo(c, c, c - 20, c);
+      ctx.quadraticCurveTo(c, c, c, c - 20);
+      ctx.fill();
+      return true;
+    case "note":
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "700 38px system-ui, sans-serif";
+      ctx.fillText("\u266A", c, c + 1);
+      return true;
+    default:
+      return false;
+  }
+}
 
 function drawEmote(ctx: CanvasRenderingContext2D, emote: Emote): void {
   const c = EMOTE_SIZE / 2;
@@ -99,6 +145,7 @@ function drawEmote(ctx: CanvasRenderingContext2D, emote: Emote): void {
     ctx.fill();
     return;
   }
+  if (drawBreakEmote(ctx, emote, c)) return;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = `700 ${emote === "zzz" ? 26 : 36}px system-ui, sans-serif`;

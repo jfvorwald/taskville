@@ -109,6 +109,7 @@ type Goal =
   | { kind: "slot"; slot: WorkstationSlot }
   | { kind: "queue"; area: AreaId }
   | { kind: "safe"; node: string }
+  | { kind: "spot"; node: string }
   | { kind: "exit"; node: string };
 
 interface Walker {
@@ -135,6 +136,8 @@ interface Walker {
   area: AreaId | null;
   safeNode: string | null;
   hold: boolean;
+  /** The break destination as a graph node, or null when not on break. */
+  breakNode: string | null;
   rest: RestState;
   departing: boolean;
   firstTrip: boolean;
@@ -310,6 +313,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         return { node: spot.node, free: spot };
       }
       case "safe":
+      case "spot":
       case "exit":
         return { node: g.node };
     }
@@ -375,6 +379,19 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       }
       // Already standing at its workstation or in line: it stops right there.
       if (atRest(w) && (w.goal.kind === "slot" || w.goal.kind === "queue")) return;
+      // Standing at a plaza break node: that is already a safe point, so it stays.
+      if (
+        atRest(w) &&
+        w.goal.kind === "spot" &&
+        plazaNodes.includes(w.goal.node) &&
+        !safeOwner.has(w.goal.node)
+      ) {
+        safeOwner.set(w.goal.node, w.view.id);
+        w.safeNode = w.goal.node;
+        w.goal = { kind: "safe", node: w.goal.node };
+        plan(w);
+        return;
+      }
       const node = nearestFreeSafe(w);
       if (node === null) {
         w.goal = { kind: "stay" };
@@ -403,6 +420,10 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       leaveQueue(w);
       releaseSlot(w);
       claimArea(w, area);
+    }
+    // On break with the workstation reserved: the break spot is where it goes instead.
+    if (w.breakNode !== null && w.goal.kind === "slot") {
+      w.goal = { kind: "spot", node: w.breakNode };
     }
     plan(w);
   }
@@ -481,6 +502,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       area: intent.area ?? intent.initialArea ?? null,
       safeNode: null,
       hold: false,
+      breakNode: null,
       rest: intent.rest ?? "working",
       departing: false,
       firstTrip: true,
@@ -491,6 +513,13 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     walkers.set(intent.id, w);
     listCache = null;
     return w;
+  }
+
+  /** The graph node of a break destination, or null when the layout has no such place. */
+  function breakNodeOf(dest: BreakDestination | undefined): string | null {
+    if (dest === undefined) return null;
+    if (dest.kind === "plaza") return plazaNodes[dest.index] ?? null;
+    return nodeById(layout, dest.nodeId) ? dest.nodeId : null;
   }
 
   function moveTo(w: Walker, at: Waypoint) {
@@ -648,7 +677,12 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         const area = intent.area ?? w.area;
         const revived = w.departing;
         w.rest = intent.rest ?? "working";
-        if (!isNew && !revived && hold === w.hold && area === w.area) continue;
+        // New work somewhere else ends the break.
+        const breakNode = area === w.area ? breakNodeOf(intent.breakSpot) : null;
+        if (!isNew && !revived && hold === w.hold && area === w.area && breakNode === w.breakNode) {
+          continue;
+        }
+        w.breakNode = breakNode;
         w.hold = hold;
         w.area = area;
         if (revived) {
