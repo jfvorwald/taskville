@@ -126,15 +126,29 @@ interface LockFacts {
   integrity: Map<string, string>;
   /** `<importer> <dependency>` to its `specifier -> version` resolution. */
   importers: Map<string, string>;
+  /** Importer dependency ids listed under `optionalDependencies`. */
+  optional: Set<string>;
+  /** Package keys restricted to some os or cpu (pnpm skips these on other platforms). */
+  restricted: Set<string>;
 }
+
+/** Importer groups pnpm installs; the others (config, package manager) are not in node_modules. */
+const DEPENDENCY_GROUPS = new Set(["dependencies", "devDependencies", "optionalDependencies"]);
 
 const unquote = (text: string): string => text.trim().replace(/^'(.*)'$/, "$1");
 
 /** Reads the parts of a pnpm lockfile the release guard compares (pnpm writes a regular layout). */
 function lockFacts(text: string): LockFacts {
-  const facts: LockFacts = { keys: new Set(), integrity: new Map(), importers: new Map() };
+  const facts: LockFacts = {
+    keys: new Set(),
+    integrity: new Map(),
+    importers: new Map(),
+    optional: new Set(),
+    restricted: new Set(),
+  };
   let section = "";
   let importer = "";
+  let group = "";
   let dependency = "";
   let key = "";
   for (const line of text.split("\n")) {
@@ -144,11 +158,15 @@ function lockFacts(text: string): LockFacts {
     }
     if (section === "importers") {
       const entry = /^ {2}(?! )(.+?):\s*$/.exec(line);
+      const kind = /^ {4}(?! )(\w+):\s*$/.exec(line);
       const name = /^ {6}(?! )(.+?):\s*$/.exec(line);
       const field = /^ {8}(specifier|version):\s*(.+?)\s*$/.exec(line);
       if (entry !== null) importer = unquote(entry[1] as string);
-      else if (name !== null) dependency = unquote(name[1] as string);
-      else if (field !== null) {
+      else if (kind !== null) group = kind[1] as string;
+      else if (name !== null) {
+        dependency = unquote(name[1] as string);
+        if (group === "optionalDependencies") facts.optional.add(`${importer} ${dependency}`);
+      } else if (field !== null && DEPENDENCY_GROUPS.has(group)) {
         const id = `${importer} ${dependency}`;
         const [specifier = "", version = ""] = (facts.importers.get(id) ?? "").split(" -> ");
         const value = unquote(field[2] as string);
@@ -164,6 +182,7 @@ function lockFacts(text: string): LockFacts {
         key = `${section}:${unquote(entry[1] as string)}`;
         facts.keys.add(key);
       } else if (integrity !== null) facts.integrity.set(key, integrity[1] as string);
+      else if (/^ {4}(os|cpu):/.test(line)) facts.restricted.add(key);
     }
   }
   return facts;
@@ -173,7 +192,8 @@ function lockFacts(text: string): LockFacts {
  * The installed lockfile must agree with the committed one. It is a subset (pnpm leaves out
  * packages for other platforms), so a byte compare would refuse healthy installs: every installed
  * package key, package integrity and importer resolution must instead match the committed
- * lockfile, and omissions are fine.
+ * lockfile. The only omission allowed is a platform skip: an optional dependency whose package is
+ * os/cpu-restricted in the committed lockfile and absent from the installed packages.
  */
 export function checkInstalledLock(committedYaml: string, installedYaml: string): void {
   const pinned = lockFacts(committedYaml);
@@ -183,12 +203,24 @@ export function checkInstalledLock(committedYaml: string, installedYaml: string)
   if (stray.length > 0) {
     throw new Error(`${differs} (${stray.slice(0, 3).join(", ")}); run pnpm install.`);
   }
-  const integrity = [...installed.integrity].filter(([k, v]) => pinned.integrity.get(k) !== v);
+  const integrity = [...installed.keys].filter(
+    (k) => pinned.integrity.get(k) !== installed.integrity.get(k),
+  );
   if (integrity.length > 0) {
-    const names = integrity.slice(0, 3).map(([k]) => k);
+    const names = integrity.slice(0, 3);
     throw new Error(`${differs}: integrity changed (${names.join(", ")}); run pnpm install.`);
   }
-  const importers = [...installed.importers].filter(([k, v]) => pinned.importers.get(k) !== v);
+  const skipped = (id: string, resolution: string): boolean => {
+    // A platform skip: an optional dependency on an os/cpu-restricted package that is not installed.
+    const name = id.slice(id.indexOf(" ") + 1);
+    const version = (resolution.split(" -> ")[1] ?? "").replace(/\(.*$/, "");
+    const key = `packages:${name}@${version}`;
+    return pinned.optional.has(id) && pinned.restricted.has(key) && !installed.keys.has(key);
+  };
+  const importers = [
+    ...[...installed.importers].filter(([k, v]) => pinned.importers.get(k) !== v),
+    ...[...pinned.importers].filter(([k, v]) => !installed.importers.has(k) && !skipped(k, v)),
+  ];
   if (importers.length > 0) {
     const names = importers.slice(0, 3).map(([k]) => k);
     throw new Error(
