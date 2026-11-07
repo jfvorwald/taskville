@@ -557,6 +557,25 @@ describe("plaza nodes have one reservation source", () => {
     expect(isWalking(must(nav, "r"))).toBe(false);
   });
 
+  it("stops a needs-you walker short of a held plaza node when every node is held", () => {
+    const nav = createNavigator();
+    const clock = { t: 0 };
+    const holders = plazaNodes.map((_, i) => `p${i}`);
+    const held = holders.map((id) => loose(id, { hold: true }));
+    nav.sync(held, { place: true });
+    nav.tick(clock.t);
+    // A newcomer starts beside the full plaza and walks through it; needs-you arrives mid-walk.
+    nav.sync([...held, waiting("w", "workshop")]);
+    run(nav, clock, 300);
+    nav.sync([...held, waiting("w", "workshop", { hold: true })]);
+    run(nav, clock, 30_000);
+    const w = must(nav, "w");
+    expect(w.state).toBe("stuck");
+    for (const id of holders) {
+      expect(dist(w, must(nav, id)), `w stands on ${id}'s node`).toBeGreaterThan(0.1);
+    }
+  });
+
   /**
    * Seeded random runs mixing needs-you holds, plaza breaks, site breaks, area-less agents, area
    * changes and removals. Five agents never need more than the five plaza nodes, so every agent
