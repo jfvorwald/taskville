@@ -6,6 +6,8 @@ Every command below is copied from a script, a package file, a CLI usage line, o
 
 ## 1. What production and staging mean
 
+> **Hosted staging is held** by decision #432 (2026-11-07). The staging steps in this section, section 3, and the Staging part of section 6 are not rehearsed. They are kept as written for when staging resumes. The local rehearsal in section 8 is the current review path.
+
 **Production is the published release tarball.** Taskville is not hosted. A user installs one tarball, `taskville-<version>.tgz`, and runs `taskville start` on their own machine. The engine listens on `127.0.0.1` only. Promoting a release means publishing that exact tarball, with its `release.json` and `manifest.json`, for users to install. There is no production server to deploy to.
 
 **Staging is a review copy.** The staging Worker (`taskville-staging`, at `taskville-staging.jaqstudios.com`) serves the release's web client behind an owner-only Cloudflare Access policy. It is for a person to open the release in a browser and review it.
@@ -61,6 +63,8 @@ To check the release builder itself, run the root `test:release` script (`vitest
 Staging's identity comes from the Worker's variables, not from `release.json`. Compare the id on the page with the id in `manifest.json` by hand.
 
 ## 3. Deploying the staging Worker from a release
+
+> **Held by decision #432 (2026-11-07).** Hosted staging is on hold. These steps are not rehearsed; they are kept as written for when staging resumes.
 
 Source: `deploy/staging/wrangler.jsonc` and `docs/tasks/M7.03.md`. Nothing here is automated yet. Run each step by hand, and only from the release you intend to review.
 
@@ -133,6 +137,8 @@ Source: the CLI usage lines in `apps/cli/src/main.ts`.
 - `taskville status --project <id>` should show the agents of that project as a tree.
 - Open the city in a browser (`taskville start`) and check one project's history.
 
+`GET /health` needs the home's token. Send `Authorization: Bearer <token>`, with the token read from `<home>/token`. Without it the engine answers 401. The doctor's engine probe does the same (`engineHealthy` in `apps/cli/src/commands/doctor.ts`, which reports 401 or 403 as "rejected the token"). This was found in the local rehearsal (section 8).
+
 A database integrity check beyond these is **not defined in this repo**. Use a SQLite tool only after confirming its availability and flags on your machine. This runbook does not give one.
 
 **Restoring pairings:** `taskville unpair` revokes every paired browser. A restored database brings back the pairings it held when the backup was taken. If a browser was unpaired after that, unpair again after the restore.
@@ -171,6 +177,8 @@ What the code does, and where it does not say.
 
 ### Staging
 
+> **Held by decision #432 (2026-11-07).** Not rehearsed. The steps below are kept as written for when staging resumes.
+
 1. Pick the previous release id from its folder (`<dir>/<previous id>/`) and its `release.json`.
 2. Extract `package/web/` from its tarball into `deploy/staging/dist/`, as in section 3, step 1.
 3. Redeploy with the previous `RELEASE_ID` and `RELEASE_VERSION`, using the same `wrangler deploy` form in section 3.
@@ -183,7 +191,14 @@ A `wrangler rollback` command to a previous Cloudflare version is mentioned in p
 ### Local (the published tarball)
 
 1. Stop the engine.
-2. Install the previous tarball. **Not defined in this repo yet:** the install method for a release tarball is part of the clean-machine check (M7.28, #427), which is in progress. Until it is written, use the install steps in the M7.28 receipt once it exists.
+2. Install the previous tarball into a prefix folder, then run the installed bin. The method is the one the clean-machine check uses (M7.28, #427, `tests/e2e/release/clean-install.ts`):
+
+   ```sh
+   npm install --prefix <prefix> <dir>/<previous id>/taskville-<version>.tgz --offline --no-audit --no-fund
+   <prefix>/node_modules/.bin/taskville --version
+   ```
+
+   The bin is `<prefix>/node_modules/.bin/taskville`. Use the same `--home` (or `TASKVILLE_HOME`) as the upgraded home when you start it.
 3. Check the version with `taskville --version`. It should show the previous release id.
 4. Start the engine.
 
@@ -198,8 +213,8 @@ Promotion publishes the exact reviewed tarball. Nothing is rebuilt.
 ### Preconditions
 
 - The release was built from a clean tree (`dirty` is absent in `release.json`) with `--environment` set for its purpose.
-- The release was reviewed on staging (section 3) with the id matched to the page.
-- The **clean-machine install receipt** exists next to the release. It is the output of M7.28 (#427), which is in progress. Without it, the release is not promoted.
+- The release was reviewed by installing the tarball locally (section 6, Local) with the id matched to `taskville --version` (decision #432, D3). Staging review (section 3) is required once staging resumes.
+- The **clean-machine install receipt** exists next to the release. It is written by `pnpm test:release:install <release-dir> --receipt <receipt.json>` (M7.28, #427, merged). Without it, the release is not promoted.
 - The owner has asked for the publication. Publishing a release is a production action. Under the project's rules, agents do not close gates or promote without the owner.
 
 ### Steps
@@ -211,8 +226,8 @@ Promotion publishes the exact reviewed tarball. Nothing is rebuilt.
 
 ## 8. Rehearsal log
 
-The lead fills this in after rehearsing the staging steps (sections 3 and 6) on staging. Each row is one run.
+The lead fills this in after each rehearsal. Each row is one run. While staging is held (decision #432), rehearsals are local, and staging rows stay empty until staging resumes.
 
 | Date | Release id | Steps run | Result |
 | --- | --- | --- | --- |
-| TODO | TODO | TODO | TODO |
+| 2026-11-07 | previous `38c0d20bcd1aa799` (7177eec), candidate `89110d8d2ea2a377` (60301c0) | local, scratch HOME/TASKVILLE_HOME/npm cache: tarball sha256 vs manifest (both match); install previous; serve and seed with `demo`; stop; back up (section 4); install candidate on the same home; doctor; rollback to previous on the upgraded home; restore the backup into a fresh home | pass: `status --json` byte-identical at backup, after upgrade, after rollback and after restore; `/health` showed each release id; restored home 0700, db and token 0600; doctor's hooks, shim and project checks fail by design in a scratch home. Not exercised: schema-refusal rollback (both releases share schema V3 and reducer 9), staging steps (held). Transcript: #85 comment |
