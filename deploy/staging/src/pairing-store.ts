@@ -7,6 +7,8 @@ import type { DurableObjectStateLike } from "./env.ts";
 
 /** A pairing code lives 10 minutes, as the engine's does. */
 export const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
+/** A session lives 30 days; after that the owner pairs again through `/pair`. */
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const CODE_PREFIX = "code:";
 const SESSION_PREFIX = "session:";
@@ -64,6 +66,7 @@ export class PairingStore {
     if (path === "/mint") return this.#mint(request);
     if (path === "/redeem") return this.#redeem(request);
     if (path === "/check") return this.#check(request);
+    if (path === "/revoke") return this.#revoke(request);
     return json({ error: "not_found" }, 404);
   }
 
@@ -72,8 +75,8 @@ export class PairingStore {
     if (identity === undefined) return json({ error: "bad_request" }, 400);
     const now = Date.now();
     const { storage } = this.#state;
-    for (const [key, record] of await storage.list<CodeRecord>()) {
-      if (key.startsWith(CODE_PREFIX) && record.expiresAt <= now) await storage.delete(key);
+    for (const [key, record] of await storage.list<CodeRecord>({ prefix: CODE_PREFIX })) {
+      if (record.expiresAt <= now) await storage.delete(key);
     }
     const code = token();
     const record: CodeRecord = { identity, expiresAt: now + PAIRING_CODE_TTL_MS };
@@ -101,9 +104,22 @@ export class PairingStore {
   async #check(request: Request): Promise<Response> {
     const session = await field(request, "session");
     if (session === undefined) return json({ valid: false }, 401);
-    const record = await this.#state.storage.get<SessionRecord>(
-      `${SESSION_PREFIX}${await digest(session)}`,
-    );
-    return record === undefined ? json({ valid: false }, 401) : json({ valid: true });
+    const { storage } = this.#state;
+    const key = `${SESSION_PREFIX}${await digest(session)}`;
+    const record = await storage.get<SessionRecord>(key);
+    if (record === undefined) return json({ valid: false }, 401);
+    if (record.createdAt + SESSION_TTL_MS <= Date.now()) {
+      await storage.delete(key);
+      return json({ valid: false }, 401);
+    }
+    return json({ valid: true });
+  }
+
+  /** Ends the one session it is given. */
+  async #revoke(request: Request): Promise<Response> {
+    const session = await field(request, "session");
+    if (session === undefined) return json({ revoked: 0 });
+    const removed = await this.#state.storage.delete(`${SESSION_PREFIX}${await digest(session)}`);
+    return json({ revoked: removed ? 1 : 0 });
   }
 }

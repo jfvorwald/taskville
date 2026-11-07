@@ -19,7 +19,7 @@ export interface DurableObjectStateLike {
     get<T>(key: string): Promise<T | undefined>;
     put(key: string, value: unknown): Promise<void>;
     delete(key: string): Promise<boolean>;
-    list<T>(): Promise<Map<string, T>>;
+    list<T>(options?: { prefix?: string }): Promise<Map<string, T>>;
   };
 }
 
@@ -35,6 +35,8 @@ export interface Env {
   ACCESS_TEAM_DOMAIN?: string;
   /** The Access application's audience tag. */
   ACCESS_AUD?: string;
+  /** When set, only this identity (compared case-insensitively) may pair. */
+  ACCESS_ALLOWED_EMAIL?: string;
 }
 
 /** Who Access says is signed in. */

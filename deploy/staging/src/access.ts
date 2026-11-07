@@ -1,7 +1,8 @@
 // Verifies the Cloudflare Access JWT (`Cf-Access-Jwt-Assertion`) against the team's signing keys.
 // This is the one place the Worker makes an outbound call: the keys at
 // `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`. Anything missing or wrong fails
-// closed (null), and claims are checked before any key is fetched.
+// closed (null), claims are checked before any key is fetched, and the team domain must have the
+// shape of a Cloudflare Access team so a bad variable cannot point the lookup elsewhere.
 
 import type { AccessIdentity, Env, VerifyAccess } from "./env.ts";
 
@@ -19,10 +20,16 @@ interface KeySet {
 /** Keys are kept for an hour, and re-read at most once a minute when a token names a new one. */
 const KEY_TTL_MS = 60 * 60 * 1000;
 const REFETCH_MIN_MS = 60 * 1000;
+/** A failed key fetch is not repeated for this long, so a bad token stream cannot hammer Access. */
+const FAILURE_TTL_MS = 30 * 1000;
+const FETCH_TIMEOUT_MS = 5000;
+
+/** `<team>.cloudflareaccess.com`, lower case, one label for the team. */
+const TEAM_DOMAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$/;
 
 export interface AccessVerifierOptions {
   /** Where the keys come from; defaults to the global `fetch`. */
-  fetch?: (url: string) => Promise<Response>;
+  fetch?: (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
   now?: () => number;
 }
 
@@ -48,35 +55,48 @@ function teamDomain(raw: string | undefined): string | undefined {
     ?.trim()
     .replace(/^https:\/\//, "")
     .replace(/\/+$/, "");
-  return domain === undefined || domain === "" ? undefined : domain;
+  return domain !== undefined && TEAM_DOMAIN.test(domain) ? domain : undefined;
 }
 
 export function createAccessVerifier(options: AccessVerifierOptions = {}): VerifyAccess {
-  const getJson = options.fetch ?? ((url: string) => globalThis.fetch(url));
+  const getJson =
+    options.fetch ??
+    ((url: string, init?: { signal?: AbortSignal }) => globalThis.fetch(url, init));
   const now = options.now ?? Date.now;
   const cache = new Map<string, KeySet>();
+  const failedAt = new Map<string, number>();
 
-  async function load(domain: string): Promise<KeySet> {
-    const response = await getJson(`https://${domain}/cdn-cgi/access/certs`);
-    if (!response.ok) throw new Error(`Access keys answered ${response.status}`);
-    const body = (await response.json()) as { keys?: Jwk[] };
-    const keys = new Map<string, CryptoKey>();
-    for (const jwk of body.keys ?? []) {
-      if (jwk.kty !== "RSA" || typeof jwk.kid !== "string") continue;
-      keys.set(
-        jwk.kid,
-        await crypto.subtle.importKey(
-          "jwk",
-          jwk as never, // a published RSA public key; no DOM lib here for the JsonWebKey type
-          { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-          false,
-          ["verify"],
-        ),
-      );
+  async function load(domain: string): Promise<KeySet | undefined> {
+    const failed = failedAt.get(domain);
+    if (failed !== undefined && now() - failed < FAILURE_TTL_MS) return undefined;
+    try {
+      const response = await getJson(`https://${domain}/cdn-cgi/access/certs`, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`Access keys answered ${response.status}`);
+      const body = (await response.json()) as { keys?: Jwk[] };
+      const keys = new Map<string, CryptoKey>();
+      for (const jwk of body.keys ?? []) {
+        if (jwk.kty !== "RSA" || typeof jwk.kid !== "string") continue;
+        keys.set(
+          jwk.kid,
+          await crypto.subtle.importKey(
+            "jwk",
+            jwk as never, // a published RSA public key; no DOM lib here for the JsonWebKey type
+            { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+            false,
+            ["verify"],
+          ),
+        );
+      }
+      failedAt.delete(domain);
+      const set = { keys, fetchedAt: now() };
+      cache.set(domain, set);
+      return set;
+    } catch {
+      failedAt.set(domain, now());
+      return undefined;
     }
-    const set = { keys, fetchedAt: now() };
-    cache.set(domain, set);
-    return set;
   }
 
   async function keyFor(domain: string, kid: string): Promise<CryptoKey | undefined> {
@@ -85,7 +105,7 @@ export function createAccessVerifier(options: AccessVerifierOptions = {}): Verif
     const known = set?.keys.get(kid);
     if (known !== undefined) return known;
     if (set !== undefined && now() - set.fetchedAt < REFETCH_MIN_MS) return undefined;
-    return (await load(domain)).keys.get(kid);
+    return (await load(domain))?.keys.get(kid);
   }
 
   return async (jwt: string, env: Env): Promise<AccessIdentity | null> => {

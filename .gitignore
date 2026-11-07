@@ -7,3 +7,5 @@ dist/
 apps/web/.vitest/
 test-results/
 playwright-report/
+.wrangler/
+.dev.vars*

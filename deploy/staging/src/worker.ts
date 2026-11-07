@@ -1,7 +1,8 @@
 // The taskville-staging Worker (M7.03, S-3 option C): the frozen web client from the release,
 // plus a small read-only `/v1` backed by one seeded demo run. It reaches nothing: no database, no
 // permission bridge, no agent, no proxy, no outbound fetch (the Access key lookup in access.ts is
-// the single exception). Commands and held requests get synthetic answers.
+// the single exception). Commands and held requests are refused the way the engine refuses a
+// request it no longer holds.
 
 import {
   type ApiErrorCode,
@@ -9,14 +10,16 @@ import {
   idSchema,
   pairingRequestSchema,
   pairingResponseSchema,
+  pairingRevokeResponseSchema,
 } from "@taskville/protocol";
 import { realAccessVerifier } from "./access.ts";
 import {
   attentionSnapshotFrame,
-  demoHead,
+  DEMO_PROJECT_ID,
   eventFrames,
-  isDemoProject,
+  isKnownProject,
   parsePosition,
+  projectHead,
   projectsBody,
   snapshotBody,
   timelineEvents,
@@ -34,10 +37,32 @@ const ACCESS_HEADER = "cf-access-jwt-assertion";
 const SESSION_HEADER = "x-taskville-session";
 const MAX_PAIRING_BODY = 1024;
 const MAX_COMMAND_BODY = 16 * 1024;
+const MAX_DENY_MESSAGE_CHARS = 1000;
 const CURSOR = /^(0|[1-9][0-9]{0,15})$/;
+/** What the store hands out: 32 random bytes as unpadded base64url. */
+const PAIRING_CODE = /^[A-Za-z0-9_-]{43}$/;
 const startedAt = Date.now();
 
-type ErrorCode = ApiErrorCode | "request_expired";
+/**
+ * The engine's page policy (`PAGE_CSP` in apps/engine/src/http/static.ts), which cannot be
+ * imported here because that module reads files. A test compares the two strings.
+ */
+const PAGE_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "media-src 'self' blob:",
+  "worker-src 'self' blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+type ErrorCode = ApiErrorCode | "request_expired" | "history_context_rejected";
 
 function failure(status: number, code: ErrorCode, message: string): Response {
   return Response.json(
@@ -51,19 +76,55 @@ function answer(body: unknown, status = 200): Response {
 }
 
 const notFound = () => failure(404, "not_found", "Not found");
-
-function pairingStub(env: Env): DurableObjectStubLike {
-  return env.PAIRING.get(env.PAIRING.idFromName("pairing") as never);
-}
+const tooLarge = () => failure(413, "payload_too_large", "Body too large");
 
 function callStore(env: Env, path: string, body: unknown): Promise<Response> {
-  return pairingStub(env).fetch(
+  const stub: DurableObjectStubLike = env.PAIRING.get(env.PAIRING.idFromName("pairing") as never);
+  return stub.fetch(
     new Request(`https://pairing.internal${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }),
   );
+}
+
+/**
+ * The body as text, or undefined when it is over `max`. A declared length over the cap is refused
+ * without touching the body; an undeclared one is read only as far as the cap.
+ */
+async function readBody(request: Request, max: number): Promise<string | undefined> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && Number(declared) > max) return undefined;
+  if (request.body === null) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 /** A path segment, decoded; left as sent when it is not valid percent-encoding. */
@@ -84,9 +145,10 @@ function readCursor(request: Request, url: URL): number | undefined {
   return Number.isSafeInteger(value) ? value : undefined;
 }
 
-function heartbeatOfHead(): SseMessage {
-  return { event: "heartbeat", data: JSON.stringify({ head: demoHead() }) };
-}
+const heartbeatOf = (projectId: string) => (): SseMessage => ({
+  event: "heartbeat",
+  data: JSON.stringify({ head: projectHead(projectId) }),
+});
 
 const RESNAPSHOT: SseMessage = {
   event: "resnapshot",
@@ -116,6 +178,8 @@ async function pair(request: Request, env: Env, verifyAccess: VerifyAccess): Pro
     identity = null;
   }
   if (identity === null) return refused();
+  const allowed = env.ACCESS_ALLOWED_EMAIL?.trim();
+  if (allowed && identity.email.toLowerCase() !== allowed.toLowerCase()) return refused();
   const minted = await callStore(env, "/mint", { identity: identity.email });
   if (!minted.ok) return failure(500, "internal", "Internal error");
   const { code } = (await minted.json()) as { code: string };
@@ -129,22 +193,16 @@ async function pair(request: Request, env: Env, verifyAccess: VerifyAccess): Pro
 }
 
 async function exchange(request: Request, env: Env): Promise<Response> {
-  const text = await request.text();
-  if (text.length > MAX_PAIRING_BODY) return failure(413, "payload_too_large", "Body too large");
-  const parsed = pairingRequestSchema.safeParse(
-    (() => {
-      try {
-        return JSON.parse(text);
-      } catch {
-        return undefined;
-      }
-    })(),
-  );
+  const text = await readBody(request, MAX_PAIRING_BODY);
+  if (text === undefined) return tooLarge();
+  const parsed = pairingRequestSchema.safeParse(parseJson(text));
   if (!parsed.success) return failure(400, "bad_request", "Expected { code: string }");
+  const invalid = () =>
+    failure(401, "invalid_pairing_code", "Pairing code is invalid, used, or expired");
+  // A code the store could not have minted is refused here, without a Durable Object call.
+  if (!PAIRING_CODE.test(parsed.data.code)) return invalid();
   const redeemed = await callStore(env, "/redeem", { code: parsed.data.code });
-  if (!redeemed.ok) {
-    return failure(401, "invalid_pairing_code", "Pairing code is invalid, used, or expired");
-  }
+  if (!redeemed.ok) return invalid();
   return answer(pairingResponseSchema.parse(await redeemed.json()));
 }
 
@@ -153,6 +211,12 @@ async function hasSession(request: Request, env: Env): Promise<Response | undefi
   if (session === null) return failure(401, "unauthorized", "Credentials required");
   const checked = await callStore(env, "/check", { session });
   return checked.ok ? undefined : failure(401, "unauthorized", "Unknown or revoked session");
+}
+
+async function revoke(request: Request, env: Env): Promise<Response> {
+  const session = request.headers.get(SESSION_HEADER) ?? "";
+  const revoked = await callStore(env, "/revoke", { session });
+  return answer(pairingRevokeResponseSchema.parse(await revoked.json()));
 }
 
 function health(env: Env): Response {
@@ -166,36 +230,57 @@ function health(env: Env): Response {
 
 const unknownProject = () => failure(404, "unknown_project", "No project with this ID");
 
-/** A synthetic outcome for a command: nothing is delivered, because nothing is connected. */
+// Commands: validated as strictly as the engine's schema (apps/engine/src/commands/schema.ts),
+// then refused as the engine refuses a request it no longer holds: nothing is connected here, so
+// no request is ever open to answer.
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const hasOnly = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
+  Object.keys(value).every((key) => keys.includes(key));
+
+function validDecision(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.behavior === "allow") return hasOnly(value, ["behavior"]);
+  if (value.behavior !== "deny" || !hasOnly(value, ["behavior", "message"])) return false;
+  return (
+    value.message === undefined ||
+    (typeof value.message === "string" && value.message.length <= MAX_DENY_MESSAGE_CHARS)
+  );
+}
+
+/** The project and context mode of a valid command body, or undefined when it is not one. */
+function parseCommand(body: unknown): { projectId: string; mode: string | undefined } | undefined {
+  if (!isRecord(body)) return undefined;
+  const type = COMMAND_TYPES.find((candidate) => candidate === body.type);
+  if (type === undefined) return undefined;
+  const common = ["type", "projectId", "requestId", "idempotencyKey", "context"];
+  const own = type === "permission.decide" ? "decision" : "sessionId";
+  if (!hasOnly(body, [...common, own])) return undefined;
+  const ids = ["projectId", "requestId", "idempotencyKey", ...(own === "sessionId" ? [own] : [])];
+  if (!ids.every((name) => idSchema.safeParse(body[name]).success)) return undefined;
+  if (type === "permission.decide" && !validDecision(body.decision)) return undefined;
+  let mode: string | undefined;
+  if (body.context !== undefined) {
+    const { context } = body;
+    if (!isRecord(context) || !hasOnly(context, ["mode"])) return undefined;
+    if (context.mode !== "live" && context.mode !== "history") return undefined;
+    mode = context.mode;
+  }
+  return { projectId: String(body.projectId), mode };
+}
+
 async function command(request: Request): Promise<Response> {
-  const text = await request.text();
-  if (text.length > MAX_COMMAND_BODY) {
-    return failure(413, "payload_too_large", "Command body is too large");
+  const text = await readBody(request, MAX_COMMAND_BODY);
+  if (text === undefined) return tooLarge();
+  const parsed = parseCommand(parseJson(text));
+  if (parsed === undefined) return failure(400, "bad_request", "The command body is not valid");
+  if (parsed.mode === "history") {
+    return failure(400, "history_context_rejected", "Commands are not accepted from history");
   }
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = undefined;
-  }
-  const fields = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
-  const type = COMMAND_TYPES.find((candidate) => candidate === fields.type);
-  const names =
-    type === "session.open"
-      ? ["projectId", "requestId", "idempotencyKey", "sessionId"]
-      : ["projectId", "requestId", "idempotencyKey"];
-  if (type === undefined || !names.every((name) => idSchema.safeParse(fields[name]).success)) {
-    return failure(400, "bad_request", "Not a command this site understands");
-  }
-  return answer({
-    command: {
-      // Derived from the key, so a retry of the same command gets the same answer.
-      id: `staging-${String(fields.idempotencyKey)}`,
-      type,
-      requestId: String(fields.requestId),
-      status: "unsupported",
-    },
-  });
+  if (!isKnownProject(parsed.projectId)) return failure(404, "unknown_project", "No such project");
+  return failure(410, "request_expired", "The request can no longer be answered here");
 }
 
 type Handler = (
@@ -211,14 +296,16 @@ const ROUTES: readonly { method: string; pattern: RegExp; handle: Handler }[] = 
   {
     method: "GET",
     pattern: /^\/v1\/projects\/([^/]+)\/snapshot$/,
-    handle: (_r, _e, _u, m) =>
-      isDemoProject(decoded(m[1])) ? answer(snapshotBody()) : unknownProject(),
+    handle: (_r, _e, _u, m) => {
+      const snapshot = snapshotBody(decoded(m[1]));
+      return snapshot === undefined ? unknownProject() : answer(snapshot);
+    },
   },
   {
     method: "GET",
     pattern: /^\/v1\/projects\/([^/]+)\/timelines$/,
     handle: (_r, _e, _u, m) =>
-      isDemoProject(decoded(m[1])) ? answer(timelinesBody(decoded(m[1]))) : unknownProject(),
+      isKnownProject(decoded(m[1])) ? answer(timelinesBody(decoded(m[1]))) : unknownProject(),
   },
   {
     method: "GET",
@@ -228,10 +315,11 @@ const ROUTES: readonly { method: string; pattern: RegExp; handle: Handler }[] = 
       if (after === undefined) {
         return failure(400, "bad_request", "Cursor must be a non-negative integer");
       }
-      if (!isDemoProject(decoded(m[1]))) return unknownProject();
-      const frames = eventFrames(after);
+      const projectId = decoded(m[1]);
+      if (!isKnownProject(projectId)) return unknownProject();
+      const frames = eventFrames(projectId, after);
       if (frames === undefined) return sseResponse([RESNAPSHOT]);
-      return sseResponse(frames, { heartbeat: heartbeatOfHead });
+      return sseResponse(frames, { heartbeat: heartbeatOf(projectId) });
     },
   },
   {
@@ -252,8 +340,9 @@ const ROUTES: readonly { method: string; pattern: RegExp; handle: Handler }[] = 
       if (after === undefined) {
         return failure(400, "bad_request", "Cursor must be a non-negative integer");
       }
-      if (after > demoHead()) return sseResponse([RESNAPSHOT]);
-      return sseResponse([heartbeatOfHead()], { heartbeat: heartbeatOfHead });
+      if (after > projectHead(DEMO_PROJECT_ID)) return sseResponse([RESNAPSHOT]);
+      const heartbeat = heartbeatOf(DEMO_PROJECT_ID);
+      return sseResponse([heartbeat()], { heartbeat });
     },
   },
   {
@@ -297,7 +386,7 @@ const ROUTES: readonly { method: string; pattern: RegExp; handle: Handler }[] = 
     handle: (_r, _e, _u, m) =>
       answer({
         id: decoded(m[1]),
-        projectId: "demo",
+        projectId: DEMO_PROJECT_ID,
         toolCallId: "",
         part: "input",
         text: "",
@@ -316,7 +405,27 @@ const ROUTES: readonly { method: string; pattern: RegExp; handle: Handler }[] = 
         : failure(410, "request_expired", "The request can no longer be answered here"),
   },
   { method: "POST", pattern: /^\/v1\/commands$/, handle: (request) => command(request) },
+  {
+    method: "POST",
+    pattern: /^\/v1\/pairing\/revoke$/,
+    handle: (request, env) => revoke(request, env),
+  },
 ];
+
+/** The release's files, with the engine's page policy on HTML and nosniff on everything. */
+async function asset(request: Request, env: Env): Promise<Response> {
+  const upstream = await env.ASSETS.fetch(request);
+  const headers = new Headers(upstream.headers);
+  headers.set("x-content-type-options", "nosniff");
+  if ((headers.get("content-type") ?? "").toLowerCase().startsWith("text/html")) {
+    headers.set("content-security-policy", PAGE_CSP);
+  }
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
+}
 
 export interface WorkerOptions {
   verifyAccess: VerifyAccess;
@@ -346,7 +455,7 @@ export function createWorker({ verifyAccess }: WorkerOptions) {
         }
         return notFound();
       }
-      return env.ASSETS.fetch(request);
+      return asset(request, env);
     },
   };
 }
