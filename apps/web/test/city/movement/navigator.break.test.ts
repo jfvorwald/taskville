@@ -201,6 +201,43 @@ describe("navigator break trips", () => {
     expect(a.state).toBe("working");
   });
 
+  it("keeps a cancelled break cancelled while the intent repeats, until a new breakSpot arrives", () => {
+    const { nav, clock } = seated();
+    nav.sync([waiting("a", "workshop", { breakSpot: BAR })]);
+    run(nav, clock, 90_000);
+    const work = { id: "a", area: "archives", rest: "working", breakSpot: BAR } as const;
+    nav.sync([work]);
+    for (let i = 0; i < 4; i++) {
+      run(nav, clock, 30_000);
+      nav.sync([work]);
+    }
+    run(nav, clock, 120_000);
+    const a = must(nav, "a");
+    expect(dist(a, slot("archives:0"))).toBeLessThan(1e-6);
+    expect(a.state).toBe("working");
+    expect(a.slotId).toBe("archives:0");
+
+    // The intent drops the spot, then a new one arrives later: the agent goes on break again.
+    nav.sync([{ id: "a", area: "archives", rest: "working" }]);
+    run(nav, clock, 1_000);
+    expect(dist(must(nav, "a"), slot("archives:0"))).toBeLessThan(1e-6);
+    nav.sync([waiting("a", "archives", { breakSpot: BAR })]);
+    run(nav, clock, 120_000);
+    expect(dist(must(nav, "a"), spot)).toBeLessThan(1e-6);
+    expect(must(nav, "a").state).toBe("waiting");
+  });
+
+  it("treats a different breakSpot after a cancelled break as new", () => {
+    const { nav, clock } = seated();
+    nav.sync([waiting("a", "workshop", { breakSpot: BAR })]);
+    run(nav, clock, 90_000);
+    nav.sync([{ id: "a", area: "archives", rest: "working", breakSpot: BAR }]);
+    run(nav, clock, 120_000);
+    nav.sync([waiting("a", "archives", { breakSpot: PLAZA_BREAK })]);
+    run(nav, clock, 120_000);
+    expect(dist(must(nav, "a"), plazaPoint)).toBeLessThan(1e-6);
+  });
+
   it("places a new agent with a break destination straight at the spot (history)", () => {
     const nav = createNavigator();
     nav.sync([waiting("a", "workshop", { breakSpot: BAR })], { place: true });
@@ -271,6 +308,31 @@ describe("navigator break trips", () => {
       expect(dist(a, b)).toBeGreaterThan(0.1);
       // The rule: b yields and waits at its own workstation.
       expect(dist(b, slot("workshop:1"))).toBeLessThan(1e-6);
+    });
+
+    it("resumes a yielded plaza break once the blocking needs-you agent leaves the node", () => {
+      const k = safeIndexOfA();
+      const { nav, clock } = twoSeated(["a", "b"]);
+      nav.sync([waiting("a", "workshop", { breakSpot: BAR }), waiting("b", "workshop")]);
+      run(nav, clock, 90_000);
+      nav.sync([waiting("a", "workshop", { hold: true }), waiting("b", "workshop")]);
+      run(nav, clock, 90_000);
+      const bIntent = waiting("b", "workshop", { breakSpot: { kind: "plaza", index: k } });
+      nav.sync([waiting("a", "workshop", { hold: true }), bIntent]);
+      run(nav, clock, 90_000);
+      expect(dist(must(nav, "b"), slot("workshop:1"))).toBeLessThan(1e-6);
+
+      // The hold clears and a walks back to its workstation; b's intent never changes.
+      nav.sync([waiting("a", "workshop"), bIntent]);
+      run(nav, clock, 90_000);
+      expect(dist(must(nav, "a"), slot("workshop:0"))).toBeLessThan(1e-6);
+      // One more sync with the unchanged intent (re-evaluation on the next sync).
+      nav.sync([waiting("a", "workshop"), bIntent]);
+      run(nav, clock, 90_000);
+      const b = must(nav, "b");
+      expect(atNode(b)).toBe(k);
+      expect(b.state).toBe("waiting");
+      expect(dist(must(nav, "a"), b)).toBeGreaterThan(0.1);
     });
 
     it("keeps a needs-you agent off a node a break agent is standing on", () => {
