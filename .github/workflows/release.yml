@@ -49,11 +49,12 @@ jobs:
           # A tag push has no inputs, so it builds the production release.
           RELEASE_ENVIRONMENT: ${{ inputs.environment || 'production' }}
         run: pnpm release --out release-out --environment "$RELEASE_ENVIRONMENT"
-      # The clean runner installs exactly the Playwright the repo's lockfile pins.
+      # The clean runner installs exactly the Playwright the repo's lockfile pins (listed under both
+      # packages and snapshots, hence sort -u).
       - name: Read the locked Playwright version
         id: playwright
         run: |
-          version="$(sed -n 's/^  playwright@\([0-9][0-9A-Za-z.+-]*\):$/\1/p' pnpm-lock.yaml)"
+          version="$(sed -n 's/^  playwright@\([0-9][0-9A-Za-z.+-]*\):$/\1/p' pnpm-lock.yaml | sort -u)"
           if [ "$(printf '%s\n' "$version" | wc -l)" -ne 1 ] || [ -z "$version" ]; then
             echo "expected exactly one playwright version in pnpm-lock.yaml, got: '$version'" >&2
             exit 1
