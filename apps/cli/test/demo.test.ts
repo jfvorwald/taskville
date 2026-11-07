@@ -103,10 +103,61 @@ describe("demo run --offline (US3-1, quickstart section 4)", () => {
     ],
     [["demo", "start", "--project", "demo", "--seed", "1", "--speed", "0"], /speed/],
     [["demo", "dance"], /demo/],
+    [
+      ["demo", "run", "--offline", "--seed", "1", "--duration", "1m", "--scenario", "siesta"],
+      /scenario.*siesta.*breaks|siesta.*breaks/is,
+    ],
+    [
+      [
+        "demo",
+        "start",
+        "--project",
+        "demo",
+        "--seed",
+        "1",
+        "--scenario",
+        "siesta",
+        "--home",
+        "/nonexistent/taskville-home",
+      ],
+      /scenario.*siesta.*breaks|siesta.*breaks/is,
+    ],
   ])("rejects %j with exit 1", async (argv, message) => {
     const result = await cli(argv);
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(message);
+  });
+});
+
+describe("demo --scenario breaks (M9.06)", () => {
+  const OFFLINE = ["demo", "run", "--offline", "--seed", "42", "--duration", "30m", "--json"];
+
+  it("runs the breaks scenario, matching runOffline, and differs from the default", async () => {
+    const result = await cli([...OFFLINE, "--scenario", "breaks"]);
+    expect(result.code).toBe(0);
+    const body = JSON.parse(result.stdout) as { stateHash: string; events: number };
+    const expected = runOffline({
+      seed: 42,
+      pace: CALM,
+      durationMs: 30 * 60_000,
+      scenario: "breaks",
+    });
+    expect(body).toMatchObject({ stateHash: expected.stateHash, events: expected.events.length });
+    const base = JSON.parse((await cli(OFFLINE)).stdout) as { stateHash: string };
+    expect(body.stateHash).not.toBe(base.stateHash);
+  });
+
+  it("keeps the default scenario when --scenario default or nothing is given", async () => {
+    const none = await cli(OFFLINE);
+    const named = await cli([...OFFLINE, "--scenario", "default"]);
+    expect(named.code).toBe(0);
+    expect(named.stdout).toBe(none.stdout);
+  });
+
+  it("lists --scenario in the demo help text", async () => {
+    const result = await cli(["demo", "--help"]);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/--scenario/);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/breaks/);
   });
 });
 
