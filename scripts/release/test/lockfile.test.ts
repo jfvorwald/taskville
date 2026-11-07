@@ -129,3 +129,57 @@ describe("checkInstalledLock", () => {
     ).not.toThrow();
   });
 });
+
+describe("checkInstalledLock omissions (roborev 7219)", () => {
+  const optionalBlock =
+    "      '@pnpm/exe.linux-x64':\n        specifier: 12.4.2\n        version: 12.4.2\n";
+  const importerWithOptional = committed.replace(
+    "      is-odd:\n        specifier: ^3.0.1\n        version: 3.0.1\n",
+    `      is-odd:\n        specifier: ^3.0.1\n        version: 3.0.1\n    optionalDependencies:\n${optionalBlock}`,
+  );
+
+  it("refuses a package entry that keeps its key but loses its integrity", () => {
+    const tampered = healthy.replace(
+      "    resolution: {integrity: sha512-AAAA}\n",
+      "    resolution: {}\n",
+    );
+    expect(tampered).not.toBe(healthy);
+    expect(() => checkInstalledLock(committed, tampered)).toThrow(/integrity/i);
+  });
+
+  it("refuses a package entry whose resolution line is gone entirely", () => {
+    const tampered = healthy.replace("    resolution: {integrity: sha512-BBBB}\n", "");
+    expect(tampered).not.toBe(healthy);
+    expect(() => checkInstalledLock(committed, tampered)).toThrow(/integrity/i);
+  });
+
+  it("refuses a dependency the installed importer omits", () => {
+    const tampered = healthy.replace(
+      "      is-odd:\n        specifier: ^3.0.1\n        version: 3.0.1\n",
+      "",
+    );
+    expect(tampered).not.toBe(healthy);
+    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+  });
+
+  it("refuses a whole importer the installed lockfile omits", () => {
+    const at = healthy.indexOf("  apps/cli:");
+    const end = healthy.indexOf("\npackages:");
+    const tampered = healthy.slice(0, at) + healthy.slice(end);
+    expect(tampered).not.toBe(healthy);
+    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+  });
+
+  it("accepts an optional dependency pnpm skipped for this platform", () => {
+    expect(importerWithOptional).not.toBe(committed);
+    expect(() => checkInstalledLock(importerWithOptional, healthy)).not.toThrow();
+  });
+
+  it("refuses an omitted optional dependency whose package is still installed", () => {
+    // Listed under optionalDependencies and not restricted: skipping it is not a platform skip.
+    const unrestricted = importerWithOptional
+      .replace("    os: [linux]\n", "")
+      .replace("    cpu: [x64]\n", "");
+    expect(() => checkInstalledLock(unrestricted, committed)).toThrow(/importer/i);
+  });
+});
