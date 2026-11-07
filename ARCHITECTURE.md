@@ -22,9 +22,10 @@ First release scope:
 - History mode: replay what the city recorded. Git and transcript imports follow right after the first release.
 - A headless engine that works with no browser, plus a CLI.
 - Local, single user, multiple projects, multiple viewer tabs.
-- Break time: waiting agents take breaks at a bar, a smoke corner and the plaza, and chat about made-up news (owner request 2026-11-07, see [the design](docs/superpowers/specs/2026-11-07-break-time-design.md)).
 
-Out of the first release: typed replies to agents (planned next, see 9.4), AI-written quips, weather, a growing skyline, mascots, hosted multi-user operation, arbitrary third-party overlay code. Taskville observes agents and relays a few explicit commands. It is not a scheduler or an orchestrator.
+Out of the first release: typed replies to agents (planned next, see 9.4), AI-written quips, weather, a growing skyline, idle wandering (Break time follows as M9, see below), mascots, hosted multi-user operation, arbitrary third-party overlay code. Taskville observes agents and relays a few explicit commands. It is not a scheduler or an orchestrator.
+
+After the first release, **Break time** (M9, owner request 2026-11-07, [design](docs/superpowers/specs/2026-11-07-break-time-design.md)) lets waiting agents take breaks at a bar, a smoke corner and the plaza, and chat about made-up news. Sections 2.2 and 2.3 describe it where it changes the live view.
 
 ## 2. Live experience
 
@@ -54,7 +55,7 @@ Three attention levels, deliberately different in color and in shape so they nev
 | --- | --- | --- | --- |
 | **Needs you** | `PermissionRequest` held by the bridge (answerable); otherwise `Notification` of type `permission_prompt`, `Elicitation`, or an explicit input request (open-session only) | Agent stops where it is (a safe point on the street or at its workstation). Red hue pulses about once per second. Red rim glow. "!" emote. Quip bubble. | Yes: action card |
 | **Trouble** | `StopFailure`, three or more consecutive tool failures, or "running but silent" beyond a threshold (heuristic) | Amber, slow pulse, sweat-drop or "?" emote, occasional quip | Opens details |
-| **Waiting** | Turn ended (`Stop`), `Notification` of type `idle_prompt` | No hue. Sits at the workstation, small "..." or "zzz" emote. With Break time on (default), after a seeded 60 to 120 s it leaves for a break activity (bar, smoke corner, plaza stroll, small diversions) with an activity emote; the label still reads Waiting, with "on break" as a note. Any work, needs-you or trouble ends the break at once | Opens details |
+| **Waiting** | Turn ended (`Stop`), `Notification` of type `idle_prompt` | No hue. Sits at the workstation, small "..." or "zzz" emote. With Break time (M9) on (default), after a seeded 60 to 120 s it leaves for a break activity (bar, smoke corner, plaza stroll, small diversions) with an activity emote; the label still reads Waiting, with "on break" as a note. Any work, needs-you or trouble ends the break at once | Opens details |
 
 Heuristic trouble is labeled as such ("quiet for 12 min") because the constitution forbids presenting guesses as facts. It depends on elapsed time, so it is computed by a selector with an injected clock (wall clock in live, replay clock in history) and never stored in reducer state.
 
@@ -73,8 +74,8 @@ Bubbles pop over the agent's head with a short built-in line, then fade after ab
 - Built-in phrase sets per state and per theme, for example needs-you: "Little help here?", "Need a yes on this one", "Permission to proceed, boss?"; steampunk: "Requesting authorization, guv'nor!"; cyberpunk: "Access denied. Need your override."
 - A bubble can include one short fact from the event, such as the tool name ("Needs OK: Bash"). Agent-supplied text is never placed in a bubble; it appears only, escaped, in the action card.
 - Line selection is deterministic: a hash of agent ID and event ID picks the line, so replay shows the same quips as live.
-- At most three bubbles on screen. Priority: needs-you by longest wait, then trouble, then the selected agent, then at most one break-time conversation.
-- Break-time banter: two agents on break together alternate a made-up headline and a reaction from the phrase files' `banter` lines. Headlines are built-in nonsense, never fetched news. Pairing and lines are seeded the same way as quips, so replay matches live.
+- At most three bubbles on screen. Priority: needs-you by longest wait, then trouble, then the selected agent, then at most one break-time conversation (M9).
+- Break-time banter (M9): two agents on break together alternate a made-up headline and a reaction from the phrase files' `banter` lines. Headlines are built-in nonsense, never fetched news. Pairing and lines are seeded the same way as quips, so replay matches live.
 - Emotes are small billboard icons: "!", "?", "...", sweat drop, sparkle, "zzz".
 - Phrase sets are plain data files, so adding lines or a new theme's voice needs no code.
 
