@@ -56,3 +56,38 @@ it("gives a paused-history chatter bubble the replay clock's progress as its ani
   expect(bubble()?.style.animationPlayState).toBe("paused");
   expect(bubble()?.style.animationDelay).toBe(`-${elapsed}ms`);
 }, 40_000);
+
+// roborev 7351: in paused history, selecting an unpaired agent well into its break must show its
+// activity bubble at its start (live shows a fresh 4 s bubble), not frozen past the end at opacity 0.
+it("shows a selected unpaired agent's activity bubble visibly in paused history", async () => {
+  const phases = { p1: "waiting" } as const;
+  const at = WAITING_SINCE + 200 * SECOND;
+  const probeStore = createDataStore({ now: () => at });
+  probeStore.getState().reset(PROJECT);
+  probeStore.getState().applySnapshotState(stateOf(phases));
+  const onBreak = expectedPlan(probeStore, at).agents.get("p1");
+  if (onBreak === undefined) {
+    throw new Error("the pure planner has no break for p1 at this moment");
+  }
+  if (at - onBreak.startedAt < 10 * SECOND) {
+    throw new Error("the fixed clock is not 10 s or more into p1's break segment");
+  }
+
+  const h = await mountCity(
+    phases,
+    ({ store, anchors }) => (
+      <Bubbles {...overlayProps(anchors, "p1")} mode="history" store={store} />
+    ),
+    { now: at },
+  );
+  city = h;
+  await h.frames(3);
+
+  const bubble = () =>
+    document.querySelector<HTMLElement>('[data-testid="quip-bubble"][data-level="activity"]');
+  await expect.poll(() => bubble() !== null, { timeout: 15_000 }).toBe(true);
+  expect(bubble()?.style.animationPlayState).toBe("paused");
+  const delay = Number.parseFloat(bubble()?.style.animationDelay ?? "NaN");
+  expect(delay).toBeGreaterThanOrEqual(-1000);
+  expect(Number.parseFloat(getComputedStyle(bubble() as HTMLElement).opacity)).toBeGreaterThan(0);
+}, 40_000);
