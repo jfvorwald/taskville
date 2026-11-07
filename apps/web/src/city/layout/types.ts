@@ -64,10 +64,11 @@ export interface Plaza {
 
 /**
  * A node in the street graph. `junction` is a street crossing, `street` a point along a street,
- * `plaza` is the plaza center or one of its four edge doors, and `slot` is a workstation slot.
+ * `plaza` is the plaza center or one of its four edge doors, `slot` is a workstation slot and
+ * `break` is a standing spot at a break site (M9.02).
  * Plaza nodes are the safe waiting points (ARCHITECTURE.md 11, needs-you agents).
  */
-export type NavNodeKind = "junction" | "street" | "plaza" | "slot";
+export type NavNodeKind = "junction" | "street" | "plaza" | "slot" | "break";
 
 export interface NavNode {
   id: string;
@@ -115,6 +116,39 @@ export interface Tree {
   scale: number;
 }
 
+export const BREAK_SITE_IDS = ["bar", "smoke"] as const;
+export type BreakSiteId = (typeof BREAK_SITE_IDS)[number];
+
+/** A standing place at a break site (graph node of kind "break"), one agent at a time. */
+export interface BreakSpot {
+  id: string;
+  siteId: BreakSiteId;
+  index: number;
+  x: number;
+  z: number;
+  /** Yaw in radians; (sin, cos) points from the spot toward what it faces. */
+  facing: number;
+  nodeId: string;
+}
+
+/** A solid break-site prop drawn instanced: a counter, bar stool, bench or lamp. */
+export interface BreakProp {
+  kind: "counter" | "stool" | "bench" | "lamp";
+  x: number;
+  z: number;
+  halfX: number;
+  halfZ: number;
+}
+
+/** The bar (north middle cell) or the smoke corner (south middle cell). */
+export interface BreakSite {
+  id: BreakSiteId;
+  /** The grid cell the site lives in. */
+  cell: Footprint;
+  spots: BreakSpot[];
+  props: BreakProp[];
+}
+
 export interface CityLayout {
   /** Ground slab extent. Everything lies inside it. */
   bounds: Bounds;
@@ -126,4 +160,6 @@ export interface CityLayout {
   graph: StreetGraph;
   slots: WorkstationSlot[];
   props: { lamps: Lamp[]; trees: Tree[] };
+  /** The bar and the smoke corner, in that order. */
+  breakSites: BreakSite[];
 }

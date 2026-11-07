@@ -189,6 +189,7 @@ export function buildCityLayout(): CityLayout {
     graph: { nodes, edges },
     slots,
     props: { lamps, trees },
+    breakSites: [],
   };
 }
 
