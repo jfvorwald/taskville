@@ -34,6 +34,7 @@ import {
   ProjectInputError,
   registerProjectRoutes,
 } from "@taskville/engine/src/projects/index.ts";
+import { loadRelease } from "@taskville/engine/src/release/index.ts";
 import {
   ClaudeCodeSource,
   drainSpool,
@@ -49,8 +50,12 @@ import packageJson from "../../package.json" with { type: "json" };
 import type { Io, KeyInput } from "../context.ts";
 import { type Context, parseCommand } from "../context.ts";
 import { CliError, EXIT } from "../errors.ts";
+import { PACKAGE_ROOT } from "../package-root.ts";
 
 const USAGE = "taskville serve --headless [--port N] [--verbose] [--home <dir>]";
+
+/** Where `release.json` lives (M7.26): the CLI package root. */
+export const RELEASE_DIR = PACKAGE_ROOT;
 
 /**
  * `taskville serve --headless`: runs the engine in the foreground on 127.0.0.1 only (contracts/
@@ -441,6 +446,7 @@ export function composeServe(
   home: string,
   portFlag: number | undefined,
   logging: LogRouting = { file: false, stderr: true },
+  options: { releaseDir?: string } = {},
 ): ServeParts {
   const now = io.now ?? (() => new Date());
   let engine: Engine | undefined;
@@ -475,6 +481,11 @@ export function composeServe(
       logger,
       ...(web.dir === undefined ? {} : { staticDir: web.dir }),
       version: packageJson.version,
+      release: loadRelease({
+        dir: options.releaseDir ?? RELEASE_DIR,
+        version: packageJson.version,
+        logger,
+      }),
       health: () => engine?.health() ?? { db: "error", walMode: false },
     });
     engine = bootEngine({ app, dbPath: prepared.paths.db, logger, now, pairing });
