@@ -16,5 +16,51 @@
     "Resting in the garden",
     "Ready to sprout a new task",
     "Basking until you need me"
-  ]
+  ],
+  "banter": {
+    "headlines": [
+      "Rooftop garden grows a surprise pumpkin",
+      "Bee council approves new flower rules",
+      "Solar panel sends the sun a thank you",
+      "Compost heap reaches record warmth",
+      "Snail wins the community bike race",
+      "Wind turbine hums a catchy tune",
+      "Sunflower field turns to face gossip",
+      "Tomato vine takes over the bike shed"
+    ],
+    "reactions": [
+      "Lovely news",
+      "Bloom where you are",
+      "How sweet",
+      "Growing on me",
+      "Fresh as ever",
+      "Sun's out, news out",
+      "Well, that's green",
+      "Just peachy"
+    ]
+  },
+  "activities": {
+    "bar": [
+      "Sipping hibiscus tea, cheers",
+      "A toast with elderflower fizz",
+      "Fresh juice for everyone"
+    ],
+    "smoke": [
+      "Breathing in the garden air",
+      "Quiet moment by the herbs",
+      "Sitting among the sprouts"
+    ],
+    "stroll": ["Walking the green paths", "Stopping to smell the flowers", "A leafy little stroll"],
+    "juggle": ["Juggling three ripe plums", "Look, flying lemons!", "Keeping the oranges aloft"],
+    "stargaze": [
+      "The stars look so clean here",
+      "Counting fireflies and stars",
+      "Wishing on a bright one"
+    ],
+    "pigeons": [
+      "Sharing seeds with the doves",
+      "Birds love this garden",
+      "Sprinkling seeds for friends"
+    ]
+  }
 }
