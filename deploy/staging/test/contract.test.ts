@@ -144,6 +144,15 @@ describe("web client contract", () => {
 
         const response = await staging.call(`${path}${query}`, withSession(session, init));
 
+        if (route.pattern.endsWith("/cost")) {
+          // Exactly like the engine: no telemetry is a 404 the client reads as "no cost". A 2xx
+          // zero would show a false figure.
+          expect(response.status).toBe(404);
+          expect(await response.json()).toEqual({
+            error: { code: "no_cost", message: expect.any(String) },
+          });
+          return;
+        }
         expect(response.status).not.toBe(404);
         // The one non-2xx the client handles as a normal answer: a held request that expired.
         const ok = response.ok || (route.pattern.endsWith("/input") && response.status === 410);
