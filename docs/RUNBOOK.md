@@ -132,7 +132,7 @@ Claude Code's hook settings are written by `taskville install claude-code` outsi
 
 Source: the CLI usage lines in `apps/cli/src/main.ts`.
 
-Every command below passes `--home <dir>` explicitly, so it targets the restored home and not the default (`$TASKVILLE_HOME` or `~/.taskville`), even if another engine runs there.
+Every command below passes `--home <dir>` explicitly, so it reads the restored home's token and engine address and not the default home (`$TASKVILLE_HOME` or `~/.taskville`). `--home` does not choose the engine when a URL is set: `--url` and then `TASKVILLE_URL` take precedence over the home's `engine.json` (`apps/cli/src/context.ts`). Run `unset TASKVILLE_URL` in this shell first, and do not pass `--url` unless it is the restored engine's address as printed by `taskville start --home <dir>`.
 
 - `taskville --home <dir> doctor` checks Node, the web client, the engine, the hooks, the shim, curl and the project.
 - `taskville --home <dir> project list` should show the projects you expect.
@@ -201,8 +201,8 @@ A `wrangler rollback` command to a previous Cloudflare version is mentioned in p
    ```
 
    The bin is `<prefix>/node_modules/.bin/taskville`. Use the same `--home` (or `TASKVILLE_HOME`) as the upgraded home when you start it.
-3. Check the version with `taskville --version`. It should show the previous release id.
-4. Start the engine with that home: `taskville start --home <dir>`.
+3. Check the version with `<prefix>/node_modules/.bin/taskville --version`. It should show the previous release id. Call the bin by this path: a bare `taskville` runs whichever install is first on `PATH`, which may be the newer release.
+4. Start the engine with that home: `<prefix>/node_modules/.bin/taskville start --home <dir>`.
 
 **What happens to a database that was migrated forward.** The older engine refuses it with a schema-version error and does not start. It does not change the database. To go back, restore the backup taken before the upgrade (section 4, restore).
 
