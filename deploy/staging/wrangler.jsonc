@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "taskville-staging",
+  "account_id": "5ce03feece1ca01cc74bae9dc2715f19",
+  "compatibility_date": "2026-09-11",
+  "main": "src/worker.ts",
+  "assets": {
+    // Filled by the M7.02 release step with the release's frozen apps/web/dist.
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "none"
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "APP_ENV": "staging",
+    // The release step overrides these two with the release's identity.
+    "RELEASE_ID": "unreleased",
+    "RELEASE_VERSION": "0.0.0",
+    // Cloudflare Access: the team's domain and the Access application's audience tag. Set when
+    // the Access application exists (M7.04); until then every /pair is refused (fails closed).
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "PAIRING", "class_name": "PairingStore" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PairingStore"] }],
+  "routes": [{ "pattern": "taskville-staging.jaqstudios.com", "custom_domain": true }]
+}

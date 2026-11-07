@@ -7,11 +7,16 @@
     ".": "./src/worker.ts"
   },
   "scripts": {
-    "test": "vitest run --root ../.. --project @taskville/staging-worker"
+    "test": "vitest run --root ../.. --project @taskville/staging-worker",
+    "dev": "wrangler dev"
   },
   "dependencies": {
     "@taskville/demo": "workspace:*",
     "@taskville/domain": "workspace:*",
     "@taskville/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "hono": "4.13.14",
+    "wrangler": "4.131.0"
   }
 }
