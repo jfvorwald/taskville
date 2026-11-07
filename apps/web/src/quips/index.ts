@@ -1,3 +1,4 @@
+export { type BanterLine, pickActivityLine, pickBanterLine } from "./banter.ts";
 export { pickQuip, type QuipInput, type QuipLevel } from "./pick.ts";
 export {
   QUIP_MAX_AGE_MS,

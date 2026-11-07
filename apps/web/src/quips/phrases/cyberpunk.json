@@ -16,5 +16,43 @@
     "Standing by, netrunner",
     "Link open, awaiting orders",
     "Buffer empty. Feed me a task"
-  ]
+  ],
+  "banter": {
+    "headlines": [
+      "Neon shortage hits Sector 9 vending",
+      "Drone files complaint about drone traffic",
+      "Rain returns to Sector 4, nobody shocked",
+      "Noodle stand upgrades to quantum broth",
+      "Hologram cat wins local election",
+      "Chrome toaster demands better firmware",
+      "Vending machine achieves mild enlightenment",
+      "Rooftop antenna finally finds a signal"
+    ],
+    "reactions": [
+      "Chrome, as expected",
+      "Glitch in the matrix",
+      "Choom, no way",
+      "Total static",
+      "Run it back",
+      "Wired, honestly",
+      "Zero surprise here",
+      "Neon nonsense, love it"
+    ]
+  },
+  "activities": {
+    "bar": ["Synth ale, extra cold", "Neon on the rocks, please", "Bartender bot knows my order"],
+    "smoke": ["Vapor break under the signs", "Cooling my cores", "Just venting a little"],
+    "stroll": ["Scanning the sector, easy", "Walking off the lag", "Neon looks good tonight"],
+    "juggle": ["Juggling three hot packets", "Keeping the drones guessing", "Packets in the air"],
+    "stargaze": [
+      "Not many stars past the smog",
+      "Searching for a real star",
+      "That one is a satellite, I think"
+    ],
+    "pigeons": [
+      "Pigeon drones are back",
+      "Feeding the chrome pigeons",
+      "Birds with antennas, love them"
+    ]
+  }
 }

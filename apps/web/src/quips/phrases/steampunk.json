@@ -16,5 +16,51 @@
     "Idling by the brass",
     "Awaiting your next instruction",
     "Wound up and ready to go"
-  ]
+  ],
+  "banter": {
+    "headlines": [
+      "Airship stuck in fog for third Tuesday",
+      "Clockwork goose honks at wrong hour",
+      "Top hat contest ends in a tie again",
+      "Boiler gossip: the kettle knows all",
+      "Moustache wins a brass medal, humbly",
+      "Cog shortage blamed on the weather",
+      "Teapot engine outpaces the morning train",
+      "Lamplighter reports lamps are very lit"
+    ],
+    "reactions": [
+      "Splendid, simply splendid",
+      "Gadzooks",
+      "Well I never",
+      "Quite so, quite so",
+      "Rather unexpected",
+      "Most peculiar",
+      "Hear, hear",
+      "Tut tut, the scandal"
+    ]
+  },
+  "activities": {
+    "bar": [
+      "A pint of pressure, landlord",
+      "Cheers, and mind the gears",
+      "Another round of cider, ahoy"
+    ],
+    "smoke": ["A quiet pipe of steam", "Taking the air, old chap", "Puffing by the lamp post"],
+    "stroll": ["A turn about the square", "Out for a constitutional", "Strolling at a brisk pace"],
+    "juggle": [
+      "Juggling three small cogs",
+      "Behold, the flying spanners",
+      "Mind the brass, mind the brass"
+    ],
+    "stargaze": [
+      "Charting the heavens, I say",
+      "That star needs polishing",
+      "A fine night for the telescope"
+    ],
+    "pigeons": [
+      "Feeding the clockwork pigeons",
+      "Pigeons in tiny goggles, delightful",
+      "Crumbs for the brass birds"
+    ]
+  }
 }
