@@ -29,7 +29,7 @@ describe("createAccessVerifier", () => {
     const { pair, verify, fetch } = await setup();
     const result = await verify(await sign(pair.privateKey, good), ENV);
     expect(result).toEqual(expect.objectContaining({ email: "owner@example.com" }));
-    expect(fetch).toHaveBeenCalledWith(`https://${DOMAIN}/cdn-cgi/access/certs`);
+    expect(fetch).toHaveBeenCalledWith(`https://${DOMAIN}/cdn-cgi/access/certs`, expect.anything());
   });
 
   it("accepts a string audience and a past nbf", async () => {
