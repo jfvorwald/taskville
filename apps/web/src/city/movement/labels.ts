@@ -78,7 +78,8 @@ const sameRow = (a: MovementLabel, b: MovementLabel) =>
   a.onTheWay === b.onTheWay &&
   a.state === b.state &&
   a.urgent === b.urgent &&
-  a.kind === b.kind;
+  a.kind === b.kind &&
+  (a.onBreak ?? false) === (b.onBreak ?? false);
 
 export function createLabelStore(): LabelStore {
   let rows: readonly MovementLabel[] = [];
