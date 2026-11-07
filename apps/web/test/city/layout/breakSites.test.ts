@@ -33,6 +33,36 @@ const propFootprint = (p: { x: number; z: number; halfX: number; halfZ: number }
 const allSpots = () => L.breakSites.flatMap((s) => s.spots);
 const allProps = () => L.breakSites.flatMap((s) => s.props);
 
+/** Slab test: does the segment a-b touch the axis-aligned box (cx, cz, halfX, halfZ)? */
+function segmentHitsRect(
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+  cx: number,
+  cz: number,
+  halfX: number,
+  halfZ: number,
+): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const axes: [number, number, number, number][] = [
+    [a.x, b.x - a.x, cx - halfX, cx + halfX],
+    [a.z, b.z - a.z, cz - halfZ, cz + halfZ],
+  ];
+  for (const [o, d, lo, hi] of axes) {
+    if (Math.abs(d) < 1e-12) {
+      if (o < lo || o > hi) return false;
+      continue;
+    }
+    let ta = (lo - o) / d;
+    let tb = (hi - o) / d;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
 /** Distance outside every street strip along the axis the street fixes (negative: inside). */
 function streetGap(x: number, z: number, halfX = 0, halfZ = 0): number {
   let gap = Number.POSITIVE_INFINITY;
@@ -181,6 +211,48 @@ describe("break sites: navigation clearance", () => {
         const hit =
           Math.abs(a.x - b.x) < a.halfX + b.halfX && Math.abs(a.z - b.z) < a.halfZ + b.halfZ;
         expect(hit, `${a.kind} / ${b.kind}`).toBe(false);
+      }
+    }
+  });
+
+  it("never routes a walk edge through a solid break prop (roborev 7272)", () => {
+    // Agents walk straight lines along graph edges. Stools are permeable (agents stand beside
+    // them, and the spot clearance test skips them), every other break prop is solid.
+    const nodes = new Map(L.graph.nodes.map((n) => [n.id, n]));
+    const solid = allProps().filter((p) => p.kind !== "stool");
+    const spotIds = new Set(allSpots().map((s) => s.nodeId));
+    const touchesSpot = (e: { from: string; to: string }) =>
+      spotIds.has(e.from) || spotIds.has(e.to);
+    const edges = [...L.graph.edges].sort(
+      (a, b) => Number(touchesSpot(b)) - Number(touchesSpot(a)),
+    );
+    expect(edges.some(touchesSpot)).toBe(true);
+    for (const e of edges) {
+      const a = nodes.get(e.from);
+      const b = nodes.get(e.to);
+      if (!a || !b) throw new Error(`edge ${e.from} -> ${e.to} has a missing node`);
+      for (const p of solid) {
+        expect(
+          segmentHitsRect(a, b, p.x, p.z, p.halfX, p.halfZ),
+          `edge ${e.from} -> ${e.to} crosses ${p.kind} at (${p.x}, ${p.z})`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("never routes a walk edge through a tree or lamp", () => {
+    const nodes = new Map(L.graph.nodes.map((n) => [n.id, n]));
+    const posts = [...L.props.trees, ...L.props.lamps];
+    const r = 0.2;
+    for (const e of L.graph.edges) {
+      const a = nodes.get(e.from);
+      const b = nodes.get(e.to);
+      if (!a || !b) throw new Error(`edge ${e.from} -> ${e.to} has a missing node`);
+      for (const q of posts) {
+        expect(
+          segmentHitsRect(a, b, q.x, q.z, r, r),
+          `edge ${e.from} -> ${e.to} crosses a post at (${q.x}, ${q.z})`,
+        ).toBe(false);
       }
     }
   });
