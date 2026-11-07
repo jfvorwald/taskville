@@ -25,6 +25,11 @@ export type PresentationState =
 /** What an agent shows once it stands still, from the recorded state. */
 export type RestState = "working" | "waiting" | "idle";
 
+/** Where an agent on break stands: a spot at a break site (by graph node) or a plaza node. */
+export type BreakDestination =
+  | { readonly kind: "site"; readonly nodeId: string }
+  | { readonly kind: "plaza"; readonly index: number };
+
 /** What the recorded state asks of one agent. */
 export interface NavIntent {
   readonly id: string;
@@ -35,6 +40,8 @@ export interface NavIntent {
   /** Needs you: stop at the nearest safe point (or stay at the workstation). */
   readonly hold?: boolean;
   readonly rest?: RestState;
+  /** On break: walk here from the workstation (the slot stays reserved); absent ends the break. */
+  readonly breakSpot?: BreakDestination;
   /** A subagent's parent: it appears at, and leaves by, the parent's building. */
   readonly parentId?: string;
 }
