@@ -3,8 +3,9 @@ import { agentLabel, breakNote } from "../../../src/city/agents/label.ts";
 import type { AgentView, AttentionView } from "../../../src/city/agents/types.ts";
 
 // M9.04: `breakNote(status, onBreak)` in city/agents/label.ts. `status` is the text `agentLabel`
-// gives. It returns the secondary note "on break" only for an agent whose label reads exactly
-// "Waiting" and whose break flag is set; otherwise null. The status itself never changes: a
+// gives. It returns the secondary note "on break" only for an agent whose label reads "Waiting" or
+// "Idle" (a normal Stop leaves waiting attention but idle activity) and whose break flag is set;
+// otherwise null. The status itself never changes: a
 // waiting agent on break still reads "Waiting" (ARCHITECTURE 2.2, constitution IV).
 //   pnpm --filter @taskville/web exec vitest run --root ../.. --project @taskville/web \
 //     test/city/agents/breakNote
@@ -61,8 +62,16 @@ describe("breakNote", () => {
     }
   });
 
-  it("is quiet for idle and unknown labels too", () => {
-    expect(breakNote(status({ activity: "idle" }), true)).toBeNull();
+  it("notes an idle agent on break (a normal Stop reads Idle), status unchanged", () => {
+    expect(status({ activity: "idle" })).toBe("Idle");
+    expect(breakNote(status({ activity: "idle" }), true)).toBe("on break");
+    expect(breakNote("Idle", true)).toBe("on break");
+    expect(breakNote("Idle", false)).toBeNull();
+  });
+
+  it("is quiet for unknown and other labels", () => {
     expect(breakNote(status({ activity: "unknown" }), true)).toBeNull();
+    expect(breakNote("Something else", true)).toBeNull();
+    expect(breakNote("", true)).toBeNull();
   });
 });

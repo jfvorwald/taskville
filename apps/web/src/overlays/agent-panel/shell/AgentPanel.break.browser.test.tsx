@@ -86,6 +86,15 @@ describe("AgentPanel header on break", () => {
     await expect.poll(() => textOf("agent-panel-on-break")).toBe("on break");
   });
 
+  it("notes an idle agent on break, as after a Stop (turn_ended plus activity.ended)", async () => {
+    // The projection of a normal Stop: activity ended -> "idle", no needs-you attention.
+    await render(
+      <AgentPanel {...props} renderTab={() => null} store={makeStore("idle")} onBreak={ON_BREAK} />,
+    );
+    await expect.poll(() => textOf("agent-panel-status")).toBe("Idle");
+    await expect.poll(() => textOf("agent-panel-on-break")).toBe("on break");
+  });
+
   it("shows no note when the agent is not in the on-break set, or no set is given", async () => {
     const store = makeStore("waiting");
     const view = await render(

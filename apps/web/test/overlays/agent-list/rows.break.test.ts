@@ -52,4 +52,15 @@ describe("agentListRows on break", () => {
     const [row] = agentListRows([label({ id: "a1", name: "Ada", onBreak: true, onTheWay: true })]);
     expect(row?.detail).toBe("Waiting, on break, on the way");
   });
+
+  it("adds the on break note to an idle agent on break (a normal Stop reads Idle)", () => {
+    const [row] = agentListRows([label({ id: "a1", name: "Ada", status: "Idle", onBreak: true })]);
+    expect(row?.description).toBe("Ada, Idle, on break");
+    expect(row?.detail).toBe("Idle, on break");
+    const [off] = agentListRows(
+      [label({ id: "a1", name: "Ada", status: "Idle", onBreak: true })],
+      false,
+    );
+    expect(off?.detail).toBe("Idle");
+  });
 });
