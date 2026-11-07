@@ -132,16 +132,18 @@ Claude Code's hook settings are written by `taskville install claude-code` outsi
 
 Source: the CLI usage lines in `apps/cli/src/main.ts`.
 
-- `taskville doctor` checks Node, the web client, the engine, the hooks, the shim, curl and the project.
-- `taskville project list` should show the projects you expect.
-- `taskville status --project <id>` should show the agents of that project as a tree.
-- Open the city in a browser (`taskville start`) and check one project's history.
+Every command below passes `--home <dir>` explicitly, so it targets the restored home and not the default (`$TASKVILLE_HOME` or `~/.taskville`), even if another engine runs there.
+
+- `taskville --home <dir> doctor` checks Node, the web client, the engine, the hooks, the shim, curl and the project.
+- `taskville --home <dir> project list` should show the projects you expect.
+- `taskville --home <dir> status --project <id>` should show the agents of that project as a tree.
+- Open the city in a browser (`taskville start --home <dir>`) and check one project's history.
 
 `GET /health` needs the home's token. Send `Authorization: Bearer <token>`, with the token read from `<home>/token`. Without it the engine answers 401. The doctor's engine probe does the same (`engineHealthy` in `apps/cli/src/commands/doctor.ts`, which reports 401 or 403 as "rejected the token"). This was found in the local rehearsal (section 8).
 
 A database integrity check beyond these is **not defined in this repo**. Use a SQLite tool only after confirming its availability and flags on your machine. This runbook does not give one.
 
-**Restoring pairings:** `taskville unpair` revokes every paired browser. A restored database brings back the pairings it held when the backup was taken. If a browser was unpaired after that, unpair again after the restore.
+**Restoring pairings:** `taskville --home <dir> unpair` revokes every paired browser. A restored database brings back the pairings it held when the backup was taken. If a browser was unpaired after that, unpair again after the restore. Confirm the command reached the restored home: a browser that was paired with the restored engine should now be refused on its next request. If it is not refused, the unpair went to a different home.
 
 ## 5. Schema compatibility
 
@@ -200,7 +202,7 @@ A `wrangler rollback` command to a previous Cloudflare version is mentioned in p
 
    The bin is `<prefix>/node_modules/.bin/taskville`. Use the same `--home` (or `TASKVILLE_HOME`) as the upgraded home when you start it.
 3. Check the version with `taskville --version`. It should show the previous release id.
-4. Start the engine.
+4. Start the engine with that home: `taskville start --home <dir>`.
 
 **What happens to a database that was migrated forward.** The older engine refuses it with a schema-version error and does not start. It does not change the database. To go back, restore the backup taken before the upgrade (section 4, restore).
 
