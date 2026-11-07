@@ -25,6 +25,9 @@ const ANCHOR_SETTLE_MS = 100;
 /** The same margin the layer uses, so "visible" here is what the layer would show. */
 const ANCHOR_MARGIN = 48;
 
+/** Paused activity bubbles sit this far into the 4 s fade (past the fade-in, in the hold). */
+const ACTIVITY_PAUSED_MS = 1000;
+
 /** A bubble and the key that restarts its fade: the agent plus the event behind the line. */
 interface Shown {
   key: string;
@@ -90,14 +93,13 @@ function useBubbles(
         );
         const sinceMs =
           (candidate?.sinceMs ?? now) + (record?.kind === "silent" ? SILENT_THRESHOLD_MS : 0);
-        // A break bubble's paused frame matches live: the time since its turn or segment began.
+        // Chatter pauses at the time since its turn began; an activity bubble pauses at the
+        // start of its hold (the frame at 0 is still faded out), so it is visible like live.
         const breakStart =
           bubble.level === "chatter"
             ? plan.conversations.find((c) => c.a === bubble.agentId || c.b === bubble.agentId)
                 ?.turnStartedAt
-            : bubble.level === "activity"
-              ? plan.agents.get(bubble.agentId)?.startedAt
-              : undefined;
+            : undefined;
         return {
           key:
             bubble.level === "chatter" || bubble.level === "activity"
@@ -106,11 +108,13 @@ function useBubbles(
           bubble,
           elapsedMs: !history
             ? undefined
-            : breakStart !== undefined
-              ? Math.max(0, now - breakStart)
-              : candidate
-                ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0)
-                : undefined,
+            : bubble.level === "activity"
+              ? ACTIVITY_PAUSED_MS
+              : breakStart !== undefined
+                ? Math.max(0, now - breakStart)
+                : candidate
+                  ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0)
+                  : undefined,
         };
       });
       setBubbles((prev) => (same(prev, next) ? prev : next));
