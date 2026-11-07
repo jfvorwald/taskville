@@ -60,6 +60,8 @@ export interface AgentPanelProps extends OverlayProps {
   costRefreshMs?: number;
   /** A clicked envelope asks for its sender's Live feed; defaults to the app-wide hand-off. */
   feedFocus?: FeedFocus;
+  /** M9.04: ids of agents the break plan has on a break; the header adds an "on break" note. */
+  onBreak?: ReadonlySet<string>;
 }
 
 /** "handing_off" is read as "Handing off", the same words the world labels use. */
