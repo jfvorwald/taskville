@@ -2,8 +2,14 @@ name: Release
 
 # Builds the release tarball from a fresh install, then proves it installs and runs on a clean
 # runner that has no checkout of the source beyond the harness (M7.28, S-3 option C part 2).
-# Not on every PR: it runs on demand and when a version tag is pushed.
+# Not on every PR: it runs on demand, when a version tag is pushed, and on PRs that change the
+# release path itself.
 on:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release/**
+      - tests/e2e/release/**
   workflow_dispatch:
     inputs:
       environment:
