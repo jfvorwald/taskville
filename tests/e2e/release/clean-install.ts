@@ -532,6 +532,8 @@ async function main(): Promise<void> {
         return DEMO_AGENTS.every((n) => labels.some((t) => t.includes(n))) ? labels : undefined;
       });
     }
+    // A browser error while the demo events were ingested must not leave a passing receipt.
+    expect(pageErrors.length === 0, `page errors: ${pageErrors.join(" | ")}`);
     return `agents ${names.join(", ")}`;
   });
 }
@@ -567,17 +569,22 @@ try {
     passed,
     steps: results,
   };
-  mkdirSync(dirname(args.receipt), { recursive: true });
-  writeFileSync(args.receipt, `${JSON.stringify(receipt, null, 2)}\n`);
-  await browser?.close().catch(() => {});
-  if (engine !== undefined && engine.exitCode === null && engine.signalCode === null) {
-    const gone = new Promise((r) => engine?.once("exit", r));
-    engine.kill("SIGTERM");
-    await Promise.race([gone, sleep(10_000)]);
-    if (engine.exitCode === null && engine.signalCode === null) engine.kill("SIGKILL");
+  process.exitCode = 1; // stays 1 if writing the receipt throws
+  try {
+    mkdirSync(dirname(args.receipt), { recursive: true });
+    writeFileSync(args.receipt, `${JSON.stringify(receipt, null, 2)}\n`);
+    console.log(`${passed ? "PASSED" : "FAILED"}: receipt ${args.receipt}`);
+    process.exitCode = passed ? 0 : 1;
+  } finally {
+    // Always runs, even when the receipt could not be written.
+    await browser?.close().catch(() => {});
+    if (engine !== undefined && engine.exitCode === null && engine.signalCode === null) {
+      const gone = new Promise((r) => engine?.once("exit", r));
+      engine.kill("SIGTERM");
+      await Promise.race([gone, sleep(10_000)]);
+      if (engine.exitCode === null && engine.signalCode === null) engine.kill("SIGKILL");
+    }
+    if (args.keepTemp) console.log(`kept ${root}`);
+    else rmSync(root, { recursive: true, force: true });
   }
-  if (args.keepTemp) console.log(`kept ${root}`);
-  else rmSync(root, { recursive: true, force: true });
-  console.log(`${passed ? "PASSED" : "FAILED"}: receipt ${args.receipt}`);
-  process.exitCode = passed ? 0 : 1;
 }
