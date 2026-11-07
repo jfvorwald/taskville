@@ -13,6 +13,9 @@ export interface CityPalette extends Record<Tone, string> {
   lampGlow: string;
   treeTrunk: string;
   treeCrown: string;
+  barCounter: string;
+  barStool: string;
+  smokeBench: string;
   windowGlow: string;
 }
 
@@ -31,5 +34,8 @@ export const DEFAULT_CITY_PALETTE: CityPalette = {
   lampGlow: "#f2d48a",
   treeTrunk: "#5b4a3a",
   treeCrown: "#5f9a6a",
+  barCounter: "#7a5a46",
+  barStool: "#c9893f",
+  smokeBench: "#8a6f52",
   windowGlow: "#e8d9a8",
 };
