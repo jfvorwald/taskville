@@ -2,7 +2,19 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-07 00:10 UTC. **Main:** 0cb5778. **State:** G5 #76 and G6 #80 closed by the owner on 2026-11-06. M7 staging work unblocked: the staging spike M7.01 is merged and its decision is open at [#415](https://github.com/jfvorwald/taskville/issues/415) (default: option C, static staging Worker plus a clean-machine artifact check). Next: M7.02 packaging on the default. M7.25 (#419) in CI.
+**Updated:** 2026-11-07 03:10 UTC. **Main:** 86c8e34. **State:** M7 staging batch in progress toward G7 #88. Decision #415 answered (accept defaults: option C, `taskville-staging.jaqstudios.com`). Packaging, release identity, the staging Worker and the clean-machine install check are merged. **Blocked on the owner:** M7.04 (#86) needs a Cloudflare API token with Access: Apps and Policies Edit to create the staging Access application before the first deploy; release `38c0d20bcd1aa799` is built and its deploy dry run passed. Waiting on that: the M7.05 rehearsal (#85, draft PR #429) and M7.06 push tier (#87). Follow-up #428 (lockfile guard residue, P2).
+
+## Done in M7 Private staging (staging batch, 2026-11-07)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.28 #427 clean-machine install check | #430 | harness 10 of 10 locally twice; release workflow clean-install green on a fresh runner (54 s); roborev 7231 three mediums fixed, 7236 PASS; ActionCard focus browser test flaked once in CI (passed on rerun); [report](tasks/M7.28.md) |
+| M7.27 #425 lockfile guard compares integrity and importers | #426 | roborev 7219 two mediums fixed; 7224 two mediums after the cap moved to #428; [report](tasks/M7.27.md) |
+| M7.03 #84 staging Worker (code; deploy pending M7.04) | #422 | demo-backed read-only /v1, Access-verified /pair, single-use codes in a Durable Object, engine CSP, synthetic commands; code review (unsorted project, CPU) and security review (CSP, sessions) fixed test-first; security confirm PASS; roborev 7212 PASS; [report](tasks/M7.03.md) |
+| M7.02 #83 release packaging | #424 | one self-contained tarball, content-derived release id covering commit, dirty flag and lockfile, secrets scan over the staged tree, bundle guard; roborev 7199 two highs and security M1/M2 fixed; [report](tasks/M7.02.md) |
+| M7.26 #421 release identity on /health and in the header | #423 | badge and STAGING banner; code review High (bundled release path) fixed test-first; roborev 7191 PASS; [report](tasks/M7.26.md) |
+
+Not run: the push-tier full suite (once per wave, in M7.06 after the deploy).
 
 ## Done in M7 Private staging (local-setup batch, 2026-11-06)
 
