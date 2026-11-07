@@ -21,7 +21,10 @@
     // Cloudflare Access: the team's domain and the Access application's audience tag. Set when
     // the Access application exists (M7.04); until then every /pair is refused (fails closed).
     "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
+    "ACCESS_AUD": "",
+    // The one identity allowed to pair. Kept in config (empty here, supplied with --var at deploy)
+    // so a deploy never silently drops it.
+    "ACCESS_ALLOWED_EMAIL": ""
   },
   "durable_objects": {
     "bindings": [{ "name": "PAIRING", "class_name": "PairingStore" }]
