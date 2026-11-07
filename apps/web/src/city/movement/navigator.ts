@@ -344,11 +344,21 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     w.path = path;
   }
 
+  /** Another agent is on this plaza node, or is heading to it, for a break. */
+  function breakHeld(w: Walker, node: string): boolean {
+    for (const o of walkers.values()) {
+      if (o === w || o.view.gone) continue;
+      if (o.goal.kind === "spot" && o.goal.node === node) return true;
+    }
+    return false;
+  }
+
   function nearestFreeSafe(w: Walker): string | null {
     let best: { node: string; total: number } | null = null;
     for (const node of plazaNodes) {
       const owner = safeOwner.get(node);
       if (owner !== undefined && owner !== w.view.id) continue;
+      if (breakHeld(w, node)) continue;
       const p = cheapest(w, node);
       if (p !== null && (best === null || p.total < best.total - 1e-9)) {
         best = { node, total: p.total };
@@ -422,8 +432,16 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       claimArea(w, area);
     }
     // On break with the workstation reserved: the break spot is where it goes instead.
+    // A plaza node held as another agent's safe point is not shared: the break agent yields.
     if (w.breakNode !== null && w.goal.kind === "slot") {
-      w.goal = { kind: "spot", node: w.breakNode };
+      const node = w.breakNode;
+      const owner = safeOwner.get(node);
+      const shared =
+        plazaNodes.includes(node) &&
+        (breakHeld(w, node) || (owner !== undefined && owner !== w.view.id));
+      if (!shared) {
+        w.goal = { kind: "spot", node };
+      }
     }
     plan(w);
   }
