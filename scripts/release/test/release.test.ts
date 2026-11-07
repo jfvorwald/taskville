@@ -264,13 +264,14 @@ describe("installing the tarball", () => {
       let ready = false;
       for (let i = 0; i < 100 && !ready; i++) {
         if (child.exitCode !== null) break;
+        // /health needs read scope, so an unauthenticated 401 still means the engine is up.
         ready = await fetch(`${base}/health`).then(
-          (r) => r.ok,
+          () => true,
           () => false,
         );
         if (!ready) await new Promise((r) => setTimeout(r, 300));
       }
-      expect(ready, "installed engine never became healthy").toBe(true);
+      expect(ready, "installed engine never started answering").toBe(true);
       const page = await fetch(`${base}/`);
       expect(page.status).toBe(200);
       expect(await page.text()).toContain('id="root"');
