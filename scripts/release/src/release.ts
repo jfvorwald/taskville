@@ -128,8 +128,46 @@ interface LockFacts {
   importers: Map<string, string>;
   /** Importer dependency ids listed under `optionalDependencies`. */
   optional: Set<string>;
-  /** Package keys restricted to some os or cpu (pnpm skips these on other platforms). */
-  restricted: Set<string>;
+  /** Package key to its os/cpu/libc restrictions (pnpm skips these on other platforms). */
+  restricted: Map<string, Restriction>;
+}
+
+/** The os, cpu and libc lists of a package; pnpm lists may hold negations such as `!win32`. */
+type Restriction = Partial<Record<"os" | "cpu" | "libc", string[]>>;
+
+/** The machine an install runs on. libc is only known on linux. */
+export interface Platform {
+  os: string;
+  cpu: string;
+  libc?: string;
+}
+
+function currentPlatform(): Platform {
+  const platform: Platform = { os: process.platform, cpu: process.arch };
+  if (process.platform === "linux") {
+    const report = process.report?.getReport() as
+      | { header?: { glibcVersionRuntime?: string } }
+      | undefined;
+    platform.libc = report?.header?.glibcVersionRuntime ? "glibc" : "musl";
+  }
+  return platform;
+}
+
+/** A field matches when the value is listed or, for negation-only lists, not negated. */
+function listMatches(list: string[], value: string): boolean {
+  if (list.includes(`!${value}`)) return false;
+  const listed = list.filter((item) => !item.startsWith("!"));
+  return listed.length === 0 || listed.includes(value);
+}
+
+/** True when any restricted field rules this platform out, so pnpm does not install the package. */
+function excludes(restriction: Restriction | undefined, platform: Platform): boolean {
+  if (restriction === undefined) return false;
+  return (["os", "cpu", "libc"] as const).some((field) => {
+    const list = restriction[field];
+    const value = platform[field];
+    return list !== undefined && value !== undefined && !listMatches(list, value);
+  });
 }
 
 /** Importer groups pnpm installs; the others (config, package manager) are not in node_modules. */
@@ -144,14 +182,15 @@ function lockFacts(text: string): LockFacts {
     integrity: new Map(),
     importers: new Map(),
     optional: new Set(),
-    restricted: new Set(),
+    restricted: new Map(),
   };
   let section = "";
   let importer = "";
   let group = "";
   let dependency = "";
   let key = "";
-  for (const line of text.split("\n")) {
+  // pnpm writes the package manager's own lock as a leading document; node_modules has only the last.
+  for (const line of (text.split(/^---\s*$/m).at(-1) as string).split("\n")) {
     if (/^[a-z]\w*:/.test(line)) {
       section = line.slice(0, line.indexOf(":"));
       continue;
@@ -176,13 +215,20 @@ function lockFacts(text: string): LockFacts {
         );
       }
     } else if (section === "packages" || section === "snapshots") {
-      const entry = /^ {2}(?! )(.+?):\s*$/.exec(line);
+      const entry = /^ {2}(?! )(.+?):(?:\s*\{\})?\s*$/.exec(line);
+      const restriction = /^ {4}(os|cpu|libc):\s*\[(.*)\]\s*$/.exec(line);
       const integrity = /^ {4}resolution:.*integrity:\s*([^,}\s]+)/.exec(line);
       if (entry !== null) {
         key = `${section}:${unquote(entry[1] as string)}`;
         facts.keys.add(key);
       } else if (integrity !== null) facts.integrity.set(key, integrity[1] as string);
-      else if (/^ {4}(os|cpu):/.test(line)) facts.restricted.add(key);
+      else if (restriction !== null) {
+        const list = (restriction[2] as string).split(",").map(unquote).filter(Boolean);
+        facts.restricted.set(key, {
+          ...facts.restricted.get(key),
+          [restriction[1] as string]: list,
+        });
+      }
     }
   }
   return facts;
@@ -192,16 +238,30 @@ function lockFacts(text: string): LockFacts {
  * The installed lockfile must agree with the committed one. It is a subset (pnpm leaves out
  * packages for other platforms), so a byte compare would refuse healthy installs: every installed
  * package key, package integrity and importer resolution must instead match the committed
- * lockfile. The only omission allowed is a platform skip: an optional dependency whose package is
- * os/cpu-restricted in the committed lockfile and absent from the installed packages.
+ * lockfile, and every committed package key, snapshot key and importer resolution must be present.
+ * The only omission allowed is a platform skip: a package (or an optional dependency on one) whose
+ * committed os/cpu/libc restriction excludes the given platform.
  */
-export function checkInstalledLock(committedYaml: string, installedYaml: string): void {
+export function checkInstalledLock(
+  committedYaml: string,
+  installedYaml: string,
+  platform: Platform = currentPlatform(),
+): void {
   const pinned = lockFacts(committedYaml);
   const installed = lockFacts(installedYaml);
   const differs = "node_modules/.pnpm/lock.yaml differs from pnpm-lock.yaml";
   const stray = [...installed.keys].filter((k) => !pinned.keys.has(k));
   if (stray.length > 0) {
     throw new Error(`${differs} (${stray.slice(0, 3).join(", ")}); run pnpm install.`);
+  }
+  const unplatformed = (k: string): boolean => {
+    // Snapshot keys carry peer suffixes; the restriction lives on the package entry.
+    const base = `packages:${k.slice(k.indexOf(":") + 1).replace(/\(.*$/, "")}`;
+    return excludes(pinned.restricted.get(base), platform);
+  };
+  const missing = [...pinned.keys].filter((k) => !installed.keys.has(k) && !unplatformed(k));
+  if (missing.length > 0) {
+    throw new Error(`${differs} (missing ${missing.slice(0, 3).join(", ")}); run pnpm install.`);
   }
   const integrity = [...installed.keys].filter(
     (k) => pinned.integrity.get(k) !== installed.integrity.get(k),
@@ -211,11 +271,11 @@ export function checkInstalledLock(committedYaml: string, installedYaml: string)
     throw new Error(`${differs}: integrity changed (${names.join(", ")}); run pnpm install.`);
   }
   const skipped = (id: string, resolution: string): boolean => {
-    // A platform skip: an optional dependency on an os/cpu-restricted package that is not installed.
+    // A platform skip: an optional dependency on a package this platform is excluded from.
     const name = id.slice(id.indexOf(" ") + 1);
     const version = (resolution.split(" -> ")[1] ?? "").replace(/\(.*$/, "");
     const key = `packages:${name}@${version}`;
-    return pinned.optional.has(id) && pinned.restricted.has(key) && !installed.keys.has(key);
+    return pinned.optional.has(id) && unplatformed(key) && !installed.keys.has(key);
   };
   const importers = [
     ...[...installed.importers].filter(([k, v]) => pinned.importers.get(k) !== v),
