@@ -7,7 +7,8 @@ import { checkInstalledLock } from "../src/release.ts";
 // not only package keys. Red-phase tests.
 //
 // Contract under test: scripts/release/src/release.ts exports
-//   checkInstalledLock(committedYaml: string, installedYaml: string): void
+//   checkInstalledLock(committedYaml: string, installedYaml: string,
+//     platform?: { os: string; cpu: string; libc?: string }): void
 // which throws an Error (message names "integrity", "importer", or lock.yaml for the matching
 // kind of disagreement) when the installed lockfile (node_modules/.pnpm/
 // lock.yaml) disagrees with the committed one on a package key, a package integrity value, or an
@@ -76,6 +77,11 @@ const healthy = committed
   )
   .replace(/\n {2}'@pnpm\/exe\.linux-x64@12\.4\.2':\n {4}optional: true\n/, "\n");
 
+type Platform = { os: string; cpu: string; libc?: string };
+// Pinned so outcomes do not depend on the host: `healthy` omits the linux-x64 binary, which a
+// linux x64 host (CI) must install.
+const MAC: Platform = { os: "darwin", cpu: "arm64" };
+
 describe("checkInstalledLock", () => {
   it("accepts an identical lockfile", () => {
     expect(() => checkInstalledLock(committed, committed)).not.toThrow();
@@ -83,29 +89,31 @@ describe("checkInstalledLock", () => {
 
   it("accepts an install that omits other platforms' optional packages", () => {
     expect(healthy).not.toContain("exe.linux-x64");
-    expect(() => checkInstalledLock(committed, healthy)).not.toThrow();
+    expect(() => checkInstalledLock(committed, healthy, MAC)).not.toThrow();
   });
 
   it("accepts a committed lockfile that only gained a comment", () => {
-    expect(() => checkInstalledLock(`# touched\n${committed}\n# end\n`, healthy)).not.toThrow();
+    expect(() =>
+      checkInstalledLock(`# touched\n${committed}\n# end\n`, healthy, MAC),
+    ).not.toThrow();
   });
 
   it("refuses a changed package integrity value", () => {
     const tampered = healthy.replace("sha512-AAAA", "sha512-ZZZZ");
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/integrity/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/integrity/i);
   });
 
   it("refuses a changed importer version", () => {
     const tampered = healthy.replace("version: 3.0.1\n", "version: 3.0.0\n");
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/importer/i);
   });
 
   it("refuses a changed importer specifier", () => {
     const tampered = healthy.replace("specifier: ^3.0.1", "specifier: ^3.0.0");
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/importer/i);
   });
 
   it("refuses an importer dependency the committed lockfile does not have", () => {
@@ -114,12 +122,12 @@ describe("checkInstalledLock", () => {
       "      left-pad:\n        specifier: 1.3.0\n        version: 1.3.0\n      is-even:\n        specifier: 1.0.0\n        version: 1.0.0\n",
     );
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/importer/i);
   });
 
   it("still refuses a package key the committed lockfile does not pin", () => {
     const tampered = healthy.replace("left-pad@1.3.0:", "left-pad@1.3.1:");
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/lock\.yaml|pnpm-lock/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/lock\.yaml|pnpm-lock/i);
   });
 
   it("accepts this repository's real installed lockfile", () => {
@@ -144,13 +152,13 @@ describe("checkInstalledLock omissions (roborev 7219)", () => {
       "    resolution: {}\n",
     );
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/integrity/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/integrity/i);
   });
 
   it("refuses a package entry whose resolution line is gone entirely", () => {
     const tampered = healthy.replace("    resolution: {integrity: sha512-BBBB}\n", "");
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/integrity/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/integrity/i);
   });
 
   it("refuses a dependency the installed importer omits", () => {
@@ -159,7 +167,7 @@ describe("checkInstalledLock omissions (roborev 7219)", () => {
       "",
     );
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/importer/i);
   });
 
   it("refuses a whole importer the installed lockfile omits", () => {
@@ -167,7 +175,7 @@ describe("checkInstalledLock omissions (roborev 7219)", () => {
     const end = healthy.indexOf("\npackages:");
     const tampered = healthy.slice(0, at) + healthy.slice(end);
     expect(tampered).not.toBe(healthy);
-    expect(() => checkInstalledLock(committed, tampered)).toThrow(/importer/i);
+    expect(() => checkInstalledLock(committed, tampered, MAC)).toThrow(/importer/i);
   });
 
   it("accepts an optional dependency pnpm skipped for this platform", () => {
@@ -194,8 +202,6 @@ describe("checkInstalledLock omissions (roborev 7219)", () => {
 //   checkInstalledLock(committedYaml: string, installedYaml: string,
 //     platform?: { os: string; cpu: string; libc?: string }): void
 // defaulting to the real platform (process.platform, process.arch, detected libc).
-type Platform = { os: string; cpu: string; libc?: string };
-const MAC: Platform = { os: "darwin", cpu: "arm64" };
 const LINUX: Platform = { os: "linux", cpu: "x64", libc: "glibc" };
 
 interface Binary {
