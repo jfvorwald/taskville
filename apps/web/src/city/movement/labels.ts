@@ -36,6 +36,7 @@ export function labelRows(
   presentationFor: (id: string) => Presentation | undefined,
   urgent: ReadonlySet<string> = new Set(),
   crew: ReadonlySet<string> = new Set(),
+  onBreak: ReadonlySet<string> = new Set(),
 ): MovementLabel[] {
   return entries.map((e) => {
     const p = presentationFor(e.id);
@@ -47,6 +48,7 @@ export function labelRows(
       state: p?.state ?? "idle",
       urgent: urgent.has(e.id),
       ...(crew.has(e.id) ? { kind: "subagent" as const } : {}),
+      ...(onBreak.has(e.id) ? { onBreak: true } : {}),
     };
   });
 }

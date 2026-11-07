@@ -62,6 +62,8 @@ export interface NavAgent {
   readonly queued: boolean;
   /** Finished departing; drop it from the scene and call `prune`. */
   readonly gone: boolean;
+  /** Walking back from a bar break: 0 at the bar to 1 at the workstation (the wobble); else null. */
+  readonly returnProgress: number | null;
 }
 
 export interface NavigatorOptions {
@@ -110,6 +112,7 @@ type Goal =
   | { kind: "queue"; area: AreaId }
   | { kind: "safe"; node: string }
   | { kind: "spot"; node: string }
+  | { kind: "home" }
   | { kind: "exit"; node: string };
 
 interface Walker {
@@ -123,7 +126,10 @@ interface Walker {
     slotId: string | null;
     queued: boolean;
     gone: boolean;
+    returnProgress: number | null;
   };
+  /** Length of the walk back from a bar break when it began, or 0 when not walking back from one. */
+  returnTotal: number;
   /** Position on the street centerline; `view` adds the lane offset. */
   lx: number;
   lz: number;
@@ -176,6 +182,9 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     slotsByArea.set(s.areaId, list);
   }
   const anchorOf = new Map(layout.areas.map((a) => [a.id, a.anchorId]));
+  const barNodes = new Set(
+    layout.breakSites.filter((s) => s.id === "bar").flatMap((s) => s.spots.map((p) => p.nodeId)),
+  );
   const plazaNodes = layout.graph.nodes.filter((n) => n.kind === "plaza").map((n) => n.id);
   let lastTick: number | undefined;
 
@@ -305,6 +314,8 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     switch (g.kind) {
       case "stay":
         return null;
+      case "home":
+        return { node: layout.plazaNodeId };
       case "slot":
         return { node: g.slot.nodeId };
       case "queue": {
@@ -425,7 +436,14 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     releaseSafe(w);
     const area = w.area;
     if (area === null) {
-      w.goal = { kind: "stay" };
+      // No workstation to hold: a break goes straight to its spot, and the walk back is to the plaza.
+      if (w.breakNode !== null && !breakShared(w, w.breakNode)) {
+        w.goal = { kind: "spot", node: w.breakNode };
+      } else if (w.goal.kind === "spot") {
+        w.goal = { kind: "home" };
+      } else if (w.goal.kind !== "home") {
+        w.goal = { kind: "stay" };
+      }
       plan(w);
       return;
     }
@@ -513,7 +531,9 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         slotId: null,
         queued: false,
         gone: false,
+        returnProgress: null,
       },
+      returnTotal: 0,
       lx: start.x,
       lz: start.z,
       offX: 0,
@@ -680,6 +700,12 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     v.z = w.lz + w.offZ;
     const moving = w.path.length > 0;
     v.onTheWay = moving && !w.departing && !w.hold;
+    if (w.returnTotal > 0 && moving && !w.departing) {
+      v.returnProgress = Math.min(1, Math.max(0, 1 - remaining(w) / w.returnTotal));
+    } else {
+      w.returnTotal = 0;
+      v.returnProgress = null;
+    }
     if (w.departing) v.state = "departing";
     else if (moving) v.state = w.firstTrip ? "arriving" : "walking";
     else if (w.noPath || w.hold) v.state = "stuck";
@@ -729,6 +755,11 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         ) {
           continue;
         }
+        // Leaving the bar on foot starts the wobbly walk back; any other change ends it.
+        const leavingBar =
+          w.breakNode !== null && barNodes.has(w.breakNode) && breakNode === null && !isNew;
+        const atBar = leavingBar && w.path.length === 0;
+        w.returnTotal = 0;
         w.breakNode = breakNode;
         w.hold = hold;
         w.area = area;
@@ -752,6 +783,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
           fresh.push(w);
         } else {
           retarget(w);
+          if (atBar) w.returnTotal = remaining(w);
         }
       }
       for (const w of walkers.values()) {

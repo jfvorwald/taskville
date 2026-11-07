@@ -16,8 +16,10 @@ import { AgentsLayer } from "../agents/index.ts";
 import { agentLabel } from "../agents/label.ts";
 import type { AgentLabelEntry, AgentView, Placement } from "../agents/types.ts";
 import { troubleDetail } from "../attention/detail.ts";
+import { breakSpots, useBreakPlan } from "../breaks/usePlan.ts";
 import { useAttributedView } from "../crew/strict-attribution/index.ts";
 import { TeamDecorations } from "../crew/teams/TeamDecorations.tsx";
+import { CITY_LAYOUT } from "../layout/index.ts";
 import { presentationEpoch } from "../runtime/epoch.ts";
 import { rebuildPresentation } from "../runtime/rebuild.ts";
 import { agentAnchorId } from "./AgentLabels.tsx";
@@ -25,6 +27,7 @@ import { crewLabelEntries, type LabelStore, labelRows, movementLabels } from "./
 import { buildModels } from "./models.ts";
 import { createNavigator, type Navigator, type PresentationState } from "./navigator.ts";
 import { loadActivityAreas, usePrefersReducedMotion } from "./settings.ts";
+import { wobbleOffset } from "./wobble.ts";
 
 export interface CityAgentsProps {
   store?: DataStore;
@@ -107,17 +110,29 @@ export function CityAgents({
     return p;
   }, []);
 
+  // M9.08: the break plan, about once a second (never per frame); its spots become intents.
+  const plan = useBreakPlan({ store });
+  const spots = useMemo(() => breakSpots(plan, CITY_LAYOUT), [plan]);
+
   const activity = state?.activity;
   const models = useMemo(
     () =>
       state === null || activity === undefined
         ? null
         : buildModels(
-            { agents, activity, attention, tasks: state.tasks, teams: state.teams },
+            {
+              agents,
+              activity,
+              attention,
+              tasks: state.tasks,
+              teams: state.teams,
+              breaks: plan.agents,
+              breakSpots: spots,
+            },
             table,
             placementFor,
           ),
-    [agents, activity, attention, table, placementFor, state],
+    [agents, activity, attention, table, placementFor, state, plan, spots],
   );
 
   // A departing bot keeps its last look until it has walked out of the city.
@@ -145,6 +160,7 @@ export function CityAgents({
   const crewIds = useRef<ReadonlySet<string>>(new Set());
   const activeCrewIds = useRef<ReadonlySet<string>>(new Set());
   const urgent = useRef<ReadonlySet<string>>(new Set());
+  const onBreak = useRef<ReadonlySet<string>>(new Set());
   const shown = useRef(new Map<string, { state: PresentationState; onTheWay: boolean }>());
   const anchorPoint = useRef<[number, number, number]>([0, 0, 0]);
 
@@ -155,6 +171,7 @@ export function CityAgents({
         (id) => nav.get(id),
         urgent.current,
         crewIds.current,
+        onBreak.current,
       ),
     );
   }, [labels, nav]);
@@ -168,12 +185,18 @@ export function CityAgents({
       p.x = a.x;
       p.z = a.z;
       p.heading = a.heading;
+      // The tipsy sway on the walk back from the bar: sideways of the heading, none when reduced.
+      if (a.returnProgress !== null) {
+        const sway = wobbleOffset(a.returnProgress, reduced);
+        p.x += Math.cos(a.heading) * sway;
+        p.z -= Math.sin(a.heading) * sway;
+      }
       point[0] = p.x;
       point[1] = p.y + (offsets.current.get(a.id) ?? 0);
       point[2] = p.z;
       anchors.setAnchor(agentAnchorId(a.id), point);
     }
-  }, [nav, anchors, placementFor]);
+  }, [nav, anchors, placementFor, reduced]);
 
   const onLabels = useCallback(
     (next: readonly AgentLabelEntry[]) => {
@@ -218,12 +241,13 @@ export function CityAgents({
       });
     crewEntries.current = [...crewLabelEntries(models.crew), ...retained];
     crewIds.current = new Set(crewEntries.current.map((entry) => entry.id));
+    onBreak.current = new Set(plan.agents.keys());
     urgent.current = new Set(
       attention.filter((record) => record.level === "needs_you").map((record) => record.agentId),
     );
     publishPositions();
     publishLabels();
-  }, [models, nav, publishPositions, publishLabels, anchors, state, attention]);
+  }, [models, nav, publishPositions, publishLabels, anchors, state, attention, plan]);
 
   useEffect(
     () => () => {

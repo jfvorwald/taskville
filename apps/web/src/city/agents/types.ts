@@ -1,3 +1,5 @@
+import type { BreakActivity } from "../breaks/types.ts";
+
 // What the block agents need to know about one agent. The store is wired in by the lead
 // (M3.02 data layer, M3.06 navigation), so these are plain structural types defined here; the
 // domain's `Agent`, activity and attention records map onto them with a small selector.
@@ -28,6 +30,8 @@ export interface AttentionView {
   readonly kind?: string;
   /** When the record began, epoch milliseconds; the pulse runs on the time since. */
   readonly sinceMs?: number;
+  /** M9.08: what the agent is doing on its break; swaps the waiting emote for a break emote. */
+  readonly breakActivity?: BreakActivity;
 }
 
 /**
