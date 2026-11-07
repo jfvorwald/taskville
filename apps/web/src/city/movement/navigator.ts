@@ -25,6 +25,11 @@ export type PresentationState =
 /** What an agent shows once it stands still, from the recorded state. */
 export type RestState = "working" | "waiting" | "idle";
 
+/** Where an agent on break stands: a spot at a break site (by graph node) or a plaza node. */
+export type BreakDestination =
+  | { readonly kind: "site"; readonly nodeId: string }
+  | { readonly kind: "plaza"; readonly index: number };
+
 /** What the recorded state asks of one agent. */
 export interface NavIntent {
   readonly id: string;
@@ -35,6 +40,8 @@ export interface NavIntent {
   /** Needs you: stop at the nearest safe point (or stay at the workstation). */
   readonly hold?: boolean;
   readonly rest?: RestState;
+  /** On break: walk here from the workstation (the slot stays reserved); absent ends the break. */
+  readonly breakSpot?: BreakDestination;
   /** A subagent's parent: it appears at, and leaves by, the parent's building. */
   readonly parentId?: string;
 }
@@ -102,6 +109,7 @@ type Goal =
   | { kind: "slot"; slot: WorkstationSlot }
   | { kind: "queue"; area: AreaId }
   | { kind: "safe"; node: string }
+  | { kind: "spot"; node: string }
   | { kind: "exit"; node: string };
 
 interface Walker {
@@ -128,6 +136,8 @@ interface Walker {
   area: AreaId | null;
   safeNode: string | null;
   hold: boolean;
+  /** The break destination as a graph node, or null when not on break. */
+  breakNode: string | null;
   rest: RestState;
   departing: boolean;
   firstTrip: boolean;
@@ -303,6 +313,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         return { node: spot.node, free: spot };
       }
       case "safe":
+      case "spot":
       case "exit":
         return { node: g.node };
     }
@@ -333,11 +344,30 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     w.path = path;
   }
 
+  /** Another agent is on this plaza node, or is heading to it, for a break. */
+  function breakHeld(w: Walker, node: string): boolean {
+    for (const o of walkers.values()) {
+      if (o === w || o.view.gone) continue;
+      if (o.goal.kind === "spot" && o.goal.node === node) return true;
+    }
+    return false;
+  }
+
+  /** A plaza break node is held as another agent's safe point or claimed by another break. */
+  function breakShared(w: Walker, node: string): boolean {
+    const owner = safeOwner.get(node);
+    return (
+      plazaNodes.includes(node) &&
+      (breakHeld(w, node) || (owner !== undefined && owner !== w.view.id))
+    );
+  }
+
   function nearestFreeSafe(w: Walker): string | null {
     let best: { node: string; total: number } | null = null;
     for (const node of plazaNodes) {
       const owner = safeOwner.get(node);
       if (owner !== undefined && owner !== w.view.id) continue;
+      if (breakHeld(w, node)) continue;
       const p = cheapest(w, node);
       if (p !== null && (best === null || p.total < best.total - 1e-9)) {
         best = { node, total: p.total };
@@ -368,6 +398,19 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       }
       // Already standing at its workstation or in line: it stops right there.
       if (atRest(w) && (w.goal.kind === "slot" || w.goal.kind === "queue")) return;
+      // Standing at a plaza break node: that is already a safe point, so it stays.
+      if (
+        atRest(w) &&
+        w.goal.kind === "spot" &&
+        plazaNodes.includes(w.goal.node) &&
+        !safeOwner.has(w.goal.node)
+      ) {
+        safeOwner.set(w.goal.node, w.view.id);
+        w.safeNode = w.goal.node;
+        w.goal = { kind: "safe", node: w.goal.node };
+        plan(w);
+        return;
+      }
       const node = nearestFreeSafe(w);
       if (node === null) {
         w.goal = { kind: "stay" };
@@ -396,6 +439,14 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       leaveQueue(w);
       releaseSlot(w);
       claimArea(w, area);
+    }
+    // On break with the workstation reserved: the break spot is where it goes instead.
+    // A plaza node held as another agent's safe point is not shared: the break agent yields.
+    if (w.breakNode !== null && w.goal.kind === "slot") {
+      const node = w.breakNode;
+      if (!breakShared(w, node)) {
+        w.goal = { kind: "spot", node };
+      }
     }
     plan(w);
   }
@@ -474,6 +525,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
       area: intent.area ?? intent.initialArea ?? null,
       safeNode: null,
       hold: false,
+      breakNode: null,
       rest: intent.rest ?? "working",
       departing: false,
       firstTrip: true,
@@ -484,6 +536,13 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     walkers.set(intent.id, w);
     listCache = null;
     return w;
+  }
+
+  /** The graph node of a break destination, or null when the layout has no such place. */
+  function breakNodeOf(dest: BreakDestination | undefined): string | null {
+    if (dest === undefined) return null;
+    if (dest.kind === "plaza") return plazaNodes[dest.index] ?? null;
+    return nodeById(layout, dest.nodeId) ? dest.nodeId : null;
   }
 
   function moveTo(w: Walker, at: Waypoint) {
@@ -628,6 +687,9 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     else v.state = w.rest;
   }
 
+  /** The break spot an area change cancelled, per agent, ignored until the intent changes it. */
+  const cancelledSpot = new Map<string, string>();
+
   return {
     sync(intents, syncOptions = {}) {
       const seen = new Set<string>();
@@ -641,7 +703,33 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         const area = intent.area ?? w.area;
         const revived = w.departing;
         w.rest = intent.rest ?? "working";
-        if (!isNew && !revived && hold === w.hold && area === w.area) continue;
+        // New work somewhere else ends the break.
+        const spotKey =
+          intent.breakSpot === undefined
+            ? undefined
+            : intent.breakSpot.kind === "plaza"
+              ? `plaza:${intent.breakSpot.index}`
+              : `site:${intent.breakSpot.nodeId}`;
+        if (spotKey === undefined || cancelledSpot.get(intent.id) !== spotKey) {
+          cancelledSpot.delete(intent.id);
+        }
+        if (spotKey !== undefined && area !== w.area) cancelledSpot.set(intent.id, spotKey);
+        const spot = cancelledSpot.has(intent.id) ? undefined : intent.breakSpot;
+        const breakNode = area === w.area ? breakNodeOf(spot) : null;
+        // A plaza break that yielded resumes once its node frees.
+        const resumable =
+          breakNode !== null && w.goal.kind !== "spot" && !breakShared(w, breakNode);
+        if (
+          !isNew &&
+          !revived &&
+          !resumable &&
+          hold === w.hold &&
+          area === w.area &&
+          breakNode === w.breakNode
+        ) {
+          continue;
+        }
+        w.breakNode = breakNode;
         w.hold = hold;
         w.area = area;
         if (revived) {
