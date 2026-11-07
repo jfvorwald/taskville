@@ -1,0 +1,105 @@
+name: Release
+
+# Builds the release tarball from a fresh install, then proves it installs and runs on a clean
+# runner that has no checkout of the source beyond the harness (M7.28, S-3 option C part 2).
+# Not on every PR: it runs on demand, when a version tag is pushed, and on PRs that change the
+# release path itself.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release/**
+      - tests/e2e/release/**
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment the release is stamped for
+        type: choice
+        options: [production, staging]
+        default: production
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      playwright-version: ${{ steps.playwright.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Reads the pnpm version from packageManager in package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.8.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the release
+        env:
+          # A tag push has no inputs, so it builds the production release.
+          RELEASE_ENVIRONMENT: ${{ inputs.environment || 'production' }}
+        run: pnpm release --out release-out --environment "$RELEASE_ENVIRONMENT"
+      # The clean runner installs exactly the Playwright the repo's lockfile pins (listed under both
+      # packages and snapshots, hence sort -u).
+      - name: Read the locked Playwright version
+        id: playwright
+        run: |
+          version="$(sed -n 's/^  playwright@\([0-9][0-9A-Za-z.+-]*\):$/\1/p' pnpm-lock.yaml | sort -u)"
+          if [ "$(printf '%s\n' "$version" | wc -l)" -ne 1 ] || [ -z "$version" ]; then
+            echo "expected exactly one playwright version in pnpm-lock.yaml, got: '$version'" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: release-out
+          if-no-files-found: error
+
+  # A fresh runner: no pnpm install, no build, and only the harness and the one hook fixture it
+  # reads are checked out. The tarball comes from the build job.
+  clean-install:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /tests/e2e/release/
+            /fixtures/claude-code/subagent/parallel.jsonl
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: release-out
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.8.2
+      # Beside the harness, so its dynamic `import("playwright")` resolves; not saved anywhere.
+      - name: Install Playwright and Chromium
+        env:
+          PLAYWRIGHT_VERSION: ${{ needs.build.outputs.playwright-version }}
+        run: |
+          npm install --prefix tests/e2e/release --no-save --no-package-lock --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION"
+          cd tests/e2e/release
+          npx playwright install --with-deps chromium
+      - name: Run the clean-install harness
+        run: node tests/e2e/release/clean-install.ts release-out --receipt receipt.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: clean-install-receipt
+          path: receipt.json
+          if-no-files-found: warn

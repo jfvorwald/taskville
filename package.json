@@ -16,6 +16,7 @@
     "perf:unit": "node --test tests/perf/",
     "release": "node scripts/release/src/main.ts",
     "test:release": "vitest run --root scripts/release",
+    "test:release:install": "node tests/e2e/release/clean-install.ts",
     "bootstrap": "node scripts/bootstrap/src/main.ts",
     "retro": "node scripts/retro/src/main.ts",
     "taskville": "node --max-semi-space-size=8 apps/cli/src/main.ts",
