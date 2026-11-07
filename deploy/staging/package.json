@@ -1,0 +1,17 @@
+{
+  "name": "@taskville/staging-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/worker.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project @taskville/staging-worker"
+  },
+  "dependencies": {
+    "@taskville/demo": "workspace:*",
+    "@taskville/domain": "workspace:*",
+    "@taskville/protocol": "workspace:*"
+  }
+}

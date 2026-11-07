@@ -291,6 +291,18 @@ importers:
         specifier: 2.3.0
         version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5)
 
+  deploy/staging:
+    dependencies:
+      '@taskville/demo':
+        specifier: workspace:*
+        version: link:../../packages/demo
+      '@taskville/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@taskville/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+
   packages/adapters:
     dependencies:
       '@taskville/protocol':
