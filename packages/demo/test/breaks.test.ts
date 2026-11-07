@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // M9.06: the `breaks` scenario. Most agents end their turns and stay waiting for minutes, one
 // later gets work back, and another later needs the user, so a viewer sees breaks start, a chat,
 // and breaks end. Assumed API: `scenario: "breaks"` (default `"default"`) on DemoOptions and
@@ -126,5 +127,52 @@ describe("breaks scenario (M9.06)", () => {
 
   it("emits only valid demo-provenance events", () => {
     for (const event of breaksEvents(42)) expect(event.provenance).toBe("demo");
+  });
+});
+
+describe("breaks scenario source event keys (roborev 7278)", () => {
+  const keyOf = (e: { projectId: string; sourceId: string; sourceEventId: string }): string =>
+    `${e.projectId}\u0000${e.sourceId}\u0000${e.sourceEventId}`;
+  const keysFor = (scenario: "default" | "breaks", startAtMs?: number): Set<string> =>
+    new Set(
+      generateDemo({
+        seed: 7,
+        pace: CALM,
+        durationMs: 20 * MIN,
+        scenario,
+        ...(startAtMs === undefined ? {} : { startAtMs }),
+      })
+        .flatMap((s) => s.events)
+        .map(keyOf),
+    );
+
+  it("never reuses a default-scenario key for the same seed and start time (default epoch)", () => {
+    const defaults = keysFor("default");
+    const shared = [...keysFor("breaks")].filter((k) => defaults.has(k));
+    expect(shared).toEqual([]);
+  });
+
+  it("never reuses a default-scenario key for the same seed and an explicit start time", () => {
+    const start = DEMO_EPOCH_MS + 12_345;
+    const defaults = keysFor("default", start);
+    const shared = [...keysFor("breaks", start)].filter((k) => defaults.has(k));
+    expect(shared).toEqual([]);
+  });
+
+  it("still repeats the same keys when the same breaks run is generated twice", () => {
+    expect([...keysFor("breaks")]).toEqual([...keysFor("breaks")]);
+  });
+
+  it("keeps the default stream for seed 7 byte-identical (pinned from the pre-fix code)", () => {
+    const events = generateDemo({ seed: 7, pace: CALM, durationMs: 20 * MIN }).flatMap(
+      (s) => s.events,
+    );
+    expect(events).toHaveLength(160);
+    expect(createHash("sha256").update(JSON.stringify(events)).digest("hex")).toBe(
+      "9847d802e97de2271ac6a4ba65bf11aa9b7b787ef0e36e6ff2f3bb7ba493f8dc",
+    );
+    expect(runOffline({ seed: 7, pace: CALM, durationMs: 20 * MIN }).stateHash).toBe(
+      "9:f47208a1d1d0f6fa40be8e601ad530d60ef6eb90d15d444dd01fdc9194b12cfa",
+    );
   });
 });
