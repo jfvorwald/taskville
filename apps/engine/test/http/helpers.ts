@@ -8,7 +8,9 @@ export const ORIGIN = `http://127.0.0.1:${PORT}`;
 export const CLI_TOKEN = "cli-token-0123456789abcdefghijklmnopqrstuvwxyzAB";
 export const BRIDGE_TOKEN = "bridge-token-0123456789abcdefghijklmnopqrstuvwxy";
 
-export function makeApp(extra: Partial<Pick<AppOptions, "staticDir" | "health" | "version">> = {}) {
+export function makeApp(
+  extra: Partial<Pick<AppOptions, "staticDir" | "health" | "version" | "release">> = {},
+) {
   const logLines: string[] = [];
   const logger = pino({ level: "debug" }, { write: (line: string) => logLines.push(line) });
   const pairing = new PairingStore();
