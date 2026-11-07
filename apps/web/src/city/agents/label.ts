@@ -31,10 +31,10 @@ export function agentLabel(v: AgentView): AgentLabel {
 
 /**
  * The secondary note for an agent the break plan has on a break (M9.04). Only a label that reads
- * exactly "Waiting" gets one; the status itself never changes (ARCHITECTURE 2.2).
+ * exactly "Waiting" or "Idle" (a normal Stop) gets one; the status itself never changes (ARCHITECTURE 2.2).
  */
 export function breakNote(status: string, onBreak: boolean): string | null {
-  return onBreak && status === "Waiting" ? "on break" : null;
+  return onBreak && (status === "Waiting" || status === "Idle") ? "on break" : null;
 }
 
 function labelName(v: AgentView): string {
