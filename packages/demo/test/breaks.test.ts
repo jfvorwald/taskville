@@ -23,6 +23,8 @@ const breaksEvents = (seed: number): StoredEnvelope[] =>
     "demo",
   );
 
+const breaksEventsFor = breaksEvents;
+
 const at = (event: StoredEnvelope): number => Date.parse(event.occurredAt);
 
 /** Agents with a waiting attention record and no needs-you record at `now`. */
@@ -35,14 +37,17 @@ function waitingAt(state: ProjectState, now: number): Set<string> {
 }
 
 /** The first stretch longer than three minutes where the same four or more agents all wait. */
-function longBreak(events: StoredEnvelope[]): { agents: Set<string>; from: number; to: number } {
+function longBreak(
+  events: StoredEnvelope[],
+  only: (agentId: string) => boolean = () => true,
+): { agents: Set<string>; from: number; to: number } {
   let run: { agents: Set<string>; from: number; to: number } | undefined;
   for (let now = DEMO_EPOCH_MS; now <= DEMO_EPOCH_MS + DURATION_MS; now += SAMPLE_MS) {
     const state = replay(
       "demo",
       events.filter((e) => at(e) <= now),
     );
-    const waiting = waitingAt(state, now);
+    const waiting = new Set([...waitingAt(state, now)].filter(only));
     const kept =
       run === undefined ? waiting : new Set([...run.agents].filter((id) => waiting.has(id)));
     if (run !== undefined && kept.size >= 4) run = { agents: kept, from: run.from, to: now };
@@ -174,5 +179,84 @@ describe("breaks scenario source event keys (roborev 7278)", () => {
     expect(runOffline({ seed: 7, pace: CALM, durationMs: 20 * MIN }).stateHash).toBe(
       "9:f47208a1d1d0f6fa40be8e601ad530d60ef6eb90d15d444dd01fdc9194b12cfa",
     );
+  });
+});
+
+describe("breaks scenario entity IDs never collide with the default (roborev 7297)", () => {
+  const SEED = 7;
+  const defaultEvents = (): StoredEnvelope[] =>
+    toStoredEvents(
+      generateDemo({ seed: SEED, pace: CALM, durationMs: DURATION_MS }).flatMap((s) => s.events),
+      "demo",
+    );
+
+  /** Every entity identifier an event carries, by kind: envelope fields and payload references. */
+  function idsByKind(events: StoredEnvelope[]): Record<string, Set<string>> {
+    const kinds: Record<string, Set<string>> = {
+      agent: new Set(),
+      session: new Set(),
+      task: new Set(),
+      team: new Set(),
+      toolCall: new Set(),
+      request: new Set(),
+    };
+    const add = (kind: string, value: unknown): void => {
+      if (typeof value === "string") kinds[kind]?.add(value);
+    };
+    for (const e of events) {
+      const p = e.payload as Record<string, unknown>;
+      add("agent", e.agentId);
+      add("session", e.sessionId);
+      add("task", e.taskId);
+      for (const key of ["parentAgentId", "leadAgentId", "fromAgentId", "toAgentId"])
+        add("agent", p[key]);
+      if (Array.isArray(p.agentIds)) for (const id of p.agentIds) add("agent", id);
+      add("team", p.teamId);
+      add("toolCall", p.toolCallId);
+      add("request", p.requestId);
+    }
+    return kinds;
+  }
+
+  it.each(["agent", "session", "task", "team", "toolCall", "request"])(
+    "the breaks stream shares no %s ID with the default stream (same seed and project)",
+    (kind) => {
+      const base = idsByKind(defaultEvents())[kind] as Set<string>;
+      const breaks = idsByKind(breaksEventsFor(SEED))[kind] as Set<string>;
+      expect(base.size, `default emits ${kind} IDs`).toBeGreaterThan(0);
+      // The breaks scenario has no tasks or teams today; disjointness still guards them.
+      if (kind !== "task" && kind !== "team")
+        expect(breaks.size, `breaks emits ${kind} IDs`).toBeGreaterThan(0);
+      expect([...breaks].filter((id) => base.has(id))).toEqual([]);
+    },
+  );
+
+  it("replaying both streams into one project keeps two distinct sets of agents, each with its own source", () => {
+    const base = defaultEvents();
+    const breaks = breaksEventsFor(SEED);
+    const raw = (scenario?: "breaks") =>
+      generateDemo({
+        seed: SEED,
+        pace: CALM,
+        durationMs: DURATION_MS,
+        ...(scenario === undefined ? {} : { scenario }),
+      }).flatMap((step) => step.events);
+    const both = toStoredEvents([...raw(), ...raw("breaks")], "demo");
+    const state = replay("demo", both);
+    const agents = Object.values(state.agents);
+    const baseAgents = agents.filter((a) => a.sourceId === `demo:${SEED}`);
+    const breaksAgents = agents.filter((a) => a.sourceId === `demo:breaks:${SEED}`);
+    const baseIds = idsByKind(base).agent as Set<string>;
+    const breaksIds = idsByKind(breaks).agent as Set<string>;
+    expect(baseAgents.map((a) => a.id).sort()).toEqual([...baseIds].sort());
+    expect(breaksAgents.map((a) => a.id).sort()).toEqual([...breaksIds].sort());
+    expect(agents).toHaveLength(baseAgents.length + breaksAgents.length);
+    expect(breaksAgents.every((a) => a.registered)).toBe(true);
+    expect(breaksAgents.length).toBeGreaterThanOrEqual(6);
+
+    // The breaks agents still reach the long-wait window inside the combined project.
+    const found = longBreak(both, (id) => breaksIds.has(id));
+    expect(found.agents.size).toBeGreaterThanOrEqual(4);
+    expect(found.to - found.from).toBeGreaterThan(3 * MIN);
   });
 });
