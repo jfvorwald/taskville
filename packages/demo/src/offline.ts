@@ -10,7 +10,7 @@ import {
   storedEnvelopeSchema,
 } from "@taskville/protocol";
 import type { Pace } from "./pace.ts";
-import { type DemoEvent, generateDemo } from "./scenario.ts";
+import { type DemoEvent, type DemoScenario, generateDemo } from "./scenario.ts";
 
 /**
  * Stores input events the way ingest would for this demo: validated and checked against the
@@ -59,6 +59,8 @@ export interface OfflineOptions {
   readonly durationMs: number;
   readonly projectId?: string;
   readonly startAtMs?: number;
+  /** Omitted means the default scenario. */
+  readonly scenario?: DemoScenario;
 }
 
 export interface OfflineRun {

@@ -34,9 +34,15 @@ export interface DemoStep {
   readonly events: readonly DemoEvent[];
 }
 
+/** `default` is the six-agent workday; `breaks` leaves most agents waiting for minutes (M9.06). */
+export type DemoScenario = "default" | "breaks";
+export const DEMO_SCENARIOS: readonly DemoScenario[] = ["default", "breaks"];
+
 export interface DemoOptions {
   readonly seed: number;
   readonly pace: Pace;
+  /** Which scenario to run; omitted means `default`. Unknown names throw. */
+  readonly scenario?: DemoScenario;
   readonly projectId?: string;
   /** Epoch milliseconds of simulated time zero; defaults to DEMO_EPOCH_MS for offline runs. */
   readonly startAtMs?: number;
@@ -126,6 +132,10 @@ function weightedIndex(weights: readonly number[], u: number): number {
 /** Steps of the scenario, endless unless `durationMs` is given (steps with `atMs < durationMs`). */
 export function* demoSteps(options: DemoOptions & { durationMs?: number }): Generator<DemoStep> {
   const { seed, pace } = options;
+  const scenario: string = options.scenario ?? "default";
+  if (!(DEMO_SCENARIOS as readonly string[]).includes(scenario)) {
+    throw new Error(`Unknown demo scenario "${scenario}": use ${DEMO_SCENARIOS.join(" or ")}`);
+  }
   const projectId = options.projectId ?? "demo";
   const startAtMs = options.startAtMs ?? DEMO_EPOCH_MS;
   const rng: Rng = seededRng(seed);
@@ -520,6 +530,56 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
       ),
     ];
   };
+
+  /**
+   * The `breaks` scenario (M9.06). Everyone works briefly, then all but Brook end their turns and
+   * wait for several minutes while Brook keeps working, so a viewer sees breaks start. Cyd then
+   * gets work back (a chat), Brook later raises a needs-you the same way the default scenario
+   * does, and once it closes the rest return to work and the cycle repeats.
+   */
+  function* breaksScript(): Script {
+    const sleepers = [ada, cyd, dee, eli, fay];
+    for (const a of team) yield* arrive(a);
+    for (;;) {
+      for (const a of team) {
+        const file = rng.pick(FILES);
+        yield* tool(a, rng.pick(["Edit", "Write"]), `Edit ${file}`, [file]);
+      }
+      for (const a of sleepers) yield [ev("session.turn_ended", {}, { agent: a })];
+      const breakEnd = at + rng.int(5, 7) * MIN;
+      while (at < breakEnd) {
+        const file = rng.pick(FILES);
+        yield* tool(brook, rng.pick(["Edit", "Write"]), `Edit ${file}`, [file]);
+      }
+      yield [ev("session.prompt_submitted", {}, { agent: cyd })];
+      for (let i = rng.int(2, 3); i > 0; i--) {
+        const file = rng.pick(FILES);
+        yield* tool(cyd, "Edit", `Edit ${file}`, [file]);
+      }
+      yield needsYou(brook);
+      while (brook.hold !== undefined && at < brook.hold.until) {
+        const file = rng.pick(FILES);
+        yield* tool(cyd, "Edit", `Edit ${file}`, [file]);
+      }
+      if (brook.hold !== undefined) yield brook.hold.close();
+      brook.hold = undefined;
+      blockedSessions.delete(brook.sessionId);
+      for (const a of sleepers.filter((m) => m !== cyd))
+        yield [ev("session.prompt_submitted", {}, { agent: a })];
+    }
+  }
+
+  if (scenario === "breaks") {
+    const script = breaksScript();
+    for (;;) {
+      if (options.durationMs !== undefined && at >= options.durationMs) return;
+      const beat = script.next().value;
+      // Unreachable: the breaks script yields a beat at every step and never ends.
+      if (beat === null || beat === undefined) throw new Error("demo: a step produced no events");
+      yield { atMs: at, events: beat };
+      at += rng.int(pace.changeMinMs, pace.changeMaxMs);
+    }
+  }
 
   let arrivals = 0;
   for (;;) {

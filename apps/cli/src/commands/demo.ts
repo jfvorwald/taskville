@@ -1,5 +1,7 @@
 import {
+  DEMO_SCENARIOS,
   DemoIngestError,
+  type DemoScenario,
   type Pace,
   parseDuration,
   parsePace,
@@ -12,10 +14,10 @@ import { type Io, parseCommand, printJson, required, type Values } from "../cont
 import { CliError, EXIT } from "../errors.ts";
 
 const RUN =
-  "taskville demo run --seed <n> --duration <sim-time> --offline [--pace <pace>] [--json]";
+  "taskville demo run --seed <n> --duration <sim-time> --offline [--pace <pace>] [--scenario <default|breaks>] [--json]";
 const START =
-  "taskville demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <sim-time>]";
-const PACE = { pace: { type: "string" } } as const;
+  "taskville demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <sim-time>] [--scenario <default|breaks>]";
+const PACE = { pace: { type: "string" }, scenario: { type: "string" } } as const;
 
 /** `taskville demo run` and `demo start` (contracts/cli.md, FR-013), on the M1.15 producer. */
 export async function demo(io: Io, args: string[]): Promise<number> {
@@ -51,6 +53,19 @@ function paceOf(values: Values, usage: string): Pace {
     );
   }
   return pace;
+}
+
+/** `--scenario`: `default` when absent; any name other than the known ones exits 1. */
+function scenarioOf(values: Values, usage: string): DemoScenario {
+  if (values.scenario === undefined) return "default";
+  const found = DEMO_SCENARIOS.find((name) => name === values.scenario);
+  if (found === undefined) {
+    throw new CliError(
+      EXIT.failure,
+      `Unknown --scenario "${String(values.scenario)}": use ${DEMO_SCENARIOS.join(" or ")}\nUsage: ${usage}`,
+    );
+  }
+  return found;
 }
 
 /** A simulated duration above zero that a run can actually reach (a huge number parses to Infinity). */
@@ -91,8 +106,9 @@ async function run(io: Io, args: string[]): Promise<number> {
   }
   const seed = seedOf(values, RUN);
   const pace = paceOf(values, RUN);
+  const scenario = scenarioOf(values, RUN);
   const durationMs = durationOf(required(values, "duration", RUN), RUN);
-  const result = runOffline({ seed, pace, durationMs });
+  const result = runOffline({ seed, pace, durationMs, scenario });
   if (context.json) {
     printJson(io, {
       seed,
@@ -145,6 +161,7 @@ async function start(io: Io, args: string[]): Promise<number> {
       ? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
       : seedOf(values, START);
   const pace = paceOf(values, START);
+  const scenario = scenarioOf(values, START);
   const speed = typeof values.speed === "string" ? Number(values.speed) : 1;
   if (
     typeof values.speed === "string" &&
@@ -162,6 +179,7 @@ async function start(io: Io, args: string[]): Promise<number> {
   const options = {
     seed,
     pace,
+    scenario,
     projectId,
     speed,
     startAtMs: Date.now(),
