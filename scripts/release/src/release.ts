@@ -119,38 +119,92 @@ function refuseSecrets(directory: string): void {
   }
 }
 
-/** The package keys of a pnpm lockfile (its `packages` and `snapshots` sections). */
-function lockKeys(text: string): Set<string> {
-  const keys = new Set<string>();
+interface LockFacts {
+  /** `packages:<key>` and `snapshots:<key>` for every package entry. */
+  keys: Set<string>;
+  /** Package key to its resolution integrity, where it has one. */
+  integrity: Map<string, string>;
+  /** `<importer> <dependency>` to its `specifier -> version` resolution. */
+  importers: Map<string, string>;
+}
+
+const unquote = (text: string): string => text.trim().replace(/^'(.*)'$/, "$1");
+
+/** Reads the parts of a pnpm lockfile the release guard compares (pnpm writes a regular layout). */
+function lockFacts(text: string): LockFacts {
+  const facts: LockFacts = { keys: new Set(), integrity: new Map(), importers: new Map() };
   let section = "";
+  let importer = "";
+  let dependency = "";
+  let key = "";
   for (const line of text.split("\n")) {
-    if (/^[a-z]\w*:/.test(line)) section = line.slice(0, line.indexOf(":"));
-    else if (section === "packages" || section === "snapshots") {
-      const match = /^ {2}(?! )'?(.+?)'?:\s*$/.exec(line);
-      if (match !== null) keys.add(`${section}:${match[1]}`);
+    if (/^[a-z]\w*:/.test(line)) {
+      section = line.slice(0, line.indexOf(":"));
+      continue;
+    }
+    if (section === "importers") {
+      const entry = /^ {2}(?! )(.+?):\s*$/.exec(line);
+      const name = /^ {6}(?! )(.+?):\s*$/.exec(line);
+      const field = /^ {8}(specifier|version):\s*(.+?)\s*$/.exec(line);
+      if (entry !== null) importer = unquote(entry[1] as string);
+      else if (name !== null) dependency = unquote(name[1] as string);
+      else if (field !== null) {
+        const id = `${importer} ${dependency}`;
+        const [specifier = "", version = ""] = (facts.importers.get(id) ?? "").split(" -> ");
+        const value = unquote(field[2] as string);
+        facts.importers.set(
+          id,
+          field[1] === "specifier" ? `${value} -> ${version}` : `${specifier} -> ${value}`,
+        );
+      }
+    } else if (section === "packages" || section === "snapshots") {
+      const entry = /^ {2}(?! )(.+?):\s*$/.exec(line);
+      const integrity = /^ {4}resolution:.*integrity:\s*([^,}\s]+)/.exec(line);
+      if (entry !== null) {
+        key = `${section}:${unquote(entry[1] as string)}`;
+        facts.keys.add(key);
+      } else if (integrity !== null) facts.integrity.set(key, integrity[1] as string);
     }
   }
-  return keys;
+  return facts;
 }
 
 /**
- * The installed packages must be the ones pnpm-lock.yaml pins. The installed lockfile is a subset
- * (pnpm leaves out packages for other platforms), so a byte compare would refuse healthy installs:
- * every installed package must instead appear in the committed lockfile. Returns its sha256.
+ * The installed lockfile must agree with the committed one. It is a subset (pnpm leaves out
+ * packages for other platforms), so a byte compare would refuse healthy installs: every installed
+ * package key, package integrity and importer resolution must instead match the committed
+ * lockfile, and omissions are fine.
  */
+export function checkInstalledLock(committedYaml: string, installedYaml: string): void {
+  const pinned = lockFacts(committedYaml);
+  const installed = lockFacts(installedYaml);
+  const differs = "node_modules/.pnpm/lock.yaml differs from pnpm-lock.yaml";
+  const stray = [...installed.keys].filter((k) => !pinned.keys.has(k));
+  if (stray.length > 0) {
+    throw new Error(`${differs} (${stray.slice(0, 3).join(", ")}); run pnpm install.`);
+  }
+  const integrity = [...installed.integrity].filter(([k, v]) => pinned.integrity.get(k) !== v);
+  if (integrity.length > 0) {
+    const names = integrity.slice(0, 3).map(([k]) => k);
+    throw new Error(`${differs}: integrity changed (${names.join(", ")}); run pnpm install.`);
+  }
+  const importers = [...installed.importers].filter(([k, v]) => pinned.importers.get(k) !== v);
+  if (importers.length > 0) {
+    const names = importers.slice(0, 3).map(([k]) => k);
+    throw new Error(
+      `${differs}: importer resolution changed (${names.join(", ")}); run pnpm install.`,
+    );
+  }
+}
+
+/** The installed packages must be the ones pnpm-lock.yaml pins. Returns its sha256. */
 function checkLockfile(root: string): string {
   const committed = readFileSync(join(root, "pnpm-lock.yaml"));
   const installedPath = join(root, "node_modules/.pnpm/lock.yaml");
   if (!existsSync(installedPath)) {
     throw new Error("node_modules/.pnpm/lock.yaml is missing; run pnpm install before a release.");
   }
-  const pinned = lockKeys(committed.toString("utf8"));
-  const stray = [...lockKeys(readFileSync(installedPath, "utf8"))].filter((k) => !pinned.has(k));
-  if (stray.length > 0) {
-    throw new Error(
-      `node_modules/.pnpm/lock.yaml differs from pnpm-lock.yaml (${stray.slice(0, 3).join(", ")}); run pnpm install.`,
-    );
-  }
+  checkInstalledLock(committed.toString("utf8"), readFileSync(installedPath, "utf8"));
   return sha256(committed);
 }
 
