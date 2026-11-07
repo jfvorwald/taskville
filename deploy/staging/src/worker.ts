@@ -257,11 +257,14 @@ const ROUTES: readonly { method: string; pattern: RegExp; handle: Handler }[] = 
     },
   },
   {
-    // No telemetry reaches staging, so every agent's cost is an explicit zero.
+    // No telemetry reaches staging, so no agent has a cost: the engine's answer for that.
     method: "GET",
     pattern: /^\/v1\/agents\/([^/]+)\/cost$/,
     handle: () =>
-      answer({ tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0 }),
+      Response.json(
+        { error: { code: "no_cost", message: "No telemetry reported cost for this agent" } },
+        { status: 404, headers: { "cache-control": "no-store" } },
+      ),
   },
   {
     method: "GET",
