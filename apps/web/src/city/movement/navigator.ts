@@ -353,6 +353,15 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     return false;
   }
 
+  /** A plaza break node is held as another agent's safe point or claimed by another break. */
+  function breakShared(w: Walker, node: string): boolean {
+    const owner = safeOwner.get(node);
+    return (
+      plazaNodes.includes(node) &&
+      (breakHeld(w, node) || (owner !== undefined && owner !== w.view.id))
+    );
+  }
+
   function nearestFreeSafe(w: Walker): string | null {
     let best: { node: string; total: number } | null = null;
     for (const node of plazaNodes) {
@@ -435,11 +444,7 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     // A plaza node held as another agent's safe point is not shared: the break agent yields.
     if (w.breakNode !== null && w.goal.kind === "slot") {
       const node = w.breakNode;
-      const owner = safeOwner.get(node);
-      const shared =
-        plazaNodes.includes(node) &&
-        (breakHeld(w, node) || (owner !== undefined && owner !== w.view.id));
-      if (!shared) {
+      if (!breakShared(w, node)) {
         w.goal = { kind: "spot", node };
       }
     }
@@ -682,6 +687,9 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     else v.state = w.rest;
   }
 
+  /** The break spot an area change cancelled, per agent, ignored until the intent changes it. */
+  const cancelledSpot = new Map<string, string>();
+
   return {
     sync(intents, syncOptions = {}) {
       const seen = new Set<string>();
@@ -696,8 +704,29 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         const revived = w.departing;
         w.rest = intent.rest ?? "working";
         // New work somewhere else ends the break.
-        const breakNode = area === w.area ? breakNodeOf(intent.breakSpot) : null;
-        if (!isNew && !revived && hold === w.hold && area === w.area && breakNode === w.breakNode) {
+        const spotKey =
+          intent.breakSpot === undefined
+            ? undefined
+            : intent.breakSpot.kind === "plaza"
+              ? `plaza:${intent.breakSpot.index}`
+              : `site:${intent.breakSpot.nodeId}`;
+        if (spotKey === undefined || cancelledSpot.get(intent.id) !== spotKey) {
+          cancelledSpot.delete(intent.id);
+        }
+        if (spotKey !== undefined && area !== w.area) cancelledSpot.set(intent.id, spotKey);
+        const spot = cancelledSpot.has(intent.id) ? undefined : intent.breakSpot;
+        const breakNode = area === w.area ? breakNodeOf(spot) : null;
+        // A plaza break that yielded resumes once its node frees.
+        const resumable =
+          breakNode !== null && w.goal.kind !== "spot" && !breakShared(w, breakNode);
+        if (
+          !isNew &&
+          !revived &&
+          !resumable &&
+          hold === w.hold &&
+          area === w.area &&
+          breakNode === w.breakNode
+        ) {
           continue;
         }
         w.breakNode = breakNode;
