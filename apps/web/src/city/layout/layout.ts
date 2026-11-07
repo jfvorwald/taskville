@@ -196,7 +196,8 @@ export function buildCityLayout(): CityLayout {
       (x): BreakProp => ({ kind: "stool", x, z: -CELL - 0.9, halfX: 0.25, halfZ: 0.25 }),
     ),
   ]);
-  addBreakSite("smoke", CELL, STREET_STEP, [-1.2, 0, 1.2], CELL - 0.6, Math.PI, [
+  // Smoke spots stand on the street side of the bench, facing it, so no walk edge crosses it.
+  addBreakSite("smoke", CELL, STREET_STEP, [-1.2, 0, 1.2], CELL - 3.2, 0, [
     { kind: "bench", x: 0, z: CELL - 1.8, halfX: 1.4, halfZ: 0.3 },
     { kind: "lamp", x: 2.8, z: CELL - 0.6, halfX: 0.15, halfZ: 0.15 },
   ]);
