@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-220: Watch the product with the session that builds it
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #412, #413 · **Recorded by:** Claude (lead)
+- **What happened:** The owner watched the lead session work for minutes while the town showed it idle and named after the directory. Only classified tools set activity, so unclassified Bash calls and new prompts left a session idle; every main session was called "taskville".
+- **Lesson:** Dogfood the live view during real work, not only with the demo; the demo exercises the mapped paths and hides the unmapped ones.
+- **Action:** #416 and #417.
+
+### L-219: A friendlier label can break the honesty rule
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #412 · **Recorded by:** Claude (lead)
+- **What happened:** M7.23 relabelled activity `unknown` as "Working". roborev rated it High: the constitution keeps unknown source states visible as unknown, and an existing test said so ("never as Working"); the red phase rewrote that test.
+- **Lesson:** When a red phase edits an existing assertion, treat it as a design change and check it against the constitution before green.
+- **Action:** label change reverted in #416.
+
 ### L-218: A security tradeoff the lead accepts can still be wrong; let the reviewer overrule it
 - **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #400 · **Recorded by:** Claude (lead)
 - **What happened:** The lead accepted putting the one-time pairing code on the opener's argv (decision #408, default accepted). roborev 7127 rated it High: another local user can read the process list and exchange the code first for a persistent session. The fix (osascript stdin on macOS, 0600 redirect page elsewhere) was small.
