@@ -1,3 +1,7 @@
 packages:
   - packages/*
   - apps/*
+  - deploy/*
+allowBuilds:
+  esbuild: true
+  workerd: true

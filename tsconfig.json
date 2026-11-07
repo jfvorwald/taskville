@@ -5,6 +5,8 @@
     "packages/*/test",
     "apps/*/src",
     "apps/*/test",
+    "deploy/*/src",
+    "deploy/*/test",
     "scripts/*/src",
     "scripts/*/test",
     "tests/perf",
