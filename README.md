@@ -107,6 +107,7 @@ Run the project checks with `pnpm check` (typecheck, lint, and unit tests).
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md)
+- [Runbook](docs/RUNBOOK.md): backup, compatibility, rollback, and promotion
 - [UI models and mockup archive](docs/ui/README.md)
 - [Constitution](.specify/memory/constitution.md)
 - [Feature specs](specs/)
