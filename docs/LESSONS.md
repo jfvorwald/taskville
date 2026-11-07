@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-228: Give long background runs an explicit timeout, or detach them
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #87 · **Recorded by:** lead
+- **What happened:** Claude Code background shells stop at 30 minutes by default and at most 2 hours. The cache keepalive was stopped at the default, an earlier wave run hit the limit, and the live engine started for the owner is bounded by it.
+- **Lesson:** Pass the longest timeout a run needs, run push-tier suites sequentially with a per-suite summary so a stop leaves partial results, and start anything meant to outlive the session outside the agent's shell.
+- **Action:** M7.06 push tier ran this way in about 8 minutes (docs/tasks/M7.06.md).
+
+### L-227: Confirm a hosted deploy with the owner before building it
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #86 · **Recorded by:** lead
+- **What happened:** The roadmap named private staging, the spike recommended a Cloudflare Worker, and decision #415 accepted it by default, but when the first deploy needed an Access token the owner asked why Taskville was being deployed and held it (#432).
+- **Lesson:** For a local-first product, a hosted environment is a scope choice. Ask for it explicitly, with its purpose and the cheaper local alternative, before building it, not when credentials are needed.
+- **Action:** Decision #432; G7 summary asks whether to resume or drop hosted staging.
+
+### L-226: `--home` picks the token, not the engine
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #85 · **Recorded by:** lead (roborev 7251, 7252)
+- **What happened:** The runbook's restore checks and `unpair` omitted `--home`, and even with it, `--url` and `TASKVILLE_URL` win over the home's `engine.json` (`apps/cli/src/context.ts`), so a check could hit another engine.
+- **Lesson:** Any procedure that names a non-default home must pass `--home` on every command and clear `TASKVILLE_URL`, and a rollback must call the old binary by path.
+- **Action:** Fixed in docs/RUNBOOK.md (PR #429).
+
+### L-225: Pin the platform in tests whose fixtures drop a platform binary
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #428 · **Recorded by:** lead (roborev 7242)
+- **What happened:** After the lockfile guard learned the current platform, a fixture missing the linux-x64 binary passed on the Mac and would have failed on the Ubuntu runner.
+- **Lesson:** When code depends on the host platform, take it as a parameter and pin it in every test; verify by forcing the default to the CI platform locally.
+- **Action:** Done in PR #433.
+
 ### L-224: A bundler flattens the tree, so never derive a path from a module's own depth
 - **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #421, #83 · **Recorded by:** Claude (lead)
 - **What happened:** M7.26 set the release directory as `new URL("../../", import.meta.url)` in `commands/serve.ts`. Correct in a checkout, but rolldown puts every module in `bin/taskville.js`, so every installed release would have reported itself as a dev build, silently. roborev passed it; the code reviewer, told to check the bundled layout, caught it.
