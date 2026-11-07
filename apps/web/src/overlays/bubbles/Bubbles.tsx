@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { BreakPlan } from "../../city/breaks/types.ts";
+import { useBreakPlan } from "../../city/breaks/usePlan.ts";
 import { agentAnchorId } from "../../city/movement/index.ts";
 import { SILENT_THRESHOLD_MS } from "../../data/domain.ts";
 import { useData } from "../../data/react.ts";
@@ -8,9 +10,11 @@ import { useTheme } from "../../themes/core/react.ts";
 import { useReducedMotion } from "../../wiring/index.ts";
 import { Anchored, AnchorLayer } from "../host/index.ts";
 import type { AnchorSource, OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { getSettingsStore } from "../settings/store.ts";
 import styles from "./bubbles.module.css";
 import { bubbleCandidates } from "./candidates.ts";
-import { type Bubble, selectBubbles } from "./select.ts";
+import { type BreakBubble, selectBubblesWithBreaks } from "./chatter.ts";
+import type { Bubble } from "./select.ts";
 
 /** How often the open quip windows are re-checked. Bubbles last 4 s, so this is coarse enough. */
 const TICK_MS = 500;
@@ -21,10 +25,13 @@ const ANCHOR_SETTLE_MS = 100;
 /** The same margin the layer uses, so "visible" here is what the layer would show. */
 const ANCHOR_MARGIN = 48;
 
+/** Paused activity bubbles sit this far into the 4 s fade (past the fade-in, in the hold). */
+const ACTIVITY_PAUSED_MS = 1000;
+
 /** A bubble and the key that restarts its fade: the agent plus the event behind the line. */
 interface Shown {
   key: string;
-  bubble: Bubble;
+  bubble: Bubble | BreakBubble;
   elapsedMs: number | undefined;
 }
 
@@ -50,6 +57,8 @@ function useBubbles(
   theme: string,
   store: DataStore,
   history: boolean,
+  plan: BreakPlan,
+  breakTime: boolean,
 ): readonly Shown[] {
   const records = useData((s) => s.attention, store);
   const requests = useData((s) => s.state?.requests, store);
@@ -63,7 +72,19 @@ function useBubbles(
           anchors.project(agentAnchorId(c.agentId), { margin: ANCHOR_MARGIN })?.visible === true,
       );
       const eventIds = new Map(candidates.map((c) => [c.agentId, c.eventId]));
-      const next = selectBubbles(candidates, { selectedAgentId, now, theme }).map((bubble) => {
+      const isVisible = (agentId: string) =>
+        anchors.project(agentAnchorId(agentId), { margin: ANCHOR_MARGIN })?.visible === true;
+      const picked = selectBubblesWithBreaks(
+        candidates,
+        {
+          conversations: plan.conversations,
+          agents: plan.agents,
+          chatterEnabled: breakTime,
+          isVisible,
+        },
+        { selectedAgentId, now, theme },
+      );
+      const next = picked.map((bubble) => {
         const candidate = candidates.find((item) => item.agentId === bubble.agentId);
         const record = records.find(
           (item) =>
@@ -72,17 +93,34 @@ function useBubbles(
         );
         const sinceMs =
           (candidate?.sinceMs ?? now) + (record?.kind === "silent" ? SILENT_THRESHOLD_MS : 0);
+        // Chatter pauses at the time since its turn began; an activity bubble pauses at the
+        // start of its hold (the frame at 0 is still faded out), so it is visible like live.
+        const breakStart =
+          bubble.level === "chatter"
+            ? plan.conversations.find((c) => c.a === bubble.agentId || c.b === bubble.agentId)
+                ?.turnStartedAt
+            : undefined;
         return {
-          key: `${bubble.agentId}:${eventIds.get(bubble.agentId)}`,
+          key:
+            bubble.level === "chatter" || bubble.level === "activity"
+              ? `${bubble.agentId}:${bubble.level}:${bubble.line}`
+              : `${bubble.agentId}:${eventIds.get(bubble.agentId)}`,
           bubble,
-          elapsedMs:
-            history && candidate ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0) : undefined,
+          elapsedMs: !history
+            ? undefined
+            : bubble.level === "activity"
+              ? ACTIVITY_PAUSED_MS
+              : breakStart !== undefined
+                ? Math.max(0, now - breakStart)
+                : candidate
+                  ? (quipElapsedMs({ ...candidate, sinceMs }, now) ?? 0)
+                  : undefined,
         };
       });
       setBubbles((prev) => (same(prev, next) ? prev : next));
     };
     update();
-    if (records.length === 0) return;
+    if (records.length === 0 && plan.agents.size === 0) return;
     const timer = setInterval(update, TICK_MS);
     // The camera writes the anchors every frame; settle them into one re-check instead.
     let settle: ReturnType<typeof setTimeout> | undefined;
@@ -97,7 +135,7 @@ function useBubbles(
       clearTimeout(settle);
       unsubscribe();
     };
-  }, [anchors, records, requests, selectedAgentId, theme, store, history]);
+  }, [anchors, records, requests, selectedAgentId, theme, store, history, plan, breakTime]);
   return bubbles;
 }
 
@@ -113,7 +151,22 @@ export function Bubbles({
 }: OverlayProps & { store?: DataStore }) {
   const theme = useTheme((s) => s.themeId);
   const reducedMotion = useReducedMotion();
-  const bubbles = useBubbles(anchors, selection.selectedId, theme, store, mode === "history");
+  const plan = useBreakPlan({ store });
+  const settings = getSettingsStore();
+  const { breakTime } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
+  const bubbles = useBubbles(
+    anchors,
+    selection.selectedId,
+    theme,
+    store,
+    mode === "history",
+    plan,
+    breakTime,
+  );
   return (
     <AnchorLayer source={anchors} gap={4} margin={ANCHOR_MARGIN}>
       {bubbles.map(({ key, bubble: b, elapsedMs }) => (

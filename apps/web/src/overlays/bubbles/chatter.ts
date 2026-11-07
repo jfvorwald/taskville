@@ -21,6 +21,8 @@ export interface BreakBubbleInput {
   agents: ReadonlyMap<string, AgentBreak>;
   /** The chatter setting (wired by M9.04). Off drops conversation bubbles. */
   chatterEnabled: boolean;
+  /** Whether an agent's bubble would show (on screen). Default: everyone is visible. */
+  isVisible?: (agentId: string) => boolean;
 }
 
 const byPair = (x: Conversation, y: Conversation): number =>
@@ -34,7 +36,7 @@ const byPair = (x: Conversation, y: Conversation): number =>
  */
 export function selectBubblesWithBreaks(
   candidates: readonly BubbleCandidate[],
-  { conversations, agents, chatterEnabled }: BreakBubbleInput,
+  { conversations, agents, chatterEnabled, isVisible = () => true }: BreakBubbleInput,
   options: SelectOptions,
 ): (Bubble | BreakBubble)[] {
   const bubbles: (Bubble | BreakBubble)[] = selectBubbles(candidates, options);
@@ -64,11 +66,14 @@ export function selectBubblesWithBreaks(
     });
   }
 
-  const first = chatterEnabled ? [...conversations].sort(byPair)[0] : undefined;
-  if (first && bubbles.length < MAX_BUBBLES) {
-    const { speakerId, line } = pickBanterLine({ conversation: first, theme });
-    if (!shown.has(speakerId)) {
-      bubbles.push({ agentId: speakerId, level: "chatter", line, fact: null });
+  if (chatterEnabled && bubbles.length < MAX_BUBBLES) {
+    for (const conversation of [...conversations].sort(byPair)) {
+      const { speakerId, line } = pickBanterLine({ conversation, theme });
+      if (!isVisible(speakerId)) continue;
+      if (!shown.has(speakerId)) {
+        bubbles.push({ agentId: speakerId, level: "chatter", line, fact: null });
+      }
+      break;
     }
   }
   return bubbles;

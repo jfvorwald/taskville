@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { useBreakPlan } from "../../city/breaks/usePlan.ts";
 import { useData } from "../../data/react.ts";
 import { type DataStore, dataStore } from "../../data/store.ts";
 import { ACTION_CARD_ID, ActionCard, type CardTarget } from "../../overlays/action-card/index.ts";
@@ -58,7 +59,9 @@ function PresentedActionCard(props: OverlayProps) {
 
 function PresentedAgentPanel(props: OverlayProps) {
   const { store } = useContext(Context);
-  return <AgentPanel {...props} store={store} />;
+  const plan = useBreakPlan({ store });
+  const onBreak = useMemo(() => new Set(plan.agents.keys()), [plan]);
+  return <AgentPanel {...props} store={store} onBreak={onBreak} />;
 }
 
 function PresentedAgentList(props: OverlayProps) {
