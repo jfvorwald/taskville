@@ -173,6 +173,43 @@ describe("planInputs", () => {
     ]);
   });
 
+  // roborev 7349: an idle agent with a live session and no waiting record has no waiting event, so
+  // the event that made it idle (the activity's `since`) seeds the planner: id `activity@<since>`.
+  it("seeds an idle agent with no waiting record from the activity's since", () => {
+    const since = "2026-10-31T10:00:20.000Z";
+    const input = planInputs(
+      source({
+        agents: [agent("i1")],
+        activity: { i1: { activity: "idle", since } } as unknown as PlanSource["activity"],
+        sessions: { s1: { agentId: "i1" } },
+      }),
+    );
+    expect(input.agents[0]).toMatchObject({
+      id: "i1",
+      rest: "idle",
+      level: null,
+      waitingEventId: `activity@${since}`,
+      waitingSince: Date.parse(since),
+      liveSession: true,
+    });
+  });
+
+  it("keeps the waiting record's event for an idle agent that has one", () => {
+    const since = "2026-10-31T10:00:30.000Z";
+    const input = planInputs(
+      source({
+        agents: [agent("i1")],
+        activity: {
+          i1: { activity: "idle", since: T },
+        } as unknown as PlanSource["activity"],
+        attention: [record("i1", "waiting", "turn_ended", since)],
+        sessions: { s1: { agentId: "i1" } },
+      }),
+    );
+    expect(input.agents[0]?.waitingEventId).toBe(`turn_ended@${since}`);
+    expect(input.agents[0]?.waitingSince).toBe(Date.parse(since));
+  });
+
   it("skips finished agents", () => {
     const input = planInputs(source({ agents: [agent("a1"), agent("gone", { finishedAt: T })] }));
     expect(input.agents.map((a) => a.id)).toEqual(["a1"]);

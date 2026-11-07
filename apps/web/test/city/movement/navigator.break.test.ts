@@ -391,3 +391,56 @@ describe("navigator break trips", () => {
     });
   });
 });
+
+// roborev 7349: agents with no workstation area walk back from a break to the plaza. They must not
+// all return to plaza:center. Rule: each returns to its own free plaza node (not a node held as a
+// needs-you safe point, nor one another agent holds or is heading to for a break); if no node is
+// free it stays where it is, at its break spot's access. No two resting agents share a position.
+describe("area-less agents ending breaks", () => {
+  it("return to distinct free plaza nodes, clear of a needs-you safe point", () => {
+    const bar = L.breakSites[0];
+    const spots = bar?.spots ?? [];
+    expect(spots.length).toBeGreaterThanOrEqual(3);
+    const ids = ["c1", "c2", "c3"];
+    const free = (id: string, extra: Partial<NavIntent> = {}): NavIntent => ({
+      id,
+      area: null,
+      rest: "waiting",
+      ...extra,
+    });
+    const nav = createNavigator();
+    const clock = { t: 0 };
+    const onBreak = () => [
+      free("n", { hold: true }),
+      ...ids.map((id, i) =>
+        free(id, { breakSpot: { kind: "site", nodeId: (spots[i] as { nodeId: string }).nodeId } }),
+      ),
+    ];
+    nav.sync(onBreak(), { place: true });
+    nav.tick(clock.t);
+    run(nav, clock, 90_000);
+    for (const [i, id] of ids.entries()) {
+      expect(dist(must(nav, id), spots[i] as { x: number; z: number })).toBeLessThan(1e-6);
+    }
+
+    nav.sync([free("n", { hold: true }), ...ids.map((id) => free(id))]);
+    run(nav, clock, 120_000);
+
+    const all = ["n", ...ids].map((id) => must(nav, id));
+    for (const a of all) expect(isWalking(a), `${a.id} still walking`).toBe(false);
+    for (const x of all) {
+      for (const y of all) {
+        if (x.id < y.id) {
+          expect(dist(x, y), `${x.id} and ${y.id} share a position`).toBeGreaterThan(0.1);
+        }
+      }
+    }
+    for (const id of ids) {
+      const a = must(nav, id);
+      expect(
+        plazaNodes.some((n) => dist(n, a) < 1e-6),
+        `${id} is on a plaza node`,
+      ).toBe(true);
+    }
+  });
+});
