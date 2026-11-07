@@ -85,12 +85,10 @@ function freeSpot(active: readonly Placed[], siteId: string | null, spots: numbe
  */
 function placeAll(segments: Segment[], input: BreakPlanInput): Placed[] {
   const sites = [...input.sites].sort((x, y) => compareIds(x.id, y.id));
-  const plazaActivities: BreakActivity[] = ["stroll", "juggle", "pigeons"];
-  if (input.night) plazaActivities.push("stargaze");
   const sitesOf = (kind: BreakSite["kind"]) => sites.filter((s) => s.kind === kind);
-  const options: BreakActivity[] = [...plazaActivities];
-  if (sitesOf("bar").length > 0) options.push("bar");
-  if (sitesOf("smoke").length > 0) options.push("smoke");
+  // Night is judged at each segment's start, so the list can differ from one segment to the next.
+  const isNight = (ms: number) =>
+    typeof input.night === "function" ? input.night(ms) : input.night;
 
   const ordered = [...segments].sort(
     (x, y) => x.startedAt - y.startedAt || compareIds(x.agentId, y.agentId),
@@ -100,6 +98,11 @@ function placeAll(segments: Segment[], input: BreakPlanInput): Placed[] {
 
   for (const segment of ordered) {
     active = active.filter((p) => p.segment.endsAt > segment.startedAt);
+    const plazaActivities: BreakActivity[] = ["stroll", "juggle", "pigeons"];
+    if (isNight(segment.startedAt)) plazaActivities.push("stargaze");
+    const options: BreakActivity[] = [...plazaActivities];
+    if (sitesOf("bar").length > 0) options.push("bar");
+    if (sitesOf("smoke").length > 0) options.push("smoke");
     const place = (
       activity: BreakActivity,
       siteId: string | null,
