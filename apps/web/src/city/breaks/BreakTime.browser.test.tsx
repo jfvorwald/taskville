@@ -42,6 +42,7 @@ afterEach(async () => {
   city = undefined;
   lightingController.setSetting("cycle");
   getSettingsStore().set("breakTime", true);
+  getSettingsStore().set("strictAttribution", false);
 });
 
 /** Seats one agent at its workstation, turns it Waiting at WAITING_SINCE + 9 s, returns its seat. */
@@ -158,4 +159,48 @@ describe("break time in the city", () => {
     // The recorded status text is untouched (constitution IV).
     expect(h.labels.getSnapshot().find((r) => r.id === "a1")?.status).toBe("Waiting");
   }, 40_000);
+
+  // roborev 7344: the planner reads the same attention view the city draws (strict applied).
+  describe("strict attribution", () => {
+    /** Waiting a1 plus an open, heuristically attributed permission request (strict hides it). */
+    async function waitingWithHeuristicRequest(h: Harness) {
+      await seatedAndWaiting(h);
+      const base = stateOf(
+        { a1: "waiting" },
+        { ids: ["a1"], openedAt: WAITING_SINCE + 5 * SECOND },
+      );
+      const requests = Object.fromEntries(
+        Object.entries(base.requests).map(([id, r]) => [id, { ...r, heuristic: true }]),
+      );
+      h.apply({ ...base, requests } as unknown as typeof base);
+      await h.frames(3);
+      h.clock.now = WAITING_SINCE + 125 * SECOND;
+      await h.frames(3);
+    }
+
+    it("sends a waiting agent on break when strict hides its heuristic needs-you", async () => {
+      getSettingsStore().set("strictAttribution", true);
+      const h = await mounted({ a1: "working" });
+      await waitingWithHeuristicRequest(h);
+      // The city shows the agent as Waiting (the request is hidden), and not urgent.
+      await expect
+        .poll(() => h.labels.getSnapshot().find((r) => r.id === "a1")?.status, POLL)
+        .toBe("Waiting");
+      expect(h.labels.getSnapshot().find((r) => r.id === "a1")?.urgent ?? false).toBe(false);
+      await expect
+        .poll(() => h.labels.getSnapshot().find((r) => r.id === "a1")?.onBreak, POLL)
+        .toBe(true);
+    }, 40_000);
+
+    it("keeps the agent at its desk when strict is off and the request counts", async () => {
+      getSettingsStore().set("strictAttribution", false);
+      const h = await mounted({ a1: "working" });
+      await waitingWithHeuristicRequest(h);
+      await expect
+        .poll(() => h.labels.getSnapshot().find((r) => r.id === "a1")?.urgent, POLL)
+        .toBe(true);
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(h.labels.getSnapshot().find((r) => r.id === "a1")?.onBreak ?? false).toBe(false);
+    }, 40_000);
+  });
 });

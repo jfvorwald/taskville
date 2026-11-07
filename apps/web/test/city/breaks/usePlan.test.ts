@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { BreakPlan } from "../../../src/city/breaks/types.ts";
-import { breakSpots, type PlanSource, planInputs } from "../../../src/city/breaks/usePlan.ts";
+import {
+  breakSpots,
+  type PlanSource,
+  planInputs,
+  plannerAttention,
+} from "../../../src/city/breaks/usePlan.ts";
 import { CITY_LAYOUT } from "../../../src/city/layout/index.ts";
 import type { Agent, Attention } from "../../../src/data/domain.ts";
 
@@ -206,5 +211,30 @@ describe("breakSpots", () => {
   it("has no entry for an agent that is not on break", () => {
     const plan: BreakPlan = { agents: new Map(), conversations: [] };
     expect(breakSpots(plan, CITY_LAYOUT).size).toBe(0);
+  });
+});
+
+// roborev 7344: the planner reads the attention view the city draws, with strict attribution applied.
+describe("plannerAttention", () => {
+  const heuristic = { ...record("a1", "needs_you", "permission", T, "r1"), heuristic: true };
+  const waiting = record("a1", "waiting", "turn_ended", T);
+
+  it("drops heuristic needs-you records under strict, so the planner sees the agent waiting", () => {
+    const attention = plannerAttention([heuristic, waiting] as Attention[], true);
+    expect(attention).toEqual([waiting]);
+    const input = planInputs(
+      source({ agents: [agent("a1")], activity: { a1: { activity: "waiting" } }, attention }),
+    );
+    expect(input.agents[0]).toMatchObject({ id: "a1", rest: "waiting", level: "waiting" });
+  });
+
+  it("returns the records untouched with strict off", () => {
+    const all = [heuristic, waiting] as Attention[];
+    expect(plannerAttention(all, false)).toEqual(all);
+  });
+
+  it("keeps recorded (non-heuristic) needs-you records under strict", () => {
+    const recorded = record("a1", "needs_you", "permission", T, "r2");
+    expect(plannerAttention([recorded, waiting], true)).toEqual([recorded, waiting]);
   });
 });
