@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-224: A bundler flattens the tree, so never derive a path from a module's own depth
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #421, #83 · **Recorded by:** Claude (lead)
+- **What happened:** M7.26 set the release directory as `new URL("../../", import.meta.url)` in `commands/serve.ts`. Correct in a checkout, but rolldown puts every module in `bin/taskville.js`, so every installed release would have reported itself as a dev build, silently. roborev passed it; the code reviewer, told to check the bundled layout, caught it.
+- **Lesson:** Resolve package paths from one module that sits at a fixed depth (`src/package-root.ts`), make the release build fail closed on any other `import.meta.url`, and test the installed package, not only the source layout.
+- **Action:** #423 (package-root), #424 (bundle guard, installed `/health` test), #430 (clean-machine install check).
+
+### L-223: Give the code reviewer the cross-ticket question roborev cannot see
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #421, #84 · **Recorded by:** Claude (lead)
+- **What happened:** roborev passed M7.26 and found three mediums on M7.03; the specialist reviewers found the bundle path bug (M7.26), a missing builtin `unsorted` project that would freeze the staging page, and a per-request CPU cost three times the Workers Free limit (M7.03). Each came from a brief that named a concrete question beyond the diff.
+- **Lesson:** Brief the code and security reviewers with the integration questions the diff alone cannot answer (other branch, deploy target limits, what the unchanged client expects).
+- **Action:** none, awareness only.
+
+### L-222: Cap review rounds on defense-in-depth checks and move the rest to a ticket
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #425 · **Recorded by:** Claude (lead)
+- **What happened:** The release lockfile guard drew new mediums in every roborev round (keys, then integrity and importers, then omissions, then platform match). The real control is a fresh frozen install on a clean runner.
+- **Lesson:** When each round finds a narrower bypass in a secondary check, merge the improvement at the cap and ticket the residue with the primary control named.
+- **Action:** #426 merged; residue in #428.
+
+### L-221: A workflow with only workflow_dispatch cannot run on its own PR
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #427 · **Recorded by:** Claude (lead)
+- **What happened:** The new release workflow could not be dispatched before merge; its first real run would have been on main. A paths-limited `pull_request` trigger gave it a run on the PR, which failed at once on a duplicate lockfile match that local checks missed.
+- **Lesson:** Give new workflows a paths-limited pull_request trigger so they run before merge.
+- **Action:** #430.
+
 ### L-220: Watch the product with the session that builds it
 - **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #412, #413 · **Recorded by:** Claude (lead)
 - **What happened:** The owner watched the lead session work for minutes while the town showed it idle and named after the directory. Only classified tools set activity, so unclassified Bash calls and new prompts left a session idle; every main session was called "taskville".
