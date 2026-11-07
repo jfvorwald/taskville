@@ -329,6 +329,68 @@ describe("break planner: activity timing", () => {
     for (const brk of found) expect(brk.siteId).toBeNull();
   });
 
+  it("judges night at a segment's start: a day segment stays a day activity after dusk", () => {
+    const many = crew(40);
+    let checked = 0;
+    for (const agent of many) {
+      const day = firstBreakAt(agent);
+      if (!day) continue;
+      const { startedAt, endsAt } = day.brk;
+      const dusk = startedAt + Math.floor((endsAt - startedAt) / 2);
+      for (const t of times(dusk, endsAt, 1000)) {
+        const brk = planAt(t, { agents: [agent], night: (ms) => ms >= dusk }).agents.get(agent.id);
+        expect(brk, `${agent.id} at ${t}`).toEqual(day.brk);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("offers stargazing to segments that start at or after dusk, and not before", () => {
+    const many = crew(40);
+    const dusk = SINCE + 10 * 60_000;
+    const night = (ms: number) => ms >= dusk;
+    const late = new Set<string>();
+    for (const t of times(SINCE + MAX_BREAK_DELAY_MS, SINCE + HALF_HOUR, 5000)) {
+      for (const [id, brk] of planAt(t, { agents: many, night }).agents) {
+        if (brk.activity !== "stargaze") continue;
+        expect(brk.startedAt, `${id} at ${t}`).toBeGreaterThanOrEqual(dusk);
+        expect(brk.siteId).toBeNull();
+        late.add(`${id}@${brk.startedAt}`);
+      }
+    }
+    expect(late.size).toBeGreaterThan(0);
+  });
+
+  it("judges night at a segment's start: a stargaze segment runs on after dawn", () => {
+    let checked = 0;
+    for (const agent of crew(40)) {
+      let star: AgentBreak | null = null;
+      for (const t of times(SINCE + MAX_BREAK_DELAY_MS, SINCE + HALF_HOUR, 5000)) {
+        const brk = planAt(t, { agents: [agent], night: true }).agents.get(agent.id);
+        if (brk && brk.activity === "stargaze") {
+          star = brk;
+          break;
+        }
+      }
+      if (!star) continue;
+      const dawn = star.startedAt + Math.floor((star.endsAt - star.startedAt) / 2);
+      for (const t of times(dawn, star.endsAt, 1000)) {
+        const brk = planAt(t, { agents: [agent], night: (ms) => ms < dawn }).agents.get(agent.id);
+        expect(brk, `${agent.id} at ${t}`).toEqual(star);
+        checked++;
+      }
+      // Segments that start after dawn are judged as day, so none of them is stargazing.
+      for (const t of times(dawn, SINCE + HALF_HOUR, 5000)) {
+        const brk = planAt(t, { agents: [agent], night: (ms) => ms < dawn }).agents.get(agent.id);
+        if (brk && brk.startedAt >= dawn) {
+          expect(brk.activity, `${agent.id} at ${t}`).not.toBe("stargaze");
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("uses every day activity somewhere across a crew and a half hour", () => {
     const many = crew(40);
     const seen = new Set<string>();

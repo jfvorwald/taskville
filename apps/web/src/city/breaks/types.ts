@@ -37,8 +37,11 @@ export interface BreakPlanInput {
   now: number;
   /** The "Break time" setting. Off gives an empty plan. */
   enabled: boolean;
-  /** Stargazing is only offered at night. */
-  night: boolean;
+  /**
+   * Stargazing is only offered at night, judged at each segment's start time. A boolean means
+   * night for all times; a function says whether a given time (ms) is night.
+   */
+  night: boolean | ((ms: number) => boolean);
   sites: readonly BreakSite[];
   /** Spots in the plaza for strolls, juggling, stargazing and pigeons. */
   plazaSpots: number;
