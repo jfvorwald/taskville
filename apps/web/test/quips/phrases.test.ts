@@ -14,6 +14,61 @@ const load = (name: string): Record<string, unknown> =>
     readFileSync(new URL(`../../src/quips/phrases/${name}.json`, import.meta.url), "utf8"),
   ) as Record<string, unknown>;
 
+const ACTIVITIES = ["bar", "smoke", "stroll", "juggle", "stargaze", "pigeons"] as const;
+
+// M9.03: banter (headlines and reactions) and per-activity lines, same character rules.
+function expectPlainLines(lines: unknown, min: number): void {
+  expect(Array.isArray(lines)).toBe(true);
+  const list = lines as string[];
+  expect(list.length).toBeGreaterThanOrEqual(min);
+  for (const line of list) {
+    expect(typeof line).toBe("string");
+    expect(line.trim()).toBe(line);
+    expect(line.length).toBeGreaterThan(0);
+    expect(line.length).toBeLessThanOrEqual(MAX_LINE);
+    for (const ch of line) {
+      const code = ch.codePointAt(0) ?? 0;
+      expect(code).toBeGreaterThanOrEqual(0x20);
+      expect(code === 0x2013 || code === 0x2014).toBe(false);
+      expect("<>&").not.toContain(ch);
+    }
+  }
+  expect(new Set(list).size).toBe(list.length);
+}
+
+describe("banter and activity phrases", () => {
+  for (const name of FILES) {
+    describe(name, () => {
+      it("has only the known top-level keys", () => {
+        expect(Object.keys(load(name)).sort()).toEqual([...LEVELS, "banter", "activities"].sort());
+      });
+      it("has at least six plain headlines", () => {
+        const banter = load(name).banter as Record<string, unknown>;
+        expectPlainLines(banter?.headlines, 6);
+      });
+      it("has at least six plain reactions", () => {
+        const banter = load(name).banter as Record<string, unknown>;
+        expectPlainLines(banter?.reactions, 6);
+      });
+      it("keeps headlines and reactions apart", () => {
+        const banter = load(name).banter as { headlines: string[]; reactions: string[] };
+        const heads = new Set(banter.headlines);
+        expect(banter.reactions.filter((r) => heads.has(r))).toEqual([]);
+      });
+      for (const activity of ACTIVITIES) {
+        it(`has at least two plain ${activity} lines`, () => {
+          const activities = load(name).activities as Record<string, unknown>;
+          expectPlainLines(activities?.[activity], 2);
+        });
+      }
+      it("has no other activity keys", () => {
+        const activities = load(name).activities as Record<string, unknown>;
+        expect(Object.keys(activities ?? {}).sort()).toEqual([...ACTIVITIES].sort());
+      });
+    });
+  }
+});
+
 describe("phrase data files", () => {
   for (const name of FILES) {
     describe(name, () => {
