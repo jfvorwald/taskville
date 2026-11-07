@@ -39,6 +39,12 @@ function capture() {
   return { logger, lines };
 }
 
+function warned(lines: string[]): boolean {
+  return lines
+    .map((l) => JSON.parse(l) as { level: number; msg: string })
+    .some((l) => l.level >= 40 && /release/i.test(l.msg));
+}
+
 async function healthRelease(release: ReturnType<typeof loadRelease>) {
   const { app } = makeApp({ release });
   const res = await app.request("/health", { headers: bearer(CLI_TOKEN) });
@@ -86,7 +92,7 @@ describe("loadRelease", () => {
     expect(warned.some((l) => l.level >= 40 && /release/i.test(l.msg))).toBe(true);
   });
 
-  it("falls back to dev when release.json has the wrong shape", () => {
+  it("falls back to dev and logs a warning when release.json has the wrong shape", () => {
     for (const body of [
       "[]",
       "null",
@@ -97,18 +103,20 @@ describe("loadRelease", () => {
       '{"id":"","environment":"staging"}',
     ]) {
       writeFileSync(join(dir, "release.json"), body);
-      const { logger } = capture();
+      const { logger, lines } = capture();
       expect(loadRelease({ dir, version: "0.0.0", logger }), body).toMatchObject({
         id: "dev",
         environment: "development",
       });
+      expect(warned(lines), body).toBe(true);
     }
   });
 
-  it("falls back to dev when release.json is a directory", () => {
+  it("falls back to dev and logs a warning when release.json is a directory", () => {
     mkdirSync(join(dir, "release.json"));
-    const { logger } = capture();
+    const { logger, lines } = capture();
     expect(loadRelease({ dir, version: "0.0.0", logger })).toMatchObject({ id: "dev" });
+    expect(warned(lines)).toBe(true);
   });
 });
 
