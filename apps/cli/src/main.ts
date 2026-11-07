@@ -18,12 +18,10 @@ import { status } from "./commands/status.ts";
 import { unpair } from "./commands/unpair.ts";
 import type { Io } from "./context.ts";
 import { CliError, EXIT } from "./errors.ts";
+import { PACKAGE_ROOT } from "./package-root.ts";
 
 /** The repository root when running from a source checkout (this file is apps/cli/src/main.ts). */
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-
-/** apps/cli in a checkout, the package root once installed: package.json and release.json live there. */
-const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 
 export type { Io } from "./context.ts";
 
@@ -140,6 +138,10 @@ export async function run(argv: string[], io: Io): Promise<number> {
 }
 
 if (import.meta.main) {
+  // An installed release package (release.json beside package.json) always serves its own client:
+  // an inherited TASKVILLE_WEB_DIR must not swap in another one, and there is no source to build.
+  const installedRelease = existsSync(join(PACKAGE_ROOT, "release.json"));
+  if (installedRelease) delete process.env.TASKVILLE_WEB_DIR;
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
     process.once(signal, () => controller.abort());
@@ -156,7 +158,7 @@ if (import.meta.main) {
     scheduleCleanup: (cleanup, delayMs) => {
       setTimeout(cleanup, delayMs).unref();
     },
-    sourceCheckout: existsSync(join(REPO_ROOT, "apps/web/package.json")),
+    sourceCheckout: !installedRelease && existsSync(join(REPO_ROOT, "apps/web/package.json")),
     buildWeb,
   }).then((code) => {
     process.exitCode = code;
