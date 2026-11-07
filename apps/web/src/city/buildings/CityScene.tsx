@@ -1,4 +1,5 @@
 import { CITY_LAYOUT, type CityLayout } from "../layout/index.ts";
+import { BreakProps } from "./BreakProps.tsx";
 import { Buildings } from "./Buildings.tsx";
 import { CityCamera } from "./CityCamera.tsx";
 import { Ground } from "./Ground.tsx";
@@ -24,6 +25,7 @@ export function CityScene({
       <Ground layout={layout} materials={materials} />
       <Buildings layout={layout} materials={materials} />
       <Scenery layout={layout} materials={materials} />
+      <BreakProps layout={layout} materials={materials} />
     </group>
   );
 }

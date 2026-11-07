@@ -1,5 +1,8 @@
 import type {
   AreaId,
+  BreakProp,
+  BreakSite,
+  BreakSpot,
   CityLayout,
   Footprint,
   Lamp,
@@ -12,8 +15,8 @@ import type {
 } from "./types.ts";
 
 // The city is a 3 x 3 grid of 10 m cells. The center cell is the plaza, the six work areas
-// take the other cells except the north and south middles, which stay open (trees). Streets run
-// on the cell borders, so every building has a street on every side.
+// take the other cells except the north and south middles, which hold the bar and the smoke
+// corner (M9.02). Streets run on the cell borders, so every building has a street on every side.
 const CELL = 10;
 const STREET_WIDTH = 2;
 const STREET_LINES = [-1.5, -0.5, 0.5, 1.5].map((n) => n * CELL);
@@ -23,6 +26,7 @@ const PLAZA_HALF = 3.5;
 const SLOT_COUNT = 4;
 const SLOT_SPACING = 1.2;
 const SLOT_OFFSET = 0.9;
+const BAR_SPOT_SPACING = 1.2;
 
 interface AreaSpec {
   id: AreaId;
@@ -158,8 +162,47 @@ export function buildCityLayout(): CityLayout {
     });
   }
 
+  // Break sites: the bar in the north middle cell and the smoke corner in the south middle cell.
+  // Each spot is a dead-end leaf joined only to the street node on the plaza side of its cell, so
+  // ordinary trips never route through a break spot.
+  const breakSites: BreakSite[] = [];
+  const addBreakSite = (
+    id: BreakSite["id"],
+    cz: number,
+    accessZ: number,
+    spotXs: number[],
+    spotZ: number,
+    facing: number,
+    props: BreakProp[],
+  ) => {
+    const accessId = streetId(0, accessZ);
+    const spots: BreakSpot[] = spotXs.map((x, index) => {
+      const nodeId = `break:${id}:${index}`;
+      addNode({ id: nodeId, x, z: spotZ, kind: "break" });
+      addEdge(nodeId, accessId);
+      return { id: `${id}:${index}`, siteId: id, index, x, z: spotZ, facing, nodeId };
+    });
+    breakSites.push({
+      id,
+      cell: { cx: 0, cz, halfX: CELL / 2, halfZ: CELL / 2 },
+      spots,
+      props,
+    });
+  };
+  const barXs = [-1.5, -0.5, 0.5, 1.5].map((n) => n * BAR_SPOT_SPACING);
+  addBreakSite("bar", -CELL, -STREET_STEP, barXs, -CELL, Math.PI, [
+    { kind: "counter", x: 0, z: -CELL - 2, halfX: 2.4, halfZ: 0.4 },
+    ...barXs.map(
+      (x): BreakProp => ({ kind: "stool", x, z: -CELL - 0.9, halfX: 0.25, halfZ: 0.25 }),
+    ),
+  ]);
+  addBreakSite("smoke", CELL, STREET_STEP, [-1.2, 0, 1.2], CELL - 0.6, Math.PI, [
+    { kind: "bench", x: 0, z: CELL - 1.8, halfX: 1.4, halfZ: 0.3 },
+    { kind: "lamp", x: 2.8, z: CELL - 0.6, halfX: 0.15, halfZ: 0.15 },
+  ]);
+
   // Scenery: a lamp at the front corners of every cell and the plaza corners; a tree at the
-  // outer back corner of every cell and in the two open cells.
+  // outer back corner of every cell and at the back corners of the two break cells.
   const lamps: Lamp[] = [];
   const trees: Tree[] = [];
   for (const a of areas) {
@@ -174,9 +217,8 @@ export function buildCityLayout(): CityLayout {
     for (const sz of [-1, 1]) lamps.push({ x: sx * PLAZA_HALF, z: sz * PLAZA_HALF });
   }
   for (const z of [-CELL, CELL]) {
-    trees.push({ x: -1.6, z: z - 0.8, scale: 1.2 });
-    trees.push({ x: 1.4, z: z + 1.2, scale: 0.9 });
-    trees.push({ x: 2.4, z: z - 1.6, scale: 1.1 });
+    trees.push({ x: -3.4, z: z + Math.sign(z) * 3.2, scale: 1.2 });
+    trees.push({ x: 3.4, z: z + Math.sign(z) * 3.2, scale: 0.9 });
   }
 
   const half = HALF_GROUND;
@@ -189,7 +231,7 @@ export function buildCityLayout(): CityLayout {
     graph: { nodes, edges },
     slots,
     props: { lamps, trees },
-    breakSites: [],
+    breakSites,
   };
 }
 

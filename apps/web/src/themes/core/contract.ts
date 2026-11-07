@@ -40,6 +40,9 @@ export const CITY_PALETTE_KEYS = [
   "lampGlow",
   "treeTrunk",
   "treeCrown",
+  "barCounter",
+  "barStool",
+  "smokeBench",
   "windowGlow",
 ] as const satisfies ReadonlyArray<keyof CityPalette>;
 

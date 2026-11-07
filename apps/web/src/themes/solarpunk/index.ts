@@ -29,6 +29,9 @@ const tokens: ThemeTokens = {
   "--tv-city-lamp-glow": "#fff0b3",
   "--tv-city-tree-trunk": "#7a5a3a",
   "--tv-city-tree-crown": "#5fae3f",
+  "--tv-city-bar-counter": "#a9774a",
+  "--tv-city-bar-stool": "#d9a441",
+  "--tv-city-smoke-bench": "#8a6a44",
   "--tv-city-window-glow": "#ffe9a8",
 };
 
