@@ -99,11 +99,11 @@ test("opening an archive in history, scrubbing it and returning to live", async 
   const scrubber = page.getByRole("slider", { name: "Timeline time" });
   await expect(scrubber).toBeVisible();
   await scrubber.focus();
+  // The slider is controlled: its value follows the seek read, so assert web-first (poll).
   await page.keyboard.press("End");
-  const end = await scrubber.inputValue();
+  await expect.poll(async () => Number(await scrubber.inputValue())).toBeGreaterThanOrEqual(3);
   await page.keyboard.press("Home");
-  expect(await scrubber.inputValue()).toBe("1");
-  expect(Number(end)).toBeGreaterThanOrEqual(3);
+  await expect(scrubber).toHaveValue("1");
   await expect(page.getByRole("row")).toHaveCount(0); // a Git archive shows no agents
   await expect(page.locator('[data-marker="Git commit"]').first()).toBeVisible();
 
