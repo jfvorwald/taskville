@@ -151,6 +151,12 @@ export async function importCommand(io: Io, args: string[]): Promise<number> {
   try {
     started = await client.json<ImportStarted>("POST", "/v1/imports", { projectId, kind, root });
   } catch (error) {
+    if (isAbort(error) || io.signal?.aborted) {
+      io.stderr(
+        "Interrupted while starting the import; it may already be running on the engine. Run `taskville import` again: import_running means it is, or check `taskville status`.\n",
+      );
+      return EXIT.failure;
+    }
     const code =
       error instanceof CliError ? /^Engine error \d+ \((\w+)\)/.exec(error.message) : null;
     const refusal = code?.[1] === undefined ? undefined : REFUSALS.get(code[1]);
