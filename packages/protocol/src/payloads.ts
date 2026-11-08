@@ -118,6 +118,15 @@ const commonPayloadSchemas = {
     sha: shaSchema,
     parents: z.array(shaSchema),
     subject: textSchema.optional(),
+    /** Changed-file counts against the first parent (added by the Git importer, M8.01). */
+    files: z
+      .strictObject({
+        added: nonNegativeIntSchema,
+        modified: nonNegativeIntSchema,
+        deleted: nonNegativeIntSchema,
+        renamed: nonNegativeIntSchema,
+      })
+      .optional(),
   }),
   "git.ref_moved": z.strictObject({
     repo: nonEmptyTextSchema,
