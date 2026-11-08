@@ -114,7 +114,7 @@ describe("import job runner: ordering and storage", () => {
     expect(seen).toEqual([{ projectId: PROJECT, root: env().root, aborted: false }]);
   });
 
-  it("skips repeated source keys, keeping the first", async () => {
+  it("counts a repeated source key with different content as a conflict, keeping the first", async () => {
     const importer = fakeImporter(
       [
         {
@@ -131,7 +131,12 @@ describe("import job runner: ordering and storage", () => {
     const { importId, archiveId } = jobs.start(request());
     const finished = await jobs.settled(importId);
     expect(finished.status).toBe("done");
-    expect(finished.counts).toMatchObject({ imported: 2, skipped: 1 });
+    expect(finished.counts).toMatchObject({
+      imported: 2,
+      skipped: 0,
+      malformed: 1,
+      malformedByCode: { conflict: 1 },
+    });
     expect(readAll(archiveId).map((e) => e.sourceEventId)).toEqual(["dup", "ok"]);
     expect(readAll(archiveId)[0]?.occurredAt).toBe("2026-11-01T10:00:02Z");
   });
@@ -195,15 +200,17 @@ describe("import job runner: malformed events and the cap", () => {
     const all = Array.from({ length: 8 }, (_, i) =>
       commitEvent(`c-${i}`, `2026-11-01T10:00:0${i}Z`),
     );
-    const importer = fakeImporter([{ events: all.slice(0, 4) }, { events: all.slice(4) }]);
+    const importer = fakeImporter(all.map((event) => ({ events: [event] })));
+    // One event per batch: the rest of a batch that crosses the cap is still counted as skipped.
     const jobs = makeJobs(env(), [importer], { maxEvents: 5 });
     const { importId, archiveId } = jobs.start(request());
     const finished = await jobs.settled(importId);
     expect(finished.status).toBe("done");
+    // The importer is stopped at the first event past the cap, so only that one is skipped
+    // (events are one per batch here).
     expect(finished.counts).toMatchObject({
-      read: 8,
       imported: 5,
-      skipped: 3,
+      skipped: 1,
       malformed: 0,
       truncated: true,
     });

@@ -1,6 +1,6 @@
 import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { InputEventWire } from "@taskville/protocol";
+import pino from "pino";
 import { describe, expect, it, vi } from "vitest";
 import { openEvidenceStore } from "../../src/evidence/index.ts";
 import type { ImportBatch, ImportContext, Importer } from "../../src/importers/index.ts";
@@ -12,6 +12,7 @@ import {
   makeJobs,
   PROJECT,
   refusalCode,
+  toolEvent,
   useImportsEnv,
 } from "./helpers.ts";
 
@@ -35,25 +36,6 @@ const env = useImportsEnv();
 
 function request() {
   return { projectId: PROJECT, kind: "git" as const, root: env().root };
-}
-
-function toolEvent(
-  sourceEventId: string,
-  toolCallId: string,
-  at = "2026-11-01T10:00:00Z",
-  overrides: Record<string, unknown> = {},
-): InputEventWire {
-  return {
-    schemaVersion: 1,
-    projectId: PROJECT,
-    sourceId: "transcript:s1",
-    sourceEventId,
-    occurredAt: at,
-    type: "tool_call.started",
-    payload: { toolCallId, toolName: "Bash" },
-    provenance: "imported",
-    ...overrides,
-  } as InputEventWire;
 }
 
 function transcriptsImporter(batches: readonly ImportBatch[]): Importer {
@@ -119,7 +101,7 @@ describe("staged, scoped, bounded evidence", () => {
       const batch: ImportBatch = {
         events: [
           toolEvent("e-kept", "tc-kept", "2026-11-01T10:00:01Z"),
-          toolEvent("e-dup", "tc-kept", "2026-11-01T10:00:01Z"),
+          toolEvent("e-kept", "tc-kept", "2026-11-01T10:00:01Z"),
           toolEvent("e-bad", "tc-bad", "2026-11-01T10:00:02Z", {
             payload: { toolCallId: "tc-bad", toolName: "" },
           }),
@@ -322,7 +304,7 @@ describe("importers that throw odd things, and recording failures (security M1)"
     ["a string", "just text"],
     ["a number", 42],
   ])("fails the archive with importer_failed when the importer throws %s", async (_name, value) => {
-    const jobs = makeJobs(env(), [throwing(value)]);
+    const jobs = makeJobs(env(), [throwing(value)], { logger: pino({ level: "silent" }) });
     let finished: Awaited<ReturnType<typeof jobs.settled>> | undefined;
     const unhandled = await unhandledDuring(async () => {
       const { importId } = jobs.start(request());
@@ -339,7 +321,9 @@ describe("importers that throw odd things, and recording failures (security M1)"
     vi.spyOn(archives, "fail").mockImplementationOnce(() => {
       throw new Error("disk full");
     });
-    const jobs = makeJobs(env(), [throwing(new Error("boom"))]);
+    const jobs = makeJobs(env(), [throwing(new Error("boom"))], {
+      logger: pino({ level: "silent" }),
+    });
     let settledOk = false;
     const unhandled = await unhandledDuring(async () => {
       const { importId } = jobs.start(request());
