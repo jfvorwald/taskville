@@ -29,6 +29,7 @@ import { type EvidenceStore, openEvidenceStore } from "@taskville/engine/src/evi
 import { registerFeedRoutes } from "@taskville/engine/src/feed/index.ts";
 import { createApp } from "@taskville/engine/src/http/app.ts";
 import { LOOPBACK_ADDRESS, startServer } from "@taskville/engine/src/http/server.ts";
+import { ImportJobs, registerImportRoutes } from "@taskville/engine/src/importers/index.ts";
 import {
   createProject,
   ProjectInputError,
@@ -452,11 +453,14 @@ export function composeServe(
   let engine: Engine | undefined;
   let evidence: EvidenceStore | undefined;
   let gitWatcher: GitWatcher | undefined;
+  let imports: ImportJobs | undefined;
   let wired: ReturnType<typeof wirePermissionBridge> | undefined;
   const close = async () => {
     // First, so no held hook response keeps the server from closing.
     wired?.close();
     await gitWatcher?.stop();
+    // Aborts running imports (they end cancelled) before the database closes under them.
+    await imports?.close();
     engine?.close();
     evidence?.close();
   };
@@ -519,6 +523,10 @@ export function composeServe(
       maxStreams: engine.maxStreams,
       drainTimeoutMs: engine.drainTimeoutMs,
     });
+    // Archive imports (M8.06): no importer is registered until the Git and transcript importers
+    // land (M8.01, M8.02), so every kind answers `unknown_import_kind` for now.
+    imports = new ImportJobs({ storage: engine.storage, importers: [], evidence, now, logger });
+    registerImportRoutes(app, imports);
     for (const project of config.projects) {
       try {
         if (createProject(engine.storage, project, { now })) {

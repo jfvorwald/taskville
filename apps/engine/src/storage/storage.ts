@@ -1,6 +1,7 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { PairingRecords } from "../auth/pairing.ts";
+import { SqliteArchives } from "./archives.ts";
 import { SqliteCheckpoints } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import { secureDatabaseFiles } from "./file-mode.ts";
@@ -208,6 +209,7 @@ export class Storage implements StorageReads {
   #pairings: SqlitePairingRecords | undefined;
   #checkpoints: SqliteCheckpoints | undefined;
   #otlpCost: SqliteOtlpCost | undefined;
+  #archives: SqliteArchives | undefined;
 
   constructor(db: Database, now: () => Date) {
     this.#db = db;
@@ -375,6 +377,12 @@ export class Storage implements StorageReads {
   otlpCost(): SqliteOtlpCost {
     this.#otlpCost ??= new SqliteOtlpCost(this.#db);
     return this.#otlpCost;
+  }
+
+  /** Archive timelines: imported history, read-only once finished (M8.06). */
+  archives(): SqliteArchives {
+    this.#archives ??= new SqliteArchives(this.#db);
+    return this.#archives;
   }
 
   close(): void {
