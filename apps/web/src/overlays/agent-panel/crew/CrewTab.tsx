@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Agent } from "../../../data/domain.ts";
 import type { FamilyTeams } from "../shell/family.ts";
 import styles from "./crew.module.css";
-import { type CrewActivity, crewRows } from "./crewRows.ts";
+import { type CrewActivity, type CrewStatus, crewRows } from "./crewRows.ts";
 
 export interface CrewTabProps {
   parentId: string;
@@ -15,14 +15,24 @@ export interface CrewTabProps {
   onHover: (id: string | null) => void;
 }
 
+const STATUS_TEXT: Record<CrewStatus, string> = {
+  active: "Working",
+  idle: "Idle",
+  finished: "Finished",
+  unknown: "Unknown",
+};
+
 /**
  * A finished child's result as plain text, clamped to two lines. The toggle only appears when
  * the text is longer than that, and it is a real button so the keyboard reaches it.
  */
-function Result({ text }: { text: string }) {
+function Result({ name, text }: { name: string; text: string }) {
+  // Runs of blank lines would spend the two clamped lines on nothing.
+  const shown = text.replace(/\n[ \t]*(?:\n[ \t]*)+/g, "\n");
   const ref = useRef<HTMLParagraphElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measure again when the text changes
   useLayoutEffect(() => {
     const el = ref.current;
     if (el === null) return;
@@ -33,7 +43,7 @@ function Result({ text }: { text: string }) {
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [expanded]);
+  }, [expanded, shown]);
   return (
     <>
       <p
@@ -42,13 +52,14 @@ function Result({ text }: { text: string }) {
         data-testid="crew-row-summary"
         data-expanded={expanded ? "true" : "false"}
       >
-        {text}
+        {shown}
       </p>
       {overflows || expanded ? (
         <button
           type="button"
           className={styles.toggle}
           aria-expanded={expanded}
+          aria-label={`${expanded ? "Show less" : "Show more"} of ${name}'s result`}
           onClick={() => setExpanded((open) => !open)}
         >
           {expanded ? "Show less" : "Show more"}
@@ -91,7 +102,13 @@ export function CrewTab({
           data-status={row.status}
           data-collapsed={row.collapsed ? "true" : "false"}
         >
-          <span className={styles.dot} data-testid="crew-row-dot" data-status={row.status} />
+          <span
+            className={styles.dot}
+            data-testid="crew-row-dot"
+            data-status={row.status}
+            role="img"
+            aria-label={STATUS_TEXT[row.status]}
+          />
           <button
             type="button"
             className={styles.name}
@@ -111,7 +128,7 @@ export function CrewTab({
               {row.activity}
             </span>
           )}
-          {row.summary === null ? null : <Result text={row.summary} />}
+          {row.summary === null ? null : <Result name={row.name} text={row.summary} />}
         </li>
       ))}
     </ul>

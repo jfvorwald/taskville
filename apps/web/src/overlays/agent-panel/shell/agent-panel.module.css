@@ -19,7 +19,9 @@
   font-family: var(--tv-font);
   font-size: 0.875rem;
   line-height: 1.45;
-  overflow: hidden;
+  overflow-x: hidden;
+  /* The fallback at a very short viewport: the tab slot keeps its minimum, the panel scrolls. */
+  overflow-y: auto;
 }
 
 .crumbs {
@@ -97,11 +99,19 @@
 }
 
 .factsLine > * {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A long role shrinks first, so the status and the time stay readable. */
+.factType {
+  flex-shrink: 100;
 }
 
 /* The status is a dot plus the word. */
-.factsLine [data-testid="agent-panel-status"]::before {
+.status::before {
   content: "";
   display: inline-block;
   width: 8px;
@@ -113,7 +123,7 @@
 
 .facts [data-urgent="true"],
 .factsLine [data-urgent="true"] {
-  color: var(--tv-needs-you);
+  color: var(--tv-needs-you, #e5484d);
   font-weight: 600;
 }
 
@@ -122,9 +132,16 @@
   color: var(--tv-text-muted);
   font-family: var(--tv-mono);
   font-size: 0.78rem;
+  /* Truncate at the start so the file name stays visible; the mark keeps the leading slash first. */
+  direction: rtl;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.file::before {
+  content: "\200E";
 }
 
 .tabs {
@@ -132,7 +149,8 @@
   flex: 1;
   flex-direction: column;
   gap: 8px;
-  min-height: 0;
+  /* The tab list, its gap and the slot's minimum height. */
+  min-height: 11rem;
 }
 
 .tabList {
@@ -157,7 +175,14 @@
 
 .slot {
   flex: 1;
-  min-height: 0;
-  padding-bottom: 14px;
+  min-height: 120px;
+  /* Room inside the scroller for focus rings; the negative margin keeps the content aligned. */
+  margin: 0 -6px;
+  padding: 4px 6px 14px;
   overflow-y: auto;
+}
+
+.name:focus-visible {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
 }

@@ -124,6 +124,10 @@ export function AgentPanel({
   // A request made before the panel mounted still counts: the click that selected the agent may
   // have come first. Each request is acted on once, so nothing carries over to the next agent.
   const handledFocus = useRef<typeof focus>(null);
+  // A crumb press can remove the breadcrumb (the parent has no family of its own), which would
+  // drop keyboard focus to the page: the heading takes it instead.
+  const nameRef = useRef<HTMLHeadingElement>(null);
+  const crumbPressed = useRef(false);
 
   // A clicked envelope for the selected agent opens its Live tab. Scrolling to the exact message
   // is follow-up #368. The selection may land a render after the request, so a request waits for
@@ -189,6 +193,14 @@ export function AgentPanel({
     return () => highlightStore.open(null);
   }, [openId]);
 
+  const shownId = agent?.id;
+  useEffect(() => {
+    if (!crumbPressed.current || shownId === undefined) return;
+    crumbPressed.current = false;
+    const active = document.activeElement;
+    if (active === null || active === document.body) nameRef.current?.focus();
+  }, [shownId]);
+
   if (agent === undefined || state === null) return null;
 
   const urgent = attention.find((a) => a.agentId === agent.id && a.level === "needs_you");
@@ -232,7 +244,10 @@ export function AgentPanel({
                 <Button
                   className={styles.crumb}
                   {...(id === agent.id ? { "aria-current": "true" as const } : {})}
-                  onPress={() => select(id)}
+                  onPress={() => {
+                    crumbPressed.current = true;
+                    select(id);
+                  }}
                 >
                   {nameOf(member)}
                 </Button>
@@ -242,12 +257,18 @@ export function AgentPanel({
         </nav>
       )}
       <header className={styles.header}>
-        <h2 className={styles.name} data-testid="agent-panel-name">
+        <h2 ref={nameRef} tabIndex={-1} className={styles.name} data-testid="agent-panel-name">
           {nameOf(agent)}
         </h2>
         <p className={styles.factsLine}>
-          <span data-testid="agent-panel-type">{agent.role ?? KIND_LABEL[agent.kind]}</span>
-          <span data-testid="agent-panel-status" data-urgent={needsYou ? "true" : undefined}>
+          <span className={styles.factType} data-testid="agent-panel-type">
+            {agent.role ?? KIND_LABEL[agent.kind]}
+          </span>
+          <span
+            className={styles.status}
+            data-testid="agent-panel-status"
+            data-urgent={needsYou ? "true" : undefined}
+          >
             {status}
           </span>
           {note === null ? null : <span data-testid="agent-panel-on-break">{note}</span>}
@@ -257,7 +278,11 @@ export function AgentPanel({
         </p>
         {costView === undefined ? null : <AgentCost view={costView} className={styles.facts} />}
         {file === null ? null : (
-          <p className={styles.file} data-testid="agent-panel-file">
+          <p
+            className={styles.file}
+            data-testid="agent-panel-file"
+            title={displayPath(file, { privacy: privacyMode })}
+          >
             {displayPath(file, { privacy: privacyMode })}
           </p>
         )}

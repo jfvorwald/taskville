@@ -66,7 +66,7 @@ function filesFor(agentId: string, frames: FilesTabProps["frames"]) {
 
 /** The directory muted, then the file name in the mono font; the text still reads as the path. */
 function PathLabel({ path }: { path: string }) {
-  const cut = path.lastIndexOf("/") + 1;
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
   return (
     <span className={styles.label}>
       {cut === 0 ? null : <span className={styles.dir}>{path.slice(0, cut)}</span>}
