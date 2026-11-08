@@ -3,7 +3,7 @@ import { render } from "vitest-browser-react";
 import { DEFAULT_PROJECT_ID, selectProject } from "../../../data/project.ts";
 import { SessionProvider } from "../../../pairing/session.tsx";
 import { ConnectedLiveTab } from "./ConnectedLiveTab.tsx";
-import { AGENT, articles, build, PROJECT, seedStore } from "./liveKit.tsx";
+import { AGENT, articles, build, openDetails, PROJECT, seedStore } from "./liveKit.tsx";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -67,6 +67,7 @@ describe("M5.17 deferred medium 6450: grouped Search output eviction", () => {
         </div>,
       );
       await expect.element(articles()).toMatchTextContent("Searched 2 times");
+      await openDetails(articles());
       await articles().getByRole("button", { name: "Expand patterns" }).click();
       await expect.element(articles()).toMatchTextContent("needle-2");
       if (channel === "410") await expect.poll(() => goneRequests.length).toBe(2);

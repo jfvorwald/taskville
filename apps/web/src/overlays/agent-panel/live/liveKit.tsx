@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { page } from "vitest/browser";
+import { type Locator, page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import type { EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
 import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts";
@@ -22,6 +22,8 @@ export interface CallSpec {
   phase?: ToolCallFrame["phase"];
   filePaths?: string[];
   durationMs?: number;
+  /** ISO time the call started; turn dividers read it. */
+  startedAt?: string;
 }
 
 export function bodyOf(
@@ -55,6 +57,7 @@ export function build(specs: readonly CallSpec[], agent = AGENT) {
       filePaths: spec.filePaths ?? [],
       evidence: { input: null, output: null },
       ...(spec.durationMs === undefined ? {} : { durationMs: spec.durationMs }),
+      ...(spec.startedAt === undefined ? {} : { startedAt: spec.startedAt }),
     };
     for (const part of ["input", "output"] as const) {
       const raw = part === "input" ? spec.inputRaw : spec.outputRaw;
@@ -118,6 +121,16 @@ export async function renderPlain(specs: readonly CallSpec[], select = vi.fn()) 
   );
   await paint();
   return { store, view };
+}
+
+/**
+ * Opens an entry's Details disclosure when it is collapsed. A no-op when the entry has no Details
+ * button or it is already open, so a test reads the same before and after the logbook layout.
+ */
+export async function openDetails(entry: Locator) {
+  const toggle = entry.getByRole("button", { name: /^details\b/i });
+  const [node] = toggle.elements();
+  if (node?.getAttribute("aria-expanded") === "false") await toggle.click();
 }
 
 /** Controls, format characters and separators the action card shows as <U+XXXX>, minus newline and tab. */
