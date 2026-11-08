@@ -1,6 +1,16 @@
 // Engine storage: SQLite event log, projects, projections, and pairings
 // (ARCHITECTURE.md 7.4, specs/001 data-model.md).
 export {
+  type ArchiveCounts,
+  type ArchiveError,
+  type ArchiveEventWrite,
+  type ArchiveKind,
+  type ArchiveRecord,
+  type ArchiveStatus,
+  type NewArchive,
+  SqliteArchives,
+} from "./archives.ts";
+export {
   CHECKPOINT_INTERVAL,
   type CheckpointRow,
   SqliteCheckpoints,

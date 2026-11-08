@@ -31,7 +31,10 @@ import type { AgentBreak, Conversation } from "./types.ts";
 // not depend on luck: two agents on break at one place with a conversation that spans two turns.
 // Run: pnpm test:browser src/city/breaks/BreakTime.chatter  (from apps/web)
 
-const POLL = { timeout: 15_000, interval: 100 };
+// A poll returns as soon as it holds, so a long timeout costs nothing when the machine is idle. It
+// has to outlast a loaded CI box, where the plan tick (1 s), the bubble tick (0.5 s) and the
+// frames that move the anchors all run late: 15 s was too short there (M9.11).
+const POLL = { timeout: 60_000, interval: 100 };
 const TURN_MS = 6000;
 
 let city: Harness | undefined;
@@ -100,6 +103,9 @@ async function chattingPair(): Promise<{ h: Harness; a: string; b: string; at: n
   h.apply(stateOf({ [a]: "waiting", [b]: "waiting" }));
   await h.frames(3);
   h.clock.now = at;
+  // The bubble layer only shows a speaker whose anchor projects on screen, and anchors move per
+  // frame: let a few frames run on the new clock before the tests start polling.
+  await h.frames(3);
   return { h, a, b, at };
 }
 
@@ -126,13 +132,17 @@ describe("break chatter in the city", () => {
     await expect
       .poll(chatter, POLL)
       .toEqual([{ agentId: secondLine.speakerId, text: secondLine.line }]);
-  }, 60_000);
+  }, 240_000);
 
   it("sends everyone back and removes the notes and chatter when Break time is turned off", async () => {
     const { h, a, b } = await chattingPair();
     await expect.poll(() => rowOf(h, a)?.onBreak, POLL).toBe(true);
     await expect.poll(() => rowOf(h, b)?.onBreak, POLL).toBe(true);
-    await expect.poll(() => chatter().length, POLL).toBe(1);
+    const line = pickBanterLine({
+      conversation: expectedPlan(h.store, h.clock.now).conversations[0] as Conversation,
+      theme: theme(),
+    });
+    await expect.poll(chatter, POLL).toEqual([{ agentId: line.speakerId, text: line.line }]);
     const spot = breakPoint(expectedPlan(h.store, h.clock.now).agents.get(a) as AgentBreak);
     await expect
       .poll(() => dist(h.at(a) as { x: number; z: number }, spot), POLL)
@@ -149,7 +159,7 @@ describe("break chatter in the city", () => {
       .toBeGreaterThan(1);
     expect(rowOf(h, a)?.status).toBe("Waiting");
     expect(h.emotesOf(a)).toEqual(expect.not.arrayContaining(["mug", "puff", "sparkle", "note"]));
-  }, 60_000);
+  }, 240_000);
 });
 
 describe("break time in the agent panel", () => {
@@ -173,7 +183,7 @@ describe("break time in the agent panel", () => {
       document.querySelector(`[data-testid="${id}"]`)?.textContent?.trim();
     await expect.poll(() => text("agent-panel-status"), POLL).toBe("Waiting");
     await expect.poll(() => text("agent-panel-on-break"), POLL).toBe("on break");
-  }, 40_000);
+  }, 120_000);
 });
 
 describe("break time in history", () => {
@@ -188,5 +198,5 @@ describe("break time in history", () => {
     await h.frames(3);
     expect(dist(h.at("a1") as { x: number; z: number }, breakPoint(planned))).toBeLessThan(0.15);
     expect(rowOf(h, "a1")?.onBreak).toBe(true);
-  }, 40_000);
+  }, 120_000);
 });
