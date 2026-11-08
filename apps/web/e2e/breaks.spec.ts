@@ -7,21 +7,22 @@ import { CODES_FILE } from "./codes.ts";
 // M9.07: break time over the `breaks` demo scenario, against a real engine and the built client.
 //
 // Clock: break delay (60 to 120 s after a waiting record began) runs on the store clock, which in
-// the browser is wall time, and `taskville demo --speed N` stamps events with scenario time, so a
-// faster speed pushes event times into the future and delays breaks instead of shortening them.
-// So this spec runs the same producer the CLI runs (runProducer, scenario "breaks", seed 7) in
-// process at 6x, with `startAtMs` set 511 s in the past. An event's age when posted is
-// 511 s - (5/6 x scenario seconds), so the five turn_ended records (scenario 182 to 233 s) are
-// 317 to 360 s old: already past the 120 s delay, so breaks start at once. Brook's needs-you
-// (scenario 613 s) is stamped at about the posting time, so its bubble window (quips are timed
-// from the event time) opens while the request is open; Cyd's prompt (562 s) is 43 s old.
+// the browser is wall time. `taskville demo --speed N` stamps an event at
+// `startAtMs + floor(atMs / N)`, so events never run ahead of wall time and a faster speed only
+// brings the scenario sooner. The delay itself is not compressed, so the speed has to leave the
+// breaks room to start before Cyd gets work back.
+// This spec runs the same producer the CLI runs (runProducer, scenario "breaks", seed 7) in
+// process at 2x, with no backdate: stamps equal posting times. The five turn_ended records
+// (scenario 182 to 233 s) land at 91 to 117 s of wall time, so every break has started by 237 s
+// at the latest. Cyd's prompt (scenario 562 s) lands at 281 s, after Cyd's break (44 s of margin),
+// and Brook's needs-you (scenario 613 s) at 306 s, stamped at its posting time so its bubble
+// window opens while the request is open. The run takes about 6 minutes; the budgets below follow.
 //
 // Also measures idle fps with agents standing on break (headless SwiftShader, so a worst case):
 // the WebGL draw rate over 10 s once nobody travels and the producer is stopped.
 
 const port = Number(process.env.E2E_PORT ?? 4817);
-const SPEED = 6;
-const BACKDATE_MS = 511_000;
+const SPEED = 2;
 const SLEEPERS = ["Ada", "Cyd", "Dee", "Eli", "Fay"];
 
 interface Walker {
@@ -72,7 +73,7 @@ const bubbles = (page: Page) =>
 test("breaks start, chat, end on work, and give way to needs-you; idle fps on break", async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   await page.addInitScript(() => {
     // Records, as the DOM changes, when a needs-you bubble shows (its window is only 4 s) and
     // each urgent label's name and whether it was marked on break, so the check does not depend
@@ -156,7 +157,7 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     projectId: "unsorted",
     scenario: "breaks",
     speed: SPEED,
-    startAtMs: Date.now() - BACKDATE_MS,
+    startAtMs: Date.now(),
     now: Date.now,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     stop: () => stop.signal.aborted,
@@ -176,16 +177,21 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     const onBreakNow = async () =>
       (await rows(page)).filter((r) => r.onBreak && SLEEPERS.includes(r.name));
     await expect
-      .poll(async () => (await onBreakNow()).length, { timeout: 90_000, intervals: [500] })
+      .poll(async () => (await onBreakNow()).length, { timeout: 240_000, intervals: [500] })
       .toBeGreaterThan(0);
     const first = (await onBreakNow())[0] as Row;
     log(`first on break: ${first.name} (${first.status}, ${first.state})`);
     expect(first.status).toBe("Waiting");
     // It stands at a break spot: not on a workstation slot.
+    // The agent must be in the movement snapshot: a missing walker is a failure, not "no slot".
     await expect
-      .poll(async () => (await walkers(page)).find((w) => w.id === first.id)?.slotId ?? "none", {
-        timeout: 60_000,
-      })
+      .poll(
+        async () => {
+          const walker = (await walkers(page)).find((w) => w.id === first.id);
+          return walker === undefined ? "missing" : (walker.slotId ?? "none");
+        },
+        { timeout: 60_000 },
+      )
       .toBe("none");
 
     // (2) Two or more agents on break settle and a chatter bubble shows.
@@ -199,20 +205,44 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     const onBreakAtChat = new Set((await onBreakNow()).map((r) => r.name));
     expect(onBreakAtChat.size).toBeGreaterThanOrEqual(2);
 
-    // (3) The scenario gives Cyd work back: its break ends at once (label and status). The breaks
-    // scenario emits no activity events, so Cyd's status is Unknown and it has no area to walk to;
-    // it settles on the plaza (its break spot can be that same plaza node, so a walk cannot be
-    // asserted). Walking to an area is NOT RUN here: movement.spec.ts and the M9.08 browser tests
-    // cover area placement.
+    // (3) The scenario gives Cyd work back: its break ends at once (label and status), and it walks
+    // to its area. Deadlines are measured from the producer start (t0), not from the previous step:
+    // Cyd's prompt is scenario 562 s / SPEED = 281 s of wall time, and every break has started by
+    // 237 s (see the clock note above).
+    const sinceStart = () => Date.now() - t0;
+    const untilStart = (deadlineMs: number) => Math.max(15_000, deadlineMs - sinceStart());
+    const CYD_PROMPT_MS = 562_000 / SPEED;
+    const cydRow = async () => (await rows(page)).find((r) => r.name === "Cyd");
+    // Cyd is on break (and still Waiting) before the resume, so the step cannot pass without a break.
     await expect
-      .poll(async () => (await rows(page)).find((r) => r.name === "Cyd")?.status ?? "", {
-        timeout: 120_000,
+      .poll(async () => (await cydRow())?.onBreak ?? false, {
+        timeout: untilStart(CYD_PROMPT_MS - 5_000),
+        intervals: [250],
+      })
+      .toBe(true);
+    expect((await cydRow())?.status).toBe("Waiting");
+    log(`Cyd on break: ${JSON.stringify(await cydRow())}`);
+    await expect
+      .poll(async () => (await cydRow())?.status ?? "", {
+        timeout: untilStart(CYD_PROMPT_MS + 60_000),
         intervals: [250],
       })
       .not.toBe("Waiting");
-    const cyd = (await rows(page)).find((r) => r.name === "Cyd") as Row;
+    const cyd = (await cydRow()) as Row;
     log(`Cyd works again: ${JSON.stringify(cyd)}`);
     expect(cyd.onBreak).toBe(false);
+    // The scenario emits activity, so Cyd has an area: a known status and a workstation or a place
+    // in line, not the plaza.
+    expect(cyd.status).not.toBe("Unknown");
+    await expect
+      .poll(
+        async () => {
+          const w = (await walkers(page)).find((x) => x.id === cyd.id);
+          return w !== undefined && (w.slotId !== null || w.queued);
+        },
+        { timeout: 60_000, intervals: [500] },
+      )
+      .toBe(true);
     await expect
       .poll(async () => (await walkers(page)).find((x) => x.id === cyd.id)?.onTheWay, {
         timeout: 60_000,
@@ -259,6 +289,8 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     await page.waitForTimeout(8_000);
     await page.mouse.move(0, 0);
     const standing = (await onBreakNow()).length;
+    // The sample only means something with at least two agents standing on break.
+    expect(standing).toBeGreaterThanOrEqual(2);
     const start = await page.evaluate(() => {
       (window as unknown as { __tvFrames: number[] }).__tvFrames.length = 0;
       return performance.now();

@@ -581,8 +581,16 @@ describe("plaza nodes have one reservation source", () => {
    * changes and removals. Five agents never need more than the five plaza nodes, so every agent
    * must also reach a legal resting place by the end of each step.
    */
-  for (const seed0 of [7351, 20261107, 424242]) {
-    it(`never stacks resting agents on a plaza node and settles everyone (seed ${seed0})`, () => {
+  // The last two seeds (found by a wider search, M9.09 review) use short steps, so intents change
+  // while agents are still walking: a needs-you agent whose goal is home or a break spot is reached
+  // mid-walk with every plaza node held, and must not stop on a node another agent holds. Only the
+  // no-sharing check applies to those runs (they do not wait for everyone to settle).
+  const runs = [
+    ...[7351, 20261107, 424242].map((seed) => ({ seed, short: false })),
+    ...[3590, 44475].map((seed) => ({ seed, short: true })),
+  ];
+  for (const { seed: seed0, short } of runs) {
+    it(`never stacks resting agents on a plaza node${short ? " mid-walk" : " and settles everyone"} (seed ${seed0})`, () => {
       let seed = seed0;
       const rnd = () => {
         seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -639,13 +647,15 @@ describe("plaza nodes have one reservation source", () => {
           expect(other, `${label}: ${x.id} and ${other?.id} share plaza node ${k}`).toBeUndefined();
         }
       };
-      for (let step = 0; step < 50; step++) {
+      for (let step = 0; step < (short ? 80 : 50); step++) {
         const intents = ids.map(intentFor).filter((x): x is NavIntent => x !== null);
         nav.sync(intents);
         noSharing(`step ${step} sync`);
-        run(nav, clock, 90_000, () => noSharing(`step ${step} t=${clock.t}`));
+        run(nav, clock, short && rnd() >= 0.15 ? Math.floor(rnd() * 1800) : 90_000, () =>
+          noSharing(`step ${step} t=${clock.t}`),
+        );
         nav.prune();
-        for (const intent of intents) {
+        for (const intent of short ? [] : intents) {
           const a = must(nav, intent.id);
           const label = `step ${step}: ${a.id} ${JSON.stringify(intent)} at (${a.x.toFixed(2)}, ${a.z.toFixed(2)})`;
           expect(isWalking(a), `${label} still walking`).toBe(false);
@@ -672,4 +682,54 @@ describe("plaza nodes have one reservation source", () => {
       }
     });
   }
+});
+
+// M9.09 (M9.08 debugger residual): an agent standing exactly on a plaza node that another agent
+// has just been given (it left a plaza break there), when needs-you arrives with every plaza node
+// held, kept standing on it, so two agents shared the node. Rule: it must not stay on a node held
+// by another agent; with no free plaza node it still stops as stuck, but clear of every other
+// agent (it may step aside or carry on to its workstation, the test only forbids sharing).
+describe("a needs-you agent standing on a node that is now held by another agent (M9.09)", () => {
+  const loose = (id: string, extra: Partial<NavIntent> = {}): NavIntent => ({
+    id,
+    area: null,
+    rest: "waiting",
+    ...extra,
+  });
+  const atNode = (a: NavAgent) => plazaNodes.findIndex((n) => dist(n, a) < 1e-6);
+
+  it.each(plazaNodes.map((_, k) => k))(
+    "does not share plaza node %i when every node is held",
+    (k) => {
+      const nav = createNavigator();
+      const clock = { t: 0 };
+      const holders = plazaNodes.map((_, i) => i).filter((i) => i !== k);
+      const held = () => holders.map((i) => loose(`h${i}`, { hold: true }));
+      const w = (extra: Partial<NavIntent> = {}) =>
+        waiting("w", "workshop", { breakSpot: { kind: "plaza", index: k }, ...extra });
+      nav.sync([w(), ...held()], { place: true });
+      nav.tick(clock.t);
+      run(nav, clock, 150_000);
+      expect(atNode(must(nav, "w")), "w stands on its plaza break node").toBe(k);
+      for (const i of holders) expect(atNode(must(nav, `h${i}`))).toBeGreaterThanOrEqual(0);
+
+      // w's break ends, so its node frees and p, which needs you and has no node, is given it.
+      // Needs-you then reaches w in the next sync, before w has taken a step.
+      const noBreak = (extra: Partial<NavIntent> = {}) => waiting("w", "workshop", extra);
+      nav.sync([loose("p", { hold: true }), noBreak(), ...held()]);
+      nav.sync([loose("p", { hold: true }), noBreak({ hold: true }), ...held()]);
+      run(nav, clock, 150_000);
+
+      const ids = ["w", "p", ...holders.map((i) => `h${i}`)];
+      for (const x of ids) {
+        for (const y of ids) {
+          if (x >= y) continue;
+          expect(
+            dist(must(nav, x), must(nav, y)),
+            `${x} and ${y} share a spot (w ${atNode(must(nav, "w"))}, p ${atNode(must(nav, "p"))})`,
+          ).toBeGreaterThan(0.1);
+        }
+      }
+    },
+  );
 });

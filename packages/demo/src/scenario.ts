@@ -46,6 +46,9 @@ export interface DemoOptions {
   readonly projectId?: string;
   /** Epoch milliseconds of simulated time zero; defaults to DEMO_EPOCH_MS for offline runs. */
   readonly startAtMs?: number;
+  /** Virtual clock multiplier (live runs): stamps are `startAtMs + atMs / speed`, so an event is
+   * never stamped ahead of the wall time it is posted at. Default 1; offline runs leave it. */
+  readonly speed?: number;
 }
 
 const MIN = 60_000;
@@ -138,6 +141,7 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
   }
   const projectId = options.projectId ?? "demo";
   const startAtMs = options.startAtMs ?? DEMO_EPOCH_MS;
+  const speed = options.speed ?? 1;
   const rng: Rng = seededRng(seed);
   // Scenario-specific, so a non-default scenario never shares entity IDs with the default (M9.06).
   const prefix = scenario === "default" ? `d${seed}` : `d${seed}b`;
@@ -163,7 +167,7 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
       sourceId,
       sourceEventId: `${run}-e${sequence}`,
       sourceSequence: sequence,
-      occurredAt: isoFromMs(startAtMs + at),
+      occurredAt: isoFromMs(speed === 1 ? startAtMs + at : startAtMs + Math.floor(at / speed)),
       type,
     };
     if (ids.agent !== undefined) event.agentId = ids.agent.id;
@@ -548,13 +552,16 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
         const file = rng.pick(FILES);
         yield* tool(a, rng.pick(["Edit", "Write"]), `Edit ${file}`, [file]);
       }
-      for (const a of sleepers) yield [ev("session.turn_ended", {}, { agent: a })];
+      for (const a of sleepers) {
+        yield [ev("session.turn_ended", {}, { agent: a })];
+        a.activity = "idle";
+      }
       const breakEnd = at + rng.int(5, 7) * MIN;
       while (at < breakEnd) {
         const file = rng.pick(FILES);
         yield* tool(brook, rng.pick(["Edit", "Write"]), `Edit ${file}`, [file]);
       }
-      yield [ev("session.prompt_submitted", {}, { agent: cyd })];
+      yield [ev("session.prompt_submitted", {}, { agent: cyd }), ...activity(cyd, "implementing")];
       for (let i = rng.int(2, 3); i > 0; i--) {
         const file = rng.pick(FILES);
         yield* tool(cyd, "Edit", `Edit ${file}`, [file]);
@@ -568,7 +575,7 @@ export function* demoSteps(options: DemoOptions & { durationMs?: number }): Gene
       brook.hold = undefined;
       blockedSessions.delete(brook.sessionId);
       for (const a of sleepers.filter((m) => m !== cyd))
-        yield [ev("session.prompt_submitted", {}, { agent: a })];
+        yield [ev("session.prompt_submitted", {}, { agent: a }), ...activity(a, "implementing")];
     }
   }
 
