@@ -8,3 +8,39 @@
 .card a { color: var(--tv-accent); }
 .card ins { background: color-mix(in srgb, green 20%, transparent); }
 .card del { background: color-mix(in srgb, red 20%, transparent); }
+
+/* The logbook: one entry per tool call on a vertical thread. */
+.entry { position: relative; padding: 10px 4px 10px 30px; font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+.entry::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; background: var(--tv-rule, color-mix(in srgb, var(--tv-text-muted) 28%, transparent)); }
+.entry:focus-visible { outline: 2px solid var(--tv-focus, currentColor); outline-offset: -2px; }
+.node { position: absolute; left: 4px; top: 15px; box-sizing: border-box; width: 14px; height: 14px; border-radius: 50%; border: 2px solid transparent; background: var(--tv-surface, Canvas); }
+.node[data-state="succeeded"] { background: var(--tv-ok, #5fb98a); border-color: var(--tv-ok, #5fb98a); }
+.node[data-state="failed"] { background: var(--tv-fail, #e0605a); border-color: var(--tv-fail, #e0605a); }
+.node[data-state="running"] { border-color: var(--tv-running, var(--tv-accent)); }
+.node[data-state="unfinished"] { border-color: var(--tv-text-muted); border-style: dashed; }
+.node[data-state="needs-you"] { border-color: var(--tv-needs-you, var(--tv-accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv-needs-you, var(--tv-accent)) 35%, transparent); }
+.visuallyHidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sentence { font-weight: 500; min-width: 0; }
+.mono { font-family: var(--tv-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace); font-size: 12.5px; }
+.duration { flex: none; color: var(--tv-text-muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+.meta { margin-top: 2px; }
+.secondary { color: var(--tv-text-muted); font-size: 13px; line-height: 18px; }
+.toggle { margin: 0; padding: 0 6px; border: 0; border-radius: var(--tv-radius); background: none; color: var(--tv-text-muted); font: inherit; font-size: 13px; line-height: 18px; cursor: pointer; }
+.toggle i { font-style: normal; }
+.toggle[data-focus-visible] { outline: 2px solid var(--tv-focus, currentColor); outline-offset: 1px; }
+.toggle[data-hovered] { color: var(--tv-text); }
+.details { margin-top: 6px; font-size: 13px; line-height: 18px; }
+.details[hidden] { display: none; }
+.details p { margin: 4px 0; }
+.details pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font-family: var(--tv-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace); font-size: 12.5px; }
+.details a { color: var(--tv-accent); }
+.details ins { background: color-mix(in srgb, var(--tv-ok, #5fb98a) 22%, transparent); text-decoration: none; }
+.details del { background: color-mix(in srgb, var(--tv-fail, #e0605a) 22%, transparent); }
+.inputList { margin: 4px 0; display: grid; gap: 2px; }
+.inputList div { display: grid; grid-template-columns: minmax(70px, max-content) 1fr; gap: 8px; }
+.inputList dt { color: var(--tv-text-muted); }
+.inputList dd { margin: 0; white-space: pre-wrap; max-height: 160px; overflow: auto; }
+.rawJson { max-height: 200px; overflow: auto; }
+.divider { display: flex; align-items: center; gap: 8px; padding: 10px 4px 0 30px; color: var(--tv-text-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.divider::after { content: ""; flex: 1; height: 1px; background: var(--tv-rule, color-mix(in srgb, var(--tv-text-muted) 28%, transparent)); }
