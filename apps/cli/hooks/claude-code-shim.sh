@@ -28,13 +28,17 @@
 #   {"url":...,"pid":...,...}). The shim posts only when that file is a regular
 #   file (not a symlink), its "url" equals the target origin (TASKVILLE_URL with
 #   trailing slashes stripped) and its "pid" (digits only, not 0) is alive
-#   (`kill -0`). Otherwise it does not contact the port at all and spools the
-#   event, so a stale engine.json or any other process that took the port after
-#   the engine exited never receives the token. engine.json is read with sed
-#   (no jq); anything that does not look like the one-line object above counts
-#   as missing. Remaining limit: another process of the same user can still
-#   listen on the port while the recorded engine is alive, or write its own
-#   engine.json; see apps/cli/docs/hooks-security.md.
+#   (`kill -0`; at most 7 digits). Otherwise it does not contact the port at
+#   all and spools the event, so a stale engine.json or any other process that
+#   took the port after the engine exited never receives the token. The host
+#   "localhost" is treated as 127.0.0.1 in both the target and the recorded url
+#   (exact host only). engine.json is read with sed (no jq); anything that does
+#   not look like the one-line object above counts as missing. Remaining
+#   limits: another process of the same user can still listen on the port while
+#   the recorded engine is alive, or write its own engine.json; a process of the
+#   same user can reuse the recorded pid; and the engine can exit in the
+#   milliseconds between the check and the POST (accepted). See
+#   apps/cli/docs/hooks-security.md.
 #
 # REQUEST (the hooks endpoint, M2.02 / #21: apps/engine/src/sources/claude-code/route.ts)
 #   POST <TASKVILLE_URL>/v1/sources/claude-code/hooks
@@ -259,6 +263,15 @@ valid_uuid "$uuid" || exit 0
 
 # --- POST to the engine -------------------------------------------------------
 
+# Prints $1 with the host "localhost" replaced by 127.0.0.1 (exact host only:
+# http://localhost:PORT becomes http://127.0.0.1:PORT); anything else unchanged.
+canon_origin() {
+  case $1 in
+    http://localhost:*) printf '%s' "http://127.0.0.1:${1#http://localhost:}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 # True when $home/engine.json names a live engine at origin $1: a regular file
 # whose one-line JSON object has "url" equal to $1 and a "pid" that is running.
 live_engine() {
@@ -269,9 +282,11 @@ live_engine() {
   _eurl=$(printf '%s' "$_info" | sed -n 's/.*"url":"\([^"\\]*\)".*/\1/p')
   _epid=$(printf '%s' "$_info" | sed -n 's/.*"pid":\([0-9]*\)[,}].*/\1/p')
   [ -n "$_eurl" ] || return 1
-  [ "$(strip_slashes "$_eurl")" = "$1" ] || return 1
+  [ "$(canon_origin "$(strip_slashes "$_eurl")")" = "$1" ] || return 1
   case $_epid in '' | *[!0-9]*) return 1 ;; esac
-  [ ${#_epid} -le 10 ] && [ "$_epid" -gt 0 ] || return 1
+  # At most 7 digits: some shells truncate an oversized pid to 0, and kill 0
+  # signals the caller's own process group.
+  [ ${#_epid} -le 7 ] && [ "$_epid" -gt 0 ] || return 1
   kill -0 "$_epid" 2>/dev/null
 }
 
@@ -280,7 +295,7 @@ post() {
   [ -z "$extra" ] || return 1
   command -v curl >/dev/null || return 1
 
-  url=$(strip_slashes "${TASKVILLE_URL:-http://127.0.0.1:4807}")
+  url=$(canon_origin "$(strip_slashes "${TASKVILLE_URL:-http://127.0.0.1:4807}")")
   case $url in
     http://127.0.0.1:*) port=${url#http://127.0.0.1:} ;;
     http://localhost:*) port=${url#http://localhost:} ;;

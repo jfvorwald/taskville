@@ -8,8 +8,14 @@
 # line written by `taskville serve`) must be a regular file whose "url" equals the target origin
 # (TASKVILLE_URL, trailing slashes stripped) and whose "pid" (digits only, not 0) is alive
 # (`kill -0`). Otherwise it prints nothing and exits 0, as for a foreign endpoint, so a stale file
-# or another process on the port never gets the token. Read with sed, no jq. Remaining limit: a
-# same-user process can still listen while the engine is alive; see apps/cli/docs/hooks-security.md.
+# or another process on the port never gets the token. Read with sed, no jq. "localhost" is treated
+# as 127.0.0.1. Remaining limits: a same-user process can still listen while the engine is alive;
+# see apps/cli/docs/hooks-security.md.
+#
+# Caching: Claude Code caches the helper output and refreshes it periodically (debounced; the helper
+# is not re-run per export). A header printed while the engine was live can keep being sent after
+# the engine stops, until the next refresh. A helper run while the engine is down yields no header,
+# so exports get 401 and metrics are lost until the next refresh.
 #
 # Prints nothing and exits 1 when the home or token is missing or not a plain token file (a
 # symlink, or characters outside A-Za-z0-9_-): Claude Code then exports without the header and the
@@ -47,9 +53,13 @@ while :; do
     *) break ;;
   esac
 done
+# "localhost" is 127.0.0.1 (exact host only), in the recorded url and the target alike.
+case $engine_url in http://localhost:*) engine_url=http://127.0.0.1:${engine_url#http://localhost:} ;; esac
+case $origin in http://localhost:*) origin=http://127.0.0.1:${origin#http://localhost:} ;; esac
 [ -n "$engine_url" ] && [ "$engine_url" = "$origin" ] || exit 0
 case $engine_pid in '' | *[!0-9]*) exit 0 ;; esac
-[ ${#engine_pid} -le 10 ] && [ "$engine_pid" -gt 0 ] || exit 0
+# At most 7 digits: some shells truncate an oversized pid to 0, and kill 0 signals the caller's group.
+[ ${#engine_pid} -le 7 ] && [ "$engine_pid" -gt 0 ] || exit 0
 kill -0 "$engine_pid" 2>/dev/null || exit 0
 token_file=$home/token
 if [ -h "$token_file" ] || [ ! -f "$token_file" ]; then exit 1; fi
