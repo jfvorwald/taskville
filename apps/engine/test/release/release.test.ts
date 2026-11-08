@@ -163,6 +163,68 @@ describe("GET /health release", () => {
     expect(text).not.toContain("/Users/");
   });
 
+  // M7.31 (#435, M7.06 L3). release.json carries `dirty: true` only for a dirty build (the release
+  // script omits it when clean), so the identity does the same: present and true, or absent.
+  it("reports dirty: true for a dirty staging build", async () => {
+    writeFileSync(
+      join(dir, "release.json"),
+      JSON.stringify({
+        id: "r-44",
+        version: "2.0.3",
+        commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        environment: "staging",
+        dirty: true,
+      }),
+    );
+    const { logger } = capture();
+    const identity = loadRelease({ dir, version: "0.0.0", logger });
+    expect(identity).toEqual({
+      id: "r-44",
+      version: "2.0.3",
+      environment: "staging",
+      dirty: true,
+    });
+    const body = await healthRelease(identity);
+    expect(body.release).toEqual({
+      id: "r-44",
+      version: "2.0.3",
+      environment: "staging",
+      dirty: true,
+    });
+    expect(JSON.stringify(body.release)).not.toContain("deadbeef");
+  });
+
+  it("omits dirty for a clean build, and for a non-true dirty value", async () => {
+    for (const extra of [{}, { dirty: false }]) {
+      writeFileSync(
+        join(dir, "release.json"),
+        JSON.stringify({ id: "r-45", version: "2.0.4", environment: "staging", ...extra }),
+      );
+      const { logger } = capture();
+      const identity = loadRelease({ dir, version: "0.0.0", logger });
+      expect(identity).toEqual({ id: "r-45", version: "2.0.4", environment: "staging" });
+      const body = await healthRelease(identity);
+      expect(Object.keys(body.release as object).sort()).toEqual(["environment", "id", "version"]);
+    }
+  });
+
+  it("ignores a malformed dirty value: plain identity, no fallback, no warning", () => {
+    for (const dirty of ["true", null]) {
+      writeFileSync(
+        join(dir, "release.json"),
+        JSON.stringify({ id: "r-46", version: "2.0.5", environment: "staging", dirty }),
+      );
+      const { logger, lines } = capture();
+      const identity = loadRelease({ dir, version: "0.0.0", logger });
+      expect(identity, String(dirty)).toEqual({
+        id: "r-46",
+        version: "2.0.5",
+        environment: "staging",
+      });
+      expect(warned(lines), String(dirty)).toBe(false);
+    }
+  });
+
   it("keeps the existing health fields", async () => {
     const { logger } = capture();
     const body = await healthRelease(loadRelease({ dir, version: "0.0.0", logger }));

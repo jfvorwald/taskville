@@ -209,6 +209,17 @@ describe("pairing and health", () => {
     expect(bad({ id: "r", version: "1", environment: "staging", commit: "abc" })).toBe(false);
   });
 
+  it("accepts release.dirty: true on a dirty staging build (M7.31), and nothing looser", () => {
+    const base = { status: "ok", db: "ok", walMode: true, uptimeSeconds: 12, version: "0.0.0" };
+    const release = { id: "20261106-abc1234", version: "1.4.0", environment: "staging" };
+    const body = { ...base, release: { ...release, dirty: true } };
+    expect(healthResponseSchema.parse(body)).toEqual(body);
+    const ok = (r: unknown) => healthResponseSchema.safeParse({ ...base, release: r }).success;
+    expect(ok({ ...release, dirty: false })).toBe(false);
+    expect(ok({ ...release, dirty: "true" })).toBe(false);
+    expect(ok({ ...release, dirty: true, commit: "abc" })).toBe(false);
+  });
+
   it("accepts the process-only health an engine reports before storage is wired", () => {
     // apps/engine (M1.10) omits db and walMode without a storage health hook, and version
     // when none is configured.
