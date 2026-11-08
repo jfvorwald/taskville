@@ -41,20 +41,25 @@ const agents = {
 } as never;
 const activity = { run: { activity: "testing" } } as never;
 
+// An explicit line height keeps the clamp arithmetic independent of the machine's fonts.
+const frame = { width: 400, lineHeight: "20px", fontFamily: "sans-serif" } as const;
+const crew = (result: string, more: Record<string, unknown> = {}, idle = false) => (
+  <div style={frame}>
+    <CrewTab
+      parentId="L"
+      agents={{ ...(agents as object), ...more } as never}
+      activity={
+        (idle ? { ...(activity as object), idle: { activity: "idle" } } : activity) as never
+      }
+      results={{ done: result }}
+      nowMs={NOW}
+      onSelect={() => {}}
+      onHover={() => {}}
+    />
+  </div>
+);
 async function mount(result: string) {
-  return render(
-    <div style={{ width: 400 }}>
-      <CrewTab
-        parentId="L"
-        agents={agents}
-        activity={activity}
-        results={{ done: result }}
-        nowMs={NOW}
-        onSelect={() => {}}
-        onHover={() => {}}
-      />
-    </div>,
-  );
+  return render(crew(result));
 }
 
 const rowOf = (id: string) =>
@@ -62,10 +67,10 @@ const rowOf = (id: string) =>
     .getByTestId("crew-row")
     .elements()
     .find((e) => e.getAttribute("data-agent-id") === id) as HTMLElement | undefined;
-const nodeColor = (id: string) => {
-  const node = rowOf(id)?.querySelector('[data-testid="crew-row-dot"]');
-  if (!node) throw new Error(`no status node for ${id}`);
-  return getComputedStyle(node).color;
+const node = (id: string) => {
+  const found = rowOf(id)?.querySelector('[data-testid="crew-row-dot"]');
+  if (!found) throw new Error(`no status node for ${id}`);
+  return found as HTMLElement;
 };
 /** A token's resolved color, read through a probe element. */
 const tokenColor = (token: string) => {
@@ -84,11 +89,33 @@ const lineHeight = (el: Element) => {
 };
 
 describe("Crew status nodes", () => {
-  it("colors a running node with --tv-running and a completed node with --tv-ok", async () => {
+  it("paints a running node hollow in --tv-running and a completed node filled in --tv-ok", async () => {
     await mount("Done.");
-    expect(nodeColor("run")).toBe(tokenColor("--tv-running"));
-    expect(nodeColor("done")).toBe(tokenColor("--tv-ok"));
-    expect(nodeColor("run")).not.toBe(nodeColor("done"));
+    const running = getComputedStyle(node("run"));
+    const done = getComputedStyle(node("done"));
+    expect(running.borderTopColor).toBe(tokenColor("--tv-running"));
+    expect(running.borderTopWidth).not.toBe("0px");
+    expect(done.backgroundColor).toBe(tokenColor("--tv-ok"));
+    expect(done.backgroundColor).not.toBe(running.backgroundColor);
+  });
+
+  it("has a text equivalent for every state", async () => {
+    await render(
+      crew(
+        "Done.",
+        { quiet: mk("quiet", { kind: "subagent", parentAgentId: "L", registeredSeq: 9 }) },
+        true,
+      ),
+    );
+    const textOf = (id: string) => {
+      const n = node(id);
+      const label = n.getAttribute("aria-label");
+      if (label !== null) expect(n.getAttribute("role")).toBe("img");
+      return (label ?? n.textContent ?? "").trim();
+    };
+    expect(textOf("run")).toBe("Working");
+    expect(textOf("done")).toBe("Finished");
+    expect(textOf("quiet")).toBe("Unknown");
   });
 });
 
@@ -129,5 +156,33 @@ describe("Crew result", () => {
     expect(el.textContent).toContain("**bold**");
     expect(el.textContent).toContain("`code`");
     expect(el.textContent).toContain("<b>tags</b>");
+  });
+
+  it("shows a Show more control when the text grows from two to five lines", async () => {
+    const view = await render(crew("First line.\nSecond line."));
+    expect(toggle()).toBeNull();
+    await view.rerender(crew("One.\nTwo.\nThree.\nFour.\nFive."));
+    await expect.poll(() => toggle()?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("collapses runs of blank lines in the clamped view", async () => {
+    await mount("Done.\n\n\nDetails here");
+    const el = summary();
+    expect(el.textContent).toContain("Done.");
+    expect(el.textContent).toContain("Details here");
+    // Both lines fit in the two clamped lines: nothing is hidden, so no toggle is needed.
+    expect(el.scrollHeight).toBeLessThanOrEqual(el.clientHeight + 1);
+    expect(toggle()).toBeNull();
+  });
+
+  it("names the child in the toggle's accessible name", async () => {
+    await mount(LONG);
+    await expect
+      .element(page.getByRole("button", { name: "Show more of Reviewer's result" }))
+      .toBeVisible();
+    toggle()?.click();
+    await expect
+      .element(page.getByRole("button", { name: "Show less of Reviewer's result" }))
+      .toBeVisible();
   });
 });

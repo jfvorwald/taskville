@@ -71,3 +71,24 @@ describe("Files row layout", () => {
     expect(box.left).toBeGreaterThan(rowBox.left + rowBox.width / 2);
   });
 });
+
+describe("Files row with a Windows path", () => {
+  it("splits on the backslash: muted directory, file name as the name", async () => {
+    const win = "C:\\repo\\src\\a.ts";
+    const winFrames = frames.map((f) => ({
+      ...f,
+      data: f.data.agentId === A ? { ...f.data, filePaths: [win] } : f.data,
+    })) as Frame[];
+    await render(
+      <div style={{ width: 400 }}>
+        <FilesTab agentId={A} frames={winFrames} />
+      </div>,
+    );
+    const row = page.getByTestId("file-row").element();
+    const name = leaf(row, (t) => t === "a.ts");
+    expect(name, "an element holding only the file name").toBeDefined();
+    const dir = leaf(row, (t) => t.replace(/[\\/]$/, "") === "C:\\repo\\src");
+    expect(dir, "an element holding only the directory").toBeDefined();
+    expect(getComputedStyle(dir as HTMLElement).color).toBe(probe("color", "var(--tv-text-muted)"));
+  });
+});
