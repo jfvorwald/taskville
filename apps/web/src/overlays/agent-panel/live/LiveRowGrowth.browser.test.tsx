@@ -306,6 +306,11 @@ describe("M10.01 rows that grow in a later React commit", () => {
     );
     await paint();
     expect(rowEls()).toHaveLength(3);
+    // M10.02: details start collapsed; open each entry so arriving bodies grow its row.
+    for (const el of rowEls()) {
+      el.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click();
+    }
+    await paint();
     expect(overlaps()).toEqual([]);
     const before = row(0)?.getBoundingClientRect().height ?? 0;
     const watch = watchFrames();

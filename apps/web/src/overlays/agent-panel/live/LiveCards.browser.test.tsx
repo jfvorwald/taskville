@@ -212,6 +212,9 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
   it("shows only the exact recorded Edit fragment and a safe editor link", async () => {
     recordedTool("Edit", A);
     await mount();
+    // M10.02: details start collapsed; open them to read the fragment.
+    await expect.poll(() => cards().elements().length).toBe(1);
+    await openDetails(cards().first());
     await expect.element(slot().getByText("beta", { exact: true }), { timeout: 800 }).toBeVisible();
     await expect.element(slot().getByText("BETA", { exact: true })).toBeVisible();
     expect(cards().elements()).toHaveLength(1);
