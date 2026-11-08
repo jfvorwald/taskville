@@ -82,7 +82,9 @@ async function mount() {
 }
 
 async function choose(label: string) {
-  await picker().selectOptions(page.getByRole("option", { name: new RegExp(label) }));
+  // The label is matched literally (archive labels contain parentheses).
+  const literal = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await picker().selectOptions(page.getByRole("option", { name: new RegExp(literal) }));
 }
 async function openGit() {
   const engine = await mount();
