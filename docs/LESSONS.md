@@ -20,6 +20,24 @@ Entry format:
 
 ## Entries
 
+### L-233: Fixing a stamping bug can break the tests that were written around it
+- **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #453 · **Recorded by:** lead (M9.09)
+- **What happened:** The breaks e2e backdated a sped-up demo to work around ahead-of-time stamps (L-230). Once the demo stamped at wall time, every event arrived already stale and the needs-you bubble window had passed. The spec now runs at speed 2 with deadlines measured from the producer start, and takes about 5.5 minutes.
+- **Lesson:** When a ticket fixes a known quirk, grep for tests that compensate for it and plan their update in the same ticket. Measure e2e deadlines from a fixed start, not from the previous step.
+- **Action:** #458; wave flake on the chatter count filed as #460.
+
+### L-232: A seeded fuzz found what hand-written navigator cases missed
+- **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #453 · **Recorded by:** lead (M9.09)
+- **What happened:** The code review said the plaza fix covered only slot goals. About 120 hand-built home and spot variants all passed, but the existing seeded fuzz with short random steps found two failing seeds in 1,500. The general rule (a resting agent told to stay never stops on a held node) fixed both without a second reservation source.
+- **Lesson:** For movement invariants, search seeds in the existing fuzz before hand-building scenarios, and fix the rule rather than the goal kind.
+- **Action:** seeds 3590 and 44475 pinned in `navigator.break.test.ts` (#458).
+
+### L-231: A port-trust check in shell must compare canonical origins
+- **Date:** 2026-11-08 · **Milestone:** M7 · **Ticket:** #434 · **Recorded by:** lead (M7.30)
+- **What happened:** The shim's new live-engine check compared `TASKVILLE_URL` with `engine.json` byte for byte. Hooks installed with `localhost` would have spooled forever against an engine that records `127.0.0.1` (roborev 7378). The security review also noted that Claude Code caches OTel helper output, so a per-call check cannot cover headers already handed out.
+- **Lesson:** Canonicalize hosts before comparing, and document which guarantees depend on the caller re-running the check.
+- **Action:** #456; `apps/cli/docs/hooks-security.md`.
+
 ### L-230: A sped-up demo stamps events ahead of wall time
 - **Date:** 2026-11-07 · **Milestone:** M9 · **Ticket:** #443 · **Recorded by:** lead (M9.07)
 - **What happened:** `taskville demo --speed N` timestamps events N times ahead of the wall clock, so wall-clock features (break delays, 4 s bubbles) started late or were missed in e2e.
