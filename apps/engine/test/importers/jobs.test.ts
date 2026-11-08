@@ -228,6 +228,26 @@ describe("import job runner: malformed events and the cap", () => {
     });
   });
 
+  it("reports read as at least the events consumed when the cap stops an importer that never reports progress", async () => {
+    const importer = {
+      kind: "git" as const,
+      async *run() {
+        for (let i = 0; i < 50; i += 1) {
+          yield { events: [commitEvent(`c-${i}`, "2026-11-01T10:00:00Z", { sourceSequence: i })] };
+        }
+        return { read: 50, imported: 50, skipped: 0, malformed: 0 };
+      },
+    };
+    const jobs = makeJobs(env(), [importer], { maxEvents: 3 });
+    const { importId, archiveId } = jobs.start(request());
+    const finished = await jobs.settled(importId);
+    expect(finished.status).toBe("done");
+    expect(finished.counts).toMatchObject({ imported: 3, truncated: true });
+    // The cap is hit by the 4th event, so at least 4 were consumed.
+    expect(finished.counts.read).toBeGreaterThanOrEqual(4);
+    expect(env().storage.archives().get(archiveId)?.counts.read).toBeGreaterThanOrEqual(4);
+  });
+
   it("is not truncated exactly at the cap", async () => {
     const all = Array.from({ length: 5 }, (_, i) =>
       commitEvent(`c-${i}`, `2026-11-01T10:00:0${i}Z`),
