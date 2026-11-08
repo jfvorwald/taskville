@@ -12,6 +12,7 @@ const tokens: ThemeTokens = {
   "--tv-text-muted": "#4c624e",
   "--tv-accent": "#428034",
   "--tv-focus": "#9c6e11",
+  "--tv-ok": "#1f7a4d",
   "--tv-neon": "#8fd14f",
   "--tv-radius": "10px",
   "--tv-font": '"Avenir Next", "Segoe UI", system-ui, sans-serif',
