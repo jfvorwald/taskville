@@ -150,8 +150,8 @@ describe("opening an archive", () => {
     const first = GIT_LOG[0].occurredAt;
     const last = GIT_LOG.at(-1)?.occurredAt ?? "";
     const chip = page.getByText(/^HISTORY\s*·/);
-    await expect.element(chip).toHaveTextContent(new Date(last).toLocaleString());
-    await expect.element(chip).toHaveTextContent(GIT_LABEL);
+    await expect.element(chip).toMatchTextContent(new Date(last).toLocaleString());
+    await expect.element(chip).toMatchTextContent(GIT_LABEL);
     // Day labels are occurred days; the import day (receivedAt) must not appear.
     for (const iso of [first, "2026-03-03T10:00:00Z", last])
       await expect.element(page.getByText(day(iso), { exact: true })).toBeVisible();
@@ -160,7 +160,7 @@ describe("opening an archive", () => {
     (slider.element() as HTMLInputElement).focus();
     await userEvent.keyboard("{Home}");
     await expect.poll(() => read().state).toEqual(stateIn(GIT_LOG, 1));
-    await expect.element(chip).toHaveTextContent(new Date(first).toLocaleString());
+    await expect.element(chip).toMatchTextContent(new Date(first).toLocaleString());
   });
 });
 
