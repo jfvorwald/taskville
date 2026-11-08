@@ -428,8 +428,11 @@ describe("coverage gaps", () => {
       expect(existsSync(pidFile)).toBe(true);
       const pid = Number(readFileSync(pidFile, "utf8").trim());
       expect(Number.isInteger(pid)).toBe(true);
+      const abortedAt = Date.now();
       controller.abort();
       await abortable;
+      // Prompt, well before the runner's own timeout would kill the child.
+      expect(Date.now() - abortedAt).toBeLessThan(3000);
       await new Promise((r) => setTimeout(r, 300));
       const alive = (() => {
         try {
