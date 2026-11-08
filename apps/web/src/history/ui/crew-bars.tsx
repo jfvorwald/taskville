@@ -26,16 +26,20 @@ const MIN_WIDTH = 2;
  * Subagent runs from recorded events. Links, names and kinds come from the domain's own
  * registration rule (`applyRegistration`), so a heuristic registration never creates, moves or
  * renames a run. A run opens at the agent's first recorded registration and closes at its first
- * `agent.finished`, which may arrive before any registration.
+ * `agent.finished`, which may arrive before any registration. Times come from `clock`: received
+ * time for the live recording, occurred time for an archive.
  */
-export function crewRuns(events: readonly StoredEnvelope[]): CrewRun[] {
+export function crewRuns(
+  events: readonly StoredEnvelope[],
+  clock: (event: StoredEnvelope) => number = (event) => Date.parse(event.receivedAt),
+): CrewRun[] {
   let entities = initialEntities();
   const opened = new Map<string, { sequence: number; at: number }>();
   const closed = new Map<string, { sequence: number; at: number }>();
   for (const event of events) {
     const agentId = event.agentId;
     if (!agentId) continue;
-    const mark = { sequence: event.ingestSequence, at: Date.parse(event.receivedAt) };
+    const mark = { sequence: event.ingestSequence, at: clock(event) };
     if (event.type === "agent.registered") {
       entities = applyRegistration(entities, event, agentId);
       const seq = entities.agents[agentId]?.registeredSeq;

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { OWN_ESCAPE_SELECTOR } from "../../city/interaction/escape.ts";
+import archiveStyles from "../archives/archives.module.css";
 import { TimelinePicker } from "../archives/TimelinePicker.tsx";
 import type { ReplayRate } from "../state/store.ts";
 import { BackToLive } from "./back-to-live.tsx";
@@ -19,6 +20,12 @@ function editing(target: EventTarget | null): boolean {
 export function HistoryControls() {
   const history = useHistoryPresentation();
   const range = history.range;
+  const chipText =
+    history.time === null
+      ? ""
+      : `HISTORY · ${new Date(history.time).toLocaleString()}${
+          history.timeline?.kind === "archive" ? ` · ${history.timeline.label}` : ""
+        }`;
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       if (
@@ -67,9 +74,8 @@ export function HistoryControls() {
           ◷ History
         </button>
         {history.mode === "history" && history.time !== null ? (
-          <span>
-            HISTORY · {new Date(history.time).toLocaleString()}
-            {history.timeline?.kind === "archive" ? ` · ${history.timeline.label}` : ""}
+          <span className={archiveStyles.chip} title={chipText}>
+            {chipText}
           </span>
         ) : null}
         <TimelinePicker />

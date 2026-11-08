@@ -42,6 +42,8 @@ interface Presentation {
   timelines: readonly TimelineChoice[];
   timeline: TimelineChoice | null;
   openTimeline(id: string): void;
+  /** Re-reads the list so archives finished since entering are offered; the replay stays put. */
+  refreshTimelines(): void;
   mode: "live" | "history";
   store: DataStore;
   time: number | null;
@@ -74,6 +76,7 @@ const live = {
 const fallback: Presentation = {
   ...live,
   openTimeline() {},
+  refreshTimelines() {},
   fidelity: EMPTY_FIDELITY_FRAME,
   sequence: null,
   playing: false,
@@ -178,6 +181,28 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             explicitSeek = false;
         });
     }
+    async function refresh() {
+      if (!active || value.mode !== "history" || value.pending) return;
+      const requestGeneration = generation;
+      try {
+        const response = await fetch(`/v1/projects/${encodeURIComponent(projectId)}/timelines`, {
+          headers: { [SESSION_HEADER]: secret },
+        });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (
+          !active ||
+          requestGeneration !== generation ||
+          value.pending ||
+          body?.projectId !== projectId ||
+          !Array.isArray(body.timelines)
+        )
+          return;
+        publish({ timelines: timelineChoices(body, projectId) });
+      } catch {
+        // The list on screen stays valid; the next focus tries again.
+      }
+    }
     async function enter(target?: { agentId: string; taskId: string }, chosen?: string) {
       if (
         !active ||
@@ -204,10 +229,20 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         if (body?.projectId !== projectId || !Array.isArray(body.timelines))
           throw new Error("metadata");
         const choices = timelineChoices(body, projectId);
-        const timeline = choices.find((item) => item.id === (chosen ?? `live:${projectId}`));
+        // Without a live recording the newest archive (latest end) is the way in.
+        const timeline =
+          chosen !== undefined
+            ? choices.find((item) => item.id === chosen)
+            : (choices.find((item) => item.kind === "live") ??
+              choices
+                .filter((item) => item.kind === "archive")
+                .sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt))[0]);
         if (!timeline) {
-          publish({ pending: false, error: "No recording available." });
-          return;
+          if (chosen === undefined) {
+            publish({ pending: false, error: "No recording available." });
+            return;
+          }
+          throw new Error("unlisted");
         }
         const first =
           typeof timeline.firstAt === "string" ? Date.parse(timeline.firstAt) : Number.NaN;
@@ -409,7 +444,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           timelines: choices,
           timeline,
           moments,
-          crew: crewRuns(recorded),
+          crew: crewRuns(recorded, (event) => momentTime(timeline, event)),
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
         await controller
@@ -419,6 +454,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       } catch {
         if (active && requestGeneration === generation) {
           cancel();
+          themeController.setHistory(false);
           publish({ ...live, fidelity, pending: false, error: "Could not load recording." });
         }
       }
@@ -433,6 +469,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       },
       openTimeline: (id) => {
         void enter(undefined, id);
+      },
+      refreshTimelines: () => {
+        void refresh();
       },
       seek,
       play: () => controller?.getState().play(),

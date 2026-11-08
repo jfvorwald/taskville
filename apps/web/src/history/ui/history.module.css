@@ -16,6 +16,8 @@
 .header {
   top: 16px;
   right: 16px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
 }
 
 .timeline {
