@@ -16,7 +16,7 @@ Hook files hold one JSON object per line: `t_ms` (milliseconds since the run's f
 | `otel-logs.jsonl` | all three | Flattened OTLP/HTTP JSON log records for `conversation_starts`, `user_prompt`, `tool_decision`, `tool_result`, `sandbox_outcome`, `agent_response`, `agent_communication` and `sse_event` (`response.completed` only). The first line holds the resource attributes. Startup, websocket and API noise is dropped |
 | `otel-metrics.jsonl` | exec and TUI | Data points for `codex.turn.token_usage`, `codex.tool.call`, `codex.hooks.run`, `codex.multi_agent.spawn`, `codex.thread.started` and `codex.conversation.turn.count` |
 
-**Status:** the JSONL files above were generated and redacted but not committed with this README, because the spike worker could not create new files. They are staged outside the repo (see the M8.05 task report) and should be added under these names. The excerpts below are copied from them.
+All seven JSONL files are committed here, redacted as described below. The excerpts that follow are copied from them.
 
 ## Excerpts
 
