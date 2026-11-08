@@ -41,6 +41,7 @@ function Composition({ overlays = false }: { overlays?: boolean }) {
   const { store, mode } = useHistoryPresentation();
   const view = useSyncExternalStore(store.subscribe, store.getState);
   const agents = Object.keys(view.state?.agents ?? {});
+  // biome-ignore lint/correctness/useExhaustiveDependencies: agents is a new array each render; the joined ids are the real dependency.
   useEffect(() => {
     seen.push({ mode, agents });
   }, [mode, agents.join(",")]);
