@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -171,7 +172,9 @@ describe("gitImporter events", () => {
       expect(parseInputEvent(event).ok).toBe(true);
       expect(event.provenance).toBe("imported");
       expect(event.projectId).toBe("proj-a");
-      expect(event.sourceId).toBe(`git:${fixture.root}`);
+      expect(event.sourceId).toBe(
+        `git:${createHash("sha256").update(fixture.root).digest("hex").slice(0, 16)}`,
+      );
     }
 
     const byLabel = (label: string) =>
