@@ -29,6 +29,10 @@ const plazaNodes = L.graph.nodes.filter((n) => n.kind === "plaza");
 const PLAZA_BREAK: BreakDestination = { kind: "plaza", index: 1 };
 const plazaPoint = plazaNodes[1] as (typeof plazaNodes)[number];
 
+// The seeded fuzz runs simulate minutes of walking per case; alone they take a second or two, but
+// under parallel load they passed vitest's 5 s default (M9.11). Not shrunk, only given room.
+const FUZZ_TIMEOUT_MS = 30_000;
+
 const dist = (a: { x: number; z: number }, b: { x: number; z: number }) =>
   Math.hypot(a.x - b.x, a.z - b.z);
 const must = (nav: Navigator, id: string): NavAgent => {
@@ -359,36 +363,40 @@ describe("navigator break trips", () => {
       expect(dist(a, b)).toBeGreaterThan(0.1);
     });
 
-    it("never puts two agents on the same plaza node (seeded sequence)", () => {
-      const ids = ["a", "b", "c", "d"];
-      const { nav, clock } = twoSeated(ids);
-      let seed = 20260711;
-      const rnd = () => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-        return seed / 2 ** 32;
-      };
-      for (let step = 0; step < 40; step++) {
-        nav.sync(
-          ids.map((id) => {
-            const r = rnd();
-            if (r < 0.35) return waiting(id, "workshop", { hold: true });
-            if (r < 0.8) {
-              const index = Math.floor(rnd() * 3);
-              return waiting(id, "workshop", { breakSpot: { kind: "plaza", index } });
-            }
-            return waiting(id, "workshop");
-          }),
-        );
-        run(nav, clock, 60_000);
-        const resting = ids.map((id) => must(nav, id)).filter((x) => !isWalking(x));
-        for (const x of resting) {
-          const k = atNode(x);
-          if (k < 0) continue;
-          const sharing = resting.filter((y) => y !== x && dist(x, y) < 1e-6);
-          expect(sharing.length, `step ${step}: ${x.id} shares plaza node ${k}`).toBe(0);
+    it(
+      "never puts two agents on the same plaza node (seeded sequence)",
+      () => {
+        const ids = ["a", "b", "c", "d"];
+        const { nav, clock } = twoSeated(ids);
+        let seed = 20260711;
+        const rnd = () => {
+          seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+          return seed / 2 ** 32;
+        };
+        for (let step = 0; step < 40; step++) {
+          nav.sync(
+            ids.map((id) => {
+              const r = rnd();
+              if (r < 0.35) return waiting(id, "workshop", { hold: true });
+              if (r < 0.8) {
+                const index = Math.floor(rnd() * 3);
+                return waiting(id, "workshop", { breakSpot: { kind: "plaza", index } });
+              }
+              return waiting(id, "workshop");
+            }),
+          );
+          run(nav, clock, 60_000);
+          const resting = ids.map((id) => must(nav, id)).filter((x) => !isWalking(x));
+          for (const x of resting) {
+            const k = atNode(x);
+            if (k < 0) continue;
+            const sharing = resting.filter((y) => y !== x && dist(x, y) < 1e-6);
+            expect(sharing.length, `step ${step}: ${x.id} shares plaza node ${k}`).toBe(0);
+          }
         }
-      }
-    });
+      },
+      FUZZ_TIMEOUT_MS,
+    );
   });
 });
 
@@ -590,97 +598,104 @@ describe("plaza nodes have one reservation source", () => {
     ...[3590, 44475].map((seed) => ({ seed, short: true })),
   ];
   for (const { seed: seed0, short } of runs) {
-    it(`never stacks resting agents on a plaza node${short ? " mid-walk" : " and settles everyone"} (seed ${seed0})`, () => {
-      let seed = seed0;
-      const rnd = () => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-        return seed / 2 ** 32;
-      };
-      const areas = ["workshop", "archives", "dispatch"] as const;
-      const ids = ["a0", "a1", "a2", "a3", "a4"];
-      const arealess = new Set(["a0", "a1"]);
-      const siteOf: Record<string, BreakDestination> = {
-        a0: site(barSpots[0]),
-        a1: site(barSpots[1]),
-        a2: site(barSpots[2]),
-        a3: site(barSpots[3]),
-        a4: site(smokeSpots[0]),
-      };
-      const areaOf: Record<string, NavIntent["area"]> = {
-        a0: null,
-        a1: null,
-        a2: "workshop",
-        a3: "workshop",
-        a4: "archives",
-      };
-      const intentFor = (id: string): NavIntent | null => {
-        const r = rnd();
-        if (r < 0.06) return null;
-        if (!arealess.has(id) && rnd() < 0.2) {
-          areaOf[id] = areas[Math.floor(rnd() * areas.length)] as NavIntent["area"];
-        }
-        const base = { id, area: areaOf[id] ?? null, rest: "waiting" as const };
-        if (r < 0.3) return { ...base, hold: true };
-        if (r < 0.5) {
-          return {
-            ...base,
-            breakSpot: { kind: "plaza", index: Math.floor(rnd() * plazaNodes.length) },
-          };
-        }
-        if (r < 0.78) return { ...base, breakSpot: siteOf[id] as BreakDestination };
-        return base;
-      };
-      const nav = createNavigator();
-      const clock = { t: 0 };
-      nav.sync(
-        ids.map((id) => ({ id, area: areaOf[id] ?? null, rest: "waiting" as const })),
-        { place: true },
-      );
-      nav.tick(clock.t);
-      const siteNodes = [...barSpots, ...smokeSpots];
-      const noSharing = (label: string) => {
-        const resting = nav.list().filter((x) => !x.gone && !isWalking(x));
-        for (const x of resting) {
-          const k = atNode(x);
-          if (k < 0) continue;
-          const other = resting.find((y) => y !== x && dist(x, y) < 1e-6);
-          expect(other, `${label}: ${x.id} and ${other?.id} share plaza node ${k}`).toBeUndefined();
-        }
-      };
-      for (let step = 0; step < (short ? 80 : 50); step++) {
-        const intents = ids.map(intentFor).filter((x): x is NavIntent => x !== null);
-        nav.sync(intents);
-        noSharing(`step ${step} sync`);
-        run(nav, clock, short && rnd() >= 0.15 ? Math.floor(rnd() * 1800) : 90_000, () =>
-          noSharing(`step ${step} t=${clock.t}`),
+    it(
+      `never stacks resting agents on a plaza node${short ? " mid-walk" : " and settles everyone"} (seed ${seed0})`,
+      () => {
+        let seed = seed0;
+        const rnd = () => {
+          seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+          return seed / 2 ** 32;
+        };
+        const areas = ["workshop", "archives", "dispatch"] as const;
+        const ids = ["a0", "a1", "a2", "a3", "a4"];
+        const arealess = new Set(["a0", "a1"]);
+        const siteOf: Record<string, BreakDestination> = {
+          a0: site(barSpots[0]),
+          a1: site(barSpots[1]),
+          a2: site(barSpots[2]),
+          a3: site(barSpots[3]),
+          a4: site(smokeSpots[0]),
+        };
+        const areaOf: Record<string, NavIntent["area"]> = {
+          a0: null,
+          a1: null,
+          a2: "workshop",
+          a3: "workshop",
+          a4: "archives",
+        };
+        const intentFor = (id: string): NavIntent | null => {
+          const r = rnd();
+          if (r < 0.06) return null;
+          if (!arealess.has(id) && rnd() < 0.2) {
+            areaOf[id] = areas[Math.floor(rnd() * areas.length)] as NavIntent["area"];
+          }
+          const base = { id, area: areaOf[id] ?? null, rest: "waiting" as const };
+          if (r < 0.3) return { ...base, hold: true };
+          if (r < 0.5) {
+            return {
+              ...base,
+              breakSpot: { kind: "plaza", index: Math.floor(rnd() * plazaNodes.length) },
+            };
+          }
+          if (r < 0.78) return { ...base, breakSpot: siteOf[id] as BreakDestination };
+          return base;
+        };
+        const nav = createNavigator();
+        const clock = { t: 0 };
+        nav.sync(
+          ids.map((id) => ({ id, area: areaOf[id] ?? null, rest: "waiting" as const })),
+          { place: true },
         );
-        nav.prune();
-        for (const intent of short ? [] : intents) {
-          const a = must(nav, intent.id);
-          const label = `step ${step}: ${a.id} ${JSON.stringify(intent)} at (${a.x.toFixed(2)}, ${a.z.toFixed(2)})`;
-          expect(isWalking(a), `${label} still walking`).toBe(false);
-          const ownSlot = a.slotId !== null && dist(a, slot(a.slotId)) < 1e-6;
-          const onPlaza = atNode(a) >= 0;
-          const onSite = siteNodes.find((s) => dist(s, a) < 1e-6);
-          const legal =
-            ownSlot ||
-            a.queued ||
-            onPlaza ||
-            (onSite !== undefined &&
-              intent.breakSpot?.kind === "site" &&
-              intent.breakSpot.nodeId === onSite.nodeId);
-          expect(legal, `${label} is not at a legal resting place`).toBe(true);
-          if (intent.hold) {
-            expect(a.state, label).toBe("stuck");
-            expect(ownSlot || a.queued || onPlaza, `${label} holds off the plaza`).toBe(true);
-          } else if (intent.area === null && intent.breakSpot?.kind !== "site") {
-            expect(onPlaza, `${label} area-less and not home`).toBe(true);
-          } else if (intent.area !== null && intent.breakSpot === undefined) {
-            expect(ownSlot || a.queued, `${label} not at work`).toBe(true);
+        nav.tick(clock.t);
+        const siteNodes = [...barSpots, ...smokeSpots];
+        const noSharing = (label: string) => {
+          const resting = nav.list().filter((x) => !x.gone && !isWalking(x));
+          for (const x of resting) {
+            const k = atNode(x);
+            if (k < 0) continue;
+            const other = resting.find((y) => y !== x && dist(x, y) < 1e-6);
+            expect(
+              other,
+              `${label}: ${x.id} and ${other?.id} share plaza node ${k}`,
+            ).toBeUndefined();
+          }
+        };
+        for (let step = 0; step < (short ? 80 : 50); step++) {
+          const intents = ids.map(intentFor).filter((x): x is NavIntent => x !== null);
+          nav.sync(intents);
+          noSharing(`step ${step} sync`);
+          run(nav, clock, short && rnd() >= 0.15 ? Math.floor(rnd() * 1800) : 90_000, () =>
+            noSharing(`step ${step} t=${clock.t}`),
+          );
+          nav.prune();
+          for (const intent of short ? [] : intents) {
+            const a = must(nav, intent.id);
+            const label = `step ${step}: ${a.id} ${JSON.stringify(intent)} at (${a.x.toFixed(2)}, ${a.z.toFixed(2)})`;
+            expect(isWalking(a), `${label} still walking`).toBe(false);
+            const ownSlot = a.slotId !== null && dist(a, slot(a.slotId)) < 1e-6;
+            const onPlaza = atNode(a) >= 0;
+            const onSite = siteNodes.find((s) => dist(s, a) < 1e-6);
+            const legal =
+              ownSlot ||
+              a.queued ||
+              onPlaza ||
+              (onSite !== undefined &&
+                intent.breakSpot?.kind === "site" &&
+                intent.breakSpot.nodeId === onSite.nodeId);
+            expect(legal, `${label} is not at a legal resting place`).toBe(true);
+            if (intent.hold) {
+              expect(a.state, label).toBe("stuck");
+              expect(ownSlot || a.queued || onPlaza, `${label} holds off the plaza`).toBe(true);
+            } else if (intent.area === null && intent.breakSpot?.kind !== "site") {
+              expect(onPlaza, `${label} area-less and not home`).toBe(true);
+            } else if (intent.area !== null && intent.breakSpot === undefined) {
+              expect(ownSlot || a.queued, `${label} not at work`).toBe(true);
+            }
           }
         }
-      }
-    });
+      },
+      FUZZ_TIMEOUT_MS,
+    );
   }
 });
 

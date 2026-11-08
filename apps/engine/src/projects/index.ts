@@ -19,7 +19,7 @@ import { clientContentHash, ENGINE_SOURCE_ID, type Storage } from "../storage/in
 // at sequence 1 in one transaction, like `ensureUnsortedProject`. Nothing edits the config file.
 
 /** Same rule as config-file project IDs (config.ts). */
-const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
+export const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const MAX_NAME = 100;
 
 /** Project text the engine will not write to the event log. Never carries the text itself. */

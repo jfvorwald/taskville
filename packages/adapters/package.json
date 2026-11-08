@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./claude-code": "./src/claude-code/index.ts",
+    "./claude-code/transcripts": "./src/claude-code/transcripts/index.ts",
     "./redact": "./src/redact/index.ts"
   },
   "scripts": {

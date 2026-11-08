@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { demo } from "./commands/demo.ts";
 import { doctor } from "./commands/doctor.ts";
 import { events } from "./commands/events.ts";
+import { importCommand } from "./commands/import.ts";
 import { init } from "./commands/init.ts";
 import { install, uninstall } from "./commands/install.ts";
 import { project } from "./commands/projects.ts";
@@ -54,6 +55,8 @@ Commands:
   events ingest --file <path.jsonl>           Post events from a JSONL file
   events follow --project <id> [--after N]    Stream events
   requests [--project <id>] [--all]           List pending requests (read-only)
+  import git|transcripts [--project <id>] [--root <path>]   Import history into an archive timeline
+      (you start it; transcripts are read for the root from CLAUDE_CONFIG_DIR or ~/.claude and stored redacted)
   unpair                                      Revoke every paired browser
   install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
   uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
@@ -70,6 +73,7 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   status,
   events,
   requests,
+  import: importCommand,
   unpair,
   demo,
   install,

@@ -324,7 +324,7 @@ describe("guards that hold today", () => {
     // Make it look like a V2 file: no telemetry tables, schema_migrations at 2.
     const raw = new DatabaseSync(dbPath());
     raw.exec(
-      "DROP TABLE otlp_cost; DROP TABLE otlp_seen; DELETE FROM schema_migrations WHERE version > 2;",
+      "DROP TABLE archive_events; DROP TABLE archives; DROP TABLE otlp_cost; DROP TABLE otlp_seen; DELETE FROM schema_migrations WHERE version > 2;",
     );
     raw.close();
 
