@@ -49,12 +49,13 @@ const OVERLONG = Symbol("overlong");
 
 /**
  * Opens a file without following a symlink, even one swapped in after listing: O_NOFOLLOW makes
- * the open fail, and the opened descriptor must be a regular file.
+ * the open fail, and the opened descriptor must be a regular file. O_NONBLOCK keeps a FIFO swapped
+ * in after listing from blocking the open (it has no effect on regular files).
  */
 async function openRegular(file: string): Promise<FileHandle | undefined> {
   let handle: FileHandle;
   try {
-    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch {
     return undefined;
   }
