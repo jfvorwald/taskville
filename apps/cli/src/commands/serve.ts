@@ -29,7 +29,9 @@ import { type EvidenceStore, openEvidenceStore } from "@taskville/engine/src/evi
 import { registerFeedRoutes } from "@taskville/engine/src/feed/index.ts";
 import { createApp } from "@taskville/engine/src/http/app.ts";
 import { LOOPBACK_ADDRESS, startServer } from "@taskville/engine/src/http/server.ts";
+import { gitImporter } from "@taskville/engine/src/importers/git/index.ts";
 import { ImportJobs, registerImportRoutes } from "@taskville/engine/src/importers/index.ts";
+import { createTranscriptImporter } from "@taskville/engine/src/importers/transcripts/index.ts";
 import {
   createProject,
   ProjectInputError,
@@ -523,9 +525,15 @@ export function composeServe(
       maxStreams: engine.maxStreams,
       drainTimeoutMs: engine.drainTimeoutMs,
     });
-    // Archive imports (M8.06): no importer is registered until the Git and transcript importers
-    // land (M8.01, M8.02), so every kind answers `unknown_import_kind` for now.
-    imports = new ImportJobs({ storage: engine.storage, importers: [], evidence, now, logger });
+    // Archive imports (M8.06): the Git (M8.01) and transcript (M8.02) importers. The transcript
+    // importer reads CLAUDE_CONFIG_DIR or $HOME/.claude from this process's environment.
+    imports = new ImportJobs({
+      storage: engine.storage,
+      importers: [gitImporter, createTranscriptImporter()],
+      evidence,
+      now,
+      logger,
+    });
     registerImportRoutes(app, imports);
     for (const project of config.projects) {
       try {
