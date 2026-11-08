@@ -2,7 +2,18 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-07 23:50 UTC. **Main:** 3a4e3a4. **State:** G7 [#88](https://github.com/jfvorwald/taskville/issues/88) awaits the owner (decision #432 confirmed and closed; release-candidate decision and gate closure are the owner's). M9 Break time (owner request 2026-11-07) is done: waiting agents take breaks at a bar, a smoke corner and the plaza and chat about made-up news. Follow-ups: #453 (M9.09), #434 (M7.30), #435 (M7.31).
+**Updated:** 2026-11-08 15:00 UTC. **Main:** ca13425. **State:** G7 [#88](https://github.com/jfvorwald/taskville/issues/88) awaits the owner (decision #432 confirmed and closed; release-candidate decision and gate closure are the owner's). M9 Break time is done, and its follow-ups M9.09, M7.30 and M7.31 merged on 2026-11-08, plus M9.10 (a Live tab scroll race that the wave exposed). Open from the wave: #460 (M9.11).
+
+## Done in follow-ups batch (2026-11-08)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.30 #434 hook shim posts only to a live engine | #456 | shim and OTel headers helper check `engine.json` (regular file, matching origin with localhost as 127.0.0.1, live pid of at most 7 digits) before reading the token; same-user limits and OTel header caching in `apps/cli/docs/hooks-security.md` (ARCHITECTURE section 13 left to the owner); security review PASS WITH FINDINGS (1 medium docs, 6 low); roborev 7378 medium fixed, 7389 PASS; [report](tasks/M7.30.md) |
+| M7.31 #435 dirty production refused, dirty on /health | #457 | `buildRelease` refuses a dirty production tree regardless of `--allow-dirty`; `/health` release carries `dirty: true`; protocol health schema accepts it (lead-approved edit outside Owns); runbook fresh-install rule; code review 3 mediums and roborev 7375 fixed, 7392 PASS; [report](tasks/M7.31.md) |
+| M9.09 #453 break time follow-ups | #458 | demo stamps `startAtMs + atMs/speed` so sped-up runs never run ahead of wall time; activity with returned work; strict e2e; a resting agent told to stay never stops on a held plaza node (seeded fuzz found two more cases; fifth recurrence of plaza sharing); roborev 7384 fixed, 7399 PASS; [report](tasks/M9.09.md) |
+| M9.10 #459 Live tab keeps a reader's scroll | #462 | wave and then CI failure of the LiveEvidenceWindow navigation test; debugger root cause: the follow effect pinned to the bottom on any commit that landed before the browser's scroll event, so a reader's first scroll could snap back (real product bug, not a clock dependency); fixed with a deterministic regression test; code review PASS WITH FINDINGS (5 low, pre-existing or optional); roborev 7407 PASS; [report](tasks/M9.10.md) |
+
+Wave run on main ef5ea0c, each suite once in sequence: `pnpm check` 5,461 of 5,461; release 71 of 71; browser 972 of 974 (BreakTime.chatter failed, passed alone: flake, second on record; LiveEvidenceWindow "loads new rows on navigation" failed again alone and then in CI: finding #459, fixed in M9.10); app e2e all specs passed except breaks (on-break count at chatter read 1, passed alone with IDLE_FPS 21.2: flake, #460); web smoke 4; crews 5; permission replay 6; telemetry replay 7 (exercises the new shim gate through a real engine); clean-machine install of a staging release PASS. NOT RUN: cross-browser, headed GPU fps, live Claude Code runs.
 
 ## Done in M9 Break time (owner request, 2026-11-07)
 
