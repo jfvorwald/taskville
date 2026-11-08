@@ -67,6 +67,8 @@ let startReply: { status: number; body: unknown } = {
 /** GET /v1/imports/:id answers these in order; the last one repeats. */
 let statuses: unknown[] = [];
 let polled = 0;
+/** Milliseconds the fake engine waits before answering POST /v1/imports. */
+let startDelayMs = 0;
 /** When set, GET /v1/imports/imp-1 follows this script instead of `statuses` ("drop" kills the socket). */
 let pollScript: ({ status: number; body: unknown } | "drop")[] | undefined;
 
@@ -92,7 +94,7 @@ beforeAll(async () => {
     };
     if (req.method === "GET" && path === "/v1/projects") return send(200, { projects });
     if (req.method === "POST" && path === "/v1/imports")
-      return send(startReply.status, startReply.body);
+      return void setTimeout(() => send(startReply.status, startReply.body), startDelayMs);
     if (req.method === "GET" && path === "/v1/imports/imp-1") {
       if (pollScript !== undefined) {
         const step = pollScript[Math.min(polled, pollScript.length - 1)];
@@ -126,6 +128,7 @@ afterEach(() => {
   statuses = [];
   projects = [];
   pollScript = undefined;
+  startDelayMs = 0;
 });
 
 function setup(): void {
@@ -501,5 +504,25 @@ describe("taskville import: review fixes", () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("import ended with status paused");
     expect(`${result.stdout}${result.stderr}`).not.toMatch(/cancelled/i);
+  });
+});
+
+describe("taskville import: Ctrl-C during the start request", () => {
+  it("exits 1 without a stack trace and says the import may already be running", async () => {
+    setup();
+    startDelayMs = 300;
+    const controller = new AbortController();
+    const pending = cli(["--home", home.path, "--url", url, "import", "git"], {
+      cwd: rootAlpha,
+      importPollMs: 5,
+      signal: controller.signal,
+    });
+    while (!seen.some((s) => s.method === "POST")) await new Promise((r) => setTimeout(r, 5));
+    controller.abort();
+    const result = await pending;
+    expect(result.code).toBe(1);
+    expect(result.stderr).not.toMatch(/AbortError|\n\s+at /);
+    expect(result.stderr).toMatch(/may already be running/i);
+    expect(result.stderr).toMatch(/import_running|status/i);
   });
 });
