@@ -75,7 +75,7 @@ is never stored.
 | `command.delivered` / `command.succeeded` / `command.expired` / `command.unsupported` | `{ commandId }` | Command status | Engine |
 | `command.failed` | `{ commandId, reason }` | Command `failed` | Engine |
 | `test.result` | `{ passed, failed, skipped, summary? }` | Recorded as latest evidence on activity | Any |
-| `git.commit` | `{ repo, sha, parents: string[], subject? }` | Recorded; no state effect in this feature | Any |
+| `git.commit` | `{ repo, sha, parents: string[], subject?, files?: { added, modified, deleted, renamed } }` (`files` are optional counts from the Git importer, omitted for merges) | Recorded; no state effect in this feature | Any |
 | `git.ref_moved` | `{ repo, ref, from?, to }` | Recorded; no state effect in this feature | Any |
 | `git.merge` | `{ repo, sha, parents: string[] }` | Recorded; drives the merge celebration in M3 | Any |
 

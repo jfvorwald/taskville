@@ -400,5 +400,5 @@ const MOVE_ID =
 const refKey = (ref: string): string => shortHash(ref);
 
 /** 16 hex characters of SHA-256: a bounded, stable ID part for a path or a ref name. */
-const shortHash = (text: string): string =>
+export const shortHash = (text: string): string =>
   createHash("sha256").update(text).digest("hex").slice(0, 16);

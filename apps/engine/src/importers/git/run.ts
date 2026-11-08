@@ -1,9 +1,32 @@
 import { execFile } from "node:child_process";
-import { GIT_MAX_OUTPUT_BYTES, GIT_TIMEOUT_MS } from "../../sources/git/index.ts";
+import { GIT_MAX_OUTPUT_BYTES } from "../../sources/git/index.ts";
 
 // Runs git for the importer (imports design, "Importers: Git"): read-only commands only, through
 // execFile with an argument array (never a shell), bounded in time and output like the live
 // watcher's runner, and with an environment that ignores the user's and the system's git config.
+
+/** Imports walk whole histories, so each git call may run longer than the watcher's 10 s. */
+export const IMPORT_GIT_TIMEOUT_MS = 60_000;
+export const IMPORT_GIT_MAX_OUTPUT_BYTES = GIT_MAX_OUTPUT_BYTES;
+
+export interface GitLimits {
+  timeoutMs: number;
+  maxOutputBytes: number;
+}
+
+/** A git failure with a fixed message (no path, stderr or argv); `exitCode` is git's, if any. */
+export class GitFailure extends Error {
+  readonly exitCode: number | undefined;
+
+  constructor(
+    message: "not_a_repository" | "git_timeout" | "git_output_too_large" | "git_failed",
+    exitCode?: number,
+  ) {
+    super(message);
+    this.name = "GitFailure";
+    this.exitCode = exitCode;
+  }
+}
 
 /** Same forced settings as the live watcher's runner (`sources/git/run.ts`). */
 const SAFE_CONFIG = [
@@ -35,21 +58,39 @@ export function runImportGit(
   cwd: string,
   args: readonly string[],
   signal: AbortSignal,
+  limits: GitLimits,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       "git",
-      ["--no-pager", ...SAFE_CONFIG, ...args],
+      ["--no-pager", "--no-replace-objects", ...SAFE_CONFIG, ...args],
       {
         cwd,
         env: importGitEnv(),
-        timeout: GIT_TIMEOUT_MS,
-        maxBuffer: GIT_MAX_OUTPUT_BYTES,
+        timeout: limits.timeoutMs,
+        maxBuffer: limits.maxOutputBytes,
         encoding: "utf8",
         windowsHide: true,
         signal,
       },
-      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+      (error, stdout, stderr) => {
+        if (!error) return resolve(stdout);
+        reject(toFailure(error, stderr));
+      },
     );
   });
+}
+
+function toFailure(
+  error: Error & { code?: number | string; killed?: boolean },
+  stderr: string,
+): Error {
+  if (error.name === "AbortError") return error;
+  if (error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    return new GitFailure("git_output_too_large");
+  }
+  if (error.killed === true) return new GitFailure("git_timeout");
+  const exitCode = typeof error.code === "number" ? error.code : undefined;
+  if (/not a git repository/i.test(stderr)) return new GitFailure("not_a_repository", exitCode);
+  return new GitFailure("git_failed", exitCode);
 }
