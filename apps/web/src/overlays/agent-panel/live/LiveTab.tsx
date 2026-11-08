@@ -808,6 +808,9 @@ function LiveFeed({
   const followingRef = useRef(true);
   // The offset the virtualizer last wrote, so its measurement corrections are not read as a reader.
   const written = useRef<number | null>(null);
+  // The offset follow last pinned or a scroll event last reported. A move since then that no
+  // event has reported yet is a reader's scroll still on its way.
+  const settled = useRef<number | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [detailPages, setDetailPages] = useState<ReadonlyMap<string, number>>(() => new Map());
   const page = viewport && isPage(viewport) ? viewport.ownerDocument.defaultView : null;
@@ -913,6 +916,7 @@ function LiveFeed({
       followingRef.current = value;
       if (value && viewport) {
         viewport.scrollTop = viewport.scrollHeight;
+        settled.current = viewport.scrollTop;
       }
       setFollowing(value);
     },
@@ -923,6 +927,7 @@ function LiveFeed({
     // Following is judged by the distance from the bottom, not by the direction of a change: a
     // measurement correction can move scrollTop up while the view is still at the bottom.
     const onScroll = () => {
+      settled.current = viewport.scrollTop;
       if (
         distanceFromBottom(viewport) > FOLLOW_THRESHOLD &&
         !(written.current !== null && Math.abs(viewport.scrollTop - written.current) <= 1)
@@ -975,7 +980,22 @@ function LiveFeed({
         );
     }
     if (!following || !followingRef.current) return;
+    // The browser reports a scroll on its next frame, and a commit can land first. Judge that
+    // move as onScroll will, so the pin below does not overwrite it and hide it from onScroll.
+    const top = viewport.scrollTop;
+    if (
+      settled.current !== null &&
+      Math.abs(top - settled.current) > 1 &&
+      distanceFromBottom(viewport) > FOLLOW_THRESHOLD &&
+      !(written.current !== null && Math.abs(top - written.current) <= 1)
+    ) {
+      followingRef.current = false;
+      focusNewest.current = false;
+      setFollowing(false);
+      return;
+    }
     viewport.scrollTop = viewport.scrollHeight;
+    settled.current = viewport.scrollTop;
     // After Jump to latest the button is gone. Put focus on the newest card once it is mounted.
     if (focusNewest.current) {
       const newest = rows.current?.querySelector<HTMLElement>(
