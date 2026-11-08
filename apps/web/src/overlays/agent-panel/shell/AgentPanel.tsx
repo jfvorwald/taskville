@@ -217,28 +217,30 @@ export function AgentPanel({
       data-kind={agent.kind}
       data-readonly={mode === "history" ? "true" : undefined}
     >
-      <nav aria-label="Family" className={styles.crumbs}>
-        {crumbs.map((id, i) => {
-          const member = byId?.[id];
-          if (member === undefined) return null;
-          return (
-            <Fragment key={id}>
-              {i > 0 ? (
-                <span aria-hidden="true" className={styles.separator}>
-                  /
-                </span>
-              ) : null}
-              <Button
-                className={styles.crumb}
-                {...(id === agent.id ? { "aria-current": "true" as const } : {})}
-                onPress={() => select(id)}
-              >
-                {nameOf(member)}
-              </Button>
-            </Fragment>
-          );
-        })}
-      </nav>
+      {crumbs.length < 2 ? null : (
+        <nav aria-label="Family" className={styles.crumbs}>
+          {crumbs.map((id, i) => {
+            const member = byId?.[id];
+            if (member === undefined) return null;
+            return (
+              <Fragment key={id}>
+                {i > 0 ? (
+                  <span aria-hidden="true" className={styles.separator}>
+                    /
+                  </span>
+                ) : null}
+                <Button
+                  className={styles.crumb}
+                  {...(id === agent.id ? { "aria-current": "true" as const } : {})}
+                  onPress={() => select(id)}
+                >
+                  {nameOf(member)}
+                </Button>
+              </Fragment>
+            );
+          })}
+        </nav>
+      )}
       <header className={styles.header}>
         <h2 className={styles.name} data-testid="agent-panel-name">
           {nameOf(agent)}
