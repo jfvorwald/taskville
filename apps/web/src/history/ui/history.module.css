@@ -16,6 +16,8 @@
 .header {
   top: 16px;
   right: 16px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
 }
 
 .timeline {
@@ -85,6 +87,11 @@
 
 .markers button[data-marker="Task completed"] {
   color: #269653;
+  border-color: currentColor;
+}
+
+.markers button[data-marker^="Git "] {
+  color: var(--tv-accent);
   border-color: currentColor;
 }
 

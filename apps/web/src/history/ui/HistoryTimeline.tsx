@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { GIT_GLYPH } from "../archives/archive-timelines.ts";
 import { CrewBars } from "./crew-bars.tsx";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
 import styles from "./history.module.css";
@@ -89,9 +90,13 @@ export function HistoryTimeline() {
                 >
                   {moment.marker === "Commit"
                     ? "●"
-                    : moment.marker === "Needs you" || moment.marker === "Possibly needs you"
-                      ? "!"
-                      : "✓"}
+                    : moment.marker === "Git commit" ||
+                        moment.marker === "Git ref moved" ||
+                        moment.marker === "Git merge"
+                      ? GIT_GLYPH[moment.marker]
+                      : moment.marker === "Needs you" || moment.marker === "Possibly needs you"
+                        ? "!"
+                        : "✓"}
                 </button>
               );
             })}
