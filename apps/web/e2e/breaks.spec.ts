@@ -202,8 +202,15 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
       })
       .toBe(true);
     log(`bubbles: ${JSON.stringify(await bubbles(page))}`);
-    const onBreakAtChat = new Set((await onBreakNow()).map((r) => r.name));
-    expect(onBreakAtChat.size).toBeGreaterThanOrEqual(2);
+    // A chatter bubble means a conversation between two agents on break, so at least two labels
+    // say "on break" while it shows. One sample can land between label updates (it read 1 in a
+    // wave run), so poll for two within a window around the chatter instead of reading once.
+    await expect
+      .poll(async () => new Set((await onBreakNow()).map((r) => r.name)).size, {
+        timeout: 20_000,
+        intervals: [250],
+      })
+      .toBeGreaterThanOrEqual(2);
 
     // (3) The scenario gives Cyd work back: its break ends at once (label and status), and it walks
     // to its area. Deadlines are measured from the producer start (t0), not from the previous step:
@@ -280,17 +287,33 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     stop.abort();
     await producer.catch(() => {});
     expect(producerError, String(producerError[0])).toEqual([]);
+    // Nobody may be moving for a continuous settle period before the sample (an agent still
+    // walking draws extra frames: CI read 27.2 fps with Cyd walking back to work). The wait has a
+    // bounded deadline; missing it fails the step rather than sampling a moving scene.
+    const SETTLE_MS = 5_000;
+    const isMoving = (w: Walker) =>
+      !w.gone && (w.onTheWay || ["walking", "arriving"].includes(w.state));
+    let stillSince: number | undefined;
     await expect
-      .poll(async () => (await walkers(page)).filter((w) => !w.gone && w.onTheWay).length, {
-        timeout: 60_000,
-        intervals: [500],
-      })
-      .toBe(0);
-    await page.waitForTimeout(8_000);
+      .poll(
+        async () => {
+          const moving = (await walkers(page)).filter(isMoving).length;
+          if (moving > 0) {
+            stillSince = undefined;
+            return false;
+          }
+          stillSince ??= Date.now();
+          return Date.now() - stillSince >= SETTLE_MS;
+        },
+        { timeout: 90_000, intervals: [250] },
+      )
+      .toBe(true);
     await page.mouse.move(0, 0);
-    const standing = (await onBreakNow()).length;
     // The sample only means something with at least two agents standing on break.
+    const standing = (await onBreakNow()).length;
     expect(standing).toBeGreaterThanOrEqual(2);
+    // Still nobody moving at the start of the sample.
+    expect((await walkers(page)).filter(isMoving)).toEqual([]);
     const start = await page.evaluate(() => {
       (window as unknown as { __tvFrames: number[] }).__tvFrames.length = 0;
       return performance.now();
