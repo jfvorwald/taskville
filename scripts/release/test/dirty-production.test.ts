@@ -62,6 +62,15 @@ describe("dirty production build", () => {
     expect(written(outDir)).toEqual([]);
   });
 
+  it("is refused for staging without allowDirty (the dirty check still applies), writing nothing", async () => {
+    const root = dirtyFixture();
+    const outDir = join(scratch, "out-staging-no-allow");
+    await expect(buildRelease({ root, outDir, environment: "staging" })).rejects.toThrow(
+      /dirty|uncommitted/i,
+    );
+    expect(written(outDir)).toEqual([]);
+  });
+
   it("`pnpm release --allow-dirty --environment production` exits non-zero with a clear error and writes nothing", () => {
     // Run the real entry point from a fixture repository laid out like the real one: main.ts
     // resolves its root three directories up from itself.

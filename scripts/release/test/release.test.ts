@@ -571,6 +571,8 @@ describe("identity and lockfile (fixture repository)", () => {
     lockHash = sha256(readFileSync(join(root, "pnpm-lock.yaml")));
     await buildRelease({ root, outDir: outFor("c1"), webDir: web() });
     clean1 = readBuilt(outFor("c1"));
+    // M7.31: a clean build with no environment option defaults to production.
+    expect(JSON.parse(clean1.releaseJson).environment).toBe("production");
     // Same tree, new commit: the content is identical, only the commit differs.
     fxGit(root, "commit", "-q", "--allow-empty", "-m", "second commit, same content");
     await buildRelease({ root, outDir: outFor("c2"), webDir: web() });
@@ -911,10 +913,10 @@ describe("builds from another cwd and with --environment (real repository)", () 
   let first: Built;
   let otherCwd: Built;
   let staging: Built;
-  const run = (cwd: string, out: string, ...extra: string[]) =>
+  const run = (cwd: string, out: string, environment: string) =>
     execFileSync(
       process.execPath,
-      [MAIN, "--out", out, "--allow-dirty", "--environment", "development", ...extra],
+      [MAIN, "--out", out, "--allow-dirty", "--environment", environment],
       {
         cwd,
         stdio: "pipe",
@@ -925,8 +927,8 @@ describe("builds from another cwd and with --environment (real repository)", () 
   beforeAll(() => {
     const elsewhere = join(scratch, "elsewhere");
     mkdirSync(elsewhere);
-    run(ROOT, join(scratch, "out-e-base"));
-    run(elsewhere, join(scratch, "out-e-cwd"));
+    run(ROOT, join(scratch, "out-e-base"), "development");
+    run(elsewhere, join(scratch, "out-e-cwd"), "development");
     first = readBuilt(join(scratch, "out-e-base"));
     otherCwd = readBuilt(join(scratch, "out-e-cwd"));
   }, SLOW);
@@ -937,7 +939,7 @@ describe("builds from another cwd and with --environment (real repository)", () 
   });
 
   it("main.ts accepts --environment and records it, with a different id", () => {
-    run(ROOT, join(scratch, "out-e-staging"), "--environment", "staging");
+    run(ROOT, join(scratch, "out-e-staging"), "staging");
     staging = readBuilt(join(scratch, "out-e-staging"));
     expect(JSON.parse(staging.releaseJson)).toMatchObject({ environment: "staging" });
     expect(staging.manifest.environment ?? JSON.parse(staging.releaseJson).environment).toBe(

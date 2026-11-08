@@ -208,6 +208,23 @@ describe("GET /health release", () => {
     }
   });
 
+  it("ignores a malformed dirty value: plain identity, no fallback, no warning", () => {
+    for (const dirty of ["true", null]) {
+      writeFileSync(
+        join(dir, "release.json"),
+        JSON.stringify({ id: "r-46", version: "2.0.5", environment: "staging", dirty }),
+      );
+      const { logger, lines } = capture();
+      const identity = loadRelease({ dir, version: "0.0.0", logger });
+      expect(identity, String(dirty)).toEqual({
+        id: "r-46",
+        version: "2.0.5",
+        environment: "staging",
+      });
+      expect(warned(lines), String(dirty)).toBe(false);
+    }
+  });
+
   it("keeps the existing health fields", async () => {
     const { logger } = capture();
     const body = await healthRelease(loadRelease({ dir, version: "0.0.0", logger }));
