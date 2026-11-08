@@ -19,6 +19,7 @@ const ARCHIVE_PREFIX = "archive:";
 const ARCHIVE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
+const DEFAULT_REPLAY_CHUNK = 1000;
 const LIMIT = /^[1-9][0-9]{0,3}$/;
 const CURSOR_PREFIX = "tl1.";
 
@@ -28,6 +29,8 @@ export interface TimelineRouteOptions {
   now?: () => Date;
   /** Where checkpoint cache failures are logged. */
   logger?: UpkeepLogger;
+  /** Most archive positions read at once when replaying archive state (default 1,000). */
+  archiveReplayChunk?: number;
 }
 
 /** A timeline id that named a project, or why it did not. */
@@ -164,6 +167,7 @@ function decodeCursor(timelineId: string, cursor: string): CursorState | undefin
 export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRouteOptions): void {
   const { storage } = options;
   const now = options.now ?? (() => new Date());
+  const replayChunk = Math.max(1, Math.floor(options.archiveReplayChunk ?? DEFAULT_REPLAY_CHUNK));
 
   app.get("/v1/projects/:id/timelines", requireScope("read"), (c) => {
     const projectId = c.req.param("id");
@@ -222,8 +226,10 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     if (archiveId) {
       // Archives replay in full with the same reducer: no checkpoints, and no attention.
       let state = domainReducer.initial(projectId);
-      if (at > 0) {
-        for (const event of storage.archives().events(archiveId, 1, at)) {
+      // Read in bounded chunks, reducing as it goes, so memory does not grow with the archive.
+      for (let start = 1; start <= at; start += replayChunk) {
+        const stop = Math.min(at, start + replayChunk - 1);
+        for (const event of storage.archives().events(archiveId, start, stop)) {
           state = domainReducer.apply(state, event);
         }
       }
