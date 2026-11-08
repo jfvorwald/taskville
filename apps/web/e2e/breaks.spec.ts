@@ -7,21 +7,22 @@ import { CODES_FILE } from "./codes.ts";
 // M9.07: break time over the `breaks` demo scenario, against a real engine and the built client.
 //
 // Clock: break delay (60 to 120 s after a waiting record began) runs on the store clock, which in
-// the browser is wall time, and `taskville demo --speed N` stamps events with scenario time, so a
-// faster speed pushes event times into the future and delays breaks instead of shortening them.
-// So this spec runs the same producer the CLI runs (runProducer, scenario "breaks", seed 7) in
-// process at 6x, with `startAtMs` set 511 s in the past. An event's age when posted is
-// 511 s - (5/6 x scenario seconds), so the five turn_ended records (scenario 182 to 233 s) are
-// 317 to 360 s old: already past the 120 s delay, so breaks start at once. Brook's needs-you
-// (scenario 613 s) is stamped at about the posting time, so its bubble window (quips are timed
-// from the event time) opens while the request is open; Cyd's prompt (562 s) is 43 s old.
+// the browser is wall time. `taskville demo --speed N` stamps an event at
+// `startAtMs + floor(atMs / N)`, so events never run ahead of wall time and a faster speed only
+// brings the scenario sooner. The delay itself is not compressed, so the speed has to leave the
+// breaks room to start before Cyd gets work back.
+// This spec runs the same producer the CLI runs (runProducer, scenario "breaks", seed 7) in
+// process at 2x, with no backdate: stamps equal posting times. The five turn_ended records
+// (scenario 182 to 233 s) land at 91 to 117 s of wall time, so every break has started by 237 s
+// at the latest. Cyd's prompt (scenario 562 s) lands at 281 s, after Cyd's break (44 s of margin),
+// and Brook's needs-you (scenario 613 s) at 306 s, stamped at its posting time so its bubble
+// window opens while the request is open. The run takes about 6 minutes; the budgets below follow.
 //
 // Also measures idle fps with agents standing on break (headless SwiftShader, so a worst case):
 // the WebGL draw rate over 10 s once nobody travels and the producer is stopped.
 
 const port = Number(process.env.E2E_PORT ?? 4817);
-const SPEED = 6;
-const BACKDATE_MS = 511_000;
+const SPEED = 2;
 const SLEEPERS = ["Ada", "Cyd", "Dee", "Eli", "Fay"];
 
 interface Walker {
@@ -72,7 +73,7 @@ const bubbles = (page: Page) =>
 test("breaks start, chat, end on work, and give way to needs-you; idle fps on break", async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   await page.addInitScript(() => {
     // Records, as the DOM changes, when a needs-you bubble shows (its window is only 4 s) and
     // each urgent label's name and whether it was marked on break, so the check does not depend
@@ -156,7 +157,7 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     projectId: "unsorted",
     scenario: "breaks",
     speed: SPEED,
-    startAtMs: Date.now() - BACKDATE_MS,
+    startAtMs: Date.now(),
     now: Date.now,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     stop: () => stop.signal.aborted,
@@ -176,7 +177,7 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     const onBreakNow = async () =>
       (await rows(page)).filter((r) => r.onBreak && SLEEPERS.includes(r.name));
     await expect
-      .poll(async () => (await onBreakNow()).length, { timeout: 90_000, intervals: [500] })
+      .poll(async () => (await onBreakNow()).length, { timeout: 240_000, intervals: [500] })
       .toBeGreaterThan(0);
     const first = (await onBreakNow())[0] as Row;
     log(`first on break: ${first.name} (${first.status}, ${first.state})`);
