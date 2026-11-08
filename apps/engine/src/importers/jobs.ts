@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
+import type { ToolEvidence } from "@taskville/adapters/claude-code";
 import {
   parseInputEvent,
   producerPolicyViolation,
@@ -10,7 +11,6 @@ import {
 import type { Logger } from "pino";
 import { normalizePayload } from "../ingest/normalize.ts";
 import { textProblem } from "../ingest/text-check.ts";
-import type { EvidenceSink } from "../sources/claude-code/index.ts";
 import {
   type ArchiveCounts,
   type ArchiveError,
@@ -25,14 +25,24 @@ import type { ArchiveKind, ImportBatch, ImportCounts, Importer } from "./types.t
 // an `Importer` off the request, validates and sorts what it yields, and writes one archive in one
 // transaction at the end. Live events, projections and the live head are never touched.
 
-/** Events per archive; past this the import still finishes, with the rest counted as skipped. */
+/** Events per archive; past this the import stops and finishes `done` with `truncated: true`. */
 export const MAX_ARCHIVE_EVENTS = 200_000;
+/** Serialized size of one imported event. */
+export const MAX_EVENT_BYTES = 64 * 1024;
+/** Raw JSON size of one evidence item. */
+export const MAX_EVIDENCE_ITEM_BYTES = 1024 * 1024;
+/** Raw evidence an import may stage; items past it are dropped and counted. */
+export const MAX_EVIDENCE_BYTES = 64 * 1024 * 1024;
+/** How long `close` waits for an importer that ignores its signal. */
+export const CLOSE_TIMEOUT_MS = 5000;
+const MAX_LABEL_LENGTH = 100;
 
 export type ImportRefusalCode =
   | "unknown_import_kind"
   | "unknown_project"
   | "root_not_configured"
-  | "import_running";
+  | "import_running"
+  | "engine_closing";
 
 /** `start` refused the request; nothing was created. */
 export class ImportRefusal extends Error {
@@ -57,15 +67,28 @@ export interface ImportStatus {
   finishedAt?: string;
 }
 
+/** Where an import's tool bodies go, scoped to its archive (the evidence store). */
+export interface ArchiveEvidenceSink {
+  store(projectId: string, evidence: readonly ToolEvidence[], archiveId?: string): void;
+}
+
 export interface ImportJobsOptions {
   storage: Storage;
   /** One importer per kind; a kind with none is refused with `unknown_import_kind`. */
   importers: readonly Importer[];
-  /** Where tool bodies from batches go (the evidence store); redacted and bounded there. */
-  evidence?: EvidenceSink;
+  /** Where tool bodies from batches go once the archive is written; redacted and bounded there. */
+  evidence?: ArchiveEvidenceSink;
   now?: () => Date;
   /** Events per archive. Default 200,000. */
   maxEvents?: number;
+  /** Serialized bytes of one event; over it the event is malformed `payload_too_large`. Default 64 KB. */
+  maxEventBytes?: number;
+  /** Raw JSON bytes of one evidence item; over it the item is dropped. Default 1 MiB. */
+  maxEvidenceItemBytes?: number;
+  /** Raw evidence bytes per import; items past it are dropped. Default 64 MiB. */
+  maxEvidenceBytes?: number;
+  /** `close` stops waiting for an importer after this long. Default 5 s. */
+  closeTimeoutMs?: number;
   logger?: Logger;
 }
 
@@ -77,8 +100,13 @@ export interface ImportRequest {
 
 interface Job {
   controller: AbortController;
-  /** The importer's latest progress report. */
+  projectId: string;
+  kind: ArchiveKind;
+  startedAt: string;
+  /** The importer's latest progress report, sanitized. */
   counts: ArchiveCounts;
+  /** Set once the archive has been recorded (or released after a failed recording). */
+  recorded: boolean;
   done: Promise<ImportStatus>;
 }
 
@@ -92,12 +120,23 @@ interface Prepared {
 /** What the runner itself decided while reading an importer's batches. */
 interface Tally {
   kept: Prepared[];
-  seen: Set<string>;
+  /** Source key to content hash, to tell an identical repeat from a conflicting one. */
+  seen: Map<string, string>;
   skipped: number;
   malformed: number;
   byCode: Map<string, number>;
   truncated: boolean;
+  /** Events taken from the importer's batches so far. */
+  consumed: number;
+  /** Tool call IDs of the kept events. */
+  toolCalls: Set<string>;
+  /** Evidence held in memory until the archive is complete. */
+  evidence: ToolEvidence[];
+  evidenceBytes: number;
+  evidenceDropped: number;
 }
+
+type Outcome = "cancel" | { fail: ArchiveError };
 
 const ZERO_COUNTS: ArchiveCounts = { read: 0, imported: 0, skipped: 0, malformed: 0 };
 
@@ -107,6 +146,28 @@ const compare = (a: string | number | undefined, b: string | number | undefined)
   return x < y ? -1 : x > y ? 1 : 0;
 };
 
+const wholeCount = (value: unknown): number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+
+/** The four totals, as whole numbers; anything else an importer sends is dropped. */
+function sanitizeCounts(value: unknown): ImportCounts {
+  const counts = (typeof value === "object" && value !== null ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  return {
+    read: wholeCount(counts.read),
+    imported: wholeCount(counts.imported),
+    skipped: wholeCount(counts.skipped),
+    malformed: wholeCount(counts.malformed),
+  };
+}
+
+/** The error's name for logs (never its message, which can carry source text). */
+const errName = (error: unknown): string => (error instanceof Error ? error.name : typeof error);
+
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 function realpathOf(path: string): string | undefined {
   try {
     return realpathSync(path);
@@ -115,22 +176,39 @@ function realpathOf(path: string): string | undefined {
   }
 }
 
-/** The real path of `root` when it is one of `configured` (after realpath), else undefined. */
-function configuredRoot(configured: readonly string[], root: string): string | undefined {
+/** The real path of `root` and the configured path it matched, or undefined when none matches. */
+function configuredRoot(
+  configured: readonly string[],
+  root: string,
+): { real: string; label: string } | undefined {
   if (!isAbsolute(root)) return undefined;
   const real = realpathOf(root);
   if (real === undefined) return undefined;
-  return configured.some((candidate) => realpathOf(candidate) === real) ? real : undefined;
+  const match = configured.find((candidate) => realpathOf(candidate) === real);
+  return match === undefined ? undefined : { real, label: match };
+}
+
+/** `kind: name`, cut to 100 code units without splitting a surrogate pair. */
+function labelFor(kind: string, configuredPath: string): string {
+  return `${kind}: ${basename(configuredPath)}`
+    .slice(0, MAX_LABEL_LENGTH)
+    .replace(/[\ud800-\udbff]$/, "");
 }
 
 export class ImportJobs {
   readonly #storage: Storage;
   readonly #importers: Map<string, Importer>;
-  readonly #evidence: EvidenceSink | undefined;
+  readonly #evidence: ArchiveEvidenceSink | undefined;
   readonly #now: () => Date;
   readonly #maxEvents: number;
+  readonly #maxEventBytes: number;
+  readonly #maxEvidenceItemBytes: number;
+  readonly #maxEvidenceBytes: number;
+  readonly #closeTimeoutMs: number;
   readonly #logger: Logger | undefined;
   readonly #jobs = new Map<string, Job>();
+  /** Jobs that have started and not yet been recorded: one import runs engine-wide. */
+  readonly #active = new Set<string>();
   #closed = false;
 
   constructor(options: ImportJobsOptions) {
@@ -139,6 +217,10 @@ export class ImportJobs {
     this.#evidence = options.evidence;
     this.#now = options.now ?? (() => new Date());
     this.#maxEvents = options.maxEvents ?? MAX_ARCHIVE_EVENTS;
+    this.#maxEventBytes = options.maxEventBytes ?? MAX_EVENT_BYTES;
+    this.#maxEvidenceItemBytes = options.maxEvidenceItemBytes ?? MAX_EVIDENCE_ITEM_BYTES;
+    this.#maxEvidenceBytes = options.maxEvidenceBytes ?? MAX_EVIDENCE_BYTES;
+    this.#closeTimeoutMs = options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS;
     this.#logger = options.logger;
     // An import left running belonged to an engine that died; it has no events and never will.
     const interrupted = this.#storage.archives().failInterrupted(this.#now().toISOString());
@@ -147,7 +229,7 @@ export class ImportJobs {
 
   /** Starts an import and returns at once; the job runs off the caller. Throws `ImportRefusal`. */
   start(request: ImportRequest): { importId: string; archiveId: string; status: "running" } {
-    if (this.#closed) throw new Error("import jobs are closed");
+    if (this.#closed) throw new ImportRefusal("engine_closing", "The engine is shutting down");
     const importer = this.#importers.get(request.kind);
     if (importer === undefined) {
       throw new ImportRefusal("unknown_import_kind", "No importer for this kind");
@@ -160,25 +242,36 @@ export class ImportJobs {
       throw new ImportRefusal("root_not_configured", "Root is not one of the project's roots");
     }
     const archives = this.#storage.archives();
-    if (archives.running(project.id) !== undefined) {
-      throw new ImportRefusal("import_running", "This project already has a running import");
+    if (this.#active.size > 0 || archives.running(project.id) !== undefined) {
+      throw new ImportRefusal("import_running", "An import is already running");
     }
     const id = randomUUID();
+    const startedAt = this.#now().toISOString();
     archives.create({
       id,
       projectId: project.id,
       kind: importer.kind,
-      label: `${importer.kind}: ${basename(root)}`,
-      root,
-      createdAt: this.#now().toISOString(),
+      label: labelFor(importer.kind, root.label),
+      root: root.real,
+      createdAt: startedAt,
     });
     const job: Job = {
       controller: new AbortController(),
+      projectId: project.id,
+      kind: importer.kind,
+      startedAt,
       counts: { ...ZERO_COUNTS },
+      recorded: false,
       done: Promise.resolve({} as ImportStatus),
     };
     this.#jobs.set(id, job);
-    job.done = this.#run(id, importer, project.id, root, job);
+    this.#active.add(id);
+    // The job promise never rejects: an unhandled rejection would take the engine down.
+    job.done = this.#run(id, importer, project.id, root.real, job).catch((error: unknown) => {
+      this.#logger?.error({ errName: errName(error) }, "import job crashed");
+      this.#release(id, job);
+      return this.#fallbackStatus(id, job);
+    });
     return { importId: id, archiveId: id, status: "running" };
   }
 
@@ -208,11 +301,23 @@ export class ImportJobs {
     return status ? Promise.resolve(status) : Promise.reject(new Error("unknown import"));
   }
 
-  /** Engine shutdown: aborts running jobs and waits for them to be marked cancelled. */
+  /**
+   * Engine shutdown: aborts running jobs and waits for them to be marked cancelled, for at most
+   * `closeTimeoutMs`; a job still running then is marked cancelled here.
+   */
   async close(): Promise<void> {
     this.#closed = true;
     for (const job of this.#jobs.values()) job.controller.abort();
-    await Promise.allSettled([...this.#jobs.values()].map((job) => job.done));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), this.#closeTimeoutMs);
+    });
+    const finished = Promise.allSettled([...this.#jobs.values()].map((job) => job.done));
+    const result = await Promise.race([finished, timeout]);
+    clearTimeout(timer);
+    if (result !== "timeout") return;
+    this.#logger?.warn("import did not stop in time; marking it cancelled");
+    for (const [id, job] of this.#jobs) this.#record(id, job, "cancel");
   }
 
   async #run(
@@ -227,40 +332,97 @@ export class ImportJobs {
     const signal = job.controller.signal;
     const tally: Tally = {
       kept: [],
-      seen: new Set(),
+      seen: new Map(),
       skipped: 0,
       malformed: 0,
       byCode: new Map(),
       truncated: false,
+      consumed: 0,
+      toolCalls: new Set(),
+      evidence: [],
+      evidenceBytes: 0,
+      evidenceDropped: 0,
     };
+    let outcome: Outcome | undefined;
     try {
-      const final = await this.#read(importer, projectId, root, job, tally);
+      const final = signal.aborted
+        ? undefined
+        : await this.#read(importer, projectId, root, job, tally);
+      if (job.recorded) return this.#fallbackStatus(id, job);
       if (signal.aborted || final === undefined) {
-        this.#storage.archives().cancel(id, { counts: job.counts, finishedAt: this.#finishedAt() });
+        outcome = "cancel";
       } else {
         this.#write(id, final, tally);
+        this.#release(id, job);
+        this.#storeEvidence(projectId, id, tally);
       }
     } catch (error) {
-      this.#logger?.warn({ errName: (error as Error).name }, "import failed");
-      const failure: ArchiveError =
-        error instanceof WriteFailure
-          ? { code: "write_failed", message: "The archive could not be written" }
-          : { code: "importer_failed", message: "The importer failed" };
+      this.#logger?.warn({ errName: errName(error) }, "import failed");
+      outcome = signal.aborted
+        ? "cancel"
+        : {
+            fail:
+              error instanceof WriteFailure
+                ? { code: "write_failed", message: "The archive could not be written" }
+                : { code: "importer_failed", message: "The importer failed" },
+          };
+    }
+    if (outcome !== undefined) this.#record(id, job, outcome);
+    return this.status(id) ?? this.#fallbackStatus(id, job);
+  }
+
+  /**
+   * Marks the archive cancelled or failed, once. If the write throws, the other outcome is tried;
+   * either way the job is released in memory so the engine is not left with a running import.
+   */
+  #record(id: string, job: Job, outcome: Outcome): void {
+    if (job.recorded) return;
+    this.#release(id, job);
+    const archives = this.#storage.archives();
+    const base = { counts: job.counts, finishedAt: this.#finishedAt() };
+    const cancel = () => archives.cancel(id, base);
+    const fail = (error: ArchiveError) => archives.fail(id, { error, ...base });
+    const interrupted: ArchiveError = {
+      code: "interrupted",
+      message: "The engine stopped before the import finished",
+    };
+    try {
+      if (outcome === "cancel") cancel();
+      else fail(outcome.fail);
+    } catch (error) {
+      this.#logger?.error({ errName: errName(error) }, "import could not be recorded");
       try {
-        if (signal.aborted) {
-          this.#storage
-            .archives()
-            .cancel(id, { counts: job.counts, finishedAt: this.#finishedAt() });
-        } else {
-          this.#storage
-            .archives()
-            .fail(id, { error: failure, counts: job.counts, finishedAt: this.#finishedAt() });
-        }
+        if (outcome === "cancel") fail(interrupted);
+        else cancel();
       } catch (inner) {
-        this.#logger?.error({ errName: (inner as Error).name }, "import could not be recorded");
+        this.#logger?.error({ errName: errName(inner) }, "import could not be recorded");
       }
     }
-    return this.status(id) as ImportStatus;
+  }
+
+  #release(id: string, job: Job): void {
+    job.recorded = true;
+    this.#active.delete(id);
+  }
+
+  /** A status built from what the job knows, for when the stored archive cannot be read. */
+  #fallbackStatus(id: string, job: Job): ImportStatus {
+    try {
+      const stored = this.status(id);
+      if (stored !== undefined) return stored;
+    } catch {
+      // The database may be closed; answer from memory.
+    }
+    return {
+      importId: id,
+      archiveId: id,
+      projectId: job.projectId,
+      kind: job.kind,
+      status: "failed",
+      counts: job.counts,
+      error: { code: "importer_failed", message: "The importer failed" },
+      startedAt: job.startedAt,
+    };
   }
 
   /** Drives the importer to its end. Undefined when it was aborted before finishing. */
@@ -278,41 +440,44 @@ export class ImportJobs {
       root,
       signal,
       progress: (counts) => {
-        job.counts = { ...counts };
+        job.counts = sanitizeCounts(counts);
       },
     });
     for (;;) {
       const step = await generator.next();
-      if (step.done) return signal.aborted ? undefined : step.value;
+      if (step.done) return signal.aborted ? undefined : sanitizeCounts(step.value);
       if (signal.aborted) {
-        await generator.return({ read: 0, imported: 0, skipped: 0, malformed: 0 });
+        await generator.return(sanitizeCounts(undefined));
         return undefined;
       }
-      this.#take(projectId, step.value, receivedAt, tally);
+      this.#take(step.value, receivedAt, tally, projectId);
+      if (tally.truncated) {
+        // The cap is reached: stop the importer (its `finally` runs) instead of reading on.
+        await generator.return(sanitizeCounts(undefined));
+        // Its own count may lag (or be zero); at least the events consumed were read.
+        const own = sanitizeCounts(job.counts);
+        return { ...own, read: Math.max(own.read, tally.consumed) };
+      }
+      // Keep the engine's other work (requests, timers) moving between batches.
+      await yieldToEventLoop();
     }
   }
 
-  /** Validates a batch's events into the tally; evidence goes to the evidence store. */
-  #take(projectId: string, batch: ImportBatch, receivedAt: string, tally: Tally): void {
-    if (batch.evidence !== undefined && batch.evidence.length > 0 && this.#evidence) {
-      try {
-        this.#evidence.store(projectId, batch.evidence);
-      } catch (error) {
-        // Name only: the message can carry the body.
-        this.#logger?.warn({ errName: (error as Error).name }, "import evidence not stored");
-      }
-    }
+  /** Validates a batch's events into the tally, then stages the evidence of the kept ones. */
+  #take(batch: ImportBatch, receivedAt: string, tally: Tally, projectId: string): void {
     for (const raw of batch.events) {
-      const prepared = prepare(raw, projectId, receivedAt);
+      tally.consumed += 1;
+      const prepared = prepare(raw, projectId, receivedAt, this.#maxEventBytes);
       if (!prepared.ok) {
-        tally.malformed += 1;
-        tally.byCode.set(prepared.code, (tally.byCode.get(prepared.code) ?? 0) + 1);
+        reject(tally, prepared.code);
         continue;
       }
       const { envelope } = prepared.event;
       const key = `${envelope.sourceId}\u0000${envelope.sourceEventId}`;
-      if (tally.seen.has(key)) {
-        tally.skipped += 1;
+      const earlier = tally.seen.get(key);
+      if (earlier !== undefined) {
+        if (earlier === prepared.event.contentHash) tally.skipped += 1;
+        else reject(tally, "conflict");
         continue;
       }
       if (tally.kept.length >= this.#maxEvents) {
@@ -320,9 +485,30 @@ export class ImportJobs {
         tally.truncated = true;
         continue;
       }
-      tally.seen.add(key);
+      tally.seen.set(key, prepared.event.contentHash);
       tally.kept.push(prepared.event);
+      const toolCallId = (envelope.payload as { toolCallId?: unknown }).toolCallId;
+      if (typeof toolCallId === "string") tally.toolCalls.add(toolCallId);
     }
+    for (const item of batch.evidence ?? []) this.#stage(item, tally);
+  }
+
+  /** Holds one evidence item in memory when a kept event refers to it and it fits the limits. */
+  #stage(item: ToolEvidence, tally: Tally): void {
+    if (!this.#evidence) return;
+    const bytes = rawBytes(item);
+    const linked = typeof item?.toolCallId === "string" && tally.toolCalls.has(item.toolCallId);
+    if (
+      !linked ||
+      bytes === undefined ||
+      bytes > this.#maxEvidenceItemBytes ||
+      tally.evidenceBytes + bytes > this.#maxEvidenceBytes
+    ) {
+      tally.evidenceDropped += 1;
+      return;
+    }
+    tally.evidenceBytes += bytes;
+    tally.evidence.push(item);
   }
 
   /** Sorts, positions, and writes the archive in one transaction. */
@@ -344,12 +530,24 @@ export class ImportJobs {
       malformed: final.malformed + tally.malformed,
       ...(tally.malformed > 0 ? { malformedByCode: Object.fromEntries(tally.byCode) } : {}),
       ...(tally.truncated ? { truncated: true } : {}),
+      ...(tally.evidenceDropped > 0 ? { evidenceDropped: tally.evidenceDropped } : {}),
     };
     try {
       this.#storage.archives().complete(id, { events, counts, finishedAt: this.#finishedAt() });
     } catch (error) {
-      this.#logger?.warn({ errName: (error as Error).name }, "archive write failed");
+      this.#logger?.warn({ errName: errName(error) }, "archive write failed");
       throw new WriteFailure();
+    }
+  }
+
+  /** After the archive is complete: the staged evidence, scoped to the archive. */
+  #storeEvidence(projectId: string, archiveId: string, tally: Tally): void {
+    if (!this.#evidence || tally.evidence.length === 0) return;
+    try {
+      this.#evidence.store(projectId, tally.evidence, archiveId);
+    } catch (error) {
+      // Name only: the message can carry the body.
+      this.#logger?.warn({ errName: errName(error) }, "import evidence not stored");
     }
   }
 
@@ -363,10 +561,33 @@ class WriteFailure extends Error {
   override name = "WriteFailure";
 }
 
+function reject(tally: Tally, code: string): void {
+  tally.malformed += 1;
+  tally.byCode.set(code, (tally.byCode.get(code) ?? 0) + 1);
+}
+
+/** Bytes of the JSON form of a value, or undefined when it has none. */
+function rawBytes(value: unknown): number | undefined {
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? undefined : Buffer.byteLength(json);
+  } catch {
+    return undefined;
+  }
+}
+
 type PrepareResult = { ok: true; event: Prepared } | { ok: false; code: string };
 
 /** The ingest checks for one imported event, up to its stored envelope (position set later). */
-function prepare(raw: unknown, projectId: string, receivedAt: string): PrepareResult {
+function prepare(
+  raw: unknown,
+  projectId: string,
+  receivedAt: string,
+  maxEventBytes: number,
+): PrepareResult {
+  const size = rawBytes(raw);
+  if (size === undefined) return { ok: false, code: "invalid_envelope" };
+  if (size > maxEventBytes) return { ok: false, code: "payload_too_large" };
   const parsed = parseInputEvent(raw);
   if (!parsed.ok) return { ok: false, code: parsed.error.code };
   const event = parsed.event;

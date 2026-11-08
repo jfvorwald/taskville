@@ -117,6 +117,27 @@ export function commitEvent(
   } as InputEventWire;
 }
 
+/** A valid imported `tool_call.started` event (tool events need an agentId). */
+export function toolEvent(
+  sourceEventId: string,
+  toolCallId: string,
+  at = "2026-11-01T10:00:00Z",
+  overrides: Record<string, unknown> = {},
+): InputEventWire {
+  return {
+    schemaVersion: 1,
+    projectId: PROJECT,
+    sourceId: "transcript:s1",
+    sourceEventId,
+    agentId: "agent-1",
+    occurredAt: at,
+    type: "tool_call.started",
+    payload: { toolCallId, toolName: "Bash" },
+    provenance: "imported",
+    ...overrides,
+  } as InputEventWire;
+}
+
 /** An event the protocol parser rejects (`unknown_type`). */
 export function unknownTypeEvent(sourceEventId: string): InputEventWire {
   return commitEvent(sourceEventId, "2026-11-01T10:00:00Z", {

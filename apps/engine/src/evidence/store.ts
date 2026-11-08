@@ -17,6 +17,8 @@ const SCHEMA_VERSION = 1;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to find them
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const EVICT_BATCH = 64;
+// Joins a project ID and an archive ID into one scope key; C0 controls never appear in either.
+const ARCHIVE_SEPARATOR = "\u0001archive\u0001";
 
 export type BodyPart = "input" | "output";
 
@@ -93,8 +95,13 @@ export class EvidenceStore implements EvidenceSink {
     return String(this.#db.prepare("PRAGMA journal_mode").get()?.journal_mode);
   }
 
-  /** The `EvidenceSink` the Claude Code source calls after its events commit. */
-  store(projectId: string, evidence: readonly HookEvidence[]): void {
+  /**
+   * The `EvidenceSink` the Claude Code source calls after its events commit. With `archiveId`
+   * the bodies belong to that import's archive: a separate scope with its own pointers, usage and
+   * eviction, so they never shadow, count against, or evict the project's live bodies.
+   */
+  store(projectId: string, evidence: readonly HookEvidence[], archiveId?: string): void {
+    const scope = scopeOf(projectId, archiveId);
     const writes: { toolCallId: string; part: BodyPart; body: PreparedBody }[] = [];
     for (const item of evidence) {
       if (!isToolCallId(item.toolCallId)) continue;
@@ -107,12 +114,15 @@ export class EvidenceStore implements EvidenceSink {
     }
     if (writes.length === 0) return;
     this.#transaction(() => {
-      for (const write of writes) this.#write(projectId, write.toolCallId, write.part, write.body);
+      for (const write of writes) this.#write(scope, write.toolCallId, write.part, write.body);
     });
   }
 
-  /** A tool call's bodies, or undefined when nothing was ever stored for it. */
-  get(projectId: string, toolCallId: string): ToolCallEvidence | undefined {
+  /**
+   * A tool call's bodies, or undefined when nothing was ever stored for it. Without `archiveId`
+   * this is the live read and never returns archive bodies; with it, only that archive's.
+   */
+  get(projectId: string, toolCallId: string, archiveId?: string): ToolCallEvidence | undefined {
     const rows = this.#db
       .prepare(
         `SELECT p.part AS part, p.hash AS hash, b.body AS body, b.bytes AS bytes,
@@ -121,7 +131,9 @@ export class EvidenceStore implements EvidenceSink {
            LEFT JOIN bodies b ON b.project_id = p.project_id AND b.hash = p.hash
           WHERE p.project_id = ? AND p.tool_call_id = ?`,
       )
-      .all(projectId, toolCallId) as unknown as (BodyRow & { part: BodyPart })[];
+      .all(scopeOf(projectId, archiveId), toolCallId) as unknown as (BodyRow & {
+      part: BodyPart;
+    })[];
     if (rows.length === 0) return undefined;
     const result: ToolCallEvidence = { toolCallId, input: null, output: null };
     for (const row of rows) result[row.part] = toBody(row);
@@ -136,11 +148,19 @@ export class EvidenceStore implements EvidenceSink {
     return { bodies: Number(row?.bodies ?? 0), bytes: Number(row?.bytes ?? 0) };
   }
 
-  /** Removes every body and pointer of a project. */
+  /** Removes every body and pointer of a project, archive scopes included. */
   deleteProject(projectId: string): void {
+    // Archive scopes are `projectId + SEPARATOR + archiveId`: a range over the prefix (binary
+    // collation), the separator's last character bumped by one for the upper bound.
+    const low = `${projectId}${ARCHIVE_SEPARATOR}`;
+    const high = `${projectId}${ARCHIVE_SEPARATOR.slice(0, -1)}\u0002`;
     this.#transaction(() => {
       for (const table of ["tool_call_bodies", "bodies", "usage"]) {
-        this.#db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(projectId);
+        this.#db
+          .prepare(
+            `DELETE FROM ${table} WHERE project_id = ? OR (project_id >= ? AND project_id < ?)`,
+          )
+          .run(projectId, low, high);
       }
     });
   }
@@ -241,6 +261,11 @@ function toBody(row: BodyRow): EvidenceBody {
     truncated: row.truncated === 1,
     masked: row.masked === 1,
   };
+}
+
+/** The storage key of a scope: the project itself (live), or one of its archives. */
+function scopeOf(projectId: string, archiveId?: string): string {
+  return archiveId === undefined ? projectId : `${projectId}${ARCHIVE_SEPARATOR}${archiveId}`;
 }
 
 /** A tool call ID is stored unmasked, so it must be a plain ID the redactor leaves alone. */
