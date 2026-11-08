@@ -483,6 +483,18 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
         return;
       }
       const node = nearestFreeSafe(w);
+      const next = w.path[0];
+      if (
+        node === null &&
+        w.goal.kind === "slot" &&
+        next &&
+        !next.free &&
+        heldByOther(w, next.node)
+      ) {
+        // No safe point, and stopping would leave it on a plaza node another agent holds: it
+        // carries on to its workstation, which is where it stops.
+        return;
+      }
       if (node === null) {
         w.goal = { kind: "stay" };
       } else {
