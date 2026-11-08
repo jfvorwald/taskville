@@ -25,7 +25,7 @@ import {
   runShim,
   SHELLS,
   SHIM,
-  shimEnv,
+  liveShimEnv as shimEnv,
   spoolFiles,
   spoolLines,
   startServer,
