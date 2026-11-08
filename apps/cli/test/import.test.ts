@@ -3,7 +3,8 @@
 // Encoded seams: `apps/cli/src/commands/import.ts` exports `importCommand(io, args)` and main.ts
 // registers it as `import`; `Io.importPollMs` (context.ts) is the injectable poll interval.
 
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { getEventListeners } from "node:events";
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -66,6 +67,8 @@ let startReply: { status: number; body: unknown } = {
 /** GET /v1/imports/:id answers these in order; the last one repeats. */
 let statuses: unknown[] = [];
 let polled = 0;
+/** When set, GET /v1/imports/imp-1 follows this script instead of `statuses` ("drop" kills the socket). */
+let pollScript: ({ status: number; body: unknown } | "drop")[] | undefined;
 
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve) => {
@@ -91,6 +94,12 @@ beforeAll(async () => {
     if (req.method === "POST" && path === "/v1/imports")
       return send(startReply.status, startReply.body);
     if (req.method === "GET" && path === "/v1/imports/imp-1") {
+      if (pollScript !== undefined) {
+        const step = pollScript[Math.min(polled, pollScript.length - 1)];
+        polled += 1;
+        if (step === "drop" || step === undefined) return req.socket.destroy();
+        return send(step.status, step.body);
+      }
       const next = statuses[Math.min(polled, statuses.length - 1)];
       polled += 1;
       return send(200, next);
@@ -116,6 +125,7 @@ afterEach(() => {
   };
   statuses = [];
   projects = [];
+  pollScript = undefined;
 });
 
 function setup(): void {
@@ -134,7 +144,7 @@ const imp = (args: string[], cwd: string, extra: string[] = []) =>
   cli(["--home", home.path, "--url", url, ...extra, "import", ...args], {
     cwd,
     importPollMs: 5,
-  } as never);
+  });
 
 const posts = () => seen.filter((s) => s.method === "POST");
 
@@ -185,7 +195,7 @@ describe("taskville import: request and defaults", () => {
     const result = await cli(["--json", "--home", home.path, "--url", url, "import", "git"], {
       cwd: rootAlpha,
       importPollMs: 5,
-    } as never);
+    });
     expect(result.code).toBe(0);
     expect(() => JSON.parse(result.stdout)).not.toThrow();
   });
@@ -308,7 +318,7 @@ describe("taskville import: engine errors", () => {
         "--root",
         rootAlpha,
       ],
-      { cwd: rootAlpha, importPollMs: 5 } as never,
+      { cwd: rootAlpha, importPollMs: 5 },
     );
     expect(result.code).toBe(3);
     expect(result.stderr).toContain("taskville start");
@@ -341,5 +351,155 @@ describe("taskville import: usage", () => {
     const result = await cli(["--help"]);
     expect(result.code).toBe(0);
     expect(`${result.stdout}${result.stderr}`).toMatch(/import (git\|transcripts|<kind>)/);
+  });
+});
+
+const done = (over: Record<string, unknown> = {}) => ({ status: 200, body: record("done", over) });
+const running = { status: 200, body: record("running") };
+
+describe("taskville import: review fixes", () => {
+  it("a child directory named ..work is inside the root, not outside it", async () => {
+    setup();
+    const child = join(rootAlpha, "..work");
+    mkdirSync(child, { recursive: true });
+    const result = await imp(["git"], child);
+    expect(result.code).toBe(0);
+    expect((posts()[0] as Seen).body).toEqual({ projectId: "alpha", kind: "git", root: rootAlpha });
+  });
+
+  it("does not accumulate abort listeners on io.signal while polling", async () => {
+    setup();
+    statuses = [
+      ...Array.from({ length: 40 }, () => record("running")),
+      record("done", { counts: counts({ read: 1 }) }),
+    ];
+    const controller = new AbortController();
+    const result = await cli(["--home", home.path, "--url", url, "import", "git"], {
+      cwd: rootAlpha,
+      importPollMs: 1,
+      signal: controller.signal,
+    });
+    expect(result.code).toBe(0);
+    expect(polled).toBeGreaterThanOrEqual(40);
+    expect(getEventListeners(controller.signal, "abort").length).toBeLessThanOrEqual(2);
+  });
+
+  it("Ctrl-C while polling exits without a stack trace and names the import", async () => {
+    setup();
+    statuses = [record("running")];
+    const controller = new AbortController();
+    const pending = cli(["--home", home.path, "--url", url, "import", "git"], {
+      cwd: rootAlpha,
+      importPollMs: 5,
+      signal: controller.signal,
+    });
+    while (polled < 2) await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort();
+    const result = await pending;
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).not.toMatch(/AbortError|\n\s+at /);
+    expect(result.stderr).toContain("imp-1");
+    expect(result.stderr).toMatch(/keeps running|still running|continues/i);
+  });
+
+  it("retries a dropped connection during polling", async () => {
+    setup();
+    pollScript = ["drop", "drop", done()];
+    const result = await imp(["git"], rootAlpha);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/done/i);
+  });
+
+  it("retries a 5xx during polling", async () => {
+    setup();
+    const bad = { status: 503, body: { error: { code: "internal", message: "busy" } } };
+    pollScript = [bad, bad, running, done()];
+    const result = await imp(["git"], rootAlpha);
+    expect(result.code).toBe(0);
+  });
+
+  it("gives up after a few failures and says the import was started and the status unreadable", async () => {
+    setup();
+    pollScript = ["drop"];
+    const result = await imp(["git"], rootAlpha);
+    expect(result.code).not.toBe(0);
+    expect(polled).toBeGreaterThanOrEqual(3);
+    expect(polled).toBeLessThan(30);
+    expect(result.stderr).toContain("imp-1");
+    expect(result.stderr).toMatch(/started/i);
+    expect(result.stderr).toMatch(/could not read/i);
+    expect(result.stderr).not.toMatch(/\n\s+at /);
+  });
+
+  it("a 404 on the import id prints a clear message", async () => {
+    setup();
+    pollScript = [{ status: 404, body: { error: { code: "not_found", message: "no" } } }];
+    const result = await imp(["git"], rootAlpha);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).not.toContain("Engine error 404");
+    expect(result.stderr).toContain("imp-1");
+    expect(result.stderr).toMatch(/not found|unknown|no such/i);
+  });
+
+  it("asks for --project when two projects own the same real root", async () => {
+    setup();
+    const link = join(base, "alink");
+    symlinkSync(rootAlpha, link);
+    projects = [
+      { id: "alpha", name: "Alpha", roots: [rootAlpha], head: 0 },
+      { id: "twin", name: "Twin", roots: [link], head: 0 },
+    ];
+    const result = await imp(["git"], join(rootAlpha, "src"));
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--project");
+    expect(result.stderr).toContain("alpha");
+    expect(result.stderr).toContain("twin");
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("--project alone from outside its roots uses its only root", async () => {
+    setup();
+    const result = await imp(["git", "--project", "beta"], join(rootAlpha, "src"));
+    expect(result.code).toBe(0);
+    expect((posts()[0] as Seen).body).toEqual({ projectId: "beta", kind: "git", root: rootBeta });
+  });
+
+  it("--project alone from outside a multi-root project asks for --root", async () => {
+    setup();
+    const result = await imp(["git", "--project", "alpha"], outside);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--root");
+    expect(result.stderr).not.toMatch(/No project root/);
+    expect(posts()).toHaveLength(0);
+  });
+
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "a refusal code %s prints a generic message",
+    async (code) => {
+      setup();
+      startReply = { status: 400, body: { error: { code, message: "engine words" } } };
+      const result = await imp(["git"], rootAlpha);
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain("engine words");
+      expect(result.stderr).not.toMatch(/\[object|function|native code/);
+    },
+  );
+
+  it("resolves a symlinked current directory through realpath", async () => {
+    setup();
+    const link = join(base, "cwdlink");
+    symlinkSync(join(rootAlpha, "src"), link);
+    const result = await imp(["git"], link);
+    expect(result.code).toBe(0);
+    expect((posts()[0] as Seen).body).toEqual({ projectId: "alpha", kind: "git", root: rootAlpha });
+  });
+
+  it("does not call an unknown terminal status cancelled", async () => {
+    setup();
+    statuses = [record("paused")];
+    const result = await imp(["git"], rootAlpha);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("import ended with status paused");
+    expect(`${result.stdout}${result.stderr}`).not.toMatch(/cancelled/i);
   });
 });
