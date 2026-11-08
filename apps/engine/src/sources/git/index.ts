@@ -7,4 +7,5 @@ export {
   GitWatcher,
   type GitWatcherOptions,
   RESOLVE_RETRY_MS,
+  shortHash,
 } from "./watcher.ts";
