@@ -243,7 +243,7 @@ export function AgentPanel({
         <h2 className={styles.name} data-testid="agent-panel-name">
           {nameOf(agent)}
         </h2>
-        <p className={styles.facts}>
+        <p className={styles.factsLine}>
           <span data-testid="agent-panel-type">{agent.role ?? KIND_LABEL[agent.kind]}</span>
           <span data-testid="agent-panel-status" data-urgent={needsYou ? "true" : undefined}>
             {status}

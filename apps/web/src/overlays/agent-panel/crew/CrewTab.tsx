@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Agent } from "../../../data/domain.ts";
 import type { FamilyTeams } from "../shell/family.ts";
 import styles from "./crew.module.css";
@@ -13,6 +13,49 @@ export interface CrewTabProps {
   teams?: FamilyTeams | undefined;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
+}
+
+/**
+ * A finished child's result as plain text, clamped to two lines. The toggle only appears when
+ * the text is longer than that, and it is a real button so the keyboard reaches it.
+ */
+function Result({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const measure = () => {
+      if (!expanded) setOverflows(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [expanded]);
+  return (
+    <>
+      <p
+        ref={ref}
+        className={styles.summary}
+        data-testid="crew-row-summary"
+        data-expanded={expanded ? "true" : "false"}
+      >
+        {text}
+      </p>
+      {overflows || expanded ? (
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </>
+  );
 }
 
 /** The Crew tab: the parent's direct children, finished ones collapsed to their result. */
@@ -68,11 +111,7 @@ export function CrewTab({
               {row.activity}
             </span>
           )}
-          {row.summary === null ? null : (
-            <span className={styles.summary} data-testid="crew-row-summary">
-              {row.summary}
-            </span>
-          )}
+          {row.summary === null ? null : <Result text={row.summary} />}
         </li>
       ))}
     </ul>

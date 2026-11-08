@@ -39,7 +39,7 @@
   top: var(--tv-sidebar-top, 64px);
   right: 16px;
   bottom: 16px;
-  width: min(360px, calc(100% - 32px));
+  width: min(472px, calc(100% - 32px));
   z-index: 4;
   pointer-events: none;
 }
