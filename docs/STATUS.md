@@ -2,7 +2,24 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-07 21:00 UTC. **Main:** 78b70c0. **State:** M7 at review gate [G7 #88](https://github.com/jfvorwald/taskville/issues/88), awaiting the owner. The owner held the Cloudflare deploy on 2026-11-07 (decision [#432](https://github.com/jfvorwald/taskville/issues/432), defaults in force): M7.04 (#86) blocked, the M7.03 Worker merged but undeployed, the runbook rehearsed locally, the push tier run against the tarball, and the G7 release candidate is release `14a645aaf0280aa8` (production, main 78b70c0), which passed the clean-machine install check. Retro: [retros/M7.md](retros/M7.md). Open follow-ups: #434 (M7.30), #435 (M7.31).
+**Updated:** 2026-11-07 23:50 UTC. **Main:** 3a4e3a4. **State:** G7 [#88](https://github.com/jfvorwald/taskville/issues/88) awaits the owner (decision #432 confirmed and closed; release-candidate decision and gate closure are the owner's). M9 Break time (owner request 2026-11-07) is done: waiting agents take breaks at a bar, a smoke corner and the plaza and chat about made-up news. Follow-ups: #453 (M9.09), #434 (M7.30), #435 (M7.31).
+
+## Done in M9 Break time (owner request, 2026-11-07)
+
+Design: [break time](superpowers/specs/2026-11-07-break-time-design.md); ARCHITECTURE sections 1, 2.2 and 2.3 updated (#444).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M9.01 #437 break planner | #445 | pure, seeded; roborev 7275 one fixed, one answered (spot shift is the price of replay equals live); [report](tasks/M9.01.md) |
+| M9.02 #438 bar and smoke corner | #446 | dead-end break spots; roborev 7272 (walk through the bench) fixed; [report](tasks/M9.02.md) |
+| M9.06 #439 breaks demo scenario | #447 | `taskville demo --scenario breaks`; own source and ID prefix after roborev 7278, 7297; [report](tasks/M9.06.md) |
+| M9.03 #440 banter phrases and chatter bubbles | #448 | 8 headlines and reactions per theme; roborev 7317 PASS; [report](tasks/M9.03.md) |
+| M9.04 #441 Break time setting and on-break labels | #449 | Waiting or Idle plus "on break"; roborev 7320, 7328 fixed; [report](tasks/M9.04.md) |
+| M9.05 #442 navigator break trips, emotes, wobble | #450 | roborev 7314, 7331 fixed; [report](tasks/M9.05.md) |
+| M9.08 #451 wiring into city, labels, panel, bubbles | #452 | strict attribution, idle seeds, paused chatter; plaza sharing recurred four times and was root-caused by the debugger (one reservation source); [report](tasks/M9.08.md) |
+| M9.07 #443 e2e and idle fps | #454 | e2e passes; idle 21 fps on SwiftShader with 4 agents on break (target 20); [report](tasks/M9.07.md) |
+
+Wave run on main 3a4e3a4: `pnpm check` 5,382 of 5,383 (staging-worker budget timing test failed once, passed alone); browser 974 of 974; app e2e passed (including breaks); web smoke 4; crews 5; permission replay 6; telemetry replay 7. Flakes this wave: staging-worker budget (twice), ActionCard focus in CI (second on record), BreakTime.chatter browser (once, new test), shim spool concurrency in CI (second on record), unidentified `pnpm check` failures while three checks ran at once (L-214). NOT RUN: cross-browser, headed GPU fps, live Claude Code runs.
 
 ## Done in M7 Private staging (close-out, 2026-11-07)
 

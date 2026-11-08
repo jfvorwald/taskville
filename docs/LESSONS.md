@@ -20,6 +20,18 @@ Entry format:
 
 ## Entries
 
+### L-230: A sped-up demo stamps events ahead of wall time
+- **Date:** 2026-11-07 · **Milestone:** M9 · **Ticket:** #443 · **Recorded by:** lead (M9.07)
+- **What happened:** `taskville demo --speed N` timestamps events N times ahead of the wall clock, so wall-clock features (break delays, 4 s bubbles) started late or were missed in e2e.
+- **Lesson:** Test wall-clock behavior with an in-process producer whose start time is set in the past, or at speed 1.
+- **Action:** breaks.spec.ts does this; demo fix in #453.
+
+### L-229: When one bug class keeps coming back, hand it to the debugger after the second patch
+- **Date:** 2026-11-07 · **Milestone:** M9 · **Ticket:** #451 · **Recorded by:** lead
+- **What happened:** Two agents sharing a plaza node came back in four roborev rounds (7314, 7331, 7349, 7351), each patched locally. The debugger found four claim mechanisms that every chooser checked differently and replaced them with one reservation source and a reconcile pass.
+- **Lesson:** Treat a recurring class as one finding surviving its fixes: stop patching after the second round and root-cause it, as the review rules already say.
+- **Action:** Fixed in #452 (plazaClaim, heldByOther, reconcile) with seeded invariant tests.
+
 ### L-228: Give long background runs an explicit timeout, or detach them
 - **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #87 · **Recorded by:** lead
 - **What happened:** Claude Code background shells stop at 30 minutes by default and at most 2 hours. The cache keepalive was stopped at the default, an earlier wave run hit the limit, and the live engine started for the owner is bounded by it.
