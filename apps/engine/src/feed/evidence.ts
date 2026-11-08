@@ -81,6 +81,8 @@ export function frameEvidence(
   };
 }
 
+const ARCHIVE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 const MARKER = /\[REDACTED:([a-z-]+)\]/g;
 
 /** The masks of a stored body: only a body the redactor changed has any. */
@@ -100,7 +102,10 @@ export function registerEvidenceRoute(app: Hono<AppEnv>, store: EvidenceStore): 
     const id = c.req.param("id") ?? "";
     const parsed = parseEvidenceId(id);
     if (parsed === undefined) return unknown();
-    const body = store.get(parsed.projectId, parsed.toolCallId)?.[parsed.part];
+    // `?archive=<archiveId>` reads that import's archive scope only; without it, the live scope only.
+    const archive = c.req.query("archive");
+    if (archive !== undefined && !ARCHIVE_ID.test(archive)) return unknown();
+    const body = store.get(parsed.projectId, parsed.toolCallId, archive)?.[parsed.part];
     if (body === null || body === undefined) return unknown();
     if (body.status === "evicted") return apiError(c, 410, "evidence_evicted", EVICTED_MESSAGE);
     const response: EvidenceResponse = {
