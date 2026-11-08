@@ -223,6 +223,23 @@ describe("M5.17 visible evidence through default paired AgentPanel", () => {
     expect(card(n).element().getAttribute("aria-setsize")).toBe("2000");
   });
 
+  it("keeps a reader's scroll when a render commits before the browser reports it", async () => {
+    const { store, view, viewport } = await mount(2000);
+    await expect.element(card(1999)).toMatchTextContent("BODY-1999");
+    await turn();
+    const before = hits.length;
+    // The scroll event arrives on the next frame. Any commit can land first (a feed flush, an
+    // evidence answer, the header clock), and following must not pin over the reader.
+    viewport.scrollTop = viewport.scrollHeight / 2;
+    await view.rerender(panel(store));
+    await paint();
+    expect(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop).toBeGreaterThan(
+      viewport.scrollHeight / 4,
+    );
+    await expect.element(slot().getByRole("button", { name: "Jump to latest" })).toBeVisible();
+    await expect.poll(() => hits.length).toBeGreaterThan(before);
+  });
+
   it("refetches an old body after more than 128 other bodies, retaining all call metadata", async () => {
     const { viewport } = await mount(180);
     await expect.element(card(179)).toMatchTextContent("BODY-179");
