@@ -57,6 +57,8 @@ const KNOWN_SKIPPED_TYPES: ReadonlySet<string> = new Set([
 
 /** Evidence bounds: strings are cut to this, and a whole value over the total becomes a preview. */
 const EVIDENCE_STRING_MAX = 8 * 1024;
+/** Strings are cut to this before redaction, so redaction never scans a huge string. */
+const EVIDENCE_PRECUT_MAX = 64 * 1024;
 const EVIDENCE_TOTAL_MAX = 32 * 1024;
 /** Deeper structure is replaced before redaction, which recurses; keeps the stack bounded. */
 const EVIDENCE_DEPTH_MAX = 32;
@@ -267,17 +269,19 @@ function toolSummary(input: unknown): string | undefined {
  */
 function boundEvidence(value: unknown): unknown {
   if (value === undefined) return undefined;
-  const masked = redactJson(boundValue(value, 0)).value;
-  const text = JSON.stringify(masked);
-  if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return masked;
+  // Pre-cut at 64 KiB, redact, then the final 8 KiB cut: a secret straddling the 8 KiB cut is
+  // masked whole first, and one straddling the pre-cut falls past the final cut.
+  const cut = cutStrings(redactJson(boundValue(value, 0)).value);
+  const text = JSON.stringify(cut);
+  if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return cut;
   return { truncated: true, preview: text.slice(0, EVIDENCE_STRING_MAX).toWellFormed() };
 }
 
 function boundValue(value: unknown, depth: number): JsonValue {
   if (typeof value === "string") {
-    return value.length <= EVIDENCE_STRING_MAX
+    return value.length <= EVIDENCE_PRECUT_MAX
       ? value
-      : `${value.slice(0, EVIDENCE_STRING_MAX).toWellFormed()}...[truncated]`;
+      : value.slice(0, EVIDENCE_PRECUT_MAX).toWellFormed();
   }
   if (value === null || typeof value !== "object") {
     return typeof value === "number" || typeof value === "boolean" ? value : null;
@@ -296,4 +300,36 @@ function boundValue(value: unknown, depth: number): JsonValue {
     });
   }
   return out;
+}
+
+/** The final cut, on redacted strings (depth is already bounded by `boundValue`). */
+function cutStrings(value: JsonValue): JsonValue {
+  if (typeof value === "string") {
+    return value.length <= EVIDENCE_STRING_MAX
+      ? value
+      : `${value.slice(0, cutPoint(value)).toWellFormed()}...[truncated]`;
+  }
+  if (Array.isArray(value)) return value.map(cutStrings);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cutStrings(v)]));
+  }
+  return value;
+}
+
+const TOKEN_CHAR = /[A-Za-z0-9_+/=.-]/;
+/** How far a cut inside a run of token characters backs up, to cover a secret the redactor could
+ * not recognize because letters ran straight into it. */
+const CUT_BACKOFF = 128;
+
+/**
+ * Where the final cut lands. A cut inside a run of token characters could leave the first part of
+ * an unmasked secret, so it backs up to the start of that run's last CUT_BACKOFF characters (or
+ * to the run's start if that is nearer).
+ */
+function cutPoint(value: string): number {
+  let at = EVIDENCE_STRING_MAX;
+  if (!TOKEN_CHAR.test(value.charAt(at - 1)) || !TOKEN_CHAR.test(value.charAt(at))) return at;
+  const floor = at - CUT_BACKOFF;
+  while (at > floor && TOKEN_CHAR.test(value.charAt(at - 1))) at -= 1;
+  return at;
 }
