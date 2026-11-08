@@ -24,7 +24,7 @@ import {
 // API under test:
 //   createTranscriptMapper({ projectId }) -> { mapLine(raw, lineNumber), finish() }
 //   mapLine -> { outcome: "mapped" | "skipped" | "malformed", events, evidence? }
-//   finish  -> { events, evidence? }  (session.ended, when inferable)
+//   finish  -> { events, evidence? }  (always empty: transcripts never record a session end)
 
 type Wire = Record<string, unknown> & {
   type: string;
@@ -84,7 +84,6 @@ describe("a complete session", () => {
       "tool_call.started",
       "tool_call.finished",
       "session.turn_ended",
-      "session.ended",
     ]) {
       expect(types, t).toContain(t);
     }
@@ -92,7 +91,8 @@ describe("a complete session", () => {
     expect(ofType(events, "tool_call.finished")).toHaveLength(3);
     expect(ofType(events, "session.prompt_submitted")).toHaveLength(1);
     expect(ofType(events, "session.turn_ended")).toHaveLength(1);
-    expect(ofType(events, "session.ended")).toHaveLength(1);
+    // No known transcript line records a session closing, so none is ever inferred.
+    expect(ofType(events, "session.ended")).toHaveLength(0);
   });
 
   it("starts the session with its working directory under the main agent", () => {
@@ -121,8 +121,6 @@ describe("a complete session", () => {
     const turn = ofType(events, "session.turn_ended")[0];
     expect(turn?.occurredAt).toBe(T(7));
     expect(turn?.sourceSequence).toBe(8);
-    const ended = ofType(events, "session.ended")[0];
-    expect(ended?.occurredAt).toBe(T(7));
   });
 
   it("attributes sidechain lines to a subagent of the same session", () => {
@@ -248,5 +246,115 @@ describe("transcript text is evidence, redacted and bounded", () => {
     for (const e of r.events) {
       expect(Buffer.byteLength(JSON.stringify(e))).toBeLessThanOrEqual(16 * 1024);
     }
+  });
+});
+
+describe("no inferred session end", () => {
+  it("a transcript ending after an end_turn response yields turn_ended and no session.ended", () => {
+    const { events } = run([
+      userPrompt("go", { ts: T(0) }),
+      assistantText("done", { ts: T(1) }, "end_turn"),
+    ]);
+    expect(ofType(events, "session.turn_ended")).toHaveLength(1);
+    expect(ofType(events, "session.ended")).toHaveLength(0);
+  });
+
+  it("finish never emits anything", () => {
+    const mapper = createTranscriptMapper({ projectId: "proj-1" });
+    mapper.mapLine(JSON.stringify(userPrompt("go", { ts: T(0) })), 1);
+    mapper.mapLine(JSON.stringify(assistantText("done", { ts: T(1) }, "end_turn")), 2);
+    expect(mapper.finish().events).toEqual([]);
+  });
+});
+
+describe("subagent parent linkage", () => {
+  const registeredSub = (lines: object[]) =>
+    ofType(run(lines).events, "agent.registered").find((e) => e.payload.kind === "subagent");
+
+  it("sets parentAgentId when the transcript records the spawning Agent call", () => {
+    // completeSession: the sidechain's first line has parentUuid = the Agent tool_use line uuid.
+    expect(registeredSub(completeSession())?.payload.parentAgentId).toBe(sessionAgentId(SESSION));
+  });
+
+  it("omits parentAgentId when nothing links the subagent to a spawn", () => {
+    const lines = completeSession();
+    lines[4] = { ...lines[4], parentUuid: null };
+    const sub = registeredSub(lines);
+    expect(sub).toBeDefined();
+    expect(sub?.payload).not.toHaveProperty("parentAgentId");
+  });
+
+  it("omits parentAgentId when the parent line is not an Agent or Task call", () => {
+    const lines = completeSession();
+    lines[4] = { ...lines[4], parentUuid: (lines[1] as { uuid: string }).uuid }; // the Bash call
+    expect(registeredSub(lines)?.payload).not.toHaveProperty("parentAgentId");
+  });
+
+  it("omits parentAgentId when a sidechain appears with no parent in the transcript at all", () => {
+    const sub = registeredSub([
+      assistantToolUse(
+        "toolu_ORPHAN",
+        "Read",
+        { file_path: `${CWD}/a.txt` },
+        { ts: T(0), sidechain: true, agentId: SUB_AGENT, parentUuid: "no-such-line" },
+      ),
+    ]);
+    expect(sub?.payload).not.toHaveProperty("parentAgentId");
+  });
+});
+
+describe("hostile structure and size", () => {
+  it("deep nesting in tool input or output never throws and later lines still import", () => {
+    const lines: string[] = [
+      JSON.stringify(userPrompt("go", { ts: T(0) })),
+      `{"type":"assistant","timestamp":"${T(1)}","sessionId":"${SESSION}","cwd":"${CWD}","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","id":"toolu_DEEP","name":"Bash","input":{"command":"x","deep":${"[".repeat(10_000)}1${"]".repeat(10_000)}}}]}}`,
+      `{"type":"user","timestamp":"${T(2)}","sessionId":"${SESSION}","cwd":"${CWD}","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_DEEP","content":${"[".repeat(10_000)}1${"]".repeat(10_000)}}]}}`,
+      JSON.stringify(assistantToolUse("toolu_AFTER", "Bash", { command: "ls" }, { ts: T(3) })),
+    ];
+    const mapper = createTranscriptMapper({ projectId: "proj-1" });
+    const events: Wire[] = [];
+    const evidence: Wire[] = [];
+    lines.forEach((line, i) => {
+      let r: ReturnType<typeof mapper.mapLine> | undefined;
+      expect(() => {
+        r = mapper.mapLine(line, i + 1);
+      }).not.toThrow();
+      events.push(...((r?.events ?? []) as Wire[]));
+      evidence.push(...((r?.evidence ?? []) as unknown as Wire[]));
+    });
+    // Lead decision: the events still map, the evidence body becomes a bounded marker.
+    const ids = ofType(events, "tool_call.started").map((e) => e.payload.toolCallId);
+    expect(ids).toEqual(["toolu_DEEP", "toolu_AFTER"]);
+    expect(ofType(events, "tool_call.finished").map((e) => e.payload.toolCallId)).toEqual([
+      "toolu_DEEP",
+    ]);
+    for (const e of evidence) {
+      expect(Buffer.byteLength(JSON.stringify(e))).toBeLessThanOrEqual(64 * 1024);
+    }
+  });
+
+  it("masks a secret used as an object key in a tool input", () => {
+    const key = fakeApiKey();
+    const { events, evidence } = run([
+      assistantToolUse("toolu_K", "Bash", { command: "env", env: { [key]: "v" } }, { ts: T(0) }),
+    ]);
+    const all = JSON.stringify({ events, evidence });
+    expect(all).not.toContain(key);
+    expect(evidence.length).toBeGreaterThan(0);
+  });
+
+  it("cuts a 5 MB tool output before redaction: bounded evidence, leading secret masked", () => {
+    const key = fakeApiKey();
+    const big = `${key} ${"z".repeat(5 * 1024 * 1024)}`;
+    const { evidence } = run([
+      assistantToolUse("toolu_B", "Bash", { command: "cat" }, { ts: T(0) }),
+      toolResult("toolu_B", big, { ts: T(1) }),
+    ]);
+    const output = evidence.find((e) => e.output !== undefined);
+    expect(output).toBeDefined();
+    const text = JSON.stringify(output);
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(64 * 1024);
+    expect(text).not.toContain(key);
+    expect(text).toContain("[REDACTED:anthropic-key]");
   });
 });

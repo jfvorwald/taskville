@@ -8,7 +8,7 @@ import {
   assistantToolUse,
   completeSession,
   fakeApiKey,
-  jsonl,
+  jsonl as plainJsonl,
   SESSION,
   T,
   toolResult,
@@ -27,6 +27,19 @@ let tmp = "";
 let configDir = "";
 let root = "";
 const saved = { config: process.env.CLAUDE_CONFIG_DIR, home: process.env.HOME };
+
+// Transcript lines carry the cwd they ran in; the importer only reads files whose first cwd is the
+// configured root or inside it. These helpers put lines in the root unless a test says otherwise.
+const jsonl = (lines: readonly (object | string)[], cwd: string | null = root): string =>
+  plainJsonl(
+    lines.map((l) => {
+      if (typeof l === "string") return l;
+      const { cwd: _drop, ...rest } = l as Record<string, unknown>;
+      return cwd === null ? rest : { ...rest, cwd };
+    }),
+  );
+const inRootLines = (lines: readonly (object | string)[]): string =>
+  lines.map((l) => (typeof l === "string" ? l : JSON.stringify({ ...l, cwd: root }))).join("\n");
 
 const slugOf = (path: string) => path.replace(/[^A-Za-z0-9]/g, "-");
 const projectDir = (r = root) => join(configDir, "projects", slugOf(r));
@@ -114,10 +127,10 @@ describe("a complete session on disk", () => {
       "tool_call.started",
       "tool_call.finished",
       "session.turn_ended",
-      "session.ended",
     ]) {
       expect(types, t).toContain(t);
     }
+    expect(types).not.toContain("session.ended");
     const prompt = events.find((e) => e.type === "session.prompt_submitted");
     expect(prompt?.occurredAt).toBe(T(0));
     expect(prompt?.sourceSequence).toBe(1);
@@ -205,11 +218,7 @@ describe("incomplete and malformed transcripts", () => {
       '{"type":"assistant","message":{"role":"assis',
     ];
     // The last line has no trailing newline, as in a file cut mid-write.
-    write(
-      projectDir(),
-      "a.jsonl",
-      lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n"),
-    );
+    write(projectDir(), "a.jsonl", inRootLines(lines));
     const { events, counts } = await drain();
     expect(counts.read).toBe(6);
     expect(counts.malformed).toBe(3);
@@ -222,9 +231,10 @@ describe("incomplete and malformed transcripts", () => {
 
   it("survives an unreadable-shaped file (binary junk)", async () => {
     write(projectDir(), "junk.jsonl", "\u0000\u0001\u0002\n��\n");
-    const { counts } = await drain();
-    expect(counts.read).toBe(2);
-    expect(counts.malformed).toBe(2);
+    const { events, counts } = await drain();
+    expect(events).toEqual([]);
+    // A file with no cwd is skipped as out of scope; whatever was read of it counts malformed or skipped.
+    expect(counts.malformed + counts.skipped).toBeGreaterThanOrEqual(1);
   });
 });
 

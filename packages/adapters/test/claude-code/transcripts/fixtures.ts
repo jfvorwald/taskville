@@ -25,21 +25,27 @@ interface Extra {
   sessionId?: string;
   sidechain?: boolean;
   agentId?: string;
+  /** Overrides the line uuid, so a later line can link to it through parentUuid. */
+  uuid?: string;
+  /** The uuid of the line this one follows; a subagent's first line points at its spawning call. */
+  parentUuid?: string;
+  /** Overrides the line cwd (default CWD). `null` leaves the field out. */
+  cwd?: string | null;
   ts: string;
 }
 
 function envelope(type: "user" | "assistant", message: unknown, extra: Extra) {
   return {
-    parentUuid: null,
+    parentUuid: extra.parentUuid ?? null,
     isSidechain: extra.sidechain === true,
     ...(extra.agentId === undefined ? {} : { agentId: extra.agentId }),
     userType: "external",
-    cwd: CWD,
+    ...(extra.cwd === null ? {} : { cwd: extra.cwd ?? CWD }),
     sessionId: extra.sessionId ?? SESSION,
     version: "2.1.0",
     type,
     message,
-    uuid: uuid(),
+    uuid: extra.uuid ?? uuid(),
     timestamp: extra.ts,
   };
 }
@@ -84,7 +90,7 @@ export const toolResult = (id: string, content: unknown, extra: Extra, isError =
   );
 
 /** A complete session of 8 lines: prompt, a Bash call, a subagent that reads a file, turn end. */
-export function completeSession(): object[] {
+export function completeSession(): Record<string, unknown>[] {
   return [
     userPrompt("Run the tests and have a helper read notes.txt", { ts: T(0) }), // 1
     assistantToolUse(
@@ -98,13 +104,13 @@ export function completeSession(): object[] {
       "toolu_AG",
       "Agent",
       { description: "Read notes", prompt: "Read notes.txt" },
-      { ts: T(3) },
+      { ts: T(3), uuid: AGENT_CALL_UUID },
     ), // 4
     assistantToolUse(
       "toolu_SUB",
       "Read",
       { file_path: `${CWD}/notes.txt` },
-      { ts: T(4), sidechain: true, agentId: SUB_AGENT },
+      { ts: T(4), sidechain: true, agentId: SUB_AGENT, parentUuid: AGENT_CALL_UUID },
     ), // 5
     toolResult("toolu_SUB", [{ type: "text", text: "line one" }], {
       ts: T(5),
@@ -115,6 +121,9 @@ export function completeSession(): object[] {
     assistantText("Tests pass and the notes are read.", { ts: T(7) }, "end_turn"), // 8
   ];
 }
+
+/** The uuid of the Agent tool_use line in completeSession, which line 5 names as its parent. */
+export const AGENT_CALL_UUID = "00000000-0000-4000-8000-0000000000aa";
 
 export const jsonl = (lines: readonly (object | string)[]): string =>
   `${lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n")}\n`;
