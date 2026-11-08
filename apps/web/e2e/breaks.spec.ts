@@ -182,10 +182,15 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     log(`first on break: ${first.name} (${first.status}, ${first.state})`);
     expect(first.status).toBe("Waiting");
     // It stands at a break spot: not on a workstation slot.
+    // The agent must be in the movement snapshot: a missing walker is a failure, not "no slot".
     await expect
-      .poll(async () => (await walkers(page)).find((w) => w.id === first.id)?.slotId ?? "none", {
-        timeout: 60_000,
-      })
+      .poll(
+        async () => {
+          const walker = (await walkers(page)).find((w) => w.id === first.id);
+          return walker === undefined ? "missing" : (walker.slotId ?? "none");
+        },
+        { timeout: 60_000 },
+      )
       .toBe("none");
 
     // (2) Two or more agents on break settle and a chatter bubble shows.
@@ -259,6 +264,8 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     await page.waitForTimeout(8_000);
     await page.mouse.move(0, 0);
     const standing = (await onBreakNow()).length;
+    // The sample only means something with at least two agents standing on break.
+    expect(standing).toBeGreaterThanOrEqual(2);
     const start = await page.evaluate(() => {
       (window as unknown as { __tvFrames: number[] }).__tvFrames.length = 0;
       return performance.now();

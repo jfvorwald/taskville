@@ -673,3 +673,53 @@ describe("plaza nodes have one reservation source", () => {
     });
   }
 });
+
+// M9.09 (M9.08 debugger residual): an agent standing exactly on a plaza node that another agent
+// has just been given (it left a plaza break there), when needs-you arrives with every plaza node
+// held, kept standing on it, so two agents shared the node. Rule: it must not stay on a node held
+// by another agent; with no free plaza node it still stops as stuck, but clear of every other
+// agent (it may step aside or carry on to its workstation, the test only forbids sharing).
+describe("a needs-you agent standing on a node that is now held by another agent (M9.09)", () => {
+  const loose = (id: string, extra: Partial<NavIntent> = {}): NavIntent => ({
+    id,
+    area: null,
+    rest: "waiting",
+    ...extra,
+  });
+  const atNode = (a: NavAgent) => plazaNodes.findIndex((n) => dist(n, a) < 1e-6);
+
+  it.each(plazaNodes.map((_, k) => k))(
+    "does not share plaza node %i when every node is held",
+    (k) => {
+      const nav = createNavigator();
+      const clock = { t: 0 };
+      const holders = plazaNodes.map((_, i) => i).filter((i) => i !== k);
+      const held = () => holders.map((i) => loose(`h${i}`, { hold: true }));
+      const w = (extra: Partial<NavIntent> = {}) =>
+        waiting("w", "workshop", { breakSpot: { kind: "plaza", index: k }, ...extra });
+      nav.sync([w(), ...held()], { place: true });
+      nav.tick(clock.t);
+      run(nav, clock, 150_000);
+      expect(atNode(must(nav, "w")), "w stands on its plaza break node").toBe(k);
+      for (const i of holders) expect(atNode(must(nav, `h${i}`))).toBeGreaterThanOrEqual(0);
+
+      // w's break ends, so its node frees and p, which needs you and has no node, is given it.
+      // Needs-you then reaches w in the next sync, before w has taken a step.
+      const noBreak = (extra: Partial<NavIntent> = {}) => waiting("w", "workshop", extra);
+      nav.sync([loose("p", { hold: true }), noBreak(), ...held()]);
+      nav.sync([loose("p", { hold: true }), noBreak({ hold: true }), ...held()]);
+      run(nav, clock, 150_000);
+
+      const ids = ["w", "p", ...holders.map((i) => `h${i}`)];
+      for (const x of ids) {
+        for (const y of ids) {
+          if (x >= y) continue;
+          expect(
+            dist(must(nav, x), must(nav, y)),
+            `${x} and ${y} share a spot (w ${atNode(must(nav, "w"))}, p ${atNode(must(nav, "p"))})`,
+          ).toBeGreaterThan(0.1);
+        }
+      }
+    },
+  );
+});
