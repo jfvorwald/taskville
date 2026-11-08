@@ -29,10 +29,11 @@ const frame = (n: number, phase: ToolCallFrame["phase"]): ToolCallFrame => ({
   evidence: { input: null, output: null },
 });
 const slot = () => page.getByTestId("agent-panel-tab-slot");
+// M10.02: a card is found by its file name (the sentence "Wrote call-1.txt"), not the full path.
 const card = (n: number) =>
   slot()
     .getByRole("article")
-    .filter({ hasText: path(n) });
+    .filter({ hasText: `call-${n}.txt` });
 const after = (conn: Conn | undefined) => conn?.url.searchParams.get("after");
 const LONG = { timeout: 8000 };
 
@@ -83,12 +84,12 @@ describe("M5.15 ConnectedLiveTab: a boundary event's idless frames", () => {
     const [conn] = conns;
     conn?.send(5, frame(1, "running"));
     conn?.send(6, frame(2, "running"));
-    await expect.element(card(2)).toMatchTextContent(/Status: running/);
+    await expect.element(card(2)).toMatchTextContent(/Running/);
     // One boundary event (id 7): the first closed call has no id, the last carries it.
     conn?.send(undefined, frame(1, "unfinished"));
     conn?.send(7, frame(2, "unfinished"));
-    await expect.element(card(2)).toMatchTextContent(/Status: unfinished/);
-    await expect.element(card(1)).toMatchTextContent(/Status: unfinished/);
+    await expect.element(card(2)).toMatchTextContent(/Unfinished/);
+    await expect.element(card(1)).toMatchTextContent(/Unfinished/);
     expect(slot().getByRole("article").elements()).toHaveLength(2);
   });
 
@@ -100,14 +101,14 @@ describe("M5.15 ConnectedLiveTab: a boundary event's idless frames", () => {
     await expect.element(card(2)).toBeVisible();
     // The connection drops after the idless frame: resume from 6 so the server replays the event.
     conn?.send(undefined, frame(1, "unfinished"));
-    await expect.element(card(1)).toMatchTextContent(/Status: unfinished/);
+    await expect.element(card(1)).toMatchTextContent(/Unfinished/);
     conn?.end();
     await expect.poll(() => conns.length, LONG).toBe(2);
     expect(after(conns[1])).toBe("6");
     // The replay: both frames again, the last identified; the cursor moves to 7.
     conns[1]?.send(undefined, frame(1, "unfinished"));
     conns[1]?.send(7, frame(2, "unfinished"));
-    await expect.element(card(2)).toMatchTextContent(/Status: unfinished/);
+    await expect.element(card(2)).toMatchTextContent(/Unfinished/);
     conns[1]?.end();
     await expect.poll(() => conns.length, LONG).toBe(3);
     expect(after(conns[2])).toBe("7");

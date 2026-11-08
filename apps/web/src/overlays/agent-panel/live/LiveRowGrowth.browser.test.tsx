@@ -7,6 +7,7 @@ import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts
 import { initialState } from "../../../data/domain.ts";
 import { createDataStore } from "../../../data/store.ts";
 import { LiveTab } from "./LiveTab.tsx";
+import { openDetails } from "./liveKit.tsx";
 
 // M10.01: a mounted row whose own content grows (late highlighting, an evidence body arriving, a
 // disclosure opening) must be re-measured. The growth below is applied straight to the DOM, so
@@ -339,6 +340,8 @@ describe("M10.01 a late highlighter swap inside an expanded card", () => {
     );
     await paint();
     await scrollTo(0);
+    // M10.02: the code Expand control lives inside Details.
+    await openDetails(page.getByRole("article").first());
     await page
       .getByRole("button", { name: /^Expand Write / })
       .first()

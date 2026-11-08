@@ -11,6 +11,7 @@ import { createAnchorSource } from "../../host/anchors.ts";
 import type { OverlayProps } from "../../host/types.ts";
 import { AgentPanel } from "../shell/AgentPanel.tsx";
 import { LiveTab } from "./LiveTab.tsx";
+import { openDetails } from "./liveKit.tsx";
 
 // Entire recording is synthetic, not raw S-2. No evidence bodies or external actions.
 const A = "synthetic-follow-agent";
@@ -480,6 +481,7 @@ it("preserves the paused reading anchor across variable-height expansion and an 
   const viewport = scroller();
   await scroll(viewport, 0);
   const before = card(0).element().getBoundingClientRect().top;
+  await openDetails(card(0));
   await card(0).getByRole("button", { name: "Expand output" }).click();
   await paint();
   expect(Math.abs(card(0).element().getBoundingClientRect().top - before)).toBeLessThanOrEqual(3);

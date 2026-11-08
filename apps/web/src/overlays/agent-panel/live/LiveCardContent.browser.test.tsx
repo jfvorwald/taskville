@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { articles, type CallSpec, paint, renderPlain, slot } from "./liveKit.tsx";
+import { articles, type CallSpec, openDetails, paint, renderPlain, slot } from "./liveKit.tsx";
 
 // M5.06 round 5 items B (repeated diff tokens), C (grouped Read and Search) and F (Bash tail).
 
@@ -172,6 +172,8 @@ describe("F: Bash collapsed tail is exactly the last 10 lines", () => {
     await renderPlain([stdoutCall(lines(1, 25).join("\n"))]);
     await expect.element(articles()).toMatchTextContent("out-line-25");
     const card = articles().element();
+    // M10.02: the output controls live inside Details.
+    await openDetails(articles());
     expect(tailPre(card)?.textContent).toBe(lines(16, 25).join("\n"));
     await articles()
       .getByRole("button", { name: /expand output/i })
@@ -186,6 +188,7 @@ describe("F: Bash collapsed tail is exactly the last 10 lines", () => {
     const shown = tailPre(card)?.textContent ?? "";
     expect(shown.replace(/\n$/, "")).toBe(lines(16, 25).join("\n"));
     expect(shown).not.toContain("out-line-15\n");
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand output/i })
       .click();
