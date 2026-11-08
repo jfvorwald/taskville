@@ -332,7 +332,7 @@ describe("gitImporter abort", () => {
     for (let i = 0; i < total; i++) {
       const msg = `commit ${i}`;
       stream += `commit refs/heads/main\ncommitter C <c@example.invalid> ${1_000_000 + i} +0000\n`;
-      stream += `data ${msg.length}\n${msg}\n${i === 0 ? "" : "from refs/heads/main^0\n"}`;
+      stream += `data ${msg.length}\n${msg}\n`;
       stream += `M 644 inline f.txt\ndata ${String(i).length}\n${i}\n\n`;
     }
     git(big, ["fast-import", "--quiet"], undefined, stream);
