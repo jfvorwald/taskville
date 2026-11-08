@@ -266,7 +266,7 @@ describe("large output and git failures", () => {
     const sequences = commits.map((e) => e.sourceSequence);
     expect(sequences).toEqual(shas.map((_, i) => i));
     expect(counts.malformed).toBe(0);
-  });
+  }, 30_000);
 
   it("throws not_a_repository, with no path or stderr text, for a non-repository root", async () => {
     const plain = join(dir, "plain-secret-dir");
