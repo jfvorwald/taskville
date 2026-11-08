@@ -43,6 +43,8 @@ export const API_ERROR_CODES = [
   "import_running",
   /** 400: no importer is registered for the requested kind (M8.06). */
   "unknown_import_kind",
+  /** 503: the engine is shutting down and takes no new imports (M8.06). */
+  "engine_closing",
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
@@ -188,6 +190,8 @@ export const importCountsSchema = z.strictObject({
   malformedByCode: z.record(z.string(), nonNegativeIntSchema).optional(),
   /** Present and true when the event cap stopped the import. */
   truncated: z.boolean().optional(),
+  /** Evidence items dropped by a size limit, the budget, or because no kept event refers to them. */
+  evidenceDropped: nonNegativeIntSchema.optional(),
 });
 export type ImportCountsWire = z.output<typeof importCountsSchema>;
 
