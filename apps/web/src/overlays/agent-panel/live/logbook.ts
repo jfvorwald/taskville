@@ -31,6 +31,23 @@ export function stateOf(phase: ToolCallFrame["phase"] | string): Exclude<EntrySt
   return phase === "succeeded" || phase === "failed" || phase === "running" ? phase : "unfinished";
 }
 
+/**
+ * The one state of a call, shared by its node, sentence, secondary line and default-open rule. A
+ * spawn or a send that was recorded as succeeded but whose result says `success: false` failed.
+ */
+export function callState(
+  call: ToolCallFrame,
+  output: Record<string, unknown>,
+): Exclude<EntryState, "needs-you"> {
+  const state = stateOf(call.phase);
+  const tool = String(call.toolName);
+  return state === "succeeded" &&
+    (tool === "Agent" || tool === "Task" || tool === "SendMessage") &&
+    output.success === false
+    ? "failed"
+    : state;
+}
+
 /** The first non-empty line, trimmed. */
 export const firstLine = (text: string) =>
   text
@@ -38,9 +55,19 @@ export const firstLine = (text: string) =>
     .map((line) => line.trim())
     .find((line) => line !== "") ?? "";
 
+/** Text cut to `max` UTF-16 units with an ellipsis, never between the halves of a surrogate pair. */
+export function cap(text: string, max: number) {
+  if (text.length <= max) return text;
+  let end = max - 1;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end--;
+  return `${text.slice(0, end)}…`;
+}
 /** A line cut to the secondary-line limit, with an ellipsis when it was cut. */
-export const capLine = (text: string) =>
-  text.length > SECONDARY_MAX ? `${text.slice(0, SECONDARY_MAX - 1)}…` : text;
+export const capLine = (text: string) => cap(text, SECONDARY_MAX);
+/** The variable part of a sentence (a command, a pattern, a name) is cut to about this long. */
+export const SENTENCE_MAX = 120;
+const part = (text: string) => cap(text, SENTENCE_MAX);
 
 export const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
@@ -69,58 +96,72 @@ const host = (url: string | undefined) => {
 export function sentenceFor(
   call: ToolCallFrame,
   input: Record<string, unknown>,
-  output: Record<string, unknown>,
   paths: readonly string[],
+  state: Exclude<EntryState, "needs-you">,
   privacy: boolean,
 ): Segment[] {
   const tool = typeof call.toolName === "string" ? call.toolName : "a tool";
-  const state = stateOf(call.phase);
-  const file = paths[0] === undefined ? undefined : baseName(paths[0]);
+  const file = paths[0] === undefined ? undefined : part(baseName(paths[0]));
   if (state === "running") return [`Running ${tool}`];
-  const subagent = privacy ? undefined : string(input.subagent_type);
-  const recipient = privacy ? undefined : (string(input.recipient) ?? string(input.to));
+  const subagent = privacy ? undefined : part(string(input.subagent_type) ?? "") || undefined;
+  // A recipient recorded as an agent ID is an opaque identifier, not a name worth reading.
+  const recipient =
+    privacy || input.recipient_kind === "agent_id"
+      ? undefined
+      : part(string(input.recipient) ?? string(input.to) ?? "") || undefined;
+  // A file tool that did not finish must not read as done.
+  const fileSentence = (failed: string, unfinished: string): Segment[] =>
+    state === "failed"
+      ? file
+        ? [`${failed}: `, { mono: file }]
+        : [failed]
+      : file
+        ? [`${unfinished} `, { mono: file }]
+        : [unfinished];
   switch (tool) {
     case "Bash": {
       const command = privacy ? undefined : firstLine(string(input.command) ?? "");
-      return command ? ["Ran ", { mono: command }] : ["Ran a command"];
+      return command ? ["Ran ", { mono: part(command) }] : ["Ran a command"];
     }
     case "Edit": {
-      const added =
+      const counts =
         !privacy && string(input.new_string) !== undefined && string(input.old_string) !== undefined
-          ? ` +${lineCount(input.new_string as string)} −${lineCount(input.old_string as string)}`
+          ? ` +${lineCount(input.new_string as string)} \u2212${lineCount(input.old_string as string)}`
           : "";
-      return file ? ["Edited ", { mono: file }, added] : ["Edited a file"];
+      if (state !== "succeeded") return fileSentence("Edit failed", "No result for edit of");
+      return file ? ["Edited ", { mono: file }, counts] : ["Edited a file"];
     }
     case "Write":
+      if (state !== "succeeded") return fileSentence("Write failed", "No result for write of");
       return file ? ["Wrote ", { mono: file }] : ["Wrote a file"];
     case "Read":
+      if (state !== "succeeded") return fileSentence("Read failed", "No result for read of");
       return file ? ["Read ", { mono: file }] : ["Read a file"];
     case "Grep":
     case "Glob":
     case "Search": {
       const query = privacy ? undefined : (string(input.pattern) ?? string(input.query));
-      return query ? [`Searched "${firstLine(query)}"`] : ["Searched files"];
+      return query ? [`Searched "${part(firstLine(query))}"`] : ["Searched files"];
     }
     case "Agent":
     case "Task": {
       const helper = subagent ? `${subagent} helper` : "a helper";
-      if (state === "failed" || output.success === false) return [`Spawn failed for ${helper}`];
+      if (state === "failed") return [`Spawn failed for ${helper}`];
       return state === "unfinished" ? [`No result for spawn of ${helper}`] : [`Spawned ${helper}`];
     }
     case "SendMessage": {
       const to = recipient ? recipient : undefined;
-      if (state === "failed" || output.success === false)
-        return [to ? `Message to ${to} failed` : "Message failed"];
+      if (state === "failed") return [to ? `Message to ${to} failed` : "Message failed"];
       if (state === "unfinished")
         return [to ? `No result for message to ${to}` : "No result for message"];
       return [to ? `Sent ${to} a message` : "Sent a message"];
     }
     case "WebFetch": {
       const name = privacy ? undefined : host(string(input.url));
-      return name ? [`Fetched ${name}`] : ["Fetched a page"];
+      return name ? [`Fetched ${part(name)}`] : ["Fetched a page"];
     }
     default:
-      return [`Used ${tool}`];
+      return [`Used ${part(tool)}`];
   }
 }
 
@@ -145,10 +186,11 @@ export function secondaryFor(
   call: ToolCallFrame,
   input: Record<string, unknown>,
   output: Record<string, unknown>,
+  state: Exclude<EntryState, "needs-you">,
   privacy: boolean,
 ): string | undefined {
   if (privacy) return undefined;
-  if (call.phase === "failed") {
+  if (state === "failed") {
     const failure = failureLine(output);
     if (failure) return failure;
   }
@@ -156,17 +198,22 @@ export function secondaryFor(
   const text =
     tool === "SendMessage"
       ? messageText(input.message)
-      : (string(input.description) ??
-        (call.phase === "running" ? string(input.command) : undefined));
+      : (string(input.description) ?? (state === "running" ? string(input.command) : undefined));
   const line = firstLine(text ?? "");
   return line === "" ? undefined : line;
 }
 
+/** A recorded duration: finite and not negative. Anything else is not shown. */
+export const reportedMs = (call: ToolCallFrame) =>
+  typeof call.durationMs === "number" && Number.isFinite(call.durationMs) && call.durationMs >= 0
+    ? call.durationMs
+    : undefined;
+
 export function durationFor(call: ToolCallFrame): string | undefined {
   if (call.phase === "running") return "running";
-  return typeof call.durationMs === "number" && Number.isFinite(call.durationMs)
-    ? `${call.durationMs} ms`
-    : undefined;
+  const ms = reportedMs(call);
+  if (ms === undefined) return undefined;
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
 /** The local time of a turn, "12:04", or nothing for an unreadable timestamp. */

@@ -18,7 +18,14 @@
 .node[data-state="failed"] { background: var(--tv-fail, #e0605a); border-color: var(--tv-fail, #e0605a); }
 .node[data-state="running"] { border-color: var(--tv-running, var(--tv-accent)); }
 .node[data-state="unfinished"] { border-color: var(--tv-text-muted); border-style: dashed; }
-.node[data-state="needs-you"] { border-color: var(--tv-needs-you, var(--tv-accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv-needs-you, var(--tv-accent)) 35%, transparent); }
+.node[data-state="needs-you"] { border-color: var(--tv-needs-you, #e5484d); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv-needs-you, #e5484d) 35%, transparent); }
+/* The glyph is a shape inside the node, so a state reads without its color. */
+.glyph { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 9px; font-weight: 700; line-height: 1; color: var(--tv-surface, Canvas); }
+.glyph[data-glyph="check"]::before { content: "\2713"; }
+.glyph[data-glyph="cross"]::before { content: "\2715"; }
+.glyph[data-glyph="ring"]::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--tv-running, var(--tv-accent)); }
+.glyph[data-glyph="dash"]::before { content: ""; width: 5px; height: 2px; background: var(--tv-text-muted); }
+.glyph[data-glyph="alert"]::before { content: "!"; color: var(--tv-needs-you, #e5484d); }
 .visuallyHidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .sentence { font-weight: 500; min-width: 0; }
