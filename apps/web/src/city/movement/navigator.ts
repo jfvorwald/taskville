@@ -337,8 +337,19 @@ export function createNavigator(options: NavigatorOptions = {}): Navigator {
     if (t === null) {
       // Stop where it stands: at the waypoint just reached, or the next one when mid-street,
       // unless another agent holds that plaza node; then right where it is.
+      // Standing exactly on a plaza node another agent holds is never a place to stop: it carries
+      // on to the first point nobody holds (or to the end of its path).
+      const here = { x: w.lx, z: w.lz };
+      const onHeld = plazaNodes.some((n) => dist(pos(n), here) < 1e-9 && heldByOther(w, n));
+      if (onHeld) {
+        const clear = w.path.findIndex(
+          (p) => dist(p, here) > 1e-9 && (p.free || !heldByOther(w, p.node)),
+        );
+        if (clear >= 0) w.path = w.path.slice(0, clear + 1);
+        return;
+      }
       const next = w.path[0];
-      const ahead = next && dist(next, { x: w.lx, z: w.lz }) > 1e-9;
+      const ahead = next && dist(next, here) > 1e-9;
       w.path = next && ahead && (next.free || !heldByOther(w, next.node)) ? [next] : [];
       return;
     }
