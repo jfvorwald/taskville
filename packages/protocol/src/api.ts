@@ -155,6 +155,8 @@ export const healthResponseSchema = z.strictObject({
       id: z.string().min(1),
       version: z.string(),
       environment: z.enum(["development", "staging", "production"]),
+      /** Present only on a dirty development or staging build (M7.31); never `false`. */
+      dirty: z.literal(true).optional(),
     })
     .optional(),
 });

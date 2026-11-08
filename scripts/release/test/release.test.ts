@@ -36,7 +36,7 @@ import { buildRelease } from "../src/release.ts";
 //   installed engine resolves index.html, and release.json { id, version, commit, environment } at
 //   the package root. The manifest lists every packaged file with size and sha256, plus the
 //   tarball's sha256. The release id is the first 16 hex chars of the manifest digest and depends
-//   on content only. A dirty working tree is refused unless allowDirty; symlinks and local secrets
+//   on content only. A dirty working tree is always refused for production, and for other environments unless allowDirty; symlinks and local secrets
 //   files (.env*, .dev.vars*) in the artifact are refused.
 //
 //   Test seam (a decision for the implementer to confirm): `webDir` is a prebuilt web client to

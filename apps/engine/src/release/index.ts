@@ -18,7 +18,8 @@ const ReleaseFile = z.object({
   id: z.string().min(1),
   version: z.string().optional(),
   environment: z.enum(["development", "staging", "production"]),
-  dirty: z.boolean().optional(),
+  // A malformed dirty value is ignored, not a reason to lose the rest of the identity.
+  dirty: z.boolean().optional().catch(undefined),
 });
 
 /** The identity of a checkout with no `release.json`. */

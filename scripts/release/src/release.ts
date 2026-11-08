@@ -28,7 +28,7 @@ export interface BuildOptions {
   root: string;
   /** Where `<releaseId>/` is written. */
   outDir: string;
-  /** Package a tree with uncommitted changes (never for a real release). */
+  /** Package a tree with uncommitted changes. Non-production only: production always refuses a dirty tree. */
   allowDirty?: boolean;
   /** A prebuilt web client to package instead of running the vite build. */
   webDir?: string;

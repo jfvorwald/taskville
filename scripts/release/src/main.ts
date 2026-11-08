@@ -1,11 +1,11 @@
-// `pnpm release --out <dir> [--allow-dirty] [--environment <name>]`: the entry that fills in the
+// `pnpm release --out <dir> [--allow-dirty, non-production only] [--environment <name>]`: the entry that fills in the
 // real root for release.ts (M7.02).
 
 import { fileURLToPath } from "node:url";
 import { buildRelease } from "./release.ts";
 
 const USAGE =
-  "Usage: pnpm release --out <dir> [--allow-dirty] [--environment development|staging|production]";
+  "Usage: pnpm release --out <dir> [--allow-dirty (non-production only)] [--environment development|staging|production]";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 

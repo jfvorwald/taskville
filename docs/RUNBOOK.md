@@ -32,9 +32,9 @@ Source: the root `release` script (`node scripts/release/src/main.ts`) and its u
 
 **The default environment is `production`.** For a staging build, pass `--environment staging`. The flag sets the `environment` field in the tarball's `release.json`. It does not configure the staging Worker (see section 3).
 
-**Build from a fresh install in a clean checkout.** Run `pnpm install --frozen-lockfile` in a clean checkout of the commit, as the release workflow's clean runner does, then build. The build's lockfile guard compares pnpm's lock metadata (what `pnpm-lock.yaml` and `node_modules/.pnpm/lock.yaml` say is installed), not the installed package contents. A `node_modules` that was edited or patched by hand still passes it. When you build in a checkout that already has `node_modules`, run `pnpm install --frozen-lockfile --force` first to reinstall every package from the lockfile. No script runs this step for you.
+**Build from a fresh install in a clean checkout.** Run `pnpm install --frozen-lockfile` in a clean checkout of the commit, as the release workflow's clean runner does, then build. The build's lockfile guard compares pnpm's lock metadata (what `pnpm-lock.yaml` and `node_modules/.pnpm/lock.yaml` say is installed), not the installed package contents. A `node_modules` that was edited or patched by hand still passes it. When you build in a checkout that already has `node_modules`, we recommend running `pnpm install --frozen-lockfile --force` first to reinstall every package from the lockfile. This is a recommendation only: no release script runs this step for you.
 
-The build refuses a dirty tree, a lockfile whose installed packages are not in `pnpm-lock.yaml`, and any credentials-looking file (`.env*`, `.dev.vars*`, `.npmrc`, keys) in the package. It also refuses to overwrite an existing `<id>/` folder whose files differ.
+The build always refuses a dirty tree for production (and for other environments unless `--allow-dirty`), a lockfile whose installed packages are not in `pnpm-lock.yaml`, and any credentials-looking file (`.env*`, `.dev.vars*`, `.npmrc`, keys) in the package. It also refuses to overwrite an existing `<id>/` folder whose files differ.
 
 To check the release builder itself, run the root `test:release` script (`vitest run --root scripts/release`).
 
