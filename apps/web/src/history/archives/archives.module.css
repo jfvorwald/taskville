@@ -1,0 +1,23 @@
+.picker {
+  min-width: 0;
+  max-width: 24rem;
+  color: inherit;
+  background: var(--tv-surface);
+  border: 1px solid var(--tv-text-muted);
+  border-radius: var(--tv-radius);
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.picker:focus-visible {
+  outline: 2px solid var(--tv-focus);
+  outline-offset: 2px;
+}
+
+.gitChip {
+  padding: 2px 8px;
+  border: 1px solid var(--tv-accent);
+  border-radius: var(--tv-radius);
+  color: var(--tv-accent);
+  font-size: 0.75rem;
+}

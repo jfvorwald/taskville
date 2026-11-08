@@ -6,6 +6,13 @@ import { createDataStore, type DataStore, dataStore } from "../../data/store.ts"
 import { SESSION_HEADER } from "../../pairing/pair.ts";
 import { useSession } from "../../pairing/session.tsx";
 import { themeController } from "../../themes/core/index.ts";
+import {
+  type GitMarker,
+  gitMarker,
+  momentTime,
+  type TimelineChoice,
+  timelineChoices,
+} from "../archives/archive-timelines.ts";
 import { EMPTY_FIDELITY_FRAME, type FidelityFrame } from "../fidelity/frame.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
 import { type CrewRun, crewRuns } from "./crew-bars.tsx";
@@ -15,7 +22,13 @@ export interface RecordedMoment {
   readonly sequence: number;
   readonly time: number;
   readonly agentId: string | undefined;
-  readonly marker: "Needs you" | "Possibly needs you" | "Task completed" | "Commit" | undefined;
+  readonly marker:
+    | "Needs you"
+    | "Possibly needs you"
+    | "Task completed"
+    | "Commit"
+    | GitMarker
+    | undefined;
   /** The request a non-late `request.opened` at this sequence opened. */
   readonly requestId?: string | undefined;
 }
@@ -25,6 +38,10 @@ interface Presentation {
   moments: readonly RecordedMoment[];
   agents: readonly { id: string; name: string }[];
   crew: readonly CrewRun[];
+  /** The live recording and archives to choose from, and the one presented. */
+  timelines: readonly TimelineChoice[];
+  timeline: TimelineChoice | null;
+  openTimeline(id: string): void;
   mode: "live" | "history";
   store: DataStore;
   time: number | null;
@@ -51,9 +68,12 @@ const live = {
   moments: [] as readonly RecordedMoment[],
   agents: [] as readonly { id: string; name: string }[],
   crew: [] as readonly CrewRun[],
+  timelines: [] as readonly TimelineChoice[],
+  timeline: null,
 };
 const fallback: Presentation = {
   ...live,
+  openTimeline() {},
   fidelity: EMPTY_FIDELITY_FRAME,
   sequence: null,
   playing: false,
@@ -158,11 +178,11 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             explicitSeek = false;
         });
     }
-    async function enter(target?: { agentId: string; taskId: string }) {
+    async function enter(target?: { agentId: string; taskId: string }, chosen?: string) {
       if (
         !active ||
         value.pending ||
-        value.mode === "history" ||
+        (value.mode === "history" && chosen === undefined) ||
         dataStore.getState().projectId !== projectId
       )
         return;
@@ -183,12 +203,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         if (!active || requestGeneration !== generation) return;
         if (body?.projectId !== projectId || !Array.isArray(body.timelines))
           throw new Error("metadata");
-        const timeline = body.timelines.find(
-          (item: { id?: unknown; projectId?: unknown; kind?: unknown } | null) =>
-            item?.projectId === projectId &&
-            item.id === `live:${projectId}` &&
-            item.kind === "live",
-        );
+        const choices = timelineChoices(body, projectId);
+        const timeline = choices.find((item) => item.id === (chosen ?? `live:${projectId}`));
         if (!timeline) {
           publish({ pending: false, error: "No recording available." });
           return;
@@ -246,7 +262,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             throw new Error("events");
           for (const raw of page.events) {
             const event = storedEnvelopeSchema.parse(raw);
-            const time = Date.parse(event.receivedAt);
+            const time = momentTime(timeline, event);
             if (
               event.projectId !== projectId ||
               event.ingestSequence !== expected ||
@@ -290,9 +306,11 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
                   : "Needs you"
                 : event.type === "task.status_changed" && event.payload.status === "completed"
                   ? "Task completed"
-                  : event.type === "git.commit"
-                    ? "Commit"
-                    : undefined;
+                  : timeline.kind === "archive"
+                    ? gitMarker(event)
+                    : event.type === "git.commit"
+                      ? "Commit"
+                      : undefined;
             moments.push({
               sequence: expected++,
               time,
@@ -388,6 +406,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         });
         publish({
           range: { first: firstSequence, last: lastSequence },
+          timelines: choices,
+          timeline,
           moments,
           crew: crewRuns(recorded),
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
@@ -410,6 +430,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       },
       enterTask: (agentId, taskId) => {
         void enter({ agentId, taskId });
+      },
+      openTimeline: (id) => {
+        void enter(undefined, id);
       },
       seek,
       play: () => controller?.getState().play(),

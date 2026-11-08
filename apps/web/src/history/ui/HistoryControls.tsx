@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { OWN_ESCAPE_SELECTOR } from "../../city/interaction/escape.ts";
+import { TimelinePicker } from "../archives/TimelinePicker.tsx";
 import type { ReplayRate } from "../state/store.ts";
 import { BackToLive } from "./back-to-live.tsx";
 import { useHistoryPresentation } from "./HistoryProvider.tsx";
@@ -66,8 +67,12 @@ export function HistoryControls() {
           ◷ History
         </button>
         {history.mode === "history" && history.time !== null ? (
-          <span>HISTORY · {new Date(history.time).toLocaleString()}</span>
+          <span>
+            HISTORY · {new Date(history.time).toLocaleString()}
+            {history.timeline?.kind === "archive" ? ` · ${history.timeline.label}` : ""}
+          </span>
         ) : null}
+        <TimelinePicker />
         {history.error ? <span role="status">{history.error}</span> : null}
       </div>
       {history.mode === "history" && range && history.time !== null ? (
