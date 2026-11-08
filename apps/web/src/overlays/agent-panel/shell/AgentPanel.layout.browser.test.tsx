@@ -126,12 +126,22 @@ describe("agent panel size", () => {
     expect(width).toBeGreaterThan(300);
   });
 
-  it("uses the full available height of its slot even for short content", async () => {
+  // Lead decision (M10.03 review): the panel is as tall as its content, capped at the slot, so
+  // a short panel never covers what lies below it (the history strip, other controls).
+  it("fits short content and never grows past its slot", async () => {
     await page.viewport(1440, 900);
     await mount(() => tall(1));
     const frame = page.getByTestId("slot-frame").element().getBoundingClientRect();
+    const short = panelEl().getBoundingClientRect();
+    expect(short.height).toBeLessThan(frame.height - 40);
+    expect(short.bottom).toBeLessThanOrEqual(frame.bottom + 1);
+  });
+
+  it("caps tall content at the slot height and scrolls inside the tab slot", async () => {
+    await page.viewport(1440, 900);
+    await mount(() => tall(80));
+    const frame = page.getByTestId("slot-frame").element().getBoundingClientRect();
     const box = panelEl().getBoundingClientRect();
-    // The panel keeps its 16 px margins; allow a little slack beyond them.
     expect(box.height).toBeGreaterThanOrEqual(frame.height - 40);
     expect(box.bottom).toBeLessThanOrEqual(frame.bottom + 1);
   });
