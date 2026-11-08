@@ -20,6 +20,12 @@ Entry format:
 
 ## Entries
 
+### L-234: A test that starts failing with no related change may be a real race
+- **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #459 · **Recorded by:** lead (M9.10)
+- **What happened:** The LiveEvidenceWindow navigation test failed in the wave, alone, and then in CI on a docs-only PR, though nothing nearby had changed. Clock pinning ruled out a date dependency; a write trap on `scrollTop` showed the follow effect pinning over the reader's scroll whenever a render landed before the scroll event.
+- **Lesson:** Treat a second consecutive failure as a product bug until proven otherwise, and instrument the shared state (here scroll writes) before blaming time or load.
+- **Action:** #462.
+
 ### L-233: Fixing a stamping bug can break the tests that were written around it
 - **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #453 · **Recorded by:** lead (M9.09)
 - **What happened:** The breaks e2e backdated a sped-up demo to work around ahead-of-time stamps (L-230). Once the demo stamped at wall time, every event arrived already stale and the needs-you bubble window had passed. The spec now runs at speed 2 with deadlines measured from the producer start, and takes about 5.5 minutes.
