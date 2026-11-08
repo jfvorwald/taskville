@@ -5,6 +5,7 @@ export type ErrorCode =
   | "ambiguous_agent"
   | "bad_request"
   | "credential_not_allowed"
+  | "engine_closing"
   | "evidence_evicted"
   | "forbidden_host"
   | "forbidden_origin"

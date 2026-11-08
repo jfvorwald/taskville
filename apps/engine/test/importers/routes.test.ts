@@ -167,6 +167,14 @@ describe("POST /v1/imports", () => {
     gate.release();
   });
 
+  it("refuses a start after shutdown with 503 engine_closing", async () => {
+    const closing = setup([fakeImporter([oneEvent()])]);
+    await closing.close();
+    const res = await post(request());
+    expect(res.status).toBe(503);
+    expect(apiErrorSchema.parse(await res.json()).error.code).toBe("engine_closing");
+  });
+
   it("refuses a kind with no registered importer: 400 unknown_import_kind", async () => {
     setup([fakeImporter([oneEvent()], { kind: "git" })]);
     const res = await post(request({ kind: "transcripts" }));

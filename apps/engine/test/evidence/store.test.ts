@@ -11,6 +11,7 @@ import {
   TRUNCATION_MARKER,
 } from "../../src/evidence/index.ts";
 import type { EvidenceSink } from "../../src/sources/claude-code/index.ts";
+import { Database } from "../../src/storage/sqlite.ts";
 import { fakeGithubToken } from "../ingest/helpers.ts";
 
 let dir = "";
@@ -361,5 +362,29 @@ describe("per-project cap with oldest-first eviction", () => {
     expect(s.get("a", "t1")).toBeUndefined();
     expect(s.stats("a")).toEqual({ bodies: 0, bytes: 0 });
     expect(s.get("b", "t1")?.output).toMatchObject({ text: "b" });
+  });
+
+  it("deletes archive-scoped evidence with the project and leaves other projects alone", () => {
+    const s = store();
+    for (const project of ["a", "b"]) {
+      s.store(project, [{ toolCallId: "t1", output: `${project} live` }]);
+      s.store(project, [{ toolCallId: "t1", output: `${project} archive` }], "arch-1");
+    }
+    s.deleteProject("a");
+    expect(s.get("a", "t1")).toBeUndefined();
+    expect(s.get("a", "t1", "arch-1")).toBeUndefined();
+    expect(s.get("b", "t1")?.output).toMatchObject({ text: "b live" });
+    expect(s.get("b", "t1", "arch-1")?.output).toMatchObject({ text: "b archive" });
+    // The rows themselves are gone, not just unreachable: only project b's two scopes remain.
+    const db = new Database(path, { timeout: 1000 });
+    try {
+      const count = (table: string) =>
+        Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n);
+      expect(count("tool_call_bodies")).toBe(2);
+      expect(count("bodies")).toBe(2);
+      expect(count("usage")).toBe(2);
+    } finally {
+      db.close();
+    }
   });
 });

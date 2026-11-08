@@ -5,7 +5,8 @@ import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
 import { type ImportJobs, ImportRefusal, type ImportRefusalCode } from "./jobs.ts";
 
-const REFUSALS: Record<ImportRefusalCode, { status: 400 | 404 | 409; message: string }> = {
+const REFUSALS: Record<ImportRefusalCode, { status: 400 | 404 | 409 | 503; message: string }> = {
+  engine_closing: { status: 503, message: "The engine is shutting down" },
   unknown_import_kind: { status: 400, message: "No importer for this kind" },
   unknown_project: { status: 404, message: "No project with this ID" },
   root_not_configured: { status: 400, message: "Root is not one of the project's roots" },

@@ -19,6 +19,8 @@ export interface ArchiveCounts {
   malformedByCode?: Record<string, number>;
   /** True when the event cap stopped the import; the rest is counted as skipped. */
   truncated?: boolean;
+  /** Evidence items dropped by a size limit, the budget, or because no kept event refers to them. */
+  evidenceDropped?: number;
 }
 
 /** A failure code and a short message, never source text. */
