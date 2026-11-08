@@ -31,7 +31,11 @@ export function OverlayHost(props: OverlayHostProps) {
   );
 
   const slot = (name: OverlaySlot, className: string) => (
-    <div className={className} data-slot={name}>
+    <div
+      className={className}
+      data-slot={name}
+      data-overlays={active[name].map((definition) => definition.id).join(" ")}
+    >
       {active[name].map((definition) => (
         <OverlayBoundary key={definition.id} id={definition.id}>
           <Mounted definition={definition} context={context} />

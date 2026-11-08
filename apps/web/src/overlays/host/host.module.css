@@ -44,6 +44,11 @@
   pointer-events: none;
 }
 
+/* The agent panel is wider (440 px plus its own 16 px margins); other sidebars keep 360 px. */
+.sidebar[data-overlays~="agent-panel"] {
+  width: min(472px, calc(100% - 32px));
+}
+
 .header {
   position: absolute;
   top: 16px;

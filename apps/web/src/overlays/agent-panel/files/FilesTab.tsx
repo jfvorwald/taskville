@@ -64,6 +64,17 @@ function filesFor(agentId: string, frames: FilesTabProps["frames"]) {
   return [...files.values()].sort((a, b) => b.newest - a.newest);
 }
 
+/** The directory muted, then the file name in the mono font; the text still reads as the path. */
+function PathLabel({ path }: { path: string }) {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
+  return (
+    <span className={styles.label}>
+      {cut === 0 ? null : <span className={styles.dir}>{path.slice(0, cut)}</span>}
+      <span className={styles.name}>{path.slice(cut)}</span>
+    </span>
+  );
+}
+
 function EvidenceBody({
   reference,
   evidence,
@@ -128,8 +139,8 @@ function AgentFiles({
                 aria-pressed={item.path === selected}
                 onPress={() => setSelected(item.path)}
               >
-                <span>{displayPath(item.path, { privacy })}</span>
-                <span>
+                <PathLabel path={displayPath(item.path, { privacy })} />
+                <span className={styles.count}>
                   {count} {count === 1 ? "edit" : "edits"}
                 </span>
               </Button>
