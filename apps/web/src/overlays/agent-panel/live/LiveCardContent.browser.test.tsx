@@ -84,6 +84,7 @@ describe("C: consecutive Read and Search calls group into one card (ARCHITECTURE
     await cardCount(1);
     await expect.element(articles()).toMatchTextContent("Read 3 files");
     const group = articles();
+    await openDetails(group);
     const toggle = group.getByRole("button", { name: /expand/i });
     expect(toggle.element().getAttribute("aria-expanded")).toBe("false");
     await toggle.click();
@@ -99,6 +100,7 @@ describe("C: consecutive Read and Search calls group into one card (ARCHITECTURE
     await renderPlain([read(1), read(2), read(3)]);
     await cardCount(1);
     await expect.element(articles()).toMatchTextContent("Read 3 files");
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand/i })
       .click();
@@ -125,6 +127,7 @@ describe("C: consecutive Read and Search calls group into one card (ARCHITECTURE
     await cardCount(1);
     await expect.element(articles()).toMatchTextContent("Searched 2 times");
     const group = articles();
+    await openDetails(group);
     await group.getByRole("button", { name: /expand/i }).click();
     const items = Array.from(group.element().querySelectorAll("li"), (li) =>
       li.textContent?.trim(),
