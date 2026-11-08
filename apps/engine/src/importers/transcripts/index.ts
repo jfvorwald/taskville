@@ -65,8 +65,16 @@ async function openRegular(file: string): Promise<FileHandle | undefined> {
   return handle;
 }
 
-/** Lines of an open file, reading chunks and holding at most `maxLineBytes` of one line. */
-async function* readLines(handle: FileHandle, maxLineBytes: number): AsyncGenerator<RawLine> {
+/**
+ * Lines of an open file, reading chunks and holding at most `maxLineBytes` of one line. Stops
+ * (ending the sequence) as soon as `signal` aborts, checked per chunk even while discarding an
+ * over-long line.
+ */
+async function* readLines(
+  handle: FileHandle,
+  maxLineBytes: number,
+  signal: AbortSignal,
+): AsyncGenerator<RawLine> {
   const chunk = Buffer.allocUnsafe(READ_CHUNK);
   let parts: Buffer[] = [];
   let size = 0;
@@ -90,6 +98,7 @@ async function* readLines(handle: FileHandle, maxLineBytes: number): AsyncGenera
     parts.push(Buffer.from(bytes));
   };
   for (;;) {
+    if (signal.aborted) return;
     const { bytesRead } = await handle.read(chunk, 0, READ_CHUNK, null);
     if (bytesRead === 0) break;
     let start = 0;
@@ -112,8 +121,12 @@ function isInside(root: string, cwd: string): boolean {
 }
 
 /** The first `cwd` a file records, or undefined if no line has one. */
-async function firstCwd(handle: FileHandle, maxLineBytes: number): Promise<string | undefined> {
-  for await (const line of readLines(handle, maxLineBytes)) {
+async function firstCwd(
+  handle: FileHandle,
+  maxLineBytes: number,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  for await (const line of readLines(handle, maxLineBytes, signal)) {
     if (line === OVERLONG || !line.includes('"cwd"')) continue;
     try {
       const parsed: unknown = JSON.parse(line);
@@ -156,12 +169,13 @@ export function createTranscriptImporter(options: { maxLineBytes?: number } = {}
         let inRoot = false;
         if (probe !== undefined) {
           try {
-            const cwd = await firstCwd(probe, maxLineBytes);
+            const cwd = await firstCwd(probe, maxLineBytes, context.signal);
             inRoot = cwd !== undefined && isInside(context.root, cwd);
           } finally {
             await probe.close();
           }
         }
+        if (context.signal.aborted) break;
         if (!inRoot) {
           counts.skipped += 1;
           continue;
@@ -187,7 +201,7 @@ export function createTranscriptImporter(options: { maxLineBytes?: number } = {}
         };
         let aborted = false;
         try {
-          for await (const raw of readLines(handle, maxLineBytes)) {
+          for await (const raw of readLines(handle, maxLineBytes, context.signal)) {
             lineNumber += 1;
             counts.read += 1;
             if (raw === OVERLONG) {
@@ -214,7 +228,7 @@ export function createTranscriptImporter(options: { maxLineBytes?: number } = {}
           await handle.close();
         }
         // A cancelled file is partial; stop here.
-        if (aborted) break;
+        if (aborted || context.signal.aborted) break;
         take(mapper.finish());
         report();
         yield batch;

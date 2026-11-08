@@ -57,8 +57,6 @@ const KNOWN_SKIPPED_TYPES: ReadonlySet<string> = new Set([
 
 /** Evidence bounds: strings are cut to this, and a whole value over the total becomes a preview. */
 const EVIDENCE_STRING_MAX = 8 * 1024;
-/** Strings are cut to this before redaction, so redaction never scans a huge string. */
-const EVIDENCE_PRECUT_MAX = 64 * 1024;
 const EVIDENCE_TOTAL_MAX = 32 * 1024;
 /** Deeper structure is replaced before redaction, which recurses; keeps the stack bounded. */
 const EVIDENCE_DEPTH_MAX = 32;
@@ -263,68 +261,67 @@ function toolSummary(input: unknown): string | undefined {
 }
 
 /**
- * Tool input or output for the evidence store. Bounded first (strings cut, keys cut and masked,
- * depth limited), so redaction never sees a huge or deep value; then secrets are masked and, if
- * the whole value is still large, it is replaced by a preview of its JSON.
+ * Tool input or output for the evidence store. Depth is bounded first (redaction recurses), then
+ * every complete string is redacted and property names are classified by their full text; only
+ * after that are strings and keys cut. A cut can therefore never leave part of a secret. The line
+ * cap bounds how large a string redaction sees.
  */
 function boundEvidence(value: unknown): unknown {
   if (value === undefined) return undefined;
-  // Pre-cut at 64 KiB, redact, then the final 8 KiB cut: a secret straddling the 8 KiB cut is
-  // masked whole first, and one straddling the pre-cut falls past the final cut.
-  const cut = cutStrings(redactJson(boundValue(value, 0)).value);
+  const cut = shorten(redactJson(limitDepth(value, 0)).value);
   const text = JSON.stringify(cut);
   if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return cut;
   return { truncated: true, preview: text.slice(0, EVIDENCE_STRING_MAX).toWellFormed() };
 }
 
-function boundValue(value: unknown, depth: number): JsonValue {
-  if (typeof value === "string") {
-    return value.length <= EVIDENCE_PRECUT_MAX
-      ? value
-      : value.slice(0, EVIDENCE_PRECUT_MAX).toWellFormed();
+function limitDepth(value: unknown, depth: number): JsonValue {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
   }
-  if (value === null || typeof value !== "object") {
-    return typeof value === "number" || typeof value === "boolean" ? value : null;
-  }
+  if (value === null || typeof value !== "object") return null;
   if (depth >= EVIDENCE_DEPTH_MAX) return "[truncated: nested too deeply]";
-  if (Array.isArray(value)) return value.map((item) => boundValue(item, depth + 1));
+  if (Array.isArray(value)) return value.map((item) => limitDepth(item, depth + 1));
   const out: { [key: string]: JsonValue } = {};
-  for (const [k, v] of Object.entries(value)) {
-    // A secret can be the key itself; mask it, and cut a long key.
-    const key = redactText(k.slice(0, EVIDENCE_KEY_MAX).toWellFormed()).text;
-    Object.defineProperty(out, key, {
-      value: boundValue(v, depth + 1),
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
-  }
+  for (const [k, v] of Object.entries(value)) setOwn(out, k, limitDepth(v, depth + 1));
   return out;
 }
 
-/** The final cut, on redacted strings (depth is already bounded by `boundValue`). */
-function cutStrings(value: JsonValue): JsonValue {
+/** The final cuts, on redacted values: long strings, and keys (their text masked first). */
+function shorten(value: JsonValue): JsonValue {
   if (typeof value === "string") {
     return value.length <= EVIDENCE_STRING_MAX
       ? value
       : `${value.slice(0, cutPoint(value)).toWellFormed()}...[truncated]`;
   }
-  if (Array.isArray(value)) return value.map(cutStrings);
+  if (Array.isArray(value)) return value.map(shorten);
   if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cutStrings(v)]));
+    const out: { [key: string]: JsonValue } = {};
+    for (const [k, v] of Object.entries(value)) {
+      setOwn(out, redactText(k).text.slice(0, EVIDENCE_KEY_MAX).toWellFormed(), shorten(v));
+    }
+    return out;
   }
   return value;
 }
 
+// defineProperty, not assignment, so a "__proto__" key stays an own property.
+function setOwn(target: { [key: string]: JsonValue }, key: string, value: JsonValue): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
 const TOKEN_CHAR = /[A-Za-z0-9_+/=.-]/;
-/** How far a cut inside a run of token characters backs up, to cover a secret the redactor could
- * not recognize because letters ran straight into it. */
+/** How far a cut inside a run of token characters backs up. */
 const CUT_BACKOFF = 128;
 
 /**
- * Where the final cut lands. A cut inside a run of token characters could leave the first part of
- * an unmasked secret, so it backs up to the start of that run's last CUT_BACKOFF characters (or
- * to the run's start if that is nearer).
+ * Where the final string cut lands. The redactor does not match a secret glued to preceding
+ * letters, so a cut inside a run of token characters could leave the first part of one. It backs
+ * up to the start of that run, or at most CUT_BACKOFF characters.
  */
 function cutPoint(value: string): number {
   let at = EVIDENCE_STRING_MAX;
