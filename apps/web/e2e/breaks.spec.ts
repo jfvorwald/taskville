@@ -205,20 +205,44 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     const onBreakAtChat = new Set((await onBreakNow()).map((r) => r.name));
     expect(onBreakAtChat.size).toBeGreaterThanOrEqual(2);
 
-    // (3) The scenario gives Cyd work back: its break ends at once (label and status). The breaks
-    // scenario emits no activity events, so Cyd's status is Unknown and it has no area to walk to;
-    // it settles on the plaza (its break spot can be that same plaza node, so a walk cannot be
-    // asserted). Walking to an area is NOT RUN here: movement.spec.ts and the M9.08 browser tests
-    // cover area placement.
+    // (3) The scenario gives Cyd work back: its break ends at once (label and status), and it walks
+    // to its area. Deadlines are measured from the producer start (t0), not from the previous step:
+    // Cyd's prompt is scenario 562 s / SPEED = 281 s of wall time, and every break has started by
+    // 237 s (see the clock note above).
+    const sinceStart = () => Date.now() - t0;
+    const untilStart = (deadlineMs: number) => Math.max(15_000, deadlineMs - sinceStart());
+    const CYD_PROMPT_MS = 562_000 / SPEED;
+    const cydRow = async () => (await rows(page)).find((r) => r.name === "Cyd");
+    // Cyd is on break (and still Waiting) before the resume, so the step cannot pass without a break.
     await expect
-      .poll(async () => (await rows(page)).find((r) => r.name === "Cyd")?.status ?? "", {
-        timeout: 120_000,
+      .poll(async () => (await cydRow())?.onBreak ?? false, {
+        timeout: untilStart(CYD_PROMPT_MS - 5_000),
+        intervals: [250],
+      })
+      .toBe(true);
+    expect((await cydRow())?.status).toBe("Waiting");
+    log(`Cyd on break: ${JSON.stringify(await cydRow())}`);
+    await expect
+      .poll(async () => (await cydRow())?.status ?? "", {
+        timeout: untilStart(CYD_PROMPT_MS + 60_000),
         intervals: [250],
       })
       .not.toBe("Waiting");
-    const cyd = (await rows(page)).find((r) => r.name === "Cyd") as Row;
+    const cyd = (await cydRow()) as Row;
     log(`Cyd works again: ${JSON.stringify(cyd)}`);
     expect(cyd.onBreak).toBe(false);
+    // The scenario emits activity, so Cyd has an area: a known status and a workstation or a place
+    // in line, not the plaza.
+    expect(cyd.status).not.toBe("Unknown");
+    await expect
+      .poll(
+        async () => {
+          const w = (await walkers(page)).find((x) => x.id === cyd.id);
+          return w !== undefined && (w.slotId !== null || w.queued);
+        },
+        { timeout: 60_000, intervals: [500] },
+      )
+      .toBe(true);
     await expect
       .poll(async () => (await walkers(page)).find((x) => x.id === cyd.id)?.onTheWay, {
         timeout: 60_000,

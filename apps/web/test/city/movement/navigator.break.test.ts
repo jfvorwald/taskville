@@ -581,8 +581,16 @@ describe("plaza nodes have one reservation source", () => {
    * changes and removals. Five agents never need more than the five plaza nodes, so every agent
    * must also reach a legal resting place by the end of each step.
    */
-  for (const seed0 of [7351, 20261107, 424242]) {
-    it(`never stacks resting agents on a plaza node and settles everyone (seed ${seed0})`, () => {
+  // The last two seeds (found by a wider search, M9.09 review) use short steps, so intents change
+  // while agents are still walking: a needs-you agent whose goal is home or a break spot is reached
+  // mid-walk with every plaza node held, and must not stop on a node another agent holds. Only the
+  // no-sharing check applies to those runs (they do not wait for everyone to settle).
+  const runs = [
+    ...[7351, 20261107, 424242].map((seed) => ({ seed, short: false })),
+    ...[3590, 44475].map((seed) => ({ seed, short: true })),
+  ];
+  for (const { seed: seed0, short } of runs) {
+    it(`never stacks resting agents on a plaza node${short ? " mid-walk" : " and settles everyone"} (seed ${seed0})`, () => {
       let seed = seed0;
       const rnd = () => {
         seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -639,13 +647,15 @@ describe("plaza nodes have one reservation source", () => {
           expect(other, `${label}: ${x.id} and ${other?.id} share plaza node ${k}`).toBeUndefined();
         }
       };
-      for (let step = 0; step < 50; step++) {
+      for (let step = 0; step < (short ? 80 : 50); step++) {
         const intents = ids.map(intentFor).filter((x): x is NavIntent => x !== null);
         nav.sync(intents);
         noSharing(`step ${step} sync`);
-        run(nav, clock, 90_000, () => noSharing(`step ${step} t=${clock.t}`));
+        run(nav, clock, short && rnd() >= 0.15 ? Math.floor(rnd() * 1800) : 90_000, () =>
+          noSharing(`step ${step} t=${clock.t}`),
+        );
         nav.prune();
-        for (const intent of intents) {
+        for (const intent of short ? [] : intents) {
           const a = must(nav, intent.id);
           const label = `step ${step}: ${a.id} ${JSON.stringify(intent)} at (${a.x.toFixed(2)}, ${a.z.toFixed(2)})`;
           expect(isWalking(a), `${label} still walking`).toBe(false);
