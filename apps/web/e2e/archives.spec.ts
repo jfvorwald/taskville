@@ -104,7 +104,7 @@ test("opening an archive in history, scrubbing it and returning to live", async 
   await expect.poll(async () => Number(await scrubber.inputValue())).toBeGreaterThanOrEqual(3);
   await page.keyboard.press("Home");
   await expect(scrubber).toHaveValue("1");
-  await expect(page.getByRole("row")).toHaveCount(0); // a Git archive shows no agents
+  await expect(page.locator("[data-agent-id]")).toHaveCount(0); // a Git archive shows no agents (the list may show its "No agents yet" row)
   await expect(page.locator('[data-marker="Git commit"]').first()).toBeVisible();
 
   await page.getByRole("button", { name: /^Back to live\b/i }).click();
