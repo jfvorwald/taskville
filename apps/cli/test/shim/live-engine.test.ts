@@ -258,7 +258,10 @@ describe.each(SHELLS)(
     });
 
     it("prints nothing for a pid with trailing junk (5x)", () => {
-      writeRawEngineJson(home, `{"url":"${server.url}","pid":${process.pid}x,"keyListener":false}\n`);
+      writeRawEngineJson(
+        home,
+        `{"url":"${server.url}","pid":${process.pid}x,"keyListener":false}\n`,
+      );
       expect(helper()).toEqual(NOTHING);
     });
 
