@@ -278,8 +278,21 @@ describe("large output and git failures", () => {
   it("maps a timeout to git_timeout", async () => {
     const root = initRepo(dir);
     commit(root, 1000, "base", { "a.txt": "a\n" });
-    const error = await errorOf(runWith(importerWith({ timeoutMs: 1 }), root));
-    expect(error.message).toBe("git_timeout");
+    // A fake git that sleeps far past the configured timeout makes this deterministic.
+    const bin = join(dir, "slowbin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "git"), "#!/bin/sh\nexec sleep 5\n");
+    chmodSync(join(bin, "git"), 0o755);
+    const savedPath = process.env.PATH;
+    process.env.PATH = `${bin}${delimiter}${savedPath ?? ""}`;
+    try {
+      const started = Date.now();
+      const error = await errorOf(runWith(importerWith({ timeoutMs: 200 }), root));
+      expect(error.message).toBe("git_timeout");
+      expect(Date.now() - started).toBeLessThan(4000);
+    } finally {
+      process.env.PATH = savedPath;
+    }
   });
 
   it("maps an over-cap rev-list to git_output_too_large", async () => {
