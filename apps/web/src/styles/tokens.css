@@ -13,6 +13,11 @@
   --tv-focus: #f2c14e;
   --tv-radius: 8px;
   --tv-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --tv-ok: #5fb98a;
+  --tv-fail: #e0605a;
+  --tv-running: var(--tv-accent);
+  --tv-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --tv-rule: color-mix(in srgb, var(--tv-text-muted) 28%, transparent);
 }
 
 *,

@@ -349,11 +349,10 @@ describe("AgentPanel breadcrumb", () => {
     expect(picked).toEqual(["L", "t1"]);
   });
 
-  it("is a single crumb for a solo session", async () => {
+  it("renders no breadcrumb for a solo session, and still names it", async () => {
     await render(<AgentPanel {...props("S")} store={makeStore()} />);
-    const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
-    expect(crumbs.elements()).toHaveLength(1);
-    await expect.element(crumbs.nth(0)).toHaveTextContent("Solo");
+    expect(page.getByRole("navigation", { name: "Family" }).elements()).toHaveLength(0);
+    await expect.element(page.getByTestId("agent-panel-name")).toHaveTextContent("Solo");
   });
 });
 
@@ -627,7 +626,7 @@ describe("AgentPanel keys, events the panel does not own", () => {
 });
 
 describe("AgentPanel with a malformed family", () => {
-  it("ignores a self-parent: no Crew tab, a single crumb, and the keys go nowhere", async () => {
+  it("ignores a self-parent: no Crew tab, no crumb, and the keys go nowhere", async () => {
     const { picked, select } = recorder();
     const store = makeStore({
       agents: {
@@ -642,8 +641,7 @@ describe("AgentPanel with a malformed family", () => {
         .elements()
         .map((e) => e.textContent),
     ).toEqual(["Live", "Files"]);
-    const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
-    expect(crumbs.elements()).toHaveLength(1);
+    expect(page.getByRole("navigation", { name: "Family" }).elements()).toHaveLength(0);
     press("]");
     expect(picked).toEqual([]);
   });
@@ -660,7 +658,7 @@ describe("AgentPanel with a malformed family", () => {
     const crumbs = page.getByRole("navigation", { name: "Family" }).getByRole("button");
     expect(crumbs.elements().map((e) => e.textContent)).toEqual(["Bob", "Ann"]);
     await view.rerender(<AgentPanel {...props("b")} store={store} />);
-    expect(crumbs.elements().map((e) => e.textContent)).toEqual(["Bob"]);
+    expect(crumbs.elements().map((e) => e.textContent)).toEqual([]);
   });
 });
 
