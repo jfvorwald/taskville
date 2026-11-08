@@ -1,5 +1,5 @@
 import { type EventType, type InputEventWire, timestampSchema } from "@taskville/protocol";
-import { type JsonValue, redactJson } from "../../redact/index.ts";
+import { type JsonValue, redactJson, redactText } from "../../redact/index.ts";
 import { isRecord, own, ownString } from "../core/fields.ts";
 import {
   isHookId,
@@ -40,7 +40,7 @@ export interface FinishResult {
 export interface TranscriptMapper {
   /** Maps one raw line. `lineNumber` is 1-based and becomes `sourceSequence`. Never throws. */
   mapLine(raw: string, lineNumber: number): LineResult;
-  /** Call once after the last line: emits `session.ended` for sessions that finished cleanly. */
+  /** Call once after the last line. A transcript proves no session end, so it emits nothing. */
   finish(): FinishResult;
 }
 
@@ -58,24 +58,34 @@ const KNOWN_SKIPPED_TYPES: ReadonlySet<string> = new Set([
 /** Evidence bounds: strings are cut to this, and a whole value over the total becomes a preview. */
 const EVIDENCE_STRING_MAX = 8 * 1024;
 const EVIDENCE_TOTAL_MAX = 32 * 1024;
+/** Deeper structure is replaced before redaction, which recurses; keeps the stack bounded. */
+const EVIDENCE_DEPTH_MAX = 32;
+const EVIDENCE_KEY_MAX = 256;
+/** Agent or Task call lines remembered to link a subagent to its spawn. */
+const SPAWN_LINES_MAX = 10_000;
 
 interface SessionState {
   agents: Set<string>;
-  /** Line and time of the latest turn end, cleared when the session does anything after it. */
-  ended?: { lineNumber: number; occurredAt: string } | undefined;
 }
 
-export function createTranscriptMapper(options: { projectId: string }): TranscriptMapper {
-  const { projectId } = options;
+export function createTranscriptMapper(options: {
+  projectId: string;
+  /** Scopes `sourceEventId` to one file, so the same session in two files never collides. */
+  fileId?: string;
+}): TranscriptMapper {
+  const { projectId, fileId = "0" } = options;
   const sessions = new Map<string, SessionState>();
   /** `toolCallId` to the agent that started it, so a result lands on the same agent. */
   const pending = new Map<string, string>();
-  let lastMalformed = false;
+  /** Line uuid to the agent whose Agent or Task tool_use it carries. */
+  const spawns = new Map<string, string>();
 
   function mapLine(raw: string, lineNumber: number): LineResult {
-    const result = mapRecord(raw, lineNumber);
-    lastMalformed = result.outcome === "malformed";
-    return result;
+    try {
+      return mapRecord(raw, lineNumber);
+    } catch {
+      return malformed();
+    }
   }
 
   function mapRecord(raw: string, lineNumber: number): LineResult {
@@ -111,7 +121,7 @@ export function createTranscriptMapper(options: { projectId: string }): Transcri
         schemaVersion: 1,
         projectId,
         sourceId: TRANSCRIPT_SOURCE_ID,
-        sourceEventId: `transcript:${sessionId}:${lineNumber}:${events.length}:${eventType}`,
+        sourceEventId: `transcript:${fileId}:${lineNumber}:${events.length}:${eventType}`,
         sourceSequence: lineNumber,
         occurredAt,
         agentId,
@@ -147,18 +157,21 @@ export function createTranscriptMapper(options: { projectId: string }): Transcri
       agentId = subagentAgentId(sessionId, sourceAgentId);
       if (!session.agents.has(agentId)) {
         session.agents.add(agentId);
+        // The parent is only what the transcript records: the first sidechain line follows the
+        // line that holds the Agent or Task call.
+        const parentUuid = own(parsed, "parentUuid");
+        const parentAgentId = typeof parentUuid === "string" ? spawns.get(parentUuid) : undefined;
         emit(agentId, "agent.registered", {
           sourceAgentId,
           displayName: "subagent",
           role: "subagent",
           kind: "subagent",
-          parentAgentId: mainId,
+          ...(parentAgentId === undefined ? {} : { parentAgentId }),
         });
       }
     }
 
     const blocks = typeof content === "string" ? [] : (content as unknown[]);
-    let didAnything = false;
     if (type === "user") {
       let prompt = typeof content === "string";
       for (const block of blocks) {
@@ -176,18 +189,18 @@ export function createTranscriptMapper(options: { projectId: string }): Transcri
         });
         const output = boundEvidence(own(block, "content"));
         if (output !== undefined) evidence.push({ toolCallId, output });
-        didAnything = true;
       }
       if (prompt && !sidechain && own(parsed, "isMeta") !== true) {
         emit(mainId, "session.prompt_submitted", {});
-        didAnything = true;
       }
     } else {
+      let spawnsHere = false;
       for (const block of blocks) {
         if (ownString(block, "type") !== "tool_use") continue;
         const toolCallId = own(block, "id");
         const rawName = ownString(block, "name");
         const toolName = cleanText(rawName, NAME_MAX);
+        if (rawName === "Agent" || rawName === "Task") spawnsHere = true;
         if (!isHookId(toolCallId, MAX_TOOL_USE_ID) || toolName === undefined) continue;
         const input = own(block, "input");
         const filePath = cleanText(
@@ -204,41 +217,20 @@ export function createTranscriptMapper(options: { projectId: string }): Transcri
         });
         const bounded = boundEvidence(input);
         if (bounded !== undefined) evidence.push({ toolCallId, input: bounded });
-        didAnything = true;
       }
       if (own(message, "stop_reason") === "end_turn" && !sidechain) {
         emit(mainId, "session.turn_ended", {});
-        session.ended = { lineNumber, occurredAt };
-        return done(events, evidence);
+      }
+      const uuid = own(parsed, "uuid");
+      if (typeof uuid === "string" && spawnsHere && spawns.size < SPAWN_LINES_MAX) {
+        spawns.set(uuid, agentId);
       }
     }
-    if (didAnything) session.ended = undefined;
     return done(events, evidence);
   }
 
   function finish(): FinishResult {
-    const events: InputEventWire[] = [];
-    // A transcript cut mid-line says nothing about how its session ended.
-    if (!lastMalformed) {
-      for (const [sessionId, session] of sessions) {
-        if (session.ended === undefined) continue;
-        events.push({
-          schemaVersion: 1,
-          projectId,
-          sourceId: TRANSCRIPT_SOURCE_ID,
-          sourceEventId: `transcript:${sessionId}:ended`,
-          sourceSequence: session.ended.lineNumber,
-          occurredAt: session.ended.occurredAt,
-          agentId: sessionAgentId(sessionId),
-          sessionId,
-          type: "session.ended",
-          payload: {},
-          provenance: "imported",
-          late: false,
-        } as InputEventWire);
-      }
-    }
-    return { events };
+    return { events: [] };
   }
 
   return { mapLine, finish };
@@ -269,28 +261,39 @@ function toolSummary(input: unknown): string | undefined {
 }
 
 /**
- * Tool input or output for the evidence store: secrets masked first, then long strings cut and,
- * if the whole value is still large, replaced by a preview of its JSON. Redacting before cutting
- * means a cut never leaves part of a secret.
+ * Tool input or output for the evidence store. Bounded first (strings cut, keys cut and masked,
+ * depth limited), so redaction never sees a huge or deep value; then secrets are masked and, if
+ * the whole value is still large, it is replaced by a preview of its JSON.
  */
 function boundEvidence(value: unknown): unknown {
   if (value === undefined) return undefined;
-  const masked = redactJson(value as JsonValue).value;
-  const cut = cutStrings(masked);
-  const text = JSON.stringify(cut);
-  if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return cut;
+  const masked = redactJson(boundValue(value, 0)).value;
+  const text = JSON.stringify(masked);
+  if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return masked;
   return { truncated: true, preview: text.slice(0, EVIDENCE_STRING_MAX).toWellFormed() };
 }
 
-function cutStrings(value: JsonValue): JsonValue {
+function boundValue(value: unknown, depth: number): JsonValue {
   if (typeof value === "string") {
     return value.length <= EVIDENCE_STRING_MAX
       ? value
       : `${value.slice(0, EVIDENCE_STRING_MAX).toWellFormed()}...[truncated]`;
   }
-  if (Array.isArray(value)) return value.map(cutStrings);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cutStrings(v)]));
+  if (value === null || typeof value !== "object") {
+    return typeof value === "number" || typeof value === "boolean" ? value : null;
   }
-  return value;
+  if (depth >= EVIDENCE_DEPTH_MAX) return "[truncated: nested too deeply]";
+  if (Array.isArray(value)) return value.map((item) => boundValue(item, depth + 1));
+  const out: { [key: string]: JsonValue } = {};
+  for (const [k, v] of Object.entries(value)) {
+    // A secret can be the key itself; mask it, and cut a long key.
+    const key = redactText(k.slice(0, EVIDENCE_KEY_MAX).toWellFormed()).text;
+    Object.defineProperty(out, key, {
+      value: boundValue(v, depth + 1),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return out;
 }
