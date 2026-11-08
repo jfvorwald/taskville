@@ -184,6 +184,37 @@ describe("M10.01 feed rows never overlap after their own content grows", () => {
     expect(after.index).toBe(anchor.index);
     expect(Math.abs(after.offset - anchor.offset)).toBeLessThanOrEqual(4);
   });
+
+  // roborev 7507: both resizes reach the virtualizer in one observer delivery. The first one
+  // moves the scroll offset; the second must judge its row against the moved position, not a
+  // cached one, or it compensates for growth that is below the reader's anchor.
+  it("keeps the anchor when a row above and the partly visible first row grow together", async () => {
+    await mount();
+    await scrollTo(viewport().scrollHeight);
+    await scrollTo(viewport().scrollTop - viewport().clientHeight * 3);
+    // Leave the first visible row partly above the top edge.
+    const first = firstVisible();
+    const height = row(first.index)?.getBoundingClientRect().height ?? 0;
+    await scrollTo(viewport().scrollTop + first.offset + Math.round(height / 2));
+    const anchor = firstVisible();
+    expect(anchor.offset).toBeLessThan(0);
+    expect(row(anchor.index - 1)).toBeDefined();
+    // More growth above than the anchor row has above the edge, in the same frame.
+    for (const [index, by] of [
+      [anchor.index - 1, 400],
+      [anchor.index, GROWTH],
+    ]) {
+      const spacer = document.createElement("div");
+      spacer.dataset.testGrowth = "1";
+      spacer.style.height = `${by}px`;
+      row(index)?.querySelector("article")?.append(spacer);
+    }
+    await paint();
+    await expect.poll(() => overlaps(), { timeout: 1000 }).toEqual([]);
+    const after = firstVisible();
+    expect(after.index).toBe(anchor.index);
+    expect(Math.abs(after.offset - anchor.offset)).toBeLessThanOrEqual(4);
+  });
 });
 
 /**

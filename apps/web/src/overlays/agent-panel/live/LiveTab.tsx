@@ -855,8 +855,15 @@ function LiveFeed({
     // that correction for a re-measured row while the last scroll was upward and still settling,
     // so a row growing just after the reader scrolled up pushed the whole view down.
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      // An earlier resize in the same observer delivery may already have moved the offset while
+      // the cached positions, and so `item`, stayed stale. getTotalSize recomputes measurements
+      // after a size change; judge this row by its current start and its not yet updated size.
+      instance.getTotalSize();
+      const current = instance.measurementsCache[item.index] ?? item;
       const offset = instance.scrollOffset ?? 0;
-      return instance.itemSizeCache.has(item.key) ? item.end <= offset : item.start < offset;
+      return instance.itemSizeCache.has(item.key)
+        ? current.start + current.size <= offset
+        : current.start < offset;
     };
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
