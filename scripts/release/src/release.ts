@@ -467,6 +467,11 @@ export async function buildRelease(options: BuildOptions): Promise<Release> {
   const commit = git(root, "rev-parse", "HEAD");
   const status = git(root, "status", "--porcelain");
   const dirty = status !== "";
+  if (dirty && environment === "production") {
+    throw new Error(
+      "Refusing to build a production release from a dirty working tree (uncommitted changes); commit or stash them. --allow-dirty does not apply to production.",
+    );
+  }
   if (dirty && !allowDirty) {
     throw new Error("The working tree is dirty (uncommitted changes); commit or stash them first.");
   }

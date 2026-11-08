@@ -28,9 +28,11 @@ pnpm release --out <dir>
 pnpm release --out <dir> --environment staging
 ```
 
-Source: the root `release` script (`node scripts/release/src/main.ts`) and its usage line. `--allow-dirty` exists, but never use it for a release: it builds from uncommitted changes, and `release.json` then records `"dirty": true`.
+Source: the root `release` script (`node scripts/release/src/main.ts`) and its usage line. `--allow-dirty` exists for development and staging builds only. A production build (the default) refuses a dirty tree even with `--allow-dirty`, and writes nothing. A dirty staging or development build records `"dirty": true` in `release.json`, and `GET /health` reports `release.dirty: true`.
 
 **The default environment is `production`.** For a staging build, pass `--environment staging`. The flag sets the `environment` field in the tarball's `release.json`. It does not configure the staging Worker (see section 3).
+
+**Build from a fresh install in a clean checkout.** Run `pnpm install --frozen-lockfile` in a clean checkout of the commit, as the release workflow's clean runner does, then build. The build's lockfile guard compares pnpm's lock metadata (what `pnpm-lock.yaml` and `node_modules/.pnpm/lock.yaml` say is installed), not the installed package contents. A `node_modules` that was edited or patched by hand still passes it. When you build in a checkout that already has `node_modules`, run `pnpm install --frozen-lockfile --force` first to reinstall every package from the lockfile. No script runs this step for you.
 
 The build refuses a dirty tree, a lockfile whose installed packages are not in `pnpm-lock.yaml`, and any credentials-looking file (`.env*`, `.dev.vars*`, `.npmrc`, keys) in the package. It also refuses to overwrite an existing `<id>/` folder whose files differ.
 
@@ -56,7 +58,7 @@ To check the release builder itself, run the root `test:release` script (`vitest
 | --- | --- |
 | `taskville --version` | `taskville <version> (<release id>)`. Shows `dev` as the id in a source checkout, which has no `release.json`. Source: `versionLine` in `apps/cli/src/main.ts`. |
 | The web header badge | `<environment> · <first 12 characters of the id>`, for example `staging · 20261106-abc`. It appears only when `/health` returns an identity. Source: `ReleaseBadge.tsx` and `SHORT_ID_LENGTH` in `identity.ts`. |
-| `GET /health` (engine) | `release: { id, version, environment }`, read from `release.json` next to the engine's entry point. Missing or invalid `release.json` falls back to the `dev` identity with a warning. |
+| `GET /health` (engine) | `release: { id, version, environment }` (plus `dirty: true` when `release.json` says so), read from `release.json` next to the engine's entry point. Missing or invalid `release.json` falls back to the `dev` identity with a warning. |
 | `GET /health` (staging Worker) | `release: { id, version, environment }`, read from the Worker's `RELEASE_ID`, `RELEASE_VERSION` and `APP_ENV` variables. |
 | The `STAGING` banner | Shown only when the environment is `staging`. |
 

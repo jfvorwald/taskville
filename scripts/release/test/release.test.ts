@@ -241,12 +241,16 @@ describe("release build (real repository, shared)", () => {
 
   beforeAll(async () => {
     // Build A goes through the real entry point, build B through the exported function.
-    execFileSync(process.execPath, [MAIN, "--out", outA, "--allow-dirty"], {
-      cwd: ROOT,
-      stdio: "pipe",
-      env: { ...process.env, HOME: scratch },
-    });
-    await buildRelease({ root: ROOT, outDir: outB, allowDirty: true });
+    execFileSync(
+      process.execPath,
+      [MAIN, "--out", outA, "--allow-dirty", "--environment", "staging"],
+      {
+        cwd: ROOT,
+        stdio: "pipe",
+        env: { ...process.env, HOME: scratch },
+      },
+    );
+    await buildRelease({ root: ROOT, outDir: outB, allowDirty: true, environment: "staging" });
     first = readBuilt(outA);
     second = readBuilt(outB);
     extracted = join(scratch, "extracted");
@@ -315,7 +319,7 @@ describe("release build (real repository, shared)", () => {
       id: first.id,
       version: first.manifest.version,
       commit,
-      environment: "production",
+      environment: "staging",
     });
     expect(
       Object.keys(identity).filter(
@@ -381,7 +385,7 @@ describe("installing the tarball", () => {
     home = join(scratch, "install-home");
     mkdirSync(home);
     const out = join(scratch, "out-install");
-    await buildRelease({ root: ROOT, outDir: out, allowDirty: true });
+    await buildRelease({ root: ROOT, outDir: out, allowDirty: true, environment: "staging" });
     built = readBuilt(out);
     const prefix = join(scratch, "prefix");
     mkdirSync(prefix);
@@ -456,7 +460,7 @@ describe("installing the tarball", () => {
       };
       expect(body.release.id).toBe(built.id);
       expect(body.release.version).toBe(built.manifest.version);
-      expect(body.release.environment).toBe("production");
+      expect(body.release.environment).toBe("staging");
     });
   }, 60_000);
 
@@ -499,9 +503,9 @@ describe("refusals", () => {
     async () => {
       const webDir = webDirWith((dir) => writeFileSync(join(dir, ".env.production"), "SECRET=1"));
       const outDir = join(scratch, "out-secret");
-      await expect(buildRelease({ root: ROOT, outDir, allowDirty: true, webDir })).rejects.toThrow(
-        /secrets file/i,
-      );
+      await expect(
+        buildRelease({ root: ROOT, outDir, allowDirty: true, environment: "staging", webDir }),
+      ).rejects.toThrow(/secrets file/i);
       for (const name of [".env", ".dev.vars"]) {
         const dir = webDirWith((d) => writeFileSync(join(d, name), "SECRET=1"));
         await expect(
@@ -509,6 +513,7 @@ describe("refusals", () => {
             root: ROOT,
             outDir: join(scratch, `out-${name}`),
             allowDirty: true,
+            environment: "staging",
             webDir: dir,
           }),
         ).rejects.toThrow(/secrets file/i);
@@ -524,9 +529,9 @@ describe("refusals", () => {
         symlinkSync(join(dir, "index.html"), join(dir, "linked.html")),
       );
       const outDir = join(scratch, "out-symlink");
-      await expect(buildRelease({ root: ROOT, outDir, allowDirty: true, webDir })).rejects.toThrow(
-        /symlink/i,
-      );
+      await expect(
+        buildRelease({ root: ROOT, outDir, allowDirty: true, environment: "staging", webDir }),
+      ).rejects.toThrow(/symlink/i);
       expect(relative(scratch, outDir)).toBeTruthy();
       expect(statSync(webDir).isDirectory()).toBe(true);
     },
@@ -572,14 +577,26 @@ describe("identity and lockfile (fixture repository)", () => {
     clean2 = readBuilt(outFor("c2"));
     // Same HEAD, untracked file: the packaged content is identical, only the dirty flag differs.
     writeFileSync(join(root, "scratch-notes.txt"), "uncommitted");
-    await buildRelease({ root, outDir: outFor("d1"), webDir: web(), allowDirty: true });
+    await buildRelease({
+      root,
+      outDir: outFor("d1"),
+      webDir: web(),
+      allowDirty: true,
+      environment: "staging",
+    });
     dirty = readBuilt(outFor("d1"));
     // Same HEAD and dirty, but the lockfile differs (a comment, so the resolved versions are equal).
     writeFileSync(
       join(root, "pnpm-lock.yaml"),
       `${readFileSync(join(root, "pnpm-lock.yaml"), "utf8")}# touched\n`,
     );
-    await buildRelease({ root, outDir: outFor("d2"), webDir: web(), allowDirty: true });
+    await buildRelease({
+      root,
+      outDir: outFor("d2"),
+      webDir: web(),
+      allowDirty: true,
+      environment: "staging",
+    });
     dirtyLock = readBuilt(outFor("d2"));
   }, SLOW);
 
@@ -664,6 +681,7 @@ describe("secrets scan over the staged tree", () => {
           root: ROOT,
           outDir: join(scratch, `out-sec-${name}`),
           allowDirty: true,
+          environment: "staging",
           webDir,
         }),
       ).rejects.toThrow(/secrets file/i);
@@ -693,9 +711,13 @@ describe("secrets scan over the staged tree", () => {
       writeFileSync(join(root, "apps/cli/hooks/credentials.json"), "{}");
       const outDir = join(scratch, "out-untracked-hook");
       // Refusing and not shipping are both safe; shipping is the failure.
-      await buildRelease({ root, outDir, webDir: tinyWeb(), allowDirty: true }).catch(
-        () => undefined,
-      );
+      await buildRelease({
+        root,
+        outDir,
+        webDir: tinyWeb(),
+        allowDirty: true,
+        environment: "staging",
+      }).catch(() => undefined);
       const tarballs = existsSync(outDir)
         ? readdirSync(outDir).flatMap((id) =>
             readdirSync(join(outDir, id))
@@ -734,7 +756,7 @@ describe("clean build environment", () => {
       writeFileSync(join(root, "apps/web/.env.production"), `VITE_TV_PROBE_PROD=${marker.prod}\n`);
       const outDir = join(scratch, "out-clean-env");
       await withEnv({ VITE_TV_PROBE_ENV: marker.env, VITE_TV_TEST_HOOKS: "1" }, () =>
-        buildRelease({ root, outDir, allowDirty: true }),
+        buildRelease({ root, outDir, allowDirty: true, environment: "staging" }),
       );
       const web = join(extract(readBuilt(outDir).tgz, join(scratch, "x-clean-env")), "web");
       const bundled = filesUnder(web)
@@ -769,6 +791,7 @@ describe("bundle guard", () => {
           outDir: join(scratch, "out-guard"),
           webDir: tinyWeb(),
           allowDirty: true,
+          environment: "staging",
         }),
       ).rejects.toThrow(/import\.meta\.url/);
     },
@@ -842,6 +865,7 @@ describe("tar paths", () => {
       root: ROOT,
       outDir: join(scratch, `out-tar-${name}`),
       allowDirty: true,
+      environment: "staging",
       webDir: tinyWeb(setup),
     });
 
@@ -888,11 +912,15 @@ describe("builds from another cwd and with --environment (real repository)", () 
   let otherCwd: Built;
   let staging: Built;
   const run = (cwd: string, out: string, ...extra: string[]) =>
-    execFileSync(process.execPath, [MAIN, "--out", out, "--allow-dirty", ...extra], {
-      cwd,
-      stdio: "pipe",
-      env: { ...process.env, HOME: scratch },
-    });
+    execFileSync(
+      process.execPath,
+      [MAIN, "--out", out, "--allow-dirty", "--environment", "development", ...extra],
+      {
+        cwd,
+        stdio: "pipe",
+        env: { ...process.env, HOME: scratch },
+      },
+    );
 
   beforeAll(() => {
     const elsewhere = join(scratch, "elsewhere");

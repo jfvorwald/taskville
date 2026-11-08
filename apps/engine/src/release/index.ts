@@ -8,6 +8,8 @@ export interface ReleaseIdentity {
   id: string;
   version: string;
   environment: "development" | "staging" | "production";
+  /** Present only when the build came from uncommitted changes. */
+  dirty?: true;
 }
 
 export const RELEASE_FILE = "release.json";
@@ -16,6 +18,7 @@ const ReleaseFile = z.object({
   id: z.string().min(1),
   version: z.string().optional(),
   environment: z.enum(["development", "staging", "production"]),
+  dirty: z.boolean().optional(),
 });
 
 /** The identity of a checkout with no `release.json`. */
@@ -58,6 +61,11 @@ export function loadRelease(options: {
     logger?.warn("release.json has the wrong shape; using the dev release identity");
     return devRelease(version);
   }
-  const { id, environment } = parsed.data;
-  return { id, version: parsed.data.version ?? version, environment };
+  const { id, environment, dirty } = parsed.data;
+  return {
+    id,
+    version: parsed.data.version ?? version,
+    environment,
+    ...(dirty === true ? { dirty: true as const } : {}),
+  };
 }
