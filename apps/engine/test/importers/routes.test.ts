@@ -139,7 +139,10 @@ describe("POST /v1/imports", () => {
 
   it("refuses a request without credentials", async () => {
     setup([fakeImporter([oneEvent()])]);
-    const res = await app.request(`${BASE}/v1/imports`, postJson(request(), { Host: HOST }));
+    const res = await app.request(
+      `${BASE}/v1/imports`,
+      postJson(request(), { Host: HOST, Origin: ORIGIN }),
+    );
     expect(res.status).toBe(401);
   });
 
