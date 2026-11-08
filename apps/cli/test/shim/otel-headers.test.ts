@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type Home, makeHome, SHELLS, TOKEN } from "./harness.ts";
+import { type Home, makeHome, SHELLS, TOKEN, writeLiveEngine } from "./harness.ts";
 
 // M5.12 round 2 (security review H1): the OpenTelemetry headers helper
 // (apps/cli/hooks/claude-code-otel-headers.sh) prints the CLI token for whatever endpoint Claude
@@ -19,6 +19,8 @@ const exec = promisify(execFile);
 const URLS = "http://127.0.0.1:4807";
 
 async function run(shell: string, home: Home, extra: Record<string, string>) {
+  // The helper hands out the token only to a live engine at TASKVILLE_URL (M7.30).
+  writeLiveEngine(home, extra.TASKVILLE_URL ?? URLS);
   const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", TASKVILLE_HOME: home.home, ...extra };
   try {
     const { stdout } = await exec(shell, [HELPER], { env });

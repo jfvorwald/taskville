@@ -4,6 +4,13 @@
 # JSON object of headers from stdout; the engine's OTLP receiver needs the CLI token, which is
 # read here from $TASKVILLE_HOME/token so it is never written to a settings file.
 #
+# Hands out the token only to a live engine (M7.30, #434): $TASKVILLE_HOME/engine.json (one JSON
+# line written by `taskville serve`) must be a regular file whose "url" equals the target origin
+# (TASKVILLE_URL, trailing slashes stripped) and whose "pid" (digits only, not 0) is alive
+# (`kill -0`). Otherwise it prints nothing and exits 0, as for a foreign endpoint, so a stale file
+# or another process on the port never gets the token. Read with sed, no jq. Remaining limit: a
+# same-user process can still listen while the engine is alive; see apps/cli/docs/hooks-security.md.
+#
 # Prints nothing and exits 1 when the home or token is missing or not a plain token file (a
 # symlink, or characters outside A-Za-z0-9_-): Claude Code then exports without the header and the
 # engine answers 401, which is the honest failure. The token is never echoed anywhere else.
@@ -15,7 +22,12 @@ home=${TASKVILLE_HOME:-}
 # print nothing and exit 0: Claude Code may resolve any of these from a shared settings file or
 # the user's own collector, and none of them may receive the token.
 origin=${TASKVILLE_URL:-http://127.0.0.1:4807}
-origin=${origin%/}
+while :; do
+  case $origin in
+    */) origin=${origin%/} ;;
+    *) break ;;
+  esac
+done
 for endpoint in "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}" \
   "${OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}"; do
   case $endpoint in
@@ -23,6 +35,22 @@ for endpoint in "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_METRICS
     *) exit 0 ;;
   esac
 done
+engine_json=$home/engine.json
+if [ -h "$engine_json" ] || [ ! -f "$engine_json" ]; then exit 0; fi
+info=$(head -c 4096 "$engine_json" | tr -d '\r\n') || exit 0
+case $info in '{'*'}') ;; *) exit 0 ;; esac
+engine_url=$(printf '%s' "$info" | sed -n 's/.*"url":"\([^"\\]*\)".*/\1/p')
+engine_pid=$(printf '%s' "$info" | sed -n 's/.*"pid":\([0-9]*\)[,}].*/\1/p')
+while :; do
+  case $engine_url in
+    */) engine_url=${engine_url%/} ;;
+    *) break ;;
+  esac
+done
+[ -n "$engine_url" ] && [ "$engine_url" = "$origin" ] || exit 0
+case $engine_pid in '' | *[!0-9]*) exit 0 ;; esac
+[ ${#engine_pid} -le 10 ] && [ "$engine_pid" -gt 0 ] || exit 0
+kill -0 "$engine_pid" 2>/dev/null || exit 0
 token_file=$home/token
 if [ -h "$token_file" ] || [ ! -f "$token_file" ]; then exit 1; fi
 token=

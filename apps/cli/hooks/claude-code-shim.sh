@@ -22,6 +22,20 @@
 #                   config.json: an installer for a non-default port must set
 #                   TASKVILLE_URL in the hook command.
 #
+# LIVE ENGINE (M7.30, #434)
+#   The token and the payload are posted only to an engine that recorded itself
+#   in $TASKVILLE_HOME/engine.json (one JSON line written by `taskville serve`:
+#   {"url":...,"pid":...,...}). The shim posts only when that file is a regular
+#   file (not a symlink), its "url" equals the target origin (TASKVILLE_URL with
+#   trailing slashes stripped) and its "pid" (digits only, not 0) is alive
+#   (`kill -0`). Otherwise it does not contact the port at all and spools the
+#   event, so a stale engine.json or any other process that took the port after
+#   the engine exited never receives the token. engine.json is read with sed
+#   (no jq); anything that does not look like the one-line object above counts
+#   as missing. Remaining limit: another process of the same user can still
+#   listen on the port while the recorded engine is alive, or write its own
+#   engine.json; see apps/cli/docs/hooks-security.md.
+#
 # REQUEST (the hooks endpoint, M2.02 / #21: apps/engine/src/sources/claude-code/route.ts)
 #   POST <TASKVILLE_URL>/v1/sources/claude-code/hooks
 #   Authorization: Bearer <contents of $TASKVILLE_HOME/token>
@@ -245,6 +259,22 @@ valid_uuid "$uuid" || exit 0
 
 # --- POST to the engine -------------------------------------------------------
 
+# True when $home/engine.json names a live engine at origin $1: a regular file
+# whose one-line JSON object has "url" equal to $1 and a "pid" that is running.
+live_engine() {
+  _ej=$home/engine.json
+  if [ -h "$_ej" ] || [ ! -f "$_ej" ]; then return 1; fi
+  _info=$(head -c 4096 "$_ej" | tr -d '\r\n') || return 1
+  case $_info in '{'*'}') ;; *) return 1 ;; esac
+  _eurl=$(printf '%s' "$_info" | sed -n 's/.*"url":"\([^"\\]*\)".*/\1/p')
+  _epid=$(printf '%s' "$_info" | sed -n 's/.*"pid":\([0-9]*\)[,}].*/\1/p')
+  [ -n "$_eurl" ] || return 1
+  [ "$(strip_slashes "$_eurl")" = "$1" ] || return 1
+  case $_epid in '' | *[!0-9]*) return 1 ;; esac
+  [ ${#_epid} -le 10 ] && [ "$_epid" -gt 0 ] || return 1
+  kill -0 "$_epid" 2>/dev/null
+}
+
 post() {
   # The oversized marker has no object payload; the endpoint would refuse it.
   [ -z "$extra" ] || return 1
@@ -258,6 +288,8 @@ post() {
   esac
   case $port in '' | *[!0-9]*) return 1 ;; esac
   [ ${#port} -le 5 ] || return 1
+
+  live_engine "$url" || return 1
 
   token_file=$home/token
   if [ -h "$token_file" ] || [ ! -f "$token_file" ]; then return 1; fi

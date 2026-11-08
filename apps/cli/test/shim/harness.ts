@@ -2,7 +2,15 @@
 // shell and runs a tiny HTTP server that stands in for the engine.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,6 +96,22 @@ export function runShim(options: ShimOptions): Promise<ShimRun> {
     child.stdin.on("error", () => {});
     child.stdin.end(options.input);
   });
+}
+
+/** Records this process as the live engine at `url`, as `serve` does (engine.json, mode 0600). */
+export function writeLiveEngine(home: Home, url: string): void {
+  const info = { url, pid: process.pid, startedAt: new Date().toISOString(), keyListener: false };
+  try {
+    writeFileSync(join(home.home, "engine.json"), `${JSON.stringify(info)}\n`, { mode: 0o600 });
+  } catch {
+    // A home the test made unwritable: the shim bails on it before reading engine.json.
+  }
+}
+
+/** `shimEnv` for a hook that may post: the shim contacts only a live engine in engine.json (M7.30). */
+export function liveShimEnv(home: Home, url: string, extra: Record<string, string> = {}) {
+  writeLiveEngine(home, url);
+  return shimEnv(home, url, extra);
 }
 
 /** The environment a hook runs with: nothing from the developer's own shell. */
