@@ -126,6 +126,8 @@ interface Tally {
   malformed: number;
   byCode: Map<string, number>;
   truncated: boolean;
+  /** Events taken from the importer's batches so far. */
+  consumed: number;
   /** Tool call IDs of the kept events. */
   toolCalls: Set<string>;
   /** Evidence held in memory until the archive is complete. */
@@ -335,6 +337,7 @@ export class ImportJobs {
       malformed: 0,
       byCode: new Map(),
       truncated: false,
+      consumed: 0,
       toolCalls: new Set(),
       evidence: [],
       evidenceBytes: 0,
@@ -451,7 +454,9 @@ export class ImportJobs {
       if (tally.truncated) {
         // The cap is reached: stop the importer (its `finally` runs) instead of reading on.
         await generator.return(sanitizeCounts(undefined));
-        return sanitizeCounts(job.counts);
+        // Its own count may lag (or be zero); at least the events consumed were read.
+        const own = sanitizeCounts(job.counts);
+        return { ...own, read: Math.max(own.read, tally.consumed) };
       }
       // Keep the engine's other work (requests, timers) moving between batches.
       await yieldToEventLoop();
@@ -461,6 +466,7 @@ export class ImportJobs {
   /** Validates a batch's events into the tally, then stages the evidence of the kept ones. */
   #take(batch: ImportBatch, receivedAt: string, tally: Tally, projectId: string): void {
     for (const raw of batch.events) {
+      tally.consumed += 1;
       const prepared = prepare(raw, projectId, receivedAt, this.#maxEventBytes);
       if (!prepared.ok) {
         reject(tally, prepared.code);

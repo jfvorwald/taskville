@@ -18,7 +18,7 @@ const SCHEMA_VERSION = 1;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const EVICT_BATCH = 64;
 // Joins a project ID and an archive ID into one scope key; C0 controls never appear in either.
-const ARCHIVE_SEPARATOR = "\u0000archive\u0000";
+const ARCHIVE_SEPARATOR = "\u0001archive\u0001";
 
 export type BodyPart = "input" | "output";
 
@@ -150,14 +150,17 @@ export class EvidenceStore implements EvidenceSink {
 
   /** Removes every body and pointer of a project, archive scopes included. */
   deleteProject(projectId: string): void {
-    const prefix = `${projectId}${ARCHIVE_SEPARATOR}`;
+    // Archive scopes are `projectId + SEPARATOR + archiveId`: a range over the prefix (binary
+    // collation), the separator's last character bumped by one for the upper bound.
+    const low = `${projectId}${ARCHIVE_SEPARATOR}`;
+    const high = `${projectId}${ARCHIVE_SEPARATOR.slice(0, -1)}\u0002`;
     this.#transaction(() => {
       for (const table of ["tool_call_bodies", "bodies", "usage"]) {
         this.#db
           .prepare(
-            `DELETE FROM ${table} WHERE project_id = ? OR substr(project_id, 1, length(?)) = ?`,
+            `DELETE FROM ${table} WHERE project_id = ? OR (project_id >= ? AND project_id < ?)`,
           )
-          .run(projectId, prefix, prefix);
+          .run(projectId, low, high);
       }
     });
   }
