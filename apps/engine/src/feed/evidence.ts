@@ -3,6 +3,7 @@ import type { Context, Hono } from "hono";
 import { type BodyPart, EVICTED_MESSAGE, type EvidenceStore } from "../evidence/index.ts";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
+import { PROJECT_ID } from "../projects/index.ts";
 
 /** A body a feed frame points at. `evicted` means the call happened but its details are gone. */
 export interface EvidenceRef {
@@ -51,6 +52,8 @@ export function parseEvidenceId(
   if (!Array.isArray(parsed) || parsed.length !== 3) return undefined;
   const [projectId, toolCallId, part] = parsed as unknown[];
   if (typeof projectId !== "string" || typeof toolCallId !== "string") return undefined;
+  // Only a project ID the engine could have created resolves (no archive scope separator, no C0).
+  if (!PROJECT_ID.test(projectId)) return undefined;
   if (part !== "input" && part !== "output") return undefined;
   // Only the canonical form counts, so one body has one ID.
   if (evidenceId(projectId, toolCallId, part) !== id) return undefined;
@@ -81,6 +84,8 @@ export function frameEvidence(
   };
 }
 
+const ARCHIVE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 const MARKER = /\[REDACTED:([a-z-]+)\]/g;
 
 /** The masks of a stored body: only a body the redactor changed has any. */
@@ -100,7 +105,10 @@ export function registerEvidenceRoute(app: Hono<AppEnv>, store: EvidenceStore): 
     const id = c.req.param("id") ?? "";
     const parsed = parseEvidenceId(id);
     if (parsed === undefined) return unknown();
-    const body = store.get(parsed.projectId, parsed.toolCallId)?.[parsed.part];
+    // `?archive=<archiveId>` reads that import's archive scope only; without it, the live scope only.
+    const archive = c.req.query("archive");
+    if (archive !== undefined && !ARCHIVE_ID.test(archive)) return unknown();
+    const body = store.get(parsed.projectId, parsed.toolCallId, archive)?.[parsed.part];
     if (body === null || body === undefined) return unknown();
     if (body.status === "evicted") return apiError(c, 410, "evidence_evicted", EVICTED_MESSAGE);
     const response: EvidenceResponse = {
