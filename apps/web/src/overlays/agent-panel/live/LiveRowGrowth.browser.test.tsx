@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -182,6 +183,107 @@ describe("M10.01 feed rows never overlap after their own content grows", () => {
     const after = firstVisible();
     expect(after.index).toBe(anchor.index);
     expect(Math.abs(after.offset - anchor.offset)).toBeLessThanOrEqual(4);
+  });
+});
+
+/**
+ * Check the rows in every frame at the point the frame paints them. A frame runs rAF callbacks,
+ * then layout, then ResizeObserver callbacks in the order the observers were created, then paints.
+ * A probe observer created in this frame's rAF is the newest, so its first callback runs after the
+ * feed's own observers have reacted to this frame's layout: it sees what the frame paints.
+ */
+function watchFrames() {
+  const seen: string[] = [];
+  let on = true;
+  const tick = () => {
+    if (!on) return;
+    const probe = new ResizeObserver(() => {
+      probe.disconnect();
+      seen.push(...overlaps());
+    });
+    probe.observe(document.documentElement);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  return {
+    stop: () => {
+      on = false;
+      return seen;
+    },
+  };
+}
+
+/** A feed whose evidence bodies a test can deliver later, from outside React's act scope. */
+function LateBodies(props: {
+  store: ReturnType<typeof createDataStore>;
+  calls: ToolCallFrame[];
+  onSetter: (set: (next: Record<string, EvidenceResponse>) => void) => void;
+}) {
+  const [evidence, set] = useState<Record<string, EvidenceResponse>>({});
+  props.onSetter(set);
+  return (
+    <div data-testid="growth-slot" style={{ height: 420, width: 360, overflowY: "auto" }}>
+      <LiveTab
+        agentId={A}
+        store={props.store}
+        select={vi.fn()}
+        calls={props.calls}
+        evidence={evidence}
+      />
+    </div>
+  );
+}
+
+describe("M10.01 rows that grow in a later React commit", () => {
+  // The real-app case: rows mount before their evidence bodies arrive, are measured, then the
+  // bodies render in a later commit. No painted frame may show the stale offsets.
+  it("never paints a frame with overlapping rows when evidence bodies arrive", async () => {
+    const store = createDataStore();
+    store.getState().reset(PROJECT);
+    const frames = Array.from({ length: 3 }, (_, i) => ({
+      ...call(i),
+      evidence: { input: { id: `synthetic-body-${i}`, status: "stored" as const }, output: null },
+    }));
+    const text = JSON.stringify({
+      content: Array.from({ length: 10 }, (_, n) => `synthetic line ${n}`).join("\n"),
+    });
+    const bodies = Object.fromEntries(
+      frames.map((frame, i) => [
+        `synthetic-body-${i}`,
+        {
+          id: `synthetic-body-${i}`,
+          projectId: PROJECT,
+          toolCallId: frame.toolCallId,
+          part: "input",
+          text,
+          bytes: new TextEncoder().encode(text).length,
+          masks: [],
+          truncated: false,
+        } satisfies EvidenceResponse,
+      ]),
+    );
+    let setEvidence: ((next: Record<string, EvidenceResponse>) => void) | undefined;
+    await render(
+      <LateBodies
+        store={store}
+        calls={frames}
+        onSetter={(set) => {
+          setEvidence = set;
+        }}
+      />,
+    );
+    await paint();
+    expect(rowEls()).toHaveLength(3);
+    expect(overlaps()).toEqual([]);
+    const before = row(0)?.getBoundingClientRect().height ?? 0;
+    const watch = watchFrames();
+    // Outside act, as a fetch completion is: React schedules the render as the app would. Inside
+    // act the ResizeObserver's follow-up render would be flushed before paint and hide the frame.
+    setEvidence?.(bodies);
+    await paint();
+    expect((row(0)?.getBoundingClientRect().height ?? 0) - before).toBeGreaterThan(60);
+    expect(watch.stop()).toEqual([]);
+    expect(overlaps()).toEqual([]);
   });
 });
 
