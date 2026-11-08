@@ -37,6 +37,12 @@ export const API_ERROR_CODES = [
   "internal",
   /** 503: the engine already serves its maximum number of SSE streams (security review F5). */
   "too_many_streams",
+  /** 400: the import root is not one of the project's configured roots (M8.06). */
+  "root_not_configured",
+  /** 409: the project already has a running import (M8.06). */
+  "import_running",
+  /** 400: no importer is registered for the requested kind (M8.06). */
+  "unknown_import_kind",
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
@@ -161,3 +167,49 @@ export const healthResponseSchema = z.strictObject({
     .optional(),
 });
 export type HealthResponse = z.output<typeof healthResponseSchema>;
+
+/** `POST /v1/imports` body (M8.06). `kind` is checked against the importer registry, not here. */
+export const importRequestSchema = z.strictObject({
+  projectId: idSchema,
+  kind: z.string().min(1).max(64),
+  root: z.string().min(1),
+});
+export type ImportRequest = z.output<typeof importRequestSchema>;
+
+export const IMPORT_STATUSES = ["running", "done", "failed", "cancelled"] as const;
+
+/** Import totals. They never contain source text. */
+export const importCountsSchema = z.strictObject({
+  read: nonNegativeIntSchema,
+  imported: nonNegativeIntSchema,
+  skipped: nonNegativeIntSchema,
+  malformed: nonNegativeIntSchema,
+  /** Rejections by protocol code among the events the engine refused. */
+  malformedByCode: z.record(z.string(), nonNegativeIntSchema).optional(),
+  /** Present and true when the event cap stopped the import. */
+  truncated: z.boolean().optional(),
+});
+export type ImportCountsWire = z.output<typeof importCountsSchema>;
+
+/** `202` from `POST /v1/imports`. The import ID equals the archive ID. */
+export const importStartedSchema = z.strictObject({
+  importId: idSchema,
+  archiveId: idSchema,
+  status: z.literal("running"),
+});
+export type ImportStarted = z.output<typeof importStartedSchema>;
+
+/** `GET /v1/imports/:id`. */
+export const importStatusSchema = z.strictObject({
+  importId: idSchema,
+  archiveId: idSchema,
+  projectId: idSchema,
+  kind: z.enum(["git", "transcripts"]),
+  status: z.enum(IMPORT_STATUSES),
+  counts: importCountsSchema,
+  /** A code and a short message, never source text. */
+  error: z.strictObject({ code: z.string(), message: z.string() }).optional(),
+  startedAt: timestampSchema,
+  finishedAt: timestampSchema.optional(),
+});
+export type ImportStatusWire = z.output<typeof importStatusSchema>;

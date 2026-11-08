@@ -8,6 +8,7 @@ export type ErrorCode =
   | "evidence_evicted"
   | "forbidden_host"
   | "forbidden_origin"
+  | "import_running"
   | "internal"
   | "invalid_pairing_code"
   | "not_found"
@@ -15,9 +16,11 @@ export type ErrorCode =
   | "too_many_streams"
   | "payload_too_large"
   | "project_exists"
+  | "root_not_configured"
   | "unauthorized"
   | "unknown_agent"
   | "unknown_evidence"
+  | "unknown_import_kind"
   | "unknown_project";
 
 /** The API error shape: `{ "error": { "code", "message" } }`. Messages never carry request values. */
