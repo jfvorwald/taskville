@@ -3,6 +3,7 @@ import {
   observeWindowOffset,
   observeWindowRect,
   useVirtualizer,
+  type VirtualItem,
   type VirtualizerOptions,
   windowScroll,
 } from "@tanstack/react-virtual";
@@ -14,10 +15,12 @@ import {
   useId,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
 import { Button } from "react-aria-components";
+import { flushSync } from "react-dom";
 import { type JsonValue, redactJson } from "../../../../../../packages/adapters/src/redact/json.ts";
 import { redactText } from "../../../../../../packages/adapters/src/redact/text.ts";
 import type { EvidenceResponse } from "../../../../../engine/src/feed/evidence.ts";
@@ -97,6 +100,12 @@ const pageScroll = {
 >;
 /** The page's own scroller: scrollTop and sizes live on it, scroll events and the view on window. */
 const isPage = (node: HTMLElement) => node === node.ownerDocument.scrollingElement;
+/** Each mounted row's offset and the total height, as one comparable value. */
+const drawnLayout = (virtualizer: { getTotalSize(): number; getVirtualItems(): VirtualItem[] }) =>
+  `${virtualizer.getTotalSize()}|${virtualizer
+    .getVirtualItems()
+    .map((item) => `${item.index}@${item.start}`)
+    .join(",")}`;
 /** Follow means within this many px of the bottom after layout. A pause needs a real scroll up. */
 const FOLLOW_THRESHOLD = 8;
 const distanceFromBottom = (node: HTMLElement) =>
@@ -831,6 +840,55 @@ function LiveFeed({
     useFlushSync: false,
   });
   const virtualItems = virtualizer.getVirtualItems();
+  // The row offsets and total height this render draws, to tell when a resize has made them stale.
+  const layout = drawnLayout(virtualizer);
+  const drawn = useRef("");
+  const [, relayout] = useReducer((n: number) => n + 1, 0);
+  const rowObserver = useRef<ResizeObserver | null>(null);
+  const observed = useRef(new WeakSet<Element>());
+  // TanStack's own ResizeObserver re-measures a row that grows after it was measured (an evidence
+  // body arriving, late highlighting, a disclosure), but React repositions the rows in a render
+  // that runs after the frame paints, so that frame draws the grown row over the next ones.
+  // Observe the rows here too and commit the new offsets inside the callback, before paint.
+  useLayoutEffect(() => {
+    // Keep the reader's rows still when a row above them changes size. TanStack's default skips
+    // that correction for a re-measured row while the last scroll was upward and still settling,
+    // so a row growing just after the reader scrolled up pushed the whole view down.
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      // An earlier resize in the same observer delivery may already have moved the offset while
+      // the cached positions, and so `item`, stayed stale. getTotalSize recomputes measurements
+      // after a size change; judge this row by its current start and its not yet updated size.
+      instance.getTotalSize();
+      const current = instance.measurementsCache[item.index] ?? item;
+      const offset = instance.scrollOffset ?? 0;
+      return instance.itemSizeCache.has(item.key)
+        ? current.start + current.size <= offset
+        : current.start < offset;
+    };
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const node = entry.target as HTMLDivElement;
+        if (!node.isConnected) {
+          observer.unobserve(node);
+          observed.current.delete(node);
+          continue;
+        }
+        const index = virtualizer.indexFromElement(node);
+        if (index >= 0 && index < virtualizer.options.count)
+          virtualizer.resizeItem(
+            index,
+            virtualizer.options.measureElement(node, entry, virtualizer),
+          );
+      }
+      if (drawnLayout(virtualizer) !== drawn.current) flushSync(relayout);
+    });
+    rowObserver.current = observer;
+    return () => {
+      observer.disconnect();
+      rowObserver.current = null;
+      observed.current = new WeakSet();
+    };
+  }, [virtualizer]);
   const singleCount = virtualItems.filter(({ index }) => items[index].kind === "call").length;
   const expandedCount = virtualItems.filter(
     ({ index }) => items[index].kind !== "call" && expanded.has(items[index].key),
@@ -966,6 +1024,12 @@ function LiveFeed({
   }, [changeFollow]);
   // Reconcile after each measured layout, including streaming output and expansion.
   useLayoutEffect(() => {
+    drawn.current = layout;
+    for (const node of Array.from(rows.current?.children ?? [])) {
+      if (observed.current.has(node)) continue;
+      observed.current.add(node);
+      rowObserver.current?.observe(node, { box: "border-box" });
+    }
     if (!viewport) return;
     // TanStack measures rows mounted during a scroll only on the next ResizeObserver frame,
     // then corrects the estimate above the fold by writing scrollTop from its last reported

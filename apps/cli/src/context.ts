@@ -33,6 +33,8 @@ export interface Io {
   sourceCheckout?: boolean | undefined;
   /** Builds the web client once (`start`, source checkout only). */
   buildWeb?: (() => Promise<void>) | undefined;
+  /** Milliseconds between `import` status polls (M8.08); absent is 500. */
+  importPollMs?: number | undefined;
   /** The facts `doctor` checks about the machine; each one left out falls back to the real probe (M7.10). */
   doctor?: Partial<DoctorProbes> | undefined;
 }
