@@ -41,11 +41,11 @@ function run(lines: readonly (object | string)[], projectId = "proj-1") {
     const r = mapper.mapLine(typeof line === "string" ? line : JSON.stringify(line), i + 1);
     outcomes.push(r.outcome);
     events.push(...(r.events as Wire[]));
-    evidence.push(...((r.evidence ?? []) as Wire[]));
+    evidence.push(...((r.evidence ?? []) as unknown as Wire[]));
   });
   const end = mapper.finish();
   events.push(...(end.events as Wire[]));
-  evidence.push(...((end.evidence ?? []) as Wire[]));
+  evidence.push(...((end.evidence ?? []) as unknown as Wire[]));
   return { events, evidence, outcomes };
 }
 
@@ -149,7 +149,7 @@ describe("a complete session", () => {
   it("gives every event a unique, stable sourceEventId", () => {
     const ids = events.map((e) => e.sourceEventId);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(id.length).toBeLessThanOrEqual(200);
+    for (const id of ids) expect(String(id).length).toBeLessThanOrEqual(200);
     expect(run(completeSession()).events.map((e) => e.sourceEventId)).toEqual(ids);
   });
 
