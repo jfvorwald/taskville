@@ -152,12 +152,20 @@ export class EvidenceStore implements EvidenceSink {
     return { bodies: Number(row?.bodies ?? 0), bytes: Number(row?.bytes ?? 0) };
   }
 
-  /** True once the bodies of all archives together have reached `archiveCapBytes`. */
-  archiveEvidenceFull(): boolean {
+  /** True once the bodies of all archives together have reached `archiveCapBytes`, not counting the
+   * `excluding` archives (about to be pruned). */
+  archiveEvidenceFull(
+    excluding: readonly { projectId: string; archiveId: string }[] = [],
+  ): boolean {
     const row = this.#db
       .prepare("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM usage WHERE instr(project_id, ?) > 0")
       .get(ARCHIVE_SEPARATOR);
-    return Number(row?.bytes ?? 0) >= this.archiveCapBytes;
+    const byScope = this.#db.prepare("SELECT bytes FROM usage WHERE project_id = ?");
+    let used = Number(row?.bytes ?? 0);
+    for (const { projectId, archiveId } of excluding) {
+      used -= Number(byScope.get(scopeOf(projectId, archiveId))?.bytes ?? 0);
+    }
+    return used >= this.archiveCapBytes;
   }
 
   /** Removes every body and pointer of one archive. */

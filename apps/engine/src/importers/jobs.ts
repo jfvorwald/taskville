@@ -72,8 +72,11 @@ export interface ImportStatus {
 /** Where an import's tool bodies go, scoped to its archive (the evidence store). */
 export interface ArchiveEvidenceSink {
   store(projectId: string, evidence: readonly ToolEvidence[], archiveId?: string): void;
-  /** True once archive evidence has reached its cap; a new import's evidence is then dropped. */
-  archiveEvidenceFull?(): boolean;
+  /**
+   * True once archive evidence has reached its cap; a new import's evidence is then dropped. The
+   * `excluding` archives are about to be pruned and do not count.
+   */
+  archiveEvidenceFull?(excluding?: readonly { projectId: string; archiveId: string }[]): boolean;
   /** Removes the evidence of one archive. */
   deleteArchive?(projectId: string, archiveId: string): void;
 }
@@ -362,7 +365,7 @@ export class ImportJobs {
       if (signal.aborted || final === undefined) {
         outcome = "cancel";
       } else {
-        this.#applyArchiveCap(tally);
+        this.#applyArchiveCap(projectId, job.kind, root, tally);
         this.#write(id, final, tally);
         this.#release(id, job);
         this.#storeEvidence(projectId, id, tally);
@@ -553,8 +556,15 @@ export class ImportJobs {
   }
 
   /** Drops the staged evidence when archive evidence has already reached its cap. */
-  #applyArchiveCap(tally: Tally): void {
-    if (tally.evidence.length === 0 || !this.#evidence?.archiveEvidenceFull?.()) return;
+  #applyArchiveCap(projectId: string, kind: ArchiveKind, root: string, tally: Tally): void {
+    if (tally.evidence.length === 0 || !this.#evidence?.archiveEvidenceFull) return;
+    // Archives that the new one will push out of retention make room for it.
+    const excluding = this.#storage
+      .archives()
+      .listDoneIds(projectId, kind, root)
+      .slice(Math.max(0, this.#keepArchives - 1))
+      .map((archiveId) => ({ projectId, archiveId }));
+    if (!this.#evidence.archiveEvidenceFull(excluding)) return;
     tally.evidenceDropped += tally.evidence.length;
     tally.evidence = [];
   }
@@ -564,8 +574,13 @@ export class ImportJobs {
     try {
       const archives = this.#storage.archives();
       for (const id of archives.listDoneIds(projectId, kind, root).slice(this.#keepArchives)) {
-        archives.delete(id);
-        this.#evidence?.deleteArchive?.(projectId, id);
+        try {
+          // Evidence first: if it fails the row stays, and the next prune retries.
+          this.#evidence?.deleteArchive?.(projectId, id);
+          archives.delete(id);
+        } catch (error) {
+          this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+        }
       }
     } catch (error) {
       this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
