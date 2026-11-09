@@ -144,6 +144,30 @@ case $size in '' | *[!0-9]* | 0) bail ;; esac
 if [ "$size" -gt "$CAP" ]; then bail; fi
 drain
 
+# The engine's answer goes to Codex, which acts on it, so only the exact shapes the engine writes
+# are passed on (compact JSON, `Response.json`): the allow literal, or a deny whose only content is
+# a message. A message is a JSON string body of at most ANSWER_CAP bytes (1000 characters, at most
+# six bytes each when escaped); an unescaped quote or backslash, or a control character, ends the
+# match. Anything else (updatedInput, interrupt, extra keys, another shape) is no decision, so a
+# listener that is not the engine cannot rewrite a tool call or end a turn.
+ANSWER_CAP=6400
+ALLOW_ANSWER='{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
+DENY_HEAD='{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"'
+DENY_TAIL='"}}}'
+
+exact_answer() {
+  [ "$1" = "$ALLOW_ANSWER" ] && return 0
+  case $1 in
+    "$DENY_HEAD"*"$DENY_TAIL") ;;
+    *) return 1 ;;
+  esac
+  _rest=${1#"$DENY_HEAD"}
+  _msg=${_rest%"$DENY_TAIL"}
+  [ "$(printf '%s' "$_msg" | tr -d '[:cntrl:]')" = "$_msg" ] || return 1
+  # Only JSON string characters: no bare quote or backslash, escapes from the JSON set.
+  printf '%s\n' "$_msg" | grep -E '^([^"\\]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*$' >/dev/null
+}
+
 status=$(
   printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\nheader = "Expect:"\n' "$token" |
     curl -q -K - -s -4 -o "$work/answer" -w '%{http_code}' \
@@ -152,5 +176,10 @@ status=$(
       "$url/v1/bridge/codex/permission"
 )
 case $status in 2??) ;; *) exit 0 ;; esac
-if [ -f "$work/answer" ] && [ ! -h "$work/answer" ]; then head -c 65536 "$work/answer"; fi
+if [ -f "$work/answer" ] && [ ! -h "$work/answer" ]; then
+  # One byte over the limit tells an oversized answer from one that fits.
+  answer=$(head -c $((ANSWER_CAP + 1)) "$work/answer") || exit 0
+  [ ${#answer} -le "$ANSWER_CAP" ] || exit 0
+  if exact_answer "$answer"; then printf '%s' "$answer"; fi
+fi
 exit 0

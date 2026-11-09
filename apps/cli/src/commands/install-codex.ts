@@ -12,12 +12,21 @@ import {
   unchangedSince,
 } from "./install.ts";
 import { settingsDiff } from "./install-diff.ts";
-import { checkShim, installShim, removeFile, writeAtomic } from "./install-files.ts";
+import {
+  backupPath,
+  checkShim,
+  installShim,
+  readBackup,
+  removeFile,
+  writeAtomic,
+  writeBackupOnce,
+} from "./install-files.ts";
 import {
   detectIndent,
   hookCommand,
   type Json,
   type JsonObject,
+  parseSettings,
   put,
   removeTaskvilleHooks,
   serialize,
@@ -149,14 +158,45 @@ export async function installCodex(io: Io, args: string[]): Promise<number> {
 
   installShim(p.home, CODEX_SHIM_NAME, shimSource);
   installShim(p.home, CODEX_PERMISSION_NAME, permissionSource);
-  if (!settingsDone && next !== undefined) writeAtomic(p.target.path, next, state.mode);
+  if (!settingsDone && next !== undefined) {
+    // Keep the original for a byte-for-byte uninstall, unless an earlier install's entries are
+    // already in the file (then the first install's backup, if any, is the original).
+    if (removeTaskvilleHooks(settings, isTaskvilleCodexHook).removed === 0) {
+      writeBackupOnce(p.target.path, state);
+    }
+    writeAtomic(p.target.path, next, state.mode);
+  }
   io.stdout(
     `Installed Taskville hooks for ${CODEX_ASYNC_EVENTS.length + CODEX_SYNC_EVENTS.length} events and the permission forwarder (${CODEX_PERMISSION_EVENT}) in ${showPath(p.target)}.\n`,
   );
   io.stdout(
     "Codex runs a new hook only after you trust it: start Codex, open /hooks, and trust the Taskville hooks.\n",
   );
+  if (p.scope === "project") {
+    io.stdout(
+      "Note: .codex/hooks.json holds local paths of this machine, so it should not be committed. Add it, and the .taskville-backup file beside it, to .gitignore if this project is a git repository.\n",
+    );
+  }
   return EXIT.ok;
+}
+
+/** The shim and forwarder commands in `settings`, so a restore rebuilds what install wrote. */
+function installedCommands(settings: JsonObject): Commands | undefined {
+  const hooks = settings.hooks;
+  if (hooks === null || typeof hooks !== "object" || Array.isArray(hooks)) return undefined;
+  let shim: string | undefined;
+  let permission: string | undefined;
+  for (const groups of Object.values(hooks)) {
+    for (const group of groups as Record<string, unknown>[]) {
+      for (const handler of Array.isArray(group.hooks) ? group.hooks : []) {
+        if (!isTaskvilleCodexHook(handler)) continue;
+        const command = String((handler as Record<string, unknown>).command);
+        if (command.includes(`/${CODEX_PERMISSION_NAME}'`)) permission ??= command;
+        else shim ??= command;
+      }
+    }
+  }
+  return shim === undefined || permission === undefined ? undefined : { shim, permission };
 }
 
 export async function uninstallCodex(io: Io, args: string[]): Promise<number> {
@@ -169,10 +209,27 @@ export async function uninstallCodex(io: Io, args: string[]): Promise<number> {
   }
   // A file left with nothing in it held only Taskville's hooks (install made it): remove it.
   const empty = Object.keys(stripped).length === 0;
-  const next = empty ? undefined : serialize(stripped, detectIndent(state.text ?? ""));
-  const how = empty
+  let next = empty ? undefined : serialize(stripped, detectIndent(state.text ?? ""));
+  let how = empty
     ? "nothing else is in this file, so it is removed"
     : "removing only Taskville's entries";
+  // Byte-for-byte restore when the backup says what the file was and nothing else changed since.
+  const backup = readBackup(p.target.path);
+  if (backup !== undefined && backup !== "") {
+    try {
+      const commands = installedCommands(settings);
+      const restored =
+        commands === undefined
+          ? undefined
+          : serialize(addCodexHooks(parseSettings(backup), commands), detectIndent(backup));
+      if (restored === state.text) {
+        next = backup;
+        how = "restoring the original from the backup, byte for byte";
+      }
+    } catch {
+      // An unreadable backup is ignored; the structural removal stands.
+    }
+  }
   const diff = settingsDiff(p.target.shown, state.text, next);
   if (
     !(await approve(
@@ -188,6 +245,7 @@ export async function uninstallCodex(io: Io, args: string[]): Promise<number> {
 
   if (next === undefined) removeFile(p.target.path);
   else writeAtomic(p.target.path, next, state.mode);
+  removeFile(backupPath(p.target.path));
   io.stdout(
     `Removed ${removed} Taskville hook entries from ${showPath(p.target)}. The script copies in ${p.home}/hooks are left for any other scope that still uses them.\n`,
   );

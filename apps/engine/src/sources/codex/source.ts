@@ -88,11 +88,15 @@ export class CodexSource {
     return mapCodexHook(payload, ctx);
   }
 
-  /** A session is known once its main agent is in the project's projection (it survives a restart). */
+  /** A session is known once its main agent is registered in the project's projection (it survives a restart). */
   #knownSession(ctx: MapContext, sessionId: string): boolean {
     const projection = this.#storage.projection<ProjectState>(ctx.projectId);
+    const id = sessionAgentId(sessionId);
+    // Registered, not merely present: any other hook for the session leaves a placeholder agent.
     return (
-      projection !== undefined && Object.hasOwn(projection.state.agents, sessionAgentId(sessionId))
+      projection !== undefined &&
+      Object.hasOwn(projection.state.agents, id) &&
+      projection.state.agents[id]?.registered === true
     );
   }
 

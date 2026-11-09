@@ -593,7 +593,11 @@ export class PermissionBridge {
   }
 
   #codexPostToolUse(callId: string, sessionId: string, key: string | undefined): void {
+    // Only a call whose PreToolUse was tracked can say which request it ends: a Post alone proves
+    // nothing, and the Pre of a forgotten call may have been the one the request was for.
+    const tracked = this.#codexCalls.get(callId);
     this.#codexCalls.delete(callId);
+    if (tracked === undefined || tracked.key !== key || tracked.sessionId !== sessionId) return;
     if (key === undefined || this.#codexCallsLossy || this.#lossyOverflow) return;
     if (this.#lossySessions.has(sessionId)) return;
     // Another open call with the same fields could be the one the request was for.
