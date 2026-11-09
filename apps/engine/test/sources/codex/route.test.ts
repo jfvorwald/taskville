@@ -13,6 +13,7 @@ import {
   BRIDGE_TOKEN,
   bearer,
   CLI_TOKEN,
+  HOST,
   makeApp,
   ORIGIN,
   postJson,
@@ -70,7 +71,8 @@ async function replay(app: App, name: string) {
   return replies;
 }
 
-const events = () => [...db().events(PROJECT, 0)];
+// The project log also holds the engine's own events (project.created): only Codex-sourced ones.
+const events = () => [...db().events(PROJECT, 0)].filter((e) => e.sourceId === CODEX_SOURCE_ID);
 const state = () => db().projection<ProjectState>(PROJECT)?.state as ProjectState;
 
 /** A hand-written Codex hook in the recorded shape. */
@@ -85,7 +87,6 @@ function hook(event: string, extra: Record<string, unknown> = {}): Record<string
     ...extra,
   };
 }
-const SESSION = "01a1bd20-aaaa-7000-8000-000000000001";
 const TURN_A = "01a1bd20-aaaa-7000-8000-00000000000a";
 const TURN_B = "01a1bd20-aaaa-7000-8000-00000000000b";
 const CHILD = "01a1bd20-aaaa-7000-8000-0000000000c1";
@@ -129,7 +130,7 @@ describe("POST /v1/sources/codex/hooks - credentials", () => {
   it("refuses no credential and a body that is not { sourceEventId, payload }", async () => {
     const { app } = setup();
     const body = { sourceEventId: hookId("anon"), payload: hook("SessionStart") };
-    const anonymous = await app.request(URL, postJson(body, { Host: "127.0.0.1:4807" }));
+    const anonymous = await app.request(URL, postJson(body, { Host: HOST, Origin: ORIGIN }));
     expect(anonymous.status).toBe(401);
     for (const bad of [
       { payload: hook("SessionStart") },
@@ -168,15 +169,16 @@ describe("fixtures/codex through the route", () => {
     const started = events().filter((e) => e.type === "tool_call.started");
     const finished = events().filter((e) => e.type === "tool_call.finished");
     expect(started).toHaveLength(6);
-    // Every call finished, the denied one closed by the Interrupt, none claimed as succeeded.
-    expect(finished).toHaveLength(started.length);
+    // Every call that got a PostToolUse finished as returned. The denied one has none: the
+    // Interrupt emits no finish (the domain marks it unfinished). None is claimed as succeeded.
+    expect(finished).toHaveLength(started.length - 1);
     expect(finished.every((e) => (e.payload as { phase: string }).phase === "returned")).toBe(true);
     expect(JSON.stringify(events())).not.toContain("succeeded");
     expect(Object.values(state().toolCalls).filter((c) => c.phase === "running")).toEqual([]);
 
     const failed = events().filter((e) => e.type === "session.turn_failed");
     expect(failed).toHaveLength(1);
-    expect(failed[0]?.payload).toMatchObject({ reason: "interrupted" });
+    expect(failed[0]?.payload).toMatchObject({ reason: { text: "interrupted" } });
     expect(events().filter((e) => e.type === "session.ended")).toHaveLength(1);
   });
 
@@ -214,30 +216,23 @@ describe("open tool calls per session and turn", () => {
   }
   const phase = (id: string) => state().toolCalls[id]?.phase;
 
-  it("an Interrupt closes the open calls of its turn, subagent calls included, and no others", async () => {
+  it("an Interrupt emits no finishes; the domain leaves no call of the interrupted agent running", async () => {
     const { app } = setup();
     await seed(app);
-    expect([phase("call-a1"), phase("call-a2"), phase("call-a3"), phase("call-b1")]).toEqual([
-      "running",
+    expect([phase("call-a1"), phase("call-a2"), phase("call-b1")]).toEqual([
       "running",
       "running",
       "running",
     ]);
     const { body } = await post(app, "int", hook("Interrupt", { turn_id: TURN_A }));
     expect(body.results.every((r) => r.status === "accepted")).toBe(true);
-    expect([phase("call-a1"), phase("call-a2"), phase("call-a3"), phase("call-b1")]).toEqual([
-      "returned",
-      "returned",
-      "returned",
-      "running",
-    ]);
-    // The subagent's call is closed under the subagent, not the main agent.
-    const closed = events().find(
-      (e) =>
-        e.type === "tool_call.finished" &&
-        (e.payload as { toolCallId: string }).toolCallId === "call-a3",
-    );
-    expect(closed?.agentId).toBe(`codex:${SESSION}:${CHILD}`);
+    // The Interrupt only says the turn failed: no tool_call.finished comes from it.
+    expect(events().filter((e) => e.type === "tool_call.finished")).toEqual([]);
+    expect(events().filter((e) => e.type === "session.turn_failed")).toHaveLength(1);
+    // The domain marks the agent's running calls unfinished (all of them, not only that turn's).
+    for (const id of ["call-a1", "call-a2", "call-b1"]) {
+      expect(["running", "returned", "succeeded"], id).not.toContain(phase(id));
+    }
   });
 
   it("a call that finished is no longer open when the Interrupt arrives", async () => {
