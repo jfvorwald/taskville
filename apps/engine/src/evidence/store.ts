@@ -152,27 +152,58 @@ export class EvidenceStore implements EvidenceSink {
     return { bodies: Number(row?.bodies ?? 0), bytes: Number(row?.bytes ?? 0) };
   }
 
-  /** True once the bodies of all archives together have reached `archiveCapBytes`, not counting the
-   * `excluding` archives (about to be pruned). */
-  archiveEvidenceFull(
-    excluding: readonly { projectId: string; archiveId: string }[] = [],
-  ): boolean {
-    const row = this.#db
-      .prepare("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM usage WHERE instr(project_id, ?) > 0")
-      .get(ARCHIVE_SEPARATOR);
-    const byScope = this.#db.prepare("SELECT bytes FROM usage WHERE project_id = ?");
-    let used = Number(row?.bytes ?? 0);
-    for (const { projectId, archiveId } of excluding) {
-      used -= Number(byScope.get(scopeOf(projectId, archiveId))?.bytes ?? 0);
-    }
-    return used >= this.archiveCapBytes;
+  /** True once the bodies of all archives together have reached `archiveCapBytes`. */
+  archiveEvidenceFull(): boolean {
+    return this.#archiveBytes() >= this.archiveCapBytes;
   }
 
-  /** Removes every body and pointer of one archive. */
-  deleteArchive(projectId: string, archiveId: string): void {
+  /**
+   * The part of `evidence` that fits the archive budget left, and how many items lost a body to
+   * it. Each body is checked in order against what remains, so a body too big for the room left is
+   * dropped while a smaller one after it may still be stored. Sizes are the stored (redacted, cut)
+   * bytes, counted without sharing between bodies, so the total never passes the cap.
+   */
+  fitArchiveEvidence<T extends HookEvidence>(
+    evidence: readonly T[],
+  ): { evidence: T[]; dropped: number } {
+    let remaining = this.archiveCapBytes - this.#archiveBytes();
+    const fit: T[] = [];
+    let dropped = 0;
+    for (const item of evidence) {
+      const kept: T = { ...item };
+      let lost = false;
+      let held = false;
+      for (const part of ["input", "output"] as const) {
+        if (item[part] === undefined) continue;
+        const body = this.#prepare(item[part]);
+        if (body !== undefined && body.bytes > remaining) {
+          delete kept[part];
+          lost = true;
+        } else {
+          held = true;
+          if (body !== undefined) remaining -= body.bytes;
+        }
+      }
+      if (lost) dropped += 1;
+      if (held || !lost) fit.push(kept);
+    }
+    return { evidence: fit, dropped };
+  }
+
+  /**
+   * Removes the bodies of one archive and its usage, and its pointers too unless `keepPointers` is
+   * set: kept pointers make a still-listed archive's bodies read as evicted, not missing.
+   */
+  deleteArchive(
+    projectId: string,
+    archiveId: string,
+    options: { keepPointers?: boolean } = {},
+  ): void {
     const scope = scopeOf(projectId, archiveId);
+    const tables =
+      options.keepPointers === true ? ["bodies", "usage"] : ["tool_call_bodies", "bodies", "usage"];
     this.#transaction(() => {
-      for (const table of ["tool_call_bodies", "bodies", "usage"]) {
+      for (const table of tables) {
         this.#db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(scope);
       }
     });
@@ -197,6 +228,14 @@ export class EvidenceStore implements EvidenceSink {
 
   close(): void {
     if (this.#db.isOpen) this.#db.close();
+  }
+
+  /** Stored bytes of every archive scope, across all projects. */
+  #archiveBytes(): number {
+    const row = this.#db
+      .prepare("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM usage WHERE instr(project_id, ?) > 0")
+      .get(ARCHIVE_SEPARATOR);
+    return Number(row?.bytes ?? 0);
   }
 
   #prepare(value: unknown): PreparedBody | undefined {
