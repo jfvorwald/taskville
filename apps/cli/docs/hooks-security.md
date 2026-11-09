@@ -26,3 +26,13 @@ Claude Code caches the helper's output and refreshes it periodically (debounced)
 - A helper run while the engine is down prints no header, so exports get 401 and metrics are lost until the next refresh.
 
 Anything running as the same user can already read `$TASKVILLE_HOME/token` directly, so this rule narrows accidental and stale-port exposure; it is not a defense against a hostile same-user process. Defending against that would need the engine to authenticate itself to the shim, which is a design decision for the owner.
+
+## Codex permission forwarder (A1.02)
+
+`hooks/codex-permission-bridge.sh` is the command hook Codex runs for PermissionRequest. It applies the live engine rule above, then posts the hook body and the bridge token (`$TASKVILLE_HOME/bridge-token`) to `/v1/bridge/codex/permission` and prints the engine's answer to Codex, which acts on it.
+
+A fake listener has the same standing as for the shim: a process of the same user that writes its own `engine.json` (naming a live pid such as its own) and listens on the target port receives the bridge token and the request, and could answer with an allow. The forwarder cannot tell it from the engine, so such a listener could forge an allow for a tool call. Defending against that would need the engine to authenticate itself to the forwarder, which is a design decision for the owner.
+
+What the forwarder does now limit is the shape of the answer. It prints only the exact bodies the engine writes: the allow literal, or a deny whose only content is a message of bounded size (compact JSON, `hookEventName` `PermissionRequest`, no other key). Anything else (`updatedInput`, an `interrupt` flag, extra keys, another event name, an oversized message, text that is not JSON) prints nothing, so Codex shows its own prompt. A listener that is not the engine therefore cannot rewrite a tool call or end a turn through the answer, only allow or deny it.
+
+Its temporary directory is `$TASKVILLE_HOME/.codex-permission.XXXXXX` (0700, removed on exit). The engine removes ones older than a minute that a killed hook left, when it replays the spool at start.

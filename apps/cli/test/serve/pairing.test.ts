@@ -367,6 +367,7 @@ describe("no route mints a pairing code (#113, #174)", () => {
           "GET /v1/timelines/:id/events",
           "GET /v1/timelines/:id/state",
           "POST /v1/bridge/claude-code/permission",
+          "POST /v1/bridge/codex/permission",
           "POST /v1/commands",
           "POST /v1/events/batch",
           "POST /v1/imports",
@@ -376,6 +377,7 @@ describe("no route mints a pairing code (#113, #174)", () => {
           "POST /v1/pairing/revoke",
           "POST /v1/projects",
           "POST /v1/sources/claude-code/hooks",
+          "POST /v1/sources/codex/hooks",
         ]);
       } finally {
         await parts.close();

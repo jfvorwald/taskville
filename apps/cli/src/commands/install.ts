@@ -58,13 +58,14 @@ const INSTALL_USAGE =
 const UNINSTALL_USAGE =
   "taskville uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>]";
 
-const OPTIONS = {
+/** The options both installers take; `--otel` is Claude Code's alone. */
+export const CODEX_OPTIONS = {
   scope: { type: "string" },
   "project-dir": { type: "string" },
   yes: { type: "boolean" },
   "dry-run": { type: "boolean" },
-  otel: { type: "boolean" },
 } as const;
+const OPTIONS = { ...CODEX_OPTIONS, otel: { type: "boolean" } } as const;
 
 const SHIM_SOURCE = new URL("../../hooks/claude-code-shim.sh", import.meta.url);
 const OTEL_HELPER_SOURCE = new URL("../../hooks/claude-code-otel-headers.sh", import.meta.url);
@@ -72,11 +73,11 @@ const OTEL_HELPER_SOURCE = new URL("../../hooks/claude-code-otel-headers.sh", im
 const usageError = (message: string, usage: string): never => {
   throw new CliError(EXIT.failure, `${message}\nUsage: ${usage}`);
 };
-const fail = (message: string): never => {
+export const fail = (message: string): never => {
   throw new CliError(EXIT.failure, message);
 };
 
-interface Plan {
+export interface Plan {
   io: Io;
   scope: "user" | "project";
   target: SettingsTarget;
@@ -84,10 +85,15 @@ interface Plan {
   values: Values;
 }
 
-function plan(io: Io, args: string[], usage: string): Plan {
+export function plan(
+  io: Io,
+  args: string[],
+  usage: string,
+  tool: "claude-code" | "codex" = "claude-code",
+): Plan {
   const [target, ...rest] = args;
-  if (target !== "claude-code") usageError(`unknown or missing target "${target ?? ""}"`, usage);
-  const { values } = parseCommand(io, rest, OPTIONS, usage);
+  if (target !== tool) usageError(`unknown or missing target "${target ?? ""}"`, usage);
+  const { values } = parseCommand(io, rest, tool === "codex" ? CODEX_OPTIONS : OPTIONS, usage);
   const scope = values.scope;
   if (usage === INSTALL_USAGE && values.otel === true && scope !== "project") {
     usageError(
@@ -102,7 +108,20 @@ function plan(io: Io, args: string[], usage: string): Plan {
   const userHome = nonEmpty(io.env.HOME);
   const home = resolveTaskvilleHome(io, values, userHome);
   let settings: SettingsTarget;
-  if (scope === "user") {
+  if (tool === "codex") {
+    // Codex's hooks file: <HOME>/.codex/hooks.json or <project>/.codex/hooks.json, never config.toml.
+    if (scope === "user") {
+      if (userHome === undefined) fail("HOME is not set, so ~/.codex cannot be located; set HOME");
+      settings = userSettingsTarget(join(userHome as string, ".codex"), "hooks.json");
+    } else {
+      const dir = values["project-dir"];
+      settings = projectSettingsTarget(
+        resolve(io.cwd, typeof dir === "string" ? dir : "."),
+        ".codex",
+        "hooks.json",
+      );
+    }
+  } else if (scope === "user") {
     const configDir = nonEmpty(io.env.CLAUDE_CONFIG_DIR);
     if (configDir === undefined && userHome === undefined) {
       fail(
@@ -142,7 +161,7 @@ const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost):([0-9]{1,5})\/?$/;
  * value (a hold window outside 1 to 300, say) stops the install, and the bridge hook's timeout
  * (hold window plus 5 s) comes from it even when the URL is given.
  */
-function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds: number } {
+export function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds: number } {
   const userHome = nonEmpty(p.io.env.HOME);
   let config: ReturnType<typeof loadConfig>["config"];
   try {
@@ -168,7 +187,7 @@ function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds:
   return { url: `http://${match[1]}:${port}`, port, hookTimeoutSeconds };
 }
 
-function readSettings(target: SettingsTarget): { state: FileState; settings: JsonObject } {
+export function readSettings(target: SettingsTarget): { state: FileState; settings: JsonObject } {
   const state = readState(target.path);
   if (state.text === undefined) return { state, settings: {} };
   try {
@@ -183,10 +202,16 @@ function readSettings(target: SettingsTarget): { state: FileState; settings: Jso
   }
 }
 
-const showPath = (t: SettingsTarget) => (t.shown === t.path ? t.path : `${t.shown} -> ${t.path}`);
+export const showPath = (t: SettingsTarget) =>
+  t.shown === t.path ? t.path : `${t.shown} -> ${t.path}`;
 
 /** Prints the diff, then gets a yes: --yes, an interactive answer, or a refusal. */
-async function approve(p: Plan, diff: string, extra: string[], question: string): Promise<boolean> {
+export async function approve(
+  p: Plan,
+  diff: string,
+  extra: string[],
+  question: string,
+): Promise<boolean> {
   p.io.stdout(`Settings file: ${showPath(p.target)}\n`);
   for (const line of extra) p.io.stdout(`${line}\n`);
   p.io.stdout(diff);
@@ -204,7 +229,7 @@ async function approve(p: Plan, diff: string, extra: string[], question: string)
 }
 
 /** Refuses if the file changed while the user read the diff. */
-function unchangedSince(p: Plan, before: FileState): void {
+export function unchangedSince(p: Plan, before: FileState): void {
   const now = readState(p.target.path);
   if (now.text !== before.text)
     fail(

@@ -33,13 +33,16 @@ export interface WiredPermissionBridge {
   commands: CommandService;
   /** Hands a telemetry hook to the bridge (`bridge.observeHook`). */
   observeHook(payload: unknown): void;
+  /** Hands a Codex telemetry hook to the bridge (`bridge.observeCodexHook`). */
+  observeCodexHook(payload: unknown): void;
   /** Releases every held hook response with an empty 2xx (engine shutdown). */
   close(): void;
 }
 
 /**
  * Composes the permission bridge, the command service, and the request-input route onto an app
- * (ARCHITECTURE.md 8.1 and 9). Registers `POST /v1/bridge/claude-code/permission`, the real
+ * (ARCHITECTURE.md 8.1 and 9). Registers `POST /v1/bridge/claude-code/permission` and
+ * `POST /v1/bridge/codex/permission` (A1.02), the real
  * `POST /v1/commands` and `GET /v1/commands/:id` (retiring the 501 stub), and
  * `GET /v1/requests/:requestId/input`.
  */
@@ -72,6 +75,7 @@ export function wirePermissionBridge(options: WirePermissionBridgeOptions): Wire
     bridge,
     commands,
     observeHook: (payload) => bridge.observeHook(payload),
+    observeCodexHook: (payload) => bridge.observeCodexHook(payload),
     close: () => bridge.close(),
   };
 }

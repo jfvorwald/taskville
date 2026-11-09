@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { type AppEnv, requireScope } from "../../http/app.ts";
 import { apiError } from "../../http/errors.ts";
-import type { ClaudeCodeSource, HookIngestResponse } from "./source.ts";
+import type { HookIngestResponse, HookInput } from "./source.ts";
 
 export const CLAUDE_CODE_HOOKS_PATH = "/v1/sources/claude-code/hooks";
 /** The batch route's byte limit (contracts/http-api.md): one hook is never larger than a batch. */
@@ -48,6 +48,11 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A source the hooks route can feed: `ClaudeCodeSource`, or the Codex source (A1.02). */
+export interface HookSource {
+  ingestHook(input: HookInput): Promise<HookIngestResponse>;
+}
+
 export interface ClaudeCodeRouteOptions {
   /**
    * Called with the raw payload of each accepted hook (at least one `accepted` event, not
@@ -75,11 +80,21 @@ function isAccepted(response: HookIngestResponse): boolean {
  */
 export function registerClaudeCodeRoutes(
   app: Hono<AppEnv>,
-  source: ClaudeCodeSource,
+  source: HookSource,
+  options: ClaudeCodeRouteOptions = {},
+): void {
+  registerHooksRoute(app, CLAUDE_CODE_HOOKS_PATH, source, options);
+}
+
+/** The hooks route of one source, at `path`: the same body, credential, and size rules for each. */
+export function registerHooksRoute(
+  app: Hono<AppEnv>,
+  path: string,
+  source: HookSource,
   options: ClaudeCodeRouteOptions = {},
 ): void {
   app.post(
-    CLAUDE_CODE_HOOKS_PATH,
+    path,
     requireScope("ingest"),
     bodyLimit({
       maxSize: MAX_HOOK_BODY_BYTES,

@@ -75,6 +75,7 @@ const TAR_MTIME = 499162500;
 const PATH_REWRITES = [
   { file: "apps/engine/src/config/web-dir.ts", from: '"../../../web/dist"', to: '"../web"' },
   { file: "apps/cli/src/commands/install.ts", from: '"../../hooks/', to: '"../hooks/' },
+  { file: "apps/cli/src/commands/install-codex.ts", from: '"../../hooks/', to: '"../hooks/' },
   {
     file: "apps/cli/src/commands/doctor.ts",
     from: '"../../../../package.json"',

@@ -193,7 +193,7 @@ export function duplicateKey(text: string): string | undefined {
 }
 
 /** Own-property copy that never invokes a `__proto__` setter (L-18). */
-function put(obj: JsonObject, key: string, value: Json): JsonObject {
+export function put(obj: JsonObject, key: string, value: Json): JsonObject {
   const out: JsonObject = {};
   for (const [k, v] of Object.entries(obj)) Object.defineProperty(out, k, descriptor(v));
   Object.defineProperty(out, key, descriptor(value));
@@ -217,9 +217,13 @@ const descriptor = (value: Json): PropertyDescriptor => ({
 /**
  * Removes every handler this installer wrote. A matcher group left with no handlers is dropped,
  * then an event left with no groups, then `hooks` if it is left empty. Groups and events that held
- * only other tools' hooks are never touched.
+ * only other tools' hooks are never touched. `isMine` says which handlers are the installer's:
+ * Claude Code's by default, the Codex installer's (A1.02) when it passes its own.
  */
-export function removeTaskvilleHooks(settings: JsonObject): {
+export function removeTaskvilleHooks(
+  settings: JsonObject,
+  isMine: (handler: unknown) => boolean = isTaskvilleEntry,
+): {
   settings: JsonObject;
   removed: number;
 } {
@@ -233,14 +237,14 @@ export function removeTaskvilleHooks(settings: JsonObject): {
     const kept: Json[] = [];
     for (const group of groups) {
       const handlers = isObject(group) && Array.isArray(group.hooks) ? group.hooks : undefined;
-      const mine = handlers?.filter(isTaskvilleEntry).length ?? 0;
+      const mine = handlers?.filter(isMine).length ?? 0;
       if (handlers === undefined || mine === 0) {
         kept.push(group);
         continue;
       }
       removed += mine;
       changed = true;
-      const rest = handlers.filter((h) => !isTaskvilleEntry(h));
+      const rest = handlers.filter((h) => !isMine(h));
       if (rest.length > 0) kept.push(put(group as JsonObject, "hooks", rest));
     }
     if (!changed) continue;
