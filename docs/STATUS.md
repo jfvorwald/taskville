@@ -2,7 +2,15 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 02:30 UTC. **Main:** 5dc9409. **State:** G8 [#93](https://github.com/jfvorwald/taskville/issues/93) awaits the owner. G7 closed 2026-11-08 on the owner's instruction ("autoaccept everything"). M8 imports, both spikes and the owner's agent panel readability request (M10) are merged. Running: M9.12 #494 (idle fps on CI, debugger). Staging deploy still held (#432).
+**Updated:** 2026-11-09 05:00 UTC. **Main:** 87ab867. **State:** G8 [#93](https://github.com/jfvorwald/taskville/issues/93) closed on the owner's standing instruction ("autoaccept everything, keep going"); no gate is open and no milestone is planned after M8. Follow-up backlog: #471, #473, #483, #489, #493, #497, #500, #501. Staging deploy still held (#432).
+
+## Done in post-G8 follow-ups (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M9.12 #494 idle fps on CI | #496 | not a product bug: a walk could start inside the sample; the spec now discards windows with movement; [report](tasks/M9.12.md) |
+| M8.12 #485 archive retention and evidence cap | #498 | newest 5 archives per project, kind and root; soft 1 GiB archive evidence cap; byte-based yielding; strict cap filed as #500; [report](tasks/M8.12.md) |
+| M8.13 #488 archive playback and strip | #499 | gaps over 10 minutes play as 2 s; bounded strip; windowed paging; picker refresh every 15 s; edge cases filed as #501; [report](tasks/M8.13.md) |
 
 ## Done in M8 Post-release: imports and replies (2026-11-08)
 
