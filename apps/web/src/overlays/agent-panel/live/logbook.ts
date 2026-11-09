@@ -3,12 +3,19 @@ import type { ToolCallFrame } from "../../../../../engine/src/feed/subscriber.ts
 // Pure text for a logbook entry: its state, sentence, duration and secondary line. Everything here
 // returns raw recorded text; the caller redacts it and makes hidden characters visible.
 
-export type EntryState = "succeeded" | "failed" | "running" | "unfinished" | "needs-you";
+export type EntryState =
+  | "succeeded"
+  | "failed"
+  | "running"
+  | "unfinished"
+  | "returned"
+  | "needs-you";
 export const STATE_LABEL: Readonly<Record<EntryState, string>> = {
   succeeded: "Succeeded",
   failed: "Failed",
   running: "Running",
   unfinished: "Unfinished",
+  returned: "Returned",
   "needs-you": "Needs you",
 };
 /** A sentence is plain text with at most one monospace part per piece. */
@@ -28,7 +35,9 @@ const object = (value: unknown): Record<string, unknown> =>
     : {};
 
 export function stateOf(phase: ToolCallFrame["phase"] | string): Exclude<EntryState, "needs-you"> {
-  return phase === "succeeded" || phase === "failed" || phase === "running" ? phase : "unfinished";
+  return phase === "succeeded" || phase === "failed" || phase === "running" || phase === "returned"
+    ? phase
+    : "unfinished";
 }
 
 /**
@@ -103,6 +112,12 @@ export function sentenceFor(
   const tool = typeof call.toolName === "string" ? call.toolName : "a tool";
   const file = paths[0] === undefined ? undefined : part(baseName(paths[0]));
   if (state === "running") return [`Running ${tool}`];
+  // A returned call came back with no reported outcome: never claim it succeeded.
+  if (state === "returned" && tool !== "Bash") {
+    const label = tool === "Edit" || tool === "Write" || tool === "Read" ? `${tool} returned` : "";
+    if (label === "") return [`${part(tool)} returned`];
+    return file ? [`${label}: `, { mono: file }] : [label];
+  }
   const subagent = privacy ? undefined : part(string(input.subagent_type) ?? "") || undefined;
   // A recipient recorded as an agent ID is an opaque identifier, not a name worth reading.
   const recipient =

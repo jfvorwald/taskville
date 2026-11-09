@@ -53,8 +53,11 @@ export type TeamMessageKind = (typeof TEAM_MESSAGE_KINDS)[number];
 export const CONNECTIONS = ["connected", "disconnected", "unknown"] as const;
 export type Connection = (typeof CONNECTIONS)[number];
 
-/** Phases a `tool_call.finished` event may report. `running` is set by `tool_call.started`. */
-export const TOOL_CALL_FINISH_PHASES = ["succeeded", "failed"] as const;
+/**
+ * Phases a `tool_call.finished` event may report. `running` is set by `tool_call.started`.
+ * `returned` means the call came back and its outcome was not reported.
+ */
+export const TOOL_CALL_FINISH_PHASES = ["succeeded", "failed", "returned"] as const;
 export const TOOL_CALL_PHASES = ["running", ...TOOL_CALL_FINISH_PHASES] as const;
 export type ToolCallPhase = (typeof TOOL_CALL_PHASES)[number];
 
