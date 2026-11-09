@@ -45,11 +45,13 @@ import { fixedNow, makeSource, T0, useProjects } from "./helpers.ts";
  * `afterMkdir` runs right after a mkdirSync succeeds: there a shim whose mkdir(1) is not
  * atomic (uutils coreutils 0.8.0, Ubuntu 26.04) can report success for the same directory
  * and create its pid file first. `lockPidGone` runs right after the engine's lock pid file
- * is removed and before the directory is.
+ * is removed and before the directory is. `afterLockPidRead` (M7.34) runs once, right after
+ * the engine reads a lock's pid and before it acts on what it read.
  */
 const seam = vi.hoisted(() => ({
   afterMkdir: undefined as ((path: string) => void) | undefined,
   lockPidGone: undefined as ((lock: string) => void) | undefined,
+  afterLockPidRead: undefined as ((lock: string) => void) | undefined,
 }));
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
@@ -57,6 +59,16 @@ vi.mock("node:fs", async (importOriginal) => {
   const LOCK_DIR = "claude-code.lock";
   return {
     ...real,
+    readFileSync: ((...args: Parameters<typeof real.readFileSync>) => {
+      const content = real.readFileSync(...args);
+      const target = String(args[0]);
+      if (path.basename(target) === "pid" && path.basename(path.dirname(target)) === LOCK_DIR) {
+        const hook = seam.afterLockPidRead;
+        seam.afterLockPidRead = undefined;
+        hook?.(path.dirname(target));
+      }
+      return content;
+    }) as typeof real.readFileSync,
     mkdirSync: ((...args: Parameters<typeof real.mkdirSync>) => {
       const made = real.mkdirSync(...args);
       seam.afterMkdir?.(String(args[0]));
@@ -107,6 +119,7 @@ beforeEach(() => {
 afterEach(() => {
   seam.afterMkdir = undefined;
   seam.lockPidGone = undefined;
+  seam.afterLockPidRead = undefined;
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -771,6 +784,29 @@ describe("replaySpool", () => {
       shim?.kill();
     }
   }, 15_000);
+
+  it("re-reads the pid under its break lock and never moves a lock a live process took", async () => {
+    // M7.34: the holder is dead when the engine reads the pid; before it renames, a live
+    // process replaces the lock. The shim re-reads under the break lock (M5.27); so must we.
+    const lock = join(spoolDir, "claude-code.lock");
+    mkdirSync(lock, { mode: 0o700 });
+    const dead = spawn("true", { stdio: "ignore" });
+    await new Promise((resolve) => dead.on("exit", resolve));
+    writeFileSync(join(lock, "pid"), `${dead.pid}\n`);
+    writeFileSync(main(), line(), { mode: 0o600 });
+    seam.afterLockPidRead = (path) => {
+      rmSync(path, { recursive: true, force: true });
+      mkdirSync(path, { mode: 0o700 });
+      writeFileSync(join(path, "pid"), `${process.pid}\n`);
+    };
+    const { source, mapper } = makeSource(db());
+    const report = await replaySpool({ spoolDir, source, lockWaitMs: 300 });
+    expect(report.mainFile).toBe("busy");
+    expect(mapper.calls).toHaveLength(0);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${process.pid}\n`);
+    expect(existsSync(main())).toBe(true);
+    expect(readdirSync(spoolDir).filter((n) => n.startsWith(".claude-code.stale-"))).toEqual([]);
+  });
 
   it("never breaks a lock while a shim holds the break lock it claimed first", async () => {
     const lock = join(spoolDir, "claude-code.lock");

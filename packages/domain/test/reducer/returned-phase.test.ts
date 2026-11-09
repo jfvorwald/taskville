@@ -66,7 +66,7 @@ describe("returned tool call", () => {
       emit("tool_call.started", { toolCallId: "t2", toolName: "Bash" }, s),
       emit("tool_call.finished", { toolCallId: "t2", phase: "returned" }, s),
     ]);
-    expect(state.agents.a1?.consecutiveToolFailures).toBeLessThanOrEqual(1);
+    expect(state.agents.a1?.consecutiveToolFailures).toBe(1); // returned neither grows nor resets the streak
     expect(state.agents.a1?.toolCallCount).toBe(2);
   });
 

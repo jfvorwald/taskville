@@ -687,6 +687,9 @@ function breakStaleLock(dir: string, nowMs: number): boolean {
       ? !running(Number(owner))
       : owner === "" && nowMs - stats.mtimeMs > STALE_MS;
     if (!stale) return false;
+    // Re-read right before moving: a live process may have taken the lock since.
+    const again = lockOwner(lock);
+    if (again !== owner || (again !== "" && running(Number(again)))) return false;
     const aside = join(dir, `${TEMP_PREFIX}stale-${randomUUID()}`);
     renameSync(lock, aside);
     rmSync(aside, { recursive: true, force: true });
