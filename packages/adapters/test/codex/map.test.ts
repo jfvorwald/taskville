@@ -134,7 +134,8 @@ describe("session lifecycle", () => {
       { ownerName: "jack" },
     );
     expect(only(r, "agent.registered").payload.displayName).toBe("jack");
-    expect(JSON.stringify(only(r, "agent.registered"))).not.toContain("proj");
+    // The project directory must not leak into the agent's payload (the envelope's projectId is fine).
+    expect(JSON.stringify(only(r, "agent.registered").payload)).not.toContain(base.cwd);
   });
 
   it.each(["resume", "clear", "fork"])("treats source %s as a session start", (source) => {
