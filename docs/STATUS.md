@@ -2,7 +2,38 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-08 15:00 UTC. **Main:** ca13425. **State:** G7 [#88](https://github.com/jfvorwald/taskville/issues/88) awaits the owner (decision #432 confirmed and closed; release-candidate decision and gate closure are the owner's). M9 Break time is done, and its follow-ups M9.09, M7.30 and M7.31 merged on 2026-11-08, plus M9.10 (a Live tab scroll race that the wave exposed). Open from the wave: #460 (M9.11).
+**Updated:** 2026-11-09 02:30 UTC. **Main:** 5dc9409. **State:** G8 [#93](https://github.com/jfvorwald/taskville/issues/93) awaits the owner. G7 closed 2026-11-08 on the owner's instruction ("autoaccept everything"). M8 imports, both spikes and the owner's agent panel readability request (M10) are merged. Running: M9.12 #494 (idle fps on CI, debugger). Staging deploy still held (#432).
+
+## Done in M8 Post-release: imports and replies (2026-11-08)
+
+Design: [imports](superpowers/specs/2026-11-08-imports-design.md). Retro: [retros/M8.md](retros/M8.md).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M8.06 #463 archives storage, job runner, imports API | #466 | archive scope for evidence, conflicts, caps, one import engine-wide; security review and roborev 7422, 7448 fixed; [report](tasks/M8.06.md) |
+| M8.01 #89 Git importer | #467 | NUL-framed log, detached HEAD, bounded source id, error codes; roborev 7428, 7439 fixed; [report](tasks/M8.01.md) |
+| M8.02 #90 transcript importer | #468 | redact whole strings before cutting, slug scope by cwd, line cap, O_NOFOLLOW and O_NONBLOCK; security confirm PASS; [report](tasks/M8.02.md) |
+| M8.07 #464 archive timelines | #469 | archive state, events and listing on the occurredAt clock, chunked replay; [report](tasks/M8.07.md) |
+| M8.08 #465 `taskville import` | #470 | defaults from cwd, retries, clean Ctrl-C; [report](tasks/M8.08.md) |
+| M8.04 #91 spike: typed replies | #480 | no-go for now (development flag, interactive only, no delivery ack); [S-4](spikes/S-4-replies.md) |
+| M8.05 #105 spike: Codex adapter | #482 | go, hooks-first; adapter ticket #483; [S-5](spikes/S-5-codex.md) |
+| M8.11 #478 importers wired, archive evidence over HTTP | #484 | end-to-end import test against a real engine; project id validated in evidence ids; [report](tasks/M8.11.md) |
+| M8.03 #92 archives in the history UI | #487 | timeline picker, Git markers and chip, archive clock for crew bars, failed-switch recovery; e2e passes; [report](tasks/M8.03.md) |
+| M8.RT #102 retro | lead G8 PR | [retros/M8.md](retros/M8.md); lessons L-235 to L-238 |
+
+## Done in M10 Agent panel readability (owner request, 2026-11-08)
+
+Design: [agent panel readability](superpowers/specs/2026-11-08-agent-panel-readability-design.md).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M10.01 #474 feed rows never overlap | #481 | one-frame overlap fixed with a pre-paint re-measure; anchoring holds; [report](tasks/M10.01.md) |
+| M10.03 #476 shell, sticky header, Crew and Files | #479 | 440 px panel fitting its content, header and tabs stay, crew thread, contrast tokens per theme; [report](tasks/M10.03.md) |
+| M10.02 #475 Live tab as a logbook | #486 | one line per tool call with a status glyph and duration, details folded; [report](tasks/M10.02.md) |
+
+Also merged: M7.32 #472 (#490, spool lock safe when `mkdir` is not atomic: the real cause of the recurring shim flake), M9.11 #460 (#477, breaks tests under load), crews e2e update (#492). Follow-ups filed: #471, #473, #483, #485, #488, #489, #493, #494.
+
+Wave run on main 95d6d1e (push tier, each suite once in sequence): `pnpm check` 5,701 of 5,701; release 71 of 71; browser 1,110 of 1,110; app e2e all specs passed (breaks IDLE_FPS 21.0 locally, archives included); web smoke 4; crews 4 of 5 (broken by the intended logbook and panel changes, fixed in #492, then 5 of 5); permission replay 6; telemetry replay 7; clean-machine install PASS. CI flake: breaks idle fps 27 on CI (third time, M9.12 #494). NOT RUN: cross-browser, headed GPU fps, live Claude Code runs.
 
 ## Done in follow-ups batch (2026-11-08)
 
