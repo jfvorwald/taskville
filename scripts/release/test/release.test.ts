@@ -773,6 +773,73 @@ describe("clean build environment", () => {
   );
 });
 
+describe("install-codex.ts in the release bundle (A1.02, roborev 7654)", () => {
+  // install-codex.ts locates the two Codex hook scripts with `new URL("../../hooks/...",
+  // import.meta.url)`, like install.ts does for the Claude Code shim. The bundle guard refuses an
+  // unlisted module that reads import.meta.url, and the bundle runs from <package>/bin/, so both
+  // paths need a PATH_REWRITES entry ("../../hooks/" to "../hooks/"), as install.ts has.
+  it(
+    "bundles with install-codex.ts, rewrites both Codex hook script paths, and ships the scripts",
+    async () => {
+      const outDir = join(scratch, "out-codex-bundle");
+      await buildRelease({
+        root: ROOT,
+        outDir,
+        webDir: tinyWeb(),
+        allowDirty: true,
+        environment: "staging",
+      });
+      const pkg = extract(readBuilt(outDir).tgz, join(scratch, "x-codex-bundle"));
+      const bundled = readFileSync(join(pkg, "bin/taskville.js"), "utf8");
+      for (const script of ["codex-shim.sh", "codex-permission-bridge.sh"]) {
+        expect(bundled, `${script} path is rewritten to the package layout`).toContain(
+          `"../hooks/${script}"`,
+        );
+        expect(bundled, `${script} keeps no source-tree path`).not.toContain(
+          `"../../hooks/${script}"`,
+        );
+        expect(existsSync(join(pkg, "hooks", script)), script).toBe(true);
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    "`install codex --dry-run` from the built package names both packaged scripts",
+    async () => {
+      const outDir = join(scratch, "out-codex-dry-run");
+      await buildRelease({
+        root: ROOT,
+        outDir,
+        webDir: tinyWeb(),
+        allowDirty: true,
+        environment: "staging",
+      });
+      const pkg = extract(readBuilt(outDir).tgz, join(scratch, "x-codex-dry-run"));
+      const home = mkdtempSync(join(scratch, "home-codex-"));
+      const project = mkdtempSync(join(scratch, "project-codex-"));
+      const out = execFileSync(
+        process.execPath,
+        [
+          join(pkg, "bin/taskville.js"),
+          "install",
+          "codex",
+          "--scope",
+          "project",
+          "--project-dir",
+          project,
+          "--dry-run",
+        ],
+        { env: cleanEnv(home), encoding: "utf8" },
+      );
+      expect(out).toContain("taskville-codex-shim.sh");
+      expect(out).toContain("taskville-codex-permission.sh");
+      expect(existsSync(join(project, ".codex"))).toBe(false);
+    },
+    SLOW,
+  );
+});
+
 describe("bundle guard", () => {
   it(
     "fails when a workspace module outside the allowlist contains import.meta.url",

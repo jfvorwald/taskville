@@ -1,4 +1,14 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProjectState } from "@taskville/domain/reducer";
@@ -290,6 +300,21 @@ describe("open tool calls per session and turn", () => {
     await post(app, "end-2", hook("SessionEnd", { reason: "other" }));
     expect(events().filter((e) => e.type === "session.ended")).toHaveLength(1);
   });
+
+  // roborev 7654 (medium): only a registered session agent (SessionStart seen) makes the session
+  // known. Another hook for the session makes the projection hold a placeholder agent, which is
+  // not a start.
+  it("ignores a SessionEnd when only an unregistered placeholder agent exists for the session", async () => {
+    const { app } = setup();
+    await post(app, "pre-only", pre("call-p", TURN_A));
+    expect(Object.values(state().agents).some((a) => a.registered)).toBe(false);
+    expect(Object.keys(state().agents).length).toBeGreaterThan(0);
+
+    const end = await post(app, "end-placeholder", hook("SessionEnd", { reason: "other" }));
+    expect(end.res.status).toBe(200);
+    expect(end.body.ignored).toBe(true);
+    expect(events().filter((e) => e.type === "session.ended")).toEqual([]);
+  });
 });
 
 describe("spool replay (codex.jsonl)", () => {
@@ -339,5 +364,56 @@ describe("spool replay (codex.jsonl)", () => {
     expect(report).toMatchObject({ accepted: 0, conflict: 0, duplicate: live.body.results.length });
     expect(db().head(PROJECT)).toBe(head);
     expect(events().every((e) => e.late === false)).toBe(true);
+  });
+});
+
+describe("stale permission forwarder temp directories (security L2)", () => {
+  // The forwarder works in `$TASKVILLE_HOME/.codex-permission.XXXXXX`; a killed hook leaves it.
+  // The engine sweeps those next to the spool sweep, using the same stale age (60 s).
+  let home = "";
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "taskville-codex-home-"));
+    mkdirSync(join(home, "spool"), { recursive: true });
+  });
+  afterEach(() => rmSync(home, { recursive: true, force: true }));
+
+  const age = (path: string, seconds: number) => {
+    const at = new Date(Date.now() - seconds * 1000);
+    utimesSync(path, at, at);
+  };
+
+  it("removes .codex-permission.* directories older than the stale age and keeps fresh ones", async () => {
+    const stale = join(home, ".codex-permission.aB3dEf");
+    const fresh = join(home, ".codex-permission.Zy9xWv");
+    const unrelated = join(home, ".other-tool.aB3dEf");
+    for (const dir of [stale, fresh, unrelated]) {
+      mkdirSync(dir);
+      writeFileSync(join(dir, "payload"), "hook body");
+    }
+    age(stale, 600);
+    age(unrelated, 600);
+
+    await replayCodexSpool({ spoolDir: join(home, "spool"), source: makeCodexSource(db()) });
+
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
+    expect(existsSync(unrelated)).toBe(true);
+  });
+
+  it("removes a stale symlink with that name itself, never its target", async () => {
+    const target = join(home, "elsewhere");
+    mkdirSync(target);
+    writeFileSync(join(target, "keep"), "x");
+    const link = join(home, ".codex-permission.link00");
+    symlinkSync(target, link);
+
+    await replayCodexSpool({
+      spoolDir: join(home, "spool"),
+      source: makeCodexSource(db()),
+      now: () => Date.now() + 10 * 60_000,
+    });
+
+    expect(existsSync(join(target, "keep"))).toBe(true);
+    expect(() => lstatSync(link)).toThrow();
   });
 });

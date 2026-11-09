@@ -298,6 +298,66 @@ describe("install codex --scope project", () => {
   });
 });
 
+describe("install codex notices and backup", () => {
+  const backupOf = (path: string) => `${path}.taskville-backup`;
+
+  // Security review L3: <repo>/.codex/hooks.json gets machine-specific absolute paths.
+  it("a project-scope install says hooks.json holds local paths and should not be committed", async () => {
+    sb = sandbox();
+    const r = await install(sb, "project", ["--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain(".codex/hooks.json");
+    expect(r.stdout).toMatch(/local paths/i);
+    expect(r.stdout).toMatch(/not be committed/i);
+  });
+
+  it("a user-scope install does not print the commit notice", async () => {
+    sb = sandbox();
+    const r = await install(sb, "user", ["--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).not.toMatch(/not be committed/i);
+  });
+
+  // Security review L4: like the Claude Code installer, keep the original once (writeBackupOnce).
+  it("writes a one-time backup of an existing hooks.json before changing it", async () => {
+    for (const scope of ["user", "project"] as const) {
+      sb = sandbox();
+      const file = scope === "user" ? userHooks(sb) : projectHooks(sb);
+      const original = `${JSON.stringify(
+        { hooks: { Stop: [{ hooks: [{ type: "command", command: "roborev agent-hook" }] }] } },
+        null,
+        4,
+      )}\n`;
+      write(file, original);
+      expect((await install(sb, scope, ["--yes"])).code).toBe(0);
+      expect(read(backupOf(file)), scope).toBe(original);
+
+      // A later change (another port) must not replace the original with Taskville's own file.
+      expect((await install(sb, scope, ["--yes", "--url", "http://127.0.0.1:5123"])).code).toBe(0);
+      expect(read(backupOf(file)), scope).toBe(original);
+      sb.remove();
+    }
+  });
+
+  it("does not write a backup for --dry-run or a refused install", async () => {
+    sb = sandbox();
+    write(userHooks(sb), `{"hooks": {}}\n`);
+    expect((await install(sb, "user", ["--dry-run"])).code).toBe(0);
+    expect((await install(sb, "user")).code).toBe(1);
+    expect(existsSync(backupOf(userHooks(sb)))).toBe(false);
+  });
+
+  it("uninstall restores the original bytes from the backup and removes the backup", async () => {
+    sb = sandbox();
+    const original = `{\n    "hooks": {\n        "Stop": [{"hooks": [{"type": "command", "command": "roborev agent-hook"}]}]\n    }\n}\n`;
+    write(userHooks(sb), original);
+    expect((await install(sb, "user", ["--yes"])).code).toBe(0);
+    expect((await tv(sb, ["uninstall", "codex", "--scope", "user", "--yes"])).code).toBe(0);
+    expect(read(userHooks(sb))).toBe(original);
+    expect(existsSync(backupOf(userHooks(sb)))).toBe(false);
+  });
+});
+
 describe("uninstall codex", () => {
   it("removes only Taskville's entries and keeps the user's hooks", async () => {
     sb = sandbox();

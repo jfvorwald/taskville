@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { MAX_TRACKED_CODEX_CALLS } from "../../src/bridge/bridge.ts";
 import { DEFAULT_CODEX_HOLD_WINDOW_MS } from "../../src/bridge/index.ts";
 import { CLI_TOKEN, ORIGIN, sessionHeaders } from "../http/helpers.ts";
 import {
@@ -260,6 +261,43 @@ describe("a later PostToolUse resolves the request only on one unambiguous match
     h.scheduler.advance(CODEX_HOLD_MS);
     await expectNoDecision(await first);
     await expectNoDecision(await second);
+  });
+
+  // roborev 7654 (high): a request closes only when a PreToolUse with the same tool_use_id was
+  // tracked (session and correlation key as well). A Post alone proves nothing about which call
+  // it ends, and a Post while tracking dropped calls may end one the bridge forgot.
+  it("leaves the request open when the PostToolUse has no tracked PreToolUse", async () => {
+    const h = boot();
+    const { pending, requestId } = await openAfterPre(h, []);
+    observe(h, codexPostToolUse("call-1"));
+    expect(resolved(h)).toEqual([]);
+    expect(stateOf(h, requestId)).toBe("open");
+    expect(h.bridge.decide(requestId, { behavior: "allow" })).toBe(true);
+    await pending;
+  });
+
+  it("leaves the request open when the tracked PreToolUse has another tool_use_id", async () => {
+    const h = boot();
+    const { pending, requestId } = await openAfterPre(h, [codexPreToolUse("call-1")]);
+    observe(h, codexPostToolUse("call-2"));
+    expect(resolved(h)).toEqual([]);
+    expect(stateOf(h, requestId)).toBe("open");
+    h.scheduler.advance(CODEX_HOLD_MS);
+    await expectNoDecision(await pending);
+  });
+
+  it("leaves the request open while call tracking is lossy (more calls than it keeps)", async () => {
+    const h = boot();
+    // Distinct calls, each started and never finished, until the bridge has forgotten some.
+    for (let i = 0; i <= MAX_TRACKED_CODEX_CALLS; i++) {
+      observe(h, codexPreToolUse(`flood-${i}`, { tool_input: { command: `echo ${i}` } }));
+    }
+    const { pending, requestId } = await openAfterPre(h, [codexPreToolUse("call-1")]);
+    observe(h, codexPostToolUse("call-1"));
+    expect(resolved(h)).toEqual([]);
+    expect(stateOf(h, requestId)).toBe("open");
+    h.scheduler.advance(CODEX_HOLD_MS);
+    await expectNoDecision(await pending);
   });
 
   it("ignores a PostToolUse that arrives with no request to match", async () => {
