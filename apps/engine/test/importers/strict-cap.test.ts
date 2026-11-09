@@ -176,3 +176,57 @@ describe("archive row deletion fails after its evidence was deleted", () => {
     }
   });
 });
+
+describe("a failed archive write", () => {
+  it("keeps the old archive and its evidence readable, not evicted", async () => {
+    const store = openStore(1_000_000);
+    try {
+      const first = await runImport(store, "first", ["a".repeat(10)], { keepArchives: 1 });
+
+      // Committing the replacement archive fails; everything else is real.
+      const failingStorage = new Proxy(env().storage, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target);
+          if (prop !== "archives" || typeof value !== "function") {
+            return typeof value === "function" ? value.bind(target) : value;
+          }
+          return () => {
+            const archives = value.call(target);
+            return new Proxy(archives, {
+              get(inner, innerProp) {
+                if (innerProp === "complete") {
+                  return () => {
+                    throw new Error("archive write failed");
+                  };
+                }
+                const member = Reflect.get(inner, innerProp, inner);
+                return typeof member === "function" ? member.bind(inner) : member;
+              },
+            });
+          };
+        },
+      });
+      const importer = fakeImporter([batchOf("second", ["b".repeat(10)])], {
+        kind: "transcripts",
+      });
+      const jobs = makeJobs(env(), [importer], {
+        evidence: store,
+        keepArchives: 1,
+        storage: failingStorage,
+      } as Record<string, unknown>);
+      const { importId } = jobs.start({
+        projectId: PROJECT,
+        kind: "transcripts",
+        root: env().root,
+      });
+      expect((await jobs.settled(importId)).status).not.toBe("done");
+
+      // Nothing replaced the first archive, so nothing may be pruned or evicted.
+      expect(env().storage.archives().get(first.id)?.status).toBe("done");
+      expect(store.get(PROJECT, "tc-first-0", first.id)?.output?.status).toBe("stored");
+      expect(used(store, [first.id])).toBe(10);
+    } finally {
+      store.close();
+    }
+  });
+});
