@@ -40,7 +40,7 @@ export interface OpenToolCall {
 export interface CodexHookContext extends HookContext {
   /** False when the engine never saw this session start. Absent means known. */
   knownSession?: boolean;
-  /** Tool calls started and not finished, so an Interrupt can close those of its turn. */
+  /** Tool calls started and not finished. Accepted for the engine to fill; the mapper does not use it. */
   openToolCalls?: readonly OpenToolCall[];
 }
 
@@ -165,34 +165,15 @@ function sessionStart(m: Mapping): MapResult {
 
 /**
  * The user interrupted the turn. Codex sends no Stop for it and no PostToolUse for a denied
- * call, so the open calls of this turn are closed as returned: the call ended without a result,
- * and no cause is claimed.
+ * call. No tool_call.finished is emitted: the domain closes the main agent's running calls as
+ * unfinished on turn_failed, and a subagent's on agent.finished, so nothing is claimed here.
+ * `ctx.openToolCalls` is accepted but not needed.
  */
 function interrupt(m: Mapping): MapResult {
-  const turnId = ownString(m.payload, "turn_id");
-  const closing =
-    turnId === undefined
-      ? []
-      : (m.ctx.openToolCalls ?? []).filter((call) => call.turnId === turnId);
-  const events = closing.map((call, n) =>
-    event(
-      m,
-      "tool_call.finished",
-      { toolCallId: call.toolCallId, phase: "returned" },
-      {
-        sourceEventId: `${m.ctx.sourceEventId}:tool_call.finished:${n}`,
-        agentId:
-          call.sourceAgentId === undefined
-            ? m.subject.agentId
-            : subagentAgentId(m.subject.sessionId, call.sourceAgentId),
-      },
-    ),
-  );
-  events.push(
+  return result([
     event(m, "session.turn_failed", { reason: "interrupted" }),
     event(m, "activity.ended", {}),
-  );
-  return result(events);
+  ]);
 }
 
 function permissionRequest(m: Mapping): MapResult {
@@ -292,19 +273,14 @@ function patchPaths(patch: string | undefined): string[] {
   return paths;
 }
 
-function event<T extends EventType>(
-  m: Mapping,
-  type: T,
-  payload: Payload<T>,
-  override?: { sourceEventId: string; agentId: string },
-): InputEventWire {
+function event<T extends EventType>(m: Mapping, type: T, payload: Payload<T>): InputEventWire {
   return {
     schemaVersion: 1,
     projectId: m.ctx.projectId,
     sourceId: SOURCE_ID,
-    sourceEventId: override?.sourceEventId ?? `${m.ctx.sourceEventId}:${type}`,
+    sourceEventId: `${m.ctx.sourceEventId}:${type}`,
     occurredAt: m.ctx.receivedAt,
-    agentId: override?.agentId ?? m.subject.agentId,
+    agentId: m.subject.agentId,
     sessionId: m.subject.sessionId,
     type,
     payload,
