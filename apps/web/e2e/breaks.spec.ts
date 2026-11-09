@@ -109,8 +109,18 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
   });
   await page.addInitScript(() => {
     // Draw counter for the idle fps step: a frame counts when WebGL drew since the last rAF.
-    const w = window as unknown as { __tvFrames: number[] };
+    // While `__tvWatch` is on it also records, every animation frame, each agent the render
+    // pacer counts as moving (walking, arriving, departing or on its way), so a sample that a
+    // walk overlapped is known even when the walk is shorter than any poll interval.
+    const w = window as unknown as {
+      __tvFrames: number[];
+      __tvWatch: boolean;
+      __tvMoved: string[];
+      __taskvilleMovement?: () => { id: string; state: string; onTheWay: boolean; gone: boolean }[];
+    };
     w.__tvFrames = [];
+    w.__tvWatch = false;
+    w.__tvMoved = [];
     let drew = false;
     for (const proto of [WebGLRenderingContext.prototype, WebGL2RenderingContext.prototype]) {
       for (const name of [
@@ -132,6 +142,17 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
       if (drew) {
         w.__tvFrames.push(t);
         drew = false;
+      }
+      if (w.__tvWatch) {
+        for (const a of w.__taskvilleMovement?.() ?? []) {
+          const moving =
+            !a.gone &&
+            (a.onTheWay ||
+              a.state === "walking" ||
+              a.state === "arriving" ||
+              a.state === "departing");
+          if (moving && !w.__tvMoved.includes(a.id)) w.__tvMoved.push(a.id);
+        }
       }
       requestAnimationFrame(tick);
     };
@@ -287,45 +308,91 @@ test("breaks start, chat, end on work, and give way to needs-you; idle fps on br
     stop.abort();
     await producer.catch(() => {});
     expect(producerError, String(producerError[0])).toEqual([]);
-    // Nobody may be moving for a continuous settle period before the sample (an agent still
-    // walking draws extra frames: CI read 27.2 fps with Cyd walking back to work). The wait has a
-    // bounded deadline; missing it fails the step rather than sampling a moving scene.
+    // The sample must cover a scene where nothing moves. A walking agent puts the render pacer at
+    // full rate (by design), which headless SwiftShader renders at about 27 to 30 fps. Settling
+    // first is not enough: break activities last 2 to 5 minutes and the next one can send an agent
+    // walking to another spot in the middle of the sample (M9.12: CI read 26.3 and 27.2 fps that
+    // way, locally a walk inside the window read 23.4 and 27.3). So each 10 s window records, every
+    // animation frame, whether anyone moved, and a window someone moved in is discarded and taken
+    // again after a fresh settle, within a bounded deadline; missing it fails the step rather than
+    // reporting a moving scene as idle.
     const SETTLE_MS = 5_000;
+    const SAMPLE_MS = 10_000;
+    const RESAMPLE_DEADLINE_MS = 120_000;
+    // The same states the pacer counts as agents moving (`motionSignals`), plus on its way.
     const isMoving = (w: Walker) =>
-      !w.gone && (w.onTheWay || ["walking", "arriving"].includes(w.state));
-    let stillSince: number | undefined;
-    await expect
-      .poll(
-        async () => {
-          const moving = (await walkers(page)).filter(isMoving).length;
-          if (moving > 0) {
-            stillSince = undefined;
-            return false;
-          }
-          stillSince ??= Date.now();
-          return Date.now() - stillSince >= SETTLE_MS;
-        },
-        { timeout: 90_000, intervals: [250] },
-      )
-      .toBe(true);
+      !w.gone && (w.onTheWay || ["walking", "arriving", "departing"].includes(w.state));
+    // Pointer activity holds the full rate for a second, so move the pointer away before settling.
     await page.mouse.move(0, 0);
-    // The sample only means something with at least two agents standing on break.
-    const standing = (await onBreakNow()).length;
-    expect(standing).toBeGreaterThanOrEqual(2);
-    // Still nobody moving at the start of the sample.
-    expect((await walkers(page)).filter(isMoving)).toEqual([]);
-    const start = await page.evaluate(() => {
-      (window as unknown as { __tvFrames: number[] }).__tvFrames.length = 0;
-      return performance.now();
-    });
-    await page.waitForTimeout(10_000);
-    const { frames, end } = await page.evaluate(() => ({
-      frames: (window as unknown as { __tvFrames: number[] }).__tvFrames.length,
-      end: performance.now(),
-    }));
-    const fps = frames / ((end - start) / 1000);
+    const settle = async () => {
+      let stillSince: number | undefined;
+      await expect
+        .poll(
+          async () => {
+            const moving = (await walkers(page)).filter(isMoving).length;
+            if (moving > 0) {
+              stillSince = undefined;
+              return false;
+            }
+            stillSince ??= Date.now();
+            return Date.now() - stillSince >= SETTLE_MS;
+          },
+          { timeout: 90_000, intervals: [250] },
+        )
+        .toBe(true);
+    };
+    const sampleUntil = Date.now() + RESAMPLE_DEADLINE_MS;
+    let sample: { frames: number; seconds: number; standing: number } | undefined;
+    for (let attempt = 1; sample === undefined; attempt++) {
+      if (attempt > 1 && Date.now() > sampleUntil) {
+        throw new Error(
+          `no ${SAMPLE_MS / 1000} s window without an agent moving within ${RESAMPLE_DEADLINE_MS / 1000} s`,
+        );
+      }
+      await settle();
+      // The sample only means something with at least two agents standing on break.
+      const standing = (await onBreakNow()).length;
+      expect(standing).toBeGreaterThanOrEqual(2);
+      const { start, watching } = await page.evaluate(() => {
+        const w = window as unknown as {
+          __tvFrames: number[];
+          __tvWatch: boolean;
+          __tvMoved: string[];
+          __taskvilleMovement?: unknown;
+        };
+        w.__tvFrames.length = 0;
+        w.__tvMoved = [];
+        w.__tvWatch = true;
+        return {
+          start: performance.now(),
+          watching: typeof w.__taskvilleMovement === "function",
+        };
+      });
+      // Without the movement hook the in-window check would pass without looking.
+      expect(watching).toBe(true);
+      await page.waitForTimeout(SAMPLE_MS);
+      const window_ = await page.evaluate(() => {
+        const w = window as unknown as {
+          __tvFrames: number[];
+          __tvWatch: boolean;
+          __tvMoved: string[];
+        };
+        w.__tvWatch = false;
+        return { frames: w.__tvFrames.length, end: performance.now(), moved: [...w.__tvMoved] };
+      });
+      const seconds = (window_.end - start) / 1000;
+      if (window_.moved.length > 0) {
+        console.log(
+          `IDLE_FPS window ${attempt} discarded: ${window_.moved.join(", ")} moved during it (${(window_.frames / seconds).toFixed(1)} fps)`,
+        );
+        continue;
+      }
+      sample = { frames: window_.frames, seconds, standing };
+    }
+    const { frames, seconds, standing } = sample;
+    const fps = frames / seconds;
     console.log(
-      `IDLE_FPS ${fps.toFixed(1)} (${frames} frames in ${((end - start) / 1000).toFixed(1)} s, ${standing} agents on break, headless SwiftShader)`,
+      `IDLE_FPS ${fps.toFixed(1)} (${frames} frames in ${seconds.toFixed(1)} s, ${standing} agents on break, headless SwiftShader)`,
     );
     // Budget (ARCHITECTURE 11): 20 fps when nothing moves; allow a little headroom.
     expect(fps).toBeLessThan(25);
