@@ -105,21 +105,22 @@ test("crew visuals: subagents and a team appear as crews of their leads", async 
 test("selecting a subagent shows its feed, and a new event lands in under one second", async () => {
   await row(SUB_A).click();
   await expect(panel()).toHaveAttribute("data-agent-id", SUB_A);
+  // M10.02: logbook entries carry a one-line sentence (Read, Edited, Wrote, Ran ...).
   await expect(
     feed()
-      .getByRole("article")
-      .filter({ hasText: /^Read:/ }),
+      .getByTestId("entry-sentence")
+      .filter({ hasText: /^Read\b/ }),
   ).toBeVisible();
   await expect(
     feed()
-      .getByRole("article")
-      .filter({ hasText: /^Edit:/ }),
+      .getByTestId("entry-sentence")
+      .filter({ hasText: /^Edited\b/ }),
   ).toBeVisible();
   // The other subagent's call is not in this feed.
   await expect(
     feed()
-      .getByRole("article")
-      .filter({ hasText: /^Write:/ }),
+      .getByTestId("entry-sentence")
+      .filter({ hasText: /^Wrote\b/ }),
   ).toHaveCount(0);
 
   // Watch the feed in the page and stamp the wall-clock time the new card first appears.
@@ -251,9 +252,9 @@ test("the Crew tab lists the family and highlights it in the city", async () => 
   // WebGL, which the hook (state, not pixels) cannot. The highlight has no DOM marker, so it is
   // checked in pixels. The context asks for reduced motion (no bounce, no unrelated
   // animation), and the shots clip to a city region that the panel, the agent list and the camera
-  // controls do not cover (1000x640 viewport: the list is left of x 312, the panel right of x 640,
-  // the controls above y 53). The overlap is checked again in each tab state below.
-  const region = { x: 330, y: 70, width: 300, height: 280 };
+  // controls do not cover (1000x640 viewport: the list is left of x 312, the panel right of x 528
+  // since M10.03 widened it, the controls above y 53). The overlap is checked again in each tab state below.
+  const region = { x: 330, y: 70, width: 185, height: 280 };
   const assertRegionClear = async () => {
     for (const id of ["agent-panel", "agent-list", "camera-controls"]) {
       const b = await page.getByTestId(id).boundingBox();
