@@ -2,7 +2,19 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 05:00 UTC. **Main:** 87ab867. **State:** G8 [#93](https://github.com/jfvorwald/taskville/issues/93) closed on the owner's standing instruction ("autoaccept everything, keep going"); no gate is open and no milestone is planned after M8. Follow-up backlog: #471, #473, #483, #489, #493, #497, #500, #501. Staging deploy still held (#432).
+**Updated:** 2026-11-09 09:00 UTC. **Main:** d971e75. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave done: Codex adapter merged (A1.00 to A1.02). Open follow-ups: #471, #473, #489, #497, #500, #509, #511, #512. Staging deploy still held (#432).
+
+## Done in backlog wave (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| A1.00 #503 phase `returned` | #505 | a tool call can finish with no outcome reported; domain and logbook handle it (neutral node, "Edit returned: <file>"); [report](tasks/A1.00.md) |
+| A1.01 #483 Codex hook mapper | #506 | pure mapper per S-5; Interrupt leaves open calls unfinished; MCP activity marked heuristic; [report](tasks/A1.01.md) |
+| A1.02 #507 Codex route, bridge, installer | #510 | `POST /v1/sources/codex/hooks`, permission bridge with a 5 s hold and exact-match resolution, `taskville install codex` writing `.codex/hooks.json` only; security review PASS WITH FINDINGS (fixed); live Codex run NOT RUN (needs hooks trusted in /hooks); [report](tasks/A1.02.md) |
+| M8.15 #501 archive window edges | #508 | superseded seeks, bucket click target, crew runs across windows; [report](tasks/M8.15.md) |
+| M7.34 #493 engine break lock re-read | #504 | re-reads the pid before renaming; [report](tasks/M7.34.md) |
+
+Wave run on main d971e75 (each suite once): `pnpm check` 5,922 of 5,922; release 73 of 73; browser 1,135 of 1,136 (BreakTime.chatter speaker alternation failed under load, passed alone: third time, #512); app e2e all specs (breaks discarded a window with movement, then IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs.
 
 ## Done in post-G8 follow-ups (2026-11-09)
 
