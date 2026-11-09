@@ -144,6 +144,15 @@ describe.each(SHELLS)("codex-permission-bridge.sh under %s", (shell) => {
       const chunks: Buffer[] = [];
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", () => {
+        // A1.03 (#511): count only the forwarder's traffic. Its only HTTP client is curl (run with
+        // -q, so no curlrc can change the user agent). Other local processes probe new loopback
+        // ports (T3 Code sends `GET /` with user agent `node` about every 3 s, M4.12); a probe
+        // during a slow test under load used to land in `seen` and break its request count.
+        if (!(req.headers["user-agent"]?.startsWith("curl/") ?? false)) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
         seen.push({
           ...(req.method === undefined ? {} : { method: req.method }),
           ...(req.url === undefined ? {} : { url: req.url }),
