@@ -43,6 +43,8 @@ export interface ToolCallEvidence {
 export interface EvidenceStoreOptions {
   /** Per-project cap on stored body bytes. Default 1 GB. */
   capBytes?: number;
+  /** Cap on archive-scoped body bytes across all archives and projects. Default 1 GiB. */
+  archiveCapBytes?: number;
   busyTimeoutMs?: number;
   now?: () => Date;
   logger?: Logger;
@@ -77,6 +79,7 @@ interface BodyRow {
  */
 export class EvidenceStore implements EvidenceSink {
   readonly capBytes: number;
+  readonly archiveCapBytes: number;
   readonly #db: Database;
   readonly #now: () => Date;
   readonly #logger: Logger | undefined;
@@ -85,6 +88,7 @@ export class EvidenceStore implements EvidenceSink {
   constructor(db: Database, options: EvidenceStoreOptions) {
     this.#db = db;
     this.capBytes = options.capBytes ?? DEFAULT_CAP_BYTES;
+    this.archiveCapBytes = options.archiveCapBytes ?? DEFAULT_CAP_BYTES;
     this.#now = options.now ?? (() => new Date());
     this.#logger = options.logger;
     const row = db.prepare("SELECT COALESCE(MAX(last_used), 0) AS tick FROM bodies").get();
@@ -146,6 +150,32 @@ export class EvidenceStore implements EvidenceSink {
       .prepare("SELECT bodies, bytes FROM usage WHERE project_id = ?")
       .get(projectId);
     return { bodies: Number(row?.bodies ?? 0), bytes: Number(row?.bytes ?? 0) };
+  }
+
+  /** True once the bodies of all archives together have reached `archiveCapBytes`, not counting the
+   * `excluding` archives (about to be pruned). */
+  archiveEvidenceFull(
+    excluding: readonly { projectId: string; archiveId: string }[] = [],
+  ): boolean {
+    const row = this.#db
+      .prepare("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM usage WHERE instr(project_id, ?) > 0")
+      .get(ARCHIVE_SEPARATOR);
+    const byScope = this.#db.prepare("SELECT bytes FROM usage WHERE project_id = ?");
+    let used = Number(row?.bytes ?? 0);
+    for (const { projectId, archiveId } of excluding) {
+      used -= Number(byScope.get(scopeOf(projectId, archiveId))?.bytes ?? 0);
+    }
+    return used >= this.archiveCapBytes;
+  }
+
+  /** Removes every body and pointer of one archive. */
+  deleteArchive(projectId: string, archiveId: string): void {
+    const scope = scopeOf(projectId, archiveId);
+    this.#transaction(() => {
+      for (const table of ["tool_call_bodies", "bodies", "usage"]) {
+        this.#db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(scope);
+      }
+    });
   }
 
   /** Removes every body and pointer of a project, archive scopes included. */
@@ -290,6 +320,10 @@ export function openEvidenceStore(path: string, options: EvidenceStoreOptions = 
   if (!Number.isSafeInteger(cap) || cap < 1) {
     throw new RangeError("capBytes must be a positive whole number of bytes");
   }
+  const archiveCap = options.archiveCapBytes ?? DEFAULT_CAP_BYTES;
+  if (!Number.isSafeInteger(archiveCap) || archiveCap < 1) {
+    throw new RangeError("archiveCapBytes must be a positive whole number of bytes");
+  }
   secureDatabaseFiles(path);
   const db = new Database(path, { timeout: options.busyTimeoutMs ?? 5000, defensive: true });
   try {
@@ -337,7 +371,7 @@ export function openEvidenceStore(path: string, options: EvidenceStoreOptions = 
         COMMIT;
       `);
     }
-    return new EvidenceStore(db, { ...options, capBytes: cap });
+    return new EvidenceStore(db, { ...options, capBytes: cap, archiveCapBytes: archiveCap });
   } catch (error) {
     db.close();
     throw error;
