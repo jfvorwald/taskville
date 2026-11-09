@@ -62,6 +62,7 @@ type Rewrite = (sequence: number, event: Record<string, unknown>) => Record<stri
 async function open(options: { rewrite?: Rewrite; holdState?: number; failState?: number } = {}) {
   const base = scaleEngine();
   const seen = { held: false };
+  const control = { failEvents: false };
   let release = () => {};
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -77,6 +78,8 @@ async function open(options: { rewrite?: Rewrite; holdState?: number; failState?
         await gate;
       }
     }
+    if (path === `/v1/timelines/${ID}/events` && control.failEvents)
+      return new Response("boom", { status: 500 });
     const response = await base.fetcher(input, init);
     if (path !== `/v1/timelines/${ID}/events` || !options.rewrite) return response;
     const body = await response.json();
@@ -99,7 +102,7 @@ async function open(options: { rewrite?: Rewrite; holdState?: number; failState?
   cleanups.push(() => view.unmount());
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect.poll(head, { timeout: 30_000 }).toBe(`history:${COUNT}`);
-  return { seen, release };
+  return { seen, release, control };
 }
 
 describe("a superseded far seek", () => {
@@ -184,5 +187,102 @@ describe("crew runs across windows", () => {
     await expect.element(bar).toBeVisible();
     const label = (bar.element() as HTMLElement).getAttribute("aria-label") ?? "";
     expect(label).toContain(new Date(occurred(REGISTERED)).toLocaleString());
+  }, 120_000);
+});
+
+// M8.15 review round (roborev 7640).
+const PARENT = "claude-code:parent-session";
+const child = (name: string) => `${PARENT}:${name}`;
+const registration = (name: string, displayName: string, extra: Record<string, unknown> = {}) => ({
+  type: "agent.registered",
+  agentId: child(name),
+  payload: {
+    sourceAgentId: name,
+    displayName,
+    role: "general-purpose",
+    kind: "subagent",
+    parentAgentId: PARENT,
+    ...extra,
+  },
+});
+const finish = (name: string) => ({
+  type: "agent.finished",
+  agentId: child(name),
+  payload: { summary: "done" },
+});
+const rewriteAt =
+  (specs: Record<number, Record<string, unknown>>): Rewrite =>
+  (sequence, event) =>
+    specs[sequence] ? { ...event, ...specs[sequence] } : event;
+const bar = (name: RegExp) => page.getByRole("img", { name });
+const barLabel = (name: RegExp) =>
+  (bar(name).element() as HTMLElement).getAttribute("aria-label") ?? "";
+const agentOptions = () =>
+  [...document.querySelectorAll("#history-agent option")].map((node) => node.textContent ?? "");
+
+describe("a superseded seek whose successor fails to load events", () => {
+  it("does not let the first seek's state read move the city", async () => {
+    const { seen, release, control } = await open({ holdState: 1 });
+    const stripBefore = markerLabels();
+    const chipBefore = chip();
+
+    setSlider(1);
+    await expect.poll(() => seen.held, { timeout: 30_000 }).toBe(true);
+    // Seek B starts, and loading its event window fails.
+    control.failEvents = true;
+    setSlider(2);
+    await expect.element(page.getByText("Could not load recorded state.")).toBeVisible();
+    // A's state read arrives after B began; B invalidated it.
+    release();
+    await settle();
+
+    expect(head()).toBe(`history:${COUNT}`);
+    expect(slider().value).toBe(String(COUNT));
+    expect(chip()).toBe(chipBefore);
+    expect(markerLabels()).toEqual(stripBefore);
+  }, 120_000);
+});
+
+describe("crew runs resolved from before the window", () => {
+  it("closes every child whose finish is recorded before or inside the window", async () => {
+    // Both register in the first chunk; A finishes in a later chunk still before the window.
+    await open({
+      rewrite: rewriteAt({
+        10: registration("a", "Worker A"),
+        20: registration("b", "Worker B"),
+        7_000: finish("a"),
+        [COUNT - 100]: finish("b"),
+      }),
+    });
+    await expect.element(bar(/Worker B/)).toBeVisible();
+    // A run fully before the window is still drawn, on the whole archive's scale, finished.
+    await expect.element(bar(/Worker A/)).toBeVisible();
+    expect(barLabel(/Worker A/)).toContain(new Date(occurred(10)).toLocaleString());
+    expect(barLabel(/Worker A/)).toContain(`ran ${(7_000 - 10) * 60}s`);
+    expect(barLabel(/Worker B/)).toContain(new Date(occurred(20)).toLocaleString());
+    expect(barLabel(/Worker B/)).toContain(`ran ${(COUNT - 100 - 20) * 60}s`);
+  }, 120_000);
+
+  it("ignores a heuristic registration in the window and keeps the recorded start", async () => {
+    await open({
+      rewrite: rewriteAt({
+        10: registration("h", "Recorded worker"),
+        [COUNT - 200]: registration("h", "Guessed worker", { heuristic: true }),
+        [COUNT - 100]: finish("h"),
+      }),
+    });
+    await expect.element(bar(/Recorded worker/)).toBeVisible();
+    expect(barLabel(/Recorded worker/)).toContain(new Date(occurred(10)).toLocaleString());
+    expect(barLabel(/Recorded worker/)).toContain(`ran ${(COUNT - 100 - 10) * 60}s`);
+  }, 120_000);
+
+  it("names the agent in the selector once the scan finds its registration", async () => {
+    await open({
+      rewrite: rewriteAt({ 10: registration("n", "Scanned worker"), [COUNT - 100]: finish("n") }),
+    });
+    await expect.element(bar(/Scanned worker/)).toBeVisible();
+    // No further window publish happens; the selector must already carry the name.
+    await expect.poll(agentOptions).toContain("Scanned worker");
+    expect(agentOptions()).not.toContain(child("n"));
   }, 120_000);
 });
