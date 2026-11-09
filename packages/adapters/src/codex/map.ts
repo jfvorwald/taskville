@@ -264,7 +264,10 @@ function toolHook(m: Mapping, hook: string): MapResult {
 function activityFor(toolName: string, input: unknown) {
   if (toolName === "apply_patch") return { activity: "implementing" as const };
   if (toolName === "spawn_agent") return { activity: "dispatching" as const };
-  if (toolName.startsWith("mcp__")) return { activity: "researching" as const };
+  // The default for an MCP tool is a guess: its purpose is the server's, not known here.
+  if (toolName.startsWith("mcp__")) {
+    return { activity: "researching" as const, heuristic: true as const };
+  }
   return activityForTool(toolName, input);
 }
 
