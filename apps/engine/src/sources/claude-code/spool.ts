@@ -617,16 +617,41 @@ function takeLock(lock: string): boolean {
   } catch {
     return false;
   }
+  return claimPid(lock);
+}
+
+/**
+ * Held only once our pid file is created exclusively, as the shim takes it (M7.32): a
+ * shim whose mkdir(1) is not atomic (uutils coreutils 0.8.0, Ubuntu 26.04) can report
+ * success for the directory we just made and create its pid file first; then it holds.
+ * A directory left without a pid (another failure) is judged by age, like a shim killed
+ * before writing its PID.
+ */
+function claimPid(dir: string): boolean {
   try {
-    writeFileSync(join(lock, "pid"), `${process.pid}\n`, { mode: 0o600, flag: "wx" });
+    writeFileSync(join(dir, "pid"), `${process.pid}\n`, { mode: 0o600, flag: "wx" });
+    return true;
   } catch {
-    // An empty lock is judged by age, like a shim killed before writing its PID.
+    return false;
   }
-  return true;
+}
+
+/** Removes a lock directory we hold: our pid file, then the directory only if it is empty. */
+function dropDir(dir: string): void {
+  try {
+    unlinkSync(join(dir, "pid"));
+  } catch {
+    // Already gone.
+  }
+  try {
+    rmdirSync(dir);
+  } catch {
+    // A shim claimed it after our pid went (it holds it now), or left for the stale check.
+  }
 }
 
 function releaseLock(lock: string): void {
-  if (lockOwner(lock) === String(process.pid)) rmSync(lock, { recursive: true, force: true });
+  if (lockOwner(lock) === String(process.pid)) dropDir(lock);
 }
 
 function lockOwner(lock: string): string {
@@ -652,6 +677,8 @@ function breakStaleLock(dir: string, nowMs: number): boolean {
   } catch {
     return false;
   }
+  // The break lock is pid-owned like the lock: one a shim claimed first is not ours.
+  if (!claimPid(breaker)) return false;
   try {
     const stats = lstatOrUndefined(lock);
     if (stats === undefined || !stats.isDirectory()) return false;
@@ -667,11 +694,7 @@ function breakStaleLock(dir: string, nowMs: number): boolean {
   } catch {
     return false;
   } finally {
-    try {
-      rmdirSync(breaker);
-    } catch {
-      // Left for the next start's stale check.
-    }
+    dropDir(breaker);
   }
 }
 
