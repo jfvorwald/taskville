@@ -12,6 +12,7 @@ import {
   momentTime,
   type TimelineChoice,
   timelineChoices,
+  WINDOW_EVENTS,
 } from "../archives/archive-timelines.ts";
 import { EMPTY_FIDELITY_FRAME, type FidelityFrame } from "../fidelity/frame.ts";
 import { createHistoryStore, type HistoryStore, type ReplayRate } from "../state/store.ts";
@@ -98,8 +99,17 @@ export function useHistoryPresentation(): Presentation {
 }
 
 /** Owns replay resources in an effect, including StrictMode's setup/cleanup cycle. */
-export function HistoryProvider({ children }: { children: ReactNode }) {
+export function HistoryProvider({
+  children,
+  refreshIntervalMs = 15_000,
+}: {
+  children: ReactNode;
+  /** How often the timeline list is re-read while history is open. */
+  refreshIntervalMs?: number;
+}) {
   const epoch = useRef(0);
+  const refreshEvery = useRef(refreshIntervalMs);
+  refreshEvery.current = refreshIntervalMs;
   const projectId = useCurrentProjectId();
   const secret = useSession();
   const [current, setCurrent] = useState<{
@@ -115,9 +125,20 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     let unsubscribeHistory: (() => void) | undefined;
     let replayTime = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
+    let refreshTimer: ReturnType<typeof setInterval> | undefined;
+    // The loaded window: moments[i] and recorded[i] are consecutive sequences from moments[0].
     let moments: RecordedMoment[] = [];
     let recorded: StoredEnvelope[] = [];
+    let loaded: TimelineChoice | undefined;
+    // The head projection may prune retired agents; the loaded log still records them.
+    let agents = new Map<
+      string,
+      { id: string; name: string; sourceId?: string; sourceAgentId?: string }
+    >();
     let presentedSequence: number | null = null;
+    /** Events of `recorded` up to and including this sequence. */
+    const recordedUpTo = (sequence: number) =>
+      Math.max(0, sequence - (moments[0]?.sequence ?? 1) + 1);
     let explicitSeek = false;
     let seekGeneration = 0;
     let fidelity = EMPTY_FIDELITY_FRAME;
@@ -126,7 +147,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         epoch: ++epoch.current,
         revision: 0,
         events: [],
-        baseline: sequence === null ? [] : recorded.slice(0, sequence),
+        baseline: sequence === null ? [] : recorded.slice(0, recordedUpTo(sequence)),
       };
       presentedSequence = null;
     }
@@ -144,8 +165,12 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       explicitSeek = false;
       clearInterval(timer);
       timer = undefined;
+      clearInterval(refreshTimer);
+      refreshTimer = undefined;
       moments = [];
       recorded = [];
+      loaded = undefined;
+      agents = new Map();
       resetFidelity();
       metadata?.abort();
       metadata = undefined;
@@ -163,15 +188,34 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     function seek(sequence: number) {
       const range = value.range;
       if (!active || !controller || !range || !Number.isSafeInteger(sequence)) return;
-      const moment = moments.find((item) => item.sequence === sequence);
-      if (!moment) return;
+      const known = moments.find((item) => item.sequence === sequence);
+      // Only a windowed archive has positions it has not loaded yet.
+      if (
+        !known &&
+        !(loaded && windowed(loaded) && sequence >= range.first && sequence <= range.last)
+      )
+        return;
       const seekToken = ++seekGeneration;
       explicitSeek = true;
       controller.getState().pause();
       const requestGeneration = generation;
-      void controller
-        .getState()
-        .seekSequence(moment.sequence, moment.time)
+      const store = controller;
+      void (async () => {
+        let moment = known;
+        if (!moment && loaded) {
+          // Seeking into an unloaded range moves the window there.
+          const from = Math.max(range.first, sequence - Math.floor(WINDOW_EVENTS / 2));
+          const to = Math.min(range.last, from + WINDOW_EVENTS - 1);
+          const chunk = await walk(loaded, from, to);
+          if (!chunk || requestGeneration !== generation || seekToken !== seekGeneration) return;
+          moments = chunk.moments;
+          recorded = chunk.recorded;
+          publishWindow();
+          moment = moments.find((item) => item.sequence === sequence);
+        }
+        if (!moment) throw new Error("events");
+        await store.getState().seekSequence(moment.sequence, moment.time);
+      })()
         .catch(() => {
           if (requestGeneration === generation && seekToken === seekGeneration)
             publish({ error: "Could not load recorded state." });
@@ -180,6 +224,146 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           if (requestGeneration === generation && seekToken === seekGeneration)
             explicitSeek = false;
         });
+    }
+    /** Whether only a window of the timeline is held: long archives, never the live recording. */
+    const windowed = (timeline: TimelineChoice) =>
+      timeline.kind === "archive" &&
+      timeline.lastSequence - timeline.firstSequence + 1 > WINDOW_EVENTS;
+    /** Walks the server-issued cursors over sequences `from` to `to`, the end pinned. */
+    async function walk(
+      timeline: TimelineChoice,
+      from: number,
+      to: number,
+      target?: { agentId: string; taskId: string },
+    ) {
+      const requestGeneration = generation;
+      const signal = metadata?.signal ?? null;
+      const chunkMoments: RecordedMoment[] = [];
+      const chunk: StoredEnvelope[] = [];
+      let cursor: string | null = null;
+      const cursors = new Set<string>();
+      const eventIds = new Set<string>();
+      let expected = from;
+      let taskStart: { sequence: number; time: number } | undefined;
+      do {
+        const query = new URLSearchParams({ from: String(from), to: String(to) });
+        if (cursor) query.set("cursor", cursor);
+        const pageResponse = await fetch(
+          `/v1/timelines/${encodeURIComponent(timeline.id)}/events?${query}`,
+          { headers: { [SESSION_HEADER]: secret }, signal },
+        );
+        if (!pageResponse.ok) throw new Error("events");
+        const page = await pageResponse.json();
+        if (!active || requestGeneration !== generation) return undefined;
+        if (page?.timelineId !== timeline.id || !Array.isArray(page.events) || !page.events.length)
+          throw new Error("events");
+        for (const raw of page.events) {
+          const event = storedEnvelopeSchema.parse(raw);
+          const time = momentTime(timeline, event);
+          if (
+            event.projectId !== projectId ||
+            event.ingestSequence !== expected ||
+            expected > to ||
+            !Number.isFinite(time) ||
+            eventIds.has(event.eventId)
+          )
+            throw new Error("events");
+          eventIds.add(event.eventId);
+          if (
+            target &&
+            !taskStart &&
+            event.type === "task.created" &&
+            event.taskId === target.taskId
+          )
+            taskStart = { sequence: event.ingestSequence, time };
+          chunk.push(event);
+          if (event.agentId) {
+            const before = agents.get(event.agentId);
+            if (!before) agents.set(event.agentId, { id: event.agentId, name: event.agentId });
+            if (
+              event.type === "agent.registered" &&
+              event.payload.heuristic !== true &&
+              (!before?.sourceId ||
+                (before.sourceId === event.sourceId &&
+                  before.sourceAgentId === event.payload.sourceAgentId))
+            ) {
+              agents.set(event.agentId, {
+                id: event.agentId,
+                name: event.payload.displayName,
+                sourceId: event.sourceId,
+                sourceAgentId: event.payload.sourceAgentId,
+              });
+            }
+          }
+          // Only recorded event facts become markers. Late prompts cannot open needs-you.
+          const marker =
+            event.type === "request.opened" && !event.late
+              ? event.payload.heuristic === true
+                ? "Possibly needs you"
+                : "Needs you"
+              : event.type === "task.status_changed" && event.payload.status === "completed"
+                ? "Task completed"
+                : timeline.kind === "archive"
+                  ? gitMarker(event)
+                  : event.type === "git.commit"
+                    ? "Commit"
+                    : undefined;
+          chunkMoments.push({
+            sequence: expected++,
+            time,
+            agentId: event.agentId,
+            marker,
+            requestId:
+              event.type === "request.opened" && !event.late ? event.payload.requestId : undefined,
+          });
+        }
+        cursor = page.nextCursor;
+        if (cursor !== null) {
+          if (typeof cursor !== "string" || !cursor || cursors.has(cursor) || expected > to)
+            throw new Error("cursor");
+          cursors.add(cursor);
+        }
+      } while (cursor !== null);
+      if (
+        expected !== to + 1 ||
+        (from === timeline.firstSequence &&
+          chunkMoments[0]?.time !== Date.parse(timeline.firstAt)) ||
+        (to === timeline.lastSequence && chunkMoments.at(-1)?.time !== Date.parse(timeline.lastAt))
+      )
+        throw new Error("events");
+      return { moments: chunkMoments, recorded: chunk, taskStart };
+    }
+    /** Publishes what the loaded window changed: moments, crew and agents. */
+    function publishWindow() {
+      const timeline = loaded;
+      if (!timeline) return;
+      publish({
+        moments,
+        crew: crewRuns(recorded, (event) => momentTime(timeline, event)),
+        agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
+      });
+    }
+    /** Appends the events after the window's end while playback runs into them. */
+    async function extend(afterSequence: number) {
+      const timeline = loaded;
+      const end = moments.at(-1);
+      if (
+        !timeline ||
+        !end ||
+        end.sequence !== afterSequence ||
+        end.sequence >= timeline.lastSequence
+      )
+        return;
+      const from = end.sequence + 1;
+      const chunk = await walk(
+        timeline,
+        from,
+        Math.min(timeline.lastSequence, from + WINDOW_EVENTS - 1),
+      );
+      if (!chunk || moments.at(-1)?.sequence !== end.sequence) return;
+      moments = moments.concat(chunk.moments);
+      recorded = recorded.concat(chunk.recorded);
+      publishWindow();
     }
     async function refresh() {
       if (!active || value.mode !== "history" || value.pending) return;
@@ -257,124 +441,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           lastSequence < firstSequence
         )
           throw new Error("metadata");
-        // Walk the server-issued cursors with the session's original end pinned.
-        let cursor: string | null = null;
-        const cursors = new Set<string>();
-        const eventIds = new Set<string>();
-        let expected = firstSequence;
-        let taskStart: { sequence: number; time: number } | undefined;
-        // The head projection may prune retired agents; the loaded log still records them.
-        const agents = new Map<
-          string,
-          {
-            id: string;
-            name: string;
-            sourceId?: string;
-            sourceAgentId?: string;
-          }
-        >();
-        do {
-          const query = new URLSearchParams({
-            from: String(firstSequence),
-            to: String(lastSequence),
-          });
-          if (cursor) query.set("cursor", cursor);
-          const pageResponse = await fetch(
-            `/v1/timelines/${encodeURIComponent(timeline.id)}/events?${query}`,
-            {
-              headers: { [SESSION_HEADER]: secret },
-              signal: abort.signal,
-            },
-          );
-          if (!pageResponse.ok) throw new Error("events");
-          const page = await pageResponse.json();
-          if (!active || requestGeneration !== generation) return;
-          if (
-            page?.timelineId !== timeline.id ||
-            !Array.isArray(page.events) ||
-            !page.events.length
-          )
-            throw new Error("events");
-          for (const raw of page.events) {
-            const event = storedEnvelopeSchema.parse(raw);
-            const time = momentTime(timeline, event);
-            if (
-              event.projectId !== projectId ||
-              event.ingestSequence !== expected ||
-              expected > lastSequence ||
-              !Number.isFinite(time) ||
-              eventIds.has(event.eventId)
-            )
-              throw new Error("events");
-            eventIds.add(event.eventId);
-            if (
-              target &&
-              !taskStart &&
-              event.type === "task.created" &&
-              event.taskId === target.taskId
-            )
-              taskStart = { sequence: event.ingestSequence, time };
-            recorded.push(event);
-            if (event.agentId) {
-              const before = agents.get(event.agentId);
-              if (!before) agents.set(event.agentId, { id: event.agentId, name: event.agentId });
-              if (
-                event.type === "agent.registered" &&
-                event.payload.heuristic !== true &&
-                (!before?.sourceId ||
-                  (before.sourceId === event.sourceId &&
-                    before.sourceAgentId === event.payload.sourceAgentId))
-              ) {
-                agents.set(event.agentId, {
-                  id: event.agentId,
-                  name: event.payload.displayName,
-                  sourceId: event.sourceId,
-                  sourceAgentId: event.payload.sourceAgentId,
-                });
-              }
-            }
-            // Only recorded event facts become markers. Late prompts cannot open needs-you.
-            const marker =
-              event.type === "request.opened" && !event.late
-                ? event.payload.heuristic === true
-                  ? "Possibly needs you"
-                  : "Needs you"
-                : event.type === "task.status_changed" && event.payload.status === "completed"
-                  ? "Task completed"
-                  : timeline.kind === "archive"
-                    ? gitMarker(event)
-                    : event.type === "git.commit"
-                      ? "Commit"
-                      : undefined;
-            moments.push({
-              sequence: expected++,
-              time,
-              agentId: event.agentId,
-              marker,
-              requestId:
-                event.type === "request.opened" && !event.late
-                  ? event.payload.requestId
-                  : undefined,
-            });
-          }
-          cursor = page.nextCursor;
-          if (cursor !== null) {
-            if (
-              typeof cursor !== "string" ||
-              !cursor ||
-              cursors.has(cursor) ||
-              expected > lastSequence
-            )
-              throw new Error("cursor");
-            cursors.add(cursor);
-          }
-        } while (cursor !== null);
-        if (
-          expected !== lastSequence + 1 ||
-          moments[0]?.time !== first ||
-          moments.at(-1)?.time !== last
-        )
-          throw new Error("events");
+        // A long archive loads its newest window; the rest loads when seeking or playing into it.
+        const start = windowed(timeline)
+          ? Math.max(firstSequence, lastSequence - WINDOW_EVENTS + 1)
+          : firstSequence;
+        loaded = timeline;
+        const walked = await walk(timeline, start, lastSequence, target);
+        if (!walked) return;
+        const { taskStart } = walked;
+        moments = walked.moments;
+        recorded = walked.recorded;
         if (target && !taskStart) throw new Error("task creation unavailable");
         explicitSeek = true;
         controller = createHistoryStore({
@@ -383,7 +459,10 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           secret,
           fetch,
           now: () => Date.now(),
-          moments,
+          moments: () => moments,
+          compressGaps: timeline.kind === "archive",
+          lastSequence,
+          extend,
         });
         unsubscribeHistory = controller.subscribe((state, before) => {
           clearInterval(timer);
@@ -418,7 +497,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
               fidelity = {
                 ...fidelity,
                 revision: fidelity.revision + 1,
-                events: recorded.slice(presentedSequence, sequence),
+                events: recorded.slice(recordedUpTo(presentedSequence), recordedUpTo(sequence)),
               };
             }
             presentedSequence = sequence;
@@ -447,6 +526,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
           crew: crewRuns(recorded, (event) => momentTime(timeline, event)),
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
+        // Archives finishing while history is open join the picker; cancel() stops this on exit.
+        clearInterval(refreshTimer);
+        refreshTimer = setInterval(() => void refresh(), refreshEvery.current);
         await controller
           .getState()
           .seekSequence(taskStart?.sequence ?? lastSequence, taskStart?.time ?? last);

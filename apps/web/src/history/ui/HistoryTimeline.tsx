@@ -1,8 +1,68 @@
 import { useMemo, useState } from "react";
-import { GIT_GLYPH } from "../archives/archive-timelines.ts";
+import { compressedGaps, GAP_PLAYBACK_MS, GIT_GLYPH } from "../archives/archive-timelines.ts";
 import { CrewBars } from "./crew-bars.tsx";
-import { useHistoryPresentation } from "./HistoryProvider.tsx";
+import { type RecordedMoment, useHistoryPresentation } from "./HistoryProvider.tsx";
 import styles from "./history.module.css";
+
+/** The strip never draws more than this many markers or gaps, however long the recording. */
+const MAX_MARKERS = 200;
+const MAX_GAPS = 100;
+const MAX_DAYS = 12;
+/** When markers are aggregated, the one that stands for a bucket. */
+const PRIORITY = [
+  "Needs you",
+  "Possibly needs you",
+  "Task completed",
+  "Git merge",
+  "Git ref moved",
+  "Git commit",
+  "Commit",
+];
+
+type Marker = NonNullable<RecordedMoment["marker"]>;
+
+const glyph = (marker: Marker) =>
+  marker === "Commit"
+    ? "●"
+    : marker === "Git commit" || marker === "Git ref moved" || marker === "Git merge"
+      ? GIT_GLYPH[marker]
+      : marker === "Needs you" || marker === "Possibly needs you"
+        ? "!"
+        : "✓";
+
+/** One marker, or a bucket of neighbours once there are more markers than the strip can hold. */
+interface MarkerBucket {
+  readonly moments: RecordedMoment[];
+  readonly kinds: Map<Marker, number>;
+}
+
+function bucketMarkers(markers: readonly RecordedMoment[]): MarkerBucket[] {
+  if (markers.length <= MAX_MARKERS)
+    return markers.map((moment) => ({
+      moments: [moment],
+      kinds: new Map<Marker, number>([[moment.marker as Marker, 1]]),
+    }));
+  const low = markers[0]?.sequence ?? 0;
+  const span = (markers.at(-1)?.sequence ?? low) - low + 1;
+  const buckets = new Map<number, MarkerBucket>();
+  for (const moment of markers) {
+    const index = Math.floor(((moment.sequence - low) / span) * MAX_MARKERS);
+    const bucket: MarkerBucket = buckets.get(index) ?? { moments: [], kinds: new Map() };
+    bucket.moments.push(moment);
+    bucket.kinds.set(moment.marker as Marker, (bucket.kinds.get(moment.marker as Marker) ?? 0) + 1);
+    buckets.set(index, bucket);
+  }
+  return [...buckets.values()];
+}
+
+/** The first and last day always show; a long recording keeps an even sample between. */
+function dayLabels(days: readonly string[]): string[] {
+  if (days.length <= MAX_DAYS) return [...days];
+  return Array.from(
+    { length: MAX_DAYS },
+    (_, index) => days[Math.round((index * (days.length - 1)) / (MAX_DAYS - 1))] as string,
+  );
+}
 
 /** Filtering changes displayed facts and step targets, never the replayed project. */
 export function HistoryTimeline() {
@@ -27,11 +87,33 @@ export function HistoryTimeline() {
   );
   const first = history.range?.first ?? 1;
   const span = Math.max(1, (history.range?.last ?? first) - first);
-  const days = new Map<string, number>();
-  for (const moment of history.moments) {
-    const day = new Date(moment.time).toLocaleDateString();
-    if (!days.has(day)) days.set(day, moment.sequence);
-  }
+  // Only a window of a long archive is loaded, so its first and last day come from the timeline.
+  const timeline = history.timeline;
+  const days = new Set<string>();
+  const noteDay = (time: number) => {
+    if (Number.isFinite(time)) days.add(new Date(time).toLocaleDateString());
+  };
+  if (timeline) noteDay(Date.parse(timeline.firstAt));
+  for (const moment of history.moments) noteDay(moment.time);
+  if (timeline) noteDay(Date.parse(timeline.lastAt));
+  const gaps = useMemo(
+    () =>
+      timeline?.kind === "archive"
+        ? compressedGaps(history.moments)
+            .sort((a, b) => b.to - b.from - (a.to - a.from))
+            .slice(0, MAX_GAPS)
+            .sort((a, b) => a.sequence - b.sequence)
+        : [],
+    [history.moments, timeline?.kind],
+  );
+  const buckets = useMemo(
+    () => bucketMarkers(moments.filter((moment) => moment.marker)),
+    [moments],
+  );
+  const strip = [
+    ...buckets.map((bucket) => ({ sequence: bucket.moments[0]?.sequence ?? 0, bucket })),
+    ...gaps.map((gap) => ({ sequence: gap.sequence - 0.5, gap })),
+  ].sort((a, b) => a.sequence - b.sequence);
   // Fixed bins along ingest order keep equal or regressing receipt clocks reachable.
   const bins = Array<number>(Math.min(64, Math.max(1, history.moments.length)))
     .fill(0)
@@ -48,7 +130,7 @@ export function HistoryTimeline() {
     <>
       <div className={styles.recording}>
         <div className={styles.days}>
-          {[...days].map(([day]) => (
+          {dayLabels([...days]).map((day) => (
             <span key={day}>{day}</span>
           ))}
         </div>
@@ -74,32 +156,49 @@ export function HistoryTimeline() {
             <CrewBars key={parentId} runs={crew} parentId={parentId} range={range} />
           ))}
         <div className={styles.markers}>
-          {moments
-            .filter((moment) => moment.marker)
-            .map((moment) => {
-              const label = `${moment.marker} · ${new Date(moment.time).toLocaleString()}${moment.agentId ? ` · ${names.get(moment.agentId) ?? moment.agentId}` : ""}`;
+          {strip.map((item) => {
+            if ("gap" in item) {
+              const { gap } = item;
+              const label = `Gap of ${Math.round((gap.to - gap.from) / 86_400_000) || "less than 1"} days compressed to ${GAP_PLAYBACK_MS / 1000} seconds · ${new Date(gap.from).toLocaleString()} to ${new Date(gap.to).toLocaleString()}`;
               return (
-                <button
-                  key={moment.sequence}
-                  type="button"
-                  data-marker={moment.marker}
+                <span
+                  key={`gap-${gap.sequence}`}
+                  role="img"
+                  data-gap
                   aria-label={label}
                   title={label}
-                  aria-pressed={sequence === moment.sequence}
-                  onClick={() => history.seek(moment.sequence)}
                 >
-                  {moment.marker === "Commit"
-                    ? "●"
-                    : moment.marker === "Git commit" ||
-                        moment.marker === "Git ref moved" ||
-                        moment.marker === "Git merge"
-                      ? GIT_GLYPH[moment.marker]
-                      : moment.marker === "Needs you" || moment.marker === "Possibly needs you"
-                        ? "!"
-                        : "✓"}
-                </button>
+                  ⋯
+                </span>
               );
-            })}
+            }
+            const { bucket } = item;
+            const [head] = bucket.moments;
+            const tail = bucket.moments.at(-1);
+            if (!head || !tail) return null;
+            const kind =
+              bucket.moments.length === 1
+                ? (head.marker as Marker)
+                : ((PRIORITY.find((name) => bucket.kinds.has(name as Marker)) ??
+                    head.marker) as Marker);
+            const label =
+              bucket.moments.length === 1
+                ? `${head.marker} · ${new Date(head.time).toLocaleString()}${head.agentId ? ` · ${names.get(head.agentId) ?? head.agentId}` : ""}`
+                : `${bucket.moments.length} markers · ${new Date(head.time).toLocaleString()} to ${new Date(tail.time).toLocaleString()}: ${[...bucket.kinds].map(([name, count]) => `${count} ${name}`).join(", ")}`;
+            return (
+              <button
+                key={head.sequence}
+                type="button"
+                data-marker={kind}
+                aria-label={label}
+                title={label}
+                aria-pressed={sequence >= head.sequence && sequence <= tail.sequence}
+                onClick={() => history.seek(head.sequence)}
+              >
+                {glyph(kind)}
+              </button>
+            );
+          })}
         </div>
       </div>
       <label htmlFor="history-agent">Agent</label>
