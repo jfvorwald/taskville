@@ -76,6 +76,14 @@ export function HistoryTimeline() {
   const sequence = history.sequence ?? 0;
   const previous = moments.findLast((moment) => moment.sequence < sequence);
   const next = moments.find((moment) => moment.sequence > sequence);
+  // At a window boundary an unfiltered view can still step to events that are not loaded yet.
+  const bounds = history.range;
+  const before =
+    !selected && !previous && bounds && sequence > bounds.first ? sequence - 1 : undefined;
+  const after =
+    !selected && !next && bounds && sequence > 0 && sequence < bounds.last
+      ? sequence + 1
+      : undefined;
   const names = new Map(history.agents.map((agent) => [agent.id, agent.name]));
   const range = history.range;
   const crew = useMemo(
@@ -216,12 +224,22 @@ export function HistoryTimeline() {
       </select>
       <button
         type="button"
-        disabled={!previous}
-        onClick={() => previous && history.seek(previous.sequence)}
+        disabled={!previous && before === undefined}
+        onClick={() => {
+          const target = previous?.sequence ?? before;
+          if (target !== undefined) history.seek(target);
+        }}
       >
         Previous moment
       </button>
-      <button type="button" disabled={!next} onClick={() => next && history.seek(next.sequence)}>
+      <button
+        type="button"
+        disabled={!next && after === undefined}
+        onClick={() => {
+          const target = next?.sequence ?? after;
+          if (target !== undefined) history.seek(target);
+        }}
+      >
         Next moment
       </button>
     </>

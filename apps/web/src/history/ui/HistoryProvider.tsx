@@ -208,10 +208,24 @@ export function HistoryProvider({
           const to = Math.min(range.last, from + WINDOW_EVENTS - 1);
           const chunk = await walk(loaded, from, to);
           if (!chunk || requestGeneration !== generation || seekToken !== seekGeneration) return;
+          // The new window is installed for the seek to validate against, but only published
+          // once the state read succeeds; a failure restores the window still on screen.
+          const before = { moments, recorded };
           moments = chunk.moments;
           recorded = chunk.recorded;
-          publishWindow();
-          moment = moments.find((item) => item.sequence === sequence);
+          try {
+            moment = moments.find((item) => item.sequence === sequence);
+            if (!moment) throw new Error("events");
+            await store.getState().seekSequence(moment.sequence, moment.time);
+          } catch (error) {
+            if (moments === chunk.moments) {
+              moments = before.moments;
+              recorded = before.recorded;
+            }
+            throw error;
+          }
+          if (moments === chunk.moments) publishWindow();
+          return;
         }
         if (!moment) throw new Error("events");
         await store.getState().seekSequence(moment.sequence, moment.time);
