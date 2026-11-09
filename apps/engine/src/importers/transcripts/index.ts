@@ -17,6 +17,8 @@ import type { ImportBatch, ImportContext, ImportCounts, Importer } from "../type
 
 /** Lines mapped before a batch is yielded, which is also how often abort is checked. */
 const BATCH_LINES = 500;
+/** Default bytes parsed before a batch is yielded, so a few huge lines do not hold the event loop. */
+const DEFAULT_YIELD_BYTES = 4 * 1024 * 1024;
 
 /** Default cap on one line; a longer line is counted malformed and never buffered whole. */
 const DEFAULT_MAX_LINE_BYTES = 8 * 1024 * 1024;
@@ -151,8 +153,11 @@ function fileIdOf(file: string): string {
   return `${name.slice(0, FILE_ID_MAX - 13)}~${hash}`;
 }
 
-export function createTranscriptImporter(options: { maxLineBytes?: number } = {}): Importer {
+export function createTranscriptImporter(
+  options: { maxLineBytes?: number; yieldBytes?: number } = {},
+): Importer {
   const maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
+  const yieldBytes = options.yieldBytes ?? DEFAULT_YIELD_BYTES;
   return {
     kind: "transcripts",
     async *run(context: ImportContext): AsyncGenerator<ImportBatch, ImportCounts, void> {
@@ -192,6 +197,7 @@ export function createTranscriptImporter(options: { maxLineBytes?: number } = {}
         });
         let batch: ImportBatch = { events: [] };
         let lines = 0;
+        let bytes = 0;
         let lineNumber = 0;
         const take = (result: { events: ImportBatch["events"]; evidence?: ToolEvidence[] }) => {
           batch.events.push(...result.events);
@@ -207,18 +213,21 @@ export function createTranscriptImporter(options: { maxLineBytes?: number } = {}
             counts.read += 1;
             if (raw === OVERLONG) {
               counts.malformed += 1;
+              bytes += maxLineBytes;
             } else {
+              bytes += Buffer.byteLength(raw);
               const result = mapper.mapLine(raw, lineNumber);
               if (result.outcome === "skipped") counts.skipped += 1;
               if (result.outcome === "malformed") counts.malformed += 1;
               take(result);
             }
             lines += 1;
-            if (lines >= BATCH_LINES) {
+            if (lines >= BATCH_LINES || bytes >= yieldBytes) {
               report();
               yield batch;
               batch = { events: [] };
               lines = 0;
+              bytes = 0;
               if (context.signal.aborted) {
                 aborted = true;
                 break;

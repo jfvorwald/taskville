@@ -35,6 +35,8 @@ export const MAX_EVIDENCE_ITEM_BYTES = 1024 * 1024;
 export const MAX_EVIDENCE_BYTES = 64 * 1024 * 1024;
 /** How long `close` waits for an importer that ignores its signal. */
 export const CLOSE_TIMEOUT_MS = 5000;
+/** Done archives kept per project, kind and root; older ones are pruned after a new import. */
+export const KEEP_ARCHIVES = 5;
 const MAX_LABEL_LENGTH = 100;
 
 export type ImportRefusalCode =
@@ -70,6 +72,10 @@ export interface ImportStatus {
 /** Where an import's tool bodies go, scoped to its archive (the evidence store). */
 export interface ArchiveEvidenceSink {
   store(projectId: string, evidence: readonly ToolEvidence[], archiveId?: string): void;
+  /** True once archive evidence has reached its cap; a new import's evidence is then dropped. */
+  archiveEvidenceFull?(): boolean;
+  /** Removes the evidence of one archive. */
+  deleteArchive?(projectId: string, archiveId: string): void;
 }
 
 export interface ImportJobsOptions {
@@ -89,6 +95,8 @@ export interface ImportJobsOptions {
   maxEvidenceBytes?: number;
   /** `close` stops waiting for an importer after this long. Default 5 s. */
   closeTimeoutMs?: number;
+  /** Done archives kept per project, kind and root. Default 5. */
+  keepArchives?: number;
   logger?: Logger;
 }
 
@@ -205,6 +213,7 @@ export class ImportJobs {
   readonly #maxEvidenceItemBytes: number;
   readonly #maxEvidenceBytes: number;
   readonly #closeTimeoutMs: number;
+  readonly #keepArchives: number;
   readonly #logger: Logger | undefined;
   readonly #jobs = new Map<string, Job>();
   /** Jobs that have started and not yet been recorded: one import runs engine-wide. */
@@ -221,6 +230,7 @@ export class ImportJobs {
     this.#maxEvidenceItemBytes = options.maxEvidenceItemBytes ?? MAX_EVIDENCE_ITEM_BYTES;
     this.#maxEvidenceBytes = options.maxEvidenceBytes ?? MAX_EVIDENCE_BYTES;
     this.#closeTimeoutMs = options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS;
+    this.#keepArchives = options.keepArchives ?? KEEP_ARCHIVES;
     this.#logger = options.logger;
     // An import left running belonged to an engine that died; it has no events and never will.
     const interrupted = this.#storage.archives().failInterrupted(this.#now().toISOString());
@@ -352,9 +362,11 @@ export class ImportJobs {
       if (signal.aborted || final === undefined) {
         outcome = "cancel";
       } else {
+        this.#applyArchiveCap(tally);
         this.#write(id, final, tally);
         this.#release(id, job);
         this.#storeEvidence(projectId, id, tally);
+        this.#prune(projectId, job.kind, root);
       }
     } catch (error) {
       this.#logger?.warn({ errName: errName(error) }, "import failed");
@@ -537,6 +549,26 @@ export class ImportJobs {
     } catch (error) {
       this.#logger?.warn({ errName: errName(error) }, "archive write failed");
       throw new WriteFailure();
+    }
+  }
+
+  /** Drops the staged evidence when archive evidence has already reached its cap. */
+  #applyArchiveCap(tally: Tally): void {
+    if (tally.evidence.length === 0 || !this.#evidence?.archiveEvidenceFull?.()) return;
+    tally.evidenceDropped += tally.evidence.length;
+    tally.evidence = [];
+  }
+
+  /** Deletes the done archives of this project, kind and root beyond the newest `keepArchives`. */
+  #prune(projectId: string, kind: ArchiveKind, root: string): void {
+    try {
+      const archives = this.#storage.archives();
+      for (const id of archives.listDoneIds(projectId, kind, root).slice(this.#keepArchives)) {
+        archives.delete(id);
+        this.#evidence?.deleteArchive?.(projectId, id);
+      }
+    } catch (error) {
+      this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
     }
   }
 

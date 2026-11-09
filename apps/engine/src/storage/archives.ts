@@ -111,6 +111,9 @@ export class SqliteArchives {
   readonly #get: Statement;
   readonly #running: Statement;
   readonly #listDone: Statement;
+  readonly #listDoneFor: Statement;
+  readonly #deleteEvents: Statement;
+  readonly #deleteArchive: Statement;
   readonly #finish: Statement;
   readonly #interrupt: Statement;
   readonly #insertEvent: Statement;
@@ -132,6 +135,12 @@ export class SqliteArchives {
       `SELECT * FROM archives WHERE project_id = ? AND status = 'done'
        ORDER BY created_at DESC, rowid DESC`,
     );
+    this.#listDoneFor = db.prepare(
+      `SELECT id FROM archives WHERE project_id = ? AND kind = ? AND root = ? AND status = 'done'
+       ORDER BY created_at DESC, rowid DESC`,
+    );
+    this.#deleteEvents = db.prepare("DELETE FROM archive_events WHERE archive_id = ?");
+    this.#deleteArchive = db.prepare("DELETE FROM archives WHERE id = ?");
     this.#finish = db.prepare(
       `UPDATE archives SET status = ?, finished_at = ?, counts_json = ?, error = ?,
          event_count = ?, first_at = ?, last_at = ?
@@ -186,6 +195,21 @@ export class SqliteArchives {
   /** The project's finished archives (`done` only), newest first. */
   listDone(projectId: string): ArchiveRecord[] {
     return (this.#listDone.all(projectId) as unknown as ArchiveRow[]).map(toArchive);
+  }
+
+  /** IDs of the done archives of one project, kind and root, newest first. */
+  listDoneIds(projectId: string, kind: ArchiveKind, root: string): string[] {
+    return (this.#listDoneFor.all(projectId, kind, root) as unknown as { id: string }[]).map(
+      (row) => row.id,
+    );
+  }
+
+  /** Deletes an archive and its events. */
+  delete(id: string): void {
+    this.#transaction(() => {
+      this.#deleteEvents.run(id);
+      this.#deleteArchive.run(id);
+    });
   }
 
   /**
