@@ -59,13 +59,7 @@ function setSlider(value: number) {
 type Rewrite = (sequence: number, event: Record<string, unknown>) => Record<string, unknown>;
 
 /** The scale archive, with chosen events rewritten and state reads for chosen positions held or failed. */
-async function open(
-  options: {
-    rewrite?: Rewrite;
-    holdState?: number;
-    failState?: number;
-  } = {},
-) {
+async function open(options: { rewrite?: Rewrite; holdState?: number; failState?: number } = {}) {
   const base = scaleEngine();
   const seen = { held: false };
   let release = () => {};
