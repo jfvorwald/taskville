@@ -371,9 +371,10 @@ export class ImportJobs {
       if (signal.aborted || final === undefined) {
         outcome = "cancel";
       } else {
-        this.#applyArchiveCap(projectId, job.kind, root, tally);
-        this.#write(id, final, tally);
+        const counts = this.#write(id, final, tally);
         this.#release(id, job);
+        // Only now, with the new archive committed, may old evidence be deleted to make room.
+        this.#applyArchiveCap(projectId, id, job.kind, root, tally, counts);
         this.#storeEvidence(projectId, id, tally);
         this.#prune(projectId, job.kind, root);
       }
@@ -533,7 +534,7 @@ export class ImportJobs {
   }
 
   /** Sorts, positions, and writes the archive in one transaction. */
-  #write(id: string, final: ImportCounts, tally: Tally): void {
+  #write(id: string, final: ImportCounts, tally: Tally): ArchiveCounts {
     const sorted = [...tally.kept].sort(
       (a, b) =>
         compare(a.ms, b.ms) ||
@@ -559,29 +560,51 @@ export class ImportJobs {
       this.#logger?.warn({ errName: errName(error) }, "archive write failed");
       throw new WriteFailure();
     }
+    return counts;
   }
 
-  /** Drops the staged evidence bodies that do not fit what is left of the archive evidence cap. */
-  #applyArchiveCap(projectId: string, kind: ArchiveKind, root: string, tally: Tally): void {
+  /**
+   * After the new archive is committed: drops the staged evidence bodies that do not fit what is
+   * left of the archive evidence cap, and records them in the archive's counts.
+   */
+  #applyArchiveCap(
+    projectId: string,
+    id: string,
+    kind: ArchiveKind,
+    root: string,
+    tally: Tally,
+    counts: ArchiveCounts,
+  ): void {
     const evidence = this.#evidence;
     if (tally.evidence.length === 0 || !evidence?.fitArchiveEvidence) return;
-    // Archives that the new one will push out of retention make room for it, but only once their
-    // evidence is actually deleted: a failed deletion credits nothing.
-    if (evidence.deleteArchive) {
-      for (const id of this.#storage
-        .archives()
-        .listDoneIds(projectId, kind, root)
-        .slice(Math.max(0, this.#keepArchives - 1))) {
-        try {
-          evidence.deleteArchive(projectId, id, { keepPointers: true });
-        } catch (error) {
-          this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+    try {
+      // Archives beyond retention make room, but only once their evidence is actually deleted: a
+      // failed deletion credits nothing. Their rows go in `#prune`.
+      if (evidence.deleteArchive) {
+        for (const old of this.#storage
+          .archives()
+          .listDoneIds(projectId, kind, root)
+          .slice(this.#keepArchives)) {
+          try {
+            evidence.deleteArchive(projectId, old, { keepPointers: true });
+          } catch (error) {
+            this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+          }
         }
       }
+      const fit = evidence.fitArchiveEvidence(tally.evidence);
+      tally.evidence = fit.evidence;
+      if (fit.dropped > 0) {
+        this.#storage.archives().updateCounts(id, {
+          ...counts,
+          evidenceDropped: (counts.evidenceDropped ?? 0) + fit.dropped,
+        });
+      }
+    } catch (error) {
+      // The archive is committed; its evidence is not stored rather than risk the cap.
+      this.#logger?.warn({ errName: errName(error) }, "import evidence not stored");
+      tally.evidence = [];
     }
-    const fit = evidence.fitArchiveEvidence(tally.evidence);
-    tally.evidenceDropped += fit.dropped;
-    tally.evidence = fit.evidence;
   }
 
   /** Deletes the done archives of this project, kind and root beyond the newest `keepArchives`. */
