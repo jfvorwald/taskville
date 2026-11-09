@@ -18,6 +18,8 @@ export interface HistoryState {
   play(): void;
   pause(): void;
   setRate(rate: ReplayRate): void;
+  /** Drops any state read still in flight; the presented state stays as it is. */
+  cancelRead(): void;
   /** Scheduling belongs to the caller. */
   tick(): Promise<void>;
   returnLive(): void;
@@ -191,6 +193,11 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       if (pendingPlayback) cancel();
       anchor();
       set({ rate });
+    },
+    cancelRead: () => {
+      if (disposed) return;
+      cancel();
+      anchor();
     },
     tick: async () => {
       // Leave an explicit seek or playback read in flight. The next scheduled tick includes

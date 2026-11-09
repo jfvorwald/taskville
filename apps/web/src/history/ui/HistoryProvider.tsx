@@ -213,6 +213,8 @@ export function HistoryProvider({
       const seekToken = ++seekGeneration;
       explicitSeek = true;
       controller.getState().pause();
+      // A state read still pending from an earlier seek must not move the city once this one began.
+      controller.getState().cancelRead();
       const requestGeneration = generation;
       const store = controller;
       // An earlier seek's candidate window is dropped; this seek starts from what is on screen.
@@ -379,29 +381,38 @@ export function HistoryProvider({
       });
       void scanCrew();
     }
-    /** Whether an agent finishes in the window with no registration recorded for it. */
-    function unregistered() {
+    /**
+     * Whether a run is still unresolved: a finish with no recorded registration (a heuristic one
+     * never forms a run), or a run that started before the window with no finish seen yet.
+     */
+    function unresolved(timeline: TimelineChoice) {
+      const start = published.moments[0]?.sequence ?? 1;
       const registered = new Set<string>();
-      for (const event of crewHistory)
-        if (event.type === "agent.registered" && event.agentId) registered.add(event.agentId);
-      for (const event of published.recorded)
-        if (event.type === "agent.registered" && event.agentId) registered.add(event.agentId);
-      return published.recorded.some(
-        (event) =>
-          event.type === "agent.finished" && event.agentId && !registered.has(event.agentId),
+      const finished = new Set<string>();
+      for (const list of [crewHistory, published.recorded])
+        for (const event of list) {
+          if (!event.agentId) continue;
+          if (event.type === "agent.registered" && event.payload.heuristic !== true)
+            registered.add(event.agentId);
+          else if (event.type === "agent.finished") finished.add(event.agentId);
+        }
+      for (const id of finished) if (!registered.has(id)) return true;
+      return crewNow(timeline).some(
+        (run) => run.startSequence < start && run.finishedSequence === undefined,
       );
     }
+    const agentList = () => [...agents.values()].map(({ id, name }) => ({ id, name }));
     /** Reads the events before the window, oldest first, until every finish has its registration. */
     async function scanCrew() {
       const timeline = loaded;
       const requestGeneration = generation;
-      if (!timeline || crewScanning || !unregistered()) return;
+      if (!timeline || crewScanning || !unresolved(timeline)) return;
       crewScanning = true;
       try {
         while (
           loaded === timeline &&
           requestGeneration === generation &&
-          unregistered() &&
+          unresolved(timeline) &&
           crewScanned < (published.moments[0]?.sequence ?? 1) - 1
         ) {
           const from = crewScanned + 1;
@@ -414,7 +425,7 @@ export function HistoryProvider({
               (event) => event.type === "agent.registered" || event.type === "agent.finished",
             ),
           );
-          publish({ crew: crewNow(timeline) });
+          publish({ crew: crewNow(timeline), agents: agentList() });
         }
       } catch {
         // The runs on screen stay valid; a later window tries again.
