@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-238: A shared contract file lets dependent tickets start in parallel
+- **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #463 · **Recorded by:** lead
+- **What happened:** The lead pushed a design note and an `Importer` interface (3f20bb8) before any code; the Git importer, the transcript importer and the archive foundation branched from that commit and merged without conflicts.
+- **Lesson:** When several tickets need a component none of them owns, write the interface and the design first, push it, and branch everyone from it.
+- **Action:** docs/superpowers/specs/2026-11-08-imports-design.md; apps/engine/src/importers/types.ts.
+
+### L-237: Red tests can be wrong in ways only green reveals
+- **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #92, #463, #475 · **Recorded by:** lead
+- **What happened:** Implementers found red tests that could never pass: a label used unescaped in a RegExp, `toHaveTextContent` used as a substring match (it is exact in this vitest), a controlled slider read without polling, tool events missing a required `agentId`, a row locator that matched the empty-list row.
+- **Lesson:** Test-writers should run each new assertion against a hand-made passing fixture before handing over, and prefer web-first or polling matchers for anything async.
+- **Action:** none, awareness only.
+
+### L-236: Imported evidence must be scoped away from live evidence
+- **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #463 · **Recorded by:** lead
+- **What happened:** Review found import evidence written eagerly into the shared per-project store, where it could evict live bodies, shadow a live tool call id, or survive a failed import; later a crafted evidence id could reach the archive scope through the live route.
+- **Lesson:** Keep imported data in its own scope end to end (storage key, budget, read route) and validate every component of an id that selects a scope.
+- **Action:** #466, #484; follow-up #485.
+
+### L-235: `mkdir` is only a lock where `mkdir` is atomic
+- **Date:** 2026-11-08 · **Milestone:** M7 · **Ticket:** #472 · **Recorded by:** lead (M7.32, debugger)
+- **What happened:** CI's ubuntu-26.04 ships uutils coreutils 0.8.0, whose `mkdir` can exit 0 for a directory that already exists, so two hook shims held the spool lock at once and corrupted the spool; it showed up as a flaky test 11 times over a week.
+- **Lesson:** Confirm lock ownership with an exclusive create (`set -C` file, `O_EXCL`), and when a flake recurs after a fix, collect every CI failure message before patching.
+- **Action:** #490.
+
 ### L-234: A test that starts failing with no related change may be a real race
 - **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #459 · **Recorded by:** lead (M9.10)
 - **What happened:** The LiveEvidenceWindow navigation test failed in the wave, alone, and then in CI on a docs-only PR, though nothing nearby had changed. Clock pinning ruled out a date dependency; a write trap on `scrollTop` showed the follow effect pinning over the reader's scroll whenever a render landed before the scroll event.
