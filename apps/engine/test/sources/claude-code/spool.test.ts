@@ -1,12 +1,15 @@
 // M2.07: spool ingest on engine start (ARCHITECTURE.md 8.1). The spool format
 // is the one the shim writes (apps/cli/hooks/claude-code-shim.sh header).
 
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -22,7 +25,7 @@ import { mapClaudeCodeHook } from "@taskville/adapters/claude-code";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { attention } from "@taskville/domain/selectors";
 import pino from "pino";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IngestPipeline } from "../../../src/ingest/index.ts";
 import {
   CLAUDE_CODE_HOOKS_PATH,
@@ -37,6 +40,61 @@ import {
 import { bearer, CLI_TOKEN, makeApp, postJson } from "../../http/helpers.ts";
 import { fixedNow, makeSource, T0, useProjects } from "./helpers.ts";
 
+/**
+ * Seams in node:fs for the lock races of M7.32, pass-through unless a test sets them.
+ * `afterMkdir` runs right after a mkdirSync succeeds: there a shim whose mkdir(1) is not
+ * atomic (uutils coreutils 0.8.0, Ubuntu 26.04) can report success for the same directory
+ * and create its pid file first. `lockPidGone` runs right after the engine's lock pid file
+ * is removed and before the directory is.
+ */
+const seam = vi.hoisted(() => ({
+  afterMkdir: undefined as ((path: string) => void) | undefined,
+  lockPidGone: undefined as ((lock: string) => void) | undefined,
+}));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const path = await import("node:path");
+  const LOCK_DIR = "claude-code.lock";
+  return {
+    ...real,
+    mkdirSync: ((...args: Parameters<typeof real.mkdirSync>) => {
+      const made = real.mkdirSync(...args);
+      seam.afterMkdir?.(String(args[0]));
+      return made;
+    }) as typeof real.mkdirSync,
+    unlinkSync: (target: Parameters<typeof real.unlinkSync>[0]) => {
+      real.unlinkSync(target);
+      const dir = path.dirname(String(target));
+      if (path.basename(String(target)) === "pid" && path.basename(dir) === LOCK_DIR) {
+        seam.lockPidGone?.(dir);
+      }
+    },
+    // A recursive rm removes the entries and then the directory; the gap between is modelled.
+    rmSync: (
+      target: Parameters<typeof real.rmSync>[0],
+      options?: Parameters<typeof real.rmSync>[1],
+    ) => {
+      const pid = path.join(String(target), "pid");
+      if (seam.lockPidGone && path.basename(String(target)) === LOCK_DIR && real.existsSync(pid)) {
+        real.unlinkSync(pid);
+        seam.lockPidGone(String(target));
+      }
+      real.rmSync(target, options);
+    },
+  };
+});
+
+const SHIM = join(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "cli",
+  "hooks",
+  "claude-code-shim.sh",
+);
+
 const db = useProjects([{ id: "repo", roots: ["/work/repo"] }]);
 
 let spoolDir = "";
@@ -46,7 +104,11 @@ beforeEach(() => {
   spoolDir = join(root, "spool");
   mkdirSync(spoolDir, { mode: 0o700 });
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+  seam.afterMkdir = undefined;
+  seam.lockPidGone = undefined;
+  rmSync(root, { recursive: true, force: true });
+});
 
 const SPOOLED_AT = "2026-10-31T09:15:00Z";
 
@@ -638,6 +700,129 @@ describe("replaySpool", () => {
     });
     expect(report).toMatchObject({ mainFile: "claimed", hooks: 1 });
     expect(spoolNames()).toEqual([]);
+  });
+
+  it("never claims the main file while a shim that won the pid race holds the lock", async () => {
+    // M7.32: under uutils mkdir 0.8.0 a shim can report success for the directory the engine
+    // just made and create the pid file first. A copy of the real shim pauses holding it.
+    const script = readFileSync(SHIM, "utf8");
+    const taken = "  lock_held=yes\n";
+    expect(script.split(taken)).toHaveLength(2);
+    const paused = join(root, "paused-shim.sh");
+    writeFileSync(
+      paused,
+      script.replace(
+        taken,
+        `${taken}  : >"$home/taken"; while [ ! -e "$home/go" ]; do sleep 0.01; done\n`,
+      ),
+    );
+    const real = spawnSync("sh", ["-c", "command -v mkdir"], { encoding: "utf8" }).stdout.trim();
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, "mkdir"),
+      `#!/bin/sh\nfor d; do :; done\n'${real}' "$@" 2>/dev/null || [ -d "$d" ]\n`,
+    );
+    chmodSync(join(bin, "mkdir"), 0o755);
+    writeFileSync(join(root, "hook.json"), JSON.stringify(hook()));
+    writeFileSync(main(), line(), { mode: 0o600 });
+
+    let shim: ChildProcess | undefined;
+    let exited: Promise<unknown> = Promise.resolve();
+    seam.afterMkdir = (path) => {
+      if (shim !== undefined || path !== join(spoolDir, "claude-code.lock")) return;
+      const input = openSync(join(root, "hook.json"), "r");
+      shim = spawn("/bin/sh", [paused], {
+        env: {
+          PATH: `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+          HOME: root,
+          TASKVILLE_HOME: root,
+        },
+        stdio: [input, "ignore", "ignore"],
+      });
+      closeSync(input);
+      const child = shim;
+      exited = new Promise((resolve) => child.on("exit", resolve));
+      // Synchronous on purpose: the engine is between its mkdir and its pid write.
+      spawnSync("sh", [
+        "-c",
+        'i=0; while [ ! -e "$1" ] && [ "$i" -lt 1000 ]; do sleep 0.01; i=$((i + 1)); done',
+        "sh",
+        join(root, "taken"),
+      ]);
+    };
+    try {
+      const { source, mapper } = makeSource(db());
+      const report = await replaySpool({ spoolDir, source, lockWaitMs: 300 });
+      seam.afterMkdir = undefined;
+
+      expect(shim?.pid).toBeDefined();
+      expect(report.mainFile).toBe("busy");
+      expect(mapper.calls).toHaveLength(0);
+      const pid = readFileSync(join(spoolDir, "claude-code.lock", "pid"), "utf8");
+      expect(pid).toBe(`${shim?.pid}\n`);
+      // The shim appends and releases; the next replay takes the main file with both hooks.
+      writeFileSync(join(root, "go"), "");
+      await exited;
+      const again = await replaySpool({ spoolDir, source, lockWaitMs: 300 });
+      expect(again).toMatchObject({ mainFile: "claimed", hooks: 2 });
+      expect(spoolNames()).toEqual([]);
+    } finally {
+      shim?.kill();
+    }
+  }, 15_000);
+
+  it("never breaks a lock while a shim holds the break lock it claimed first", async () => {
+    const lock = join(spoolDir, "claude-code.lock");
+    mkdirSync(lock, { mode: 0o700 });
+    const dead = spawn("true", { stdio: "ignore" });
+    await new Promise((resolve) => dead.on("exit", resolve));
+    writeFileSync(join(lock, "pid"), `${dead.pid}\n`);
+    writeFileSync(main(), line(), { mode: 0o600 });
+    const holder = spawn("sleep", ["30"], { stdio: "ignore" });
+    try {
+      const breaker = `${lock}.break`;
+      // A shim whose mkdir is not atomic claims the break lock the engine just made.
+      seam.afterMkdir = (path) => {
+        if (path === breaker && !existsSync(join(breaker, "pid"))) {
+          writeFileSync(join(breaker, "pid"), `${holder.pid}\n`, { flag: "wx" });
+        }
+      };
+      const report = await replaySpool({
+        spoolDir,
+        source: makeSource(db()).source,
+        lockWaitMs: 300,
+      });
+      seam.afterMkdir = undefined;
+      expect(report.mainFile).toBe("busy");
+      expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${dead.pid}\n`);
+      expect(readFileSync(join(breaker, "pid"), "utf8")).toBe(`${holder.pid}\n`);
+    } finally {
+      holder.kill();
+    }
+  });
+
+  it("releases only its own pid, never a shim's that claimed the lock as it went", async () => {
+    writeFileSync(main(), line(), { mode: 0o600 });
+    const holder = spawn("sleep", ["30"], { stdio: "ignore" });
+    try {
+      // After the engine's pid file goes and before its directory does, a shim whose mkdir is
+      // not atomic claims the lock.
+      seam.lockPidGone = (dir) => {
+        writeFileSync(join(dir, "pid"), `${holder.pid}\n`, { flag: "wx" });
+      };
+      const report = await replaySpool({
+        spoolDir,
+        source: makeSource(db()).source,
+        lockWaitMs: 300,
+      });
+      seam.lockPidGone = undefined;
+      expect(report.mainFile).toBe("claimed");
+      const lock = join(spoolDir, "claude-code.lock");
+      expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${holder.pid}\n`);
+    } finally {
+      holder.kill();
+    }
   });
 
   it("clears a break lock a killed shim left behind, but not a fresh one", async () => {

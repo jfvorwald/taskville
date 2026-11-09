@@ -81,8 +81,13 @@
 #   mid-append, or a malformed payload) must be skipped, not fatal: the shim
 #   starts a fresh line when the file does not end in LF, so a torn line never
 #   swallows the next event.
-#   Lock       claude-code.lock, a directory made with mkdir (atomic), holding
-#              a file "pid" with the holder's PID. Any reader that renames or
+#   Lock       claude-code.lock, a directory made with mkdir, holding a file
+#              "pid" with the holder's PID. The shim holds it only once it has
+#              also created "pid" exclusively (set -C): mkdir(1) is not atomic
+#              everywhere (uutils coreutils before 0.11, Ubuntu 26.04's default,
+#              can exit 0 for a directory that already exists; M7.32). It
+#              releases by removing its "pid" and then the directory only if
+#              empty. Any reader that renames or
 #              truncates claude-code.jsonl must hold this lock while doing so.
 #              A lock is stale when its PID is not running, or when it has no
 #              PID file and is more than a minute old. A lock whose PID is
@@ -93,10 +98,12 @@
 #              The breaker reads the PID again after finding it not running and
 #              breaks only if it is unchanged (the holder may have released and
 #              a live shim taken a new lock meanwhile), so the lock judged stale
-#              is the lock removed. The break lock is
-#              held for a few milliseconds and never reclaimed automatically;
+#              is the lock removed. The break lock is taken the same way as
+#              the lock (directory plus exclusive "pid"),
+#              held for a few milliseconds and never reclaimed by the shim;
 #              if a shim is killed while holding it, later events go to
-#              per-event files until it is removed by hand. Nothing is lost.
+#              per-event files until the engine's next start or a hand
+#              removal clears it. Nothing is lost.
 #
 # LIMITS
 #   At most 5 MiB minus 1 KiB (5,241,856 bytes) of hook JSON is kept: the
@@ -350,19 +357,33 @@ lock_owner() {
   printf '%s' "$_owner"
 }
 
+# Makes the mkdir lock directory $1 and records our PID in it. Held only when the
+# PID file is created too, exclusively (set -C opens it with O_EXCL in sh and
+# dash): some mkdir(1)s exit 0 when the directory already exists (uutils
+# coreutils before 0.11, the Ubuntu 26.04 default; M7.32), so mkdir alone could
+# give two holders. Whoever creates the PID file holds; the other backs off.
+claim_dir() {
+  mkdir "$1" 2>/dev/null || return 1
+  (set -C && printf '%s\n' "$$" >"$1/pid") 2>/dev/null
+}
+
+# Removes a lock directory we hold: our PID file, then the directory only if it
+# is empty, so a PID a later claimer wrote meanwhile is never deleted.
+drop_dir() {
+  rm -f "$1/pid"
+  rmdir "$1" 2>/dev/null
+}
+
 take_lock() {
-  if mkdir "$lock" 2>/dev/null; then
-    lock_held=yes
-    printf '%s\n' "$$" >"$lock/pid"
-    return 0
-  fi
-  return 1
+  claim_dir "$lock" || return 1
+  lock_held=yes
+  return 0
 }
 
 release_lock() {
   lock_held=no
   # Only remove the lock if it is still ours (a waiter may have judged it stale).
-  if [ "$(lock_owner "$lock")" = "$$" ]; then rm -rf "$lock"; fi
+  if [ "$(lock_owner "$lock")" = "$$" ]; then drop_dir "$lock"; fi
 }
 
 # Removes claude-code.lock if it is stale. Serialized by claude-code.lock.break,
@@ -370,7 +391,7 @@ release_lock() {
 # it; a live holder never loses its lock (one with a running PID is not stale).
 break_stale_lock() {
   breaker=$lock.break
-  mkdir "$breaker" 2>/dev/null || return 1
+  claim_dir "$breaker" || return 1
   broke=no
   owner=$(lock_owner "$lock")
   stale=no
@@ -384,7 +405,7 @@ break_stale_lock() {
   # still names it now is the lock moved below.
   if [ "$stale" = yes ] && [ "$(lock_owner "$lock")" != "$owner" ]; then stale=no; fi
   if [ "$stale" = yes ] && mv "$lock" "$work/stale-lock" 2>/dev/null; then broke=yes; fi
-  rmdir "$breaker" 2>/dev/null
+  drop_dir "$breaker"
   [ "$broke" = yes ]
 }
 
