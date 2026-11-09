@@ -130,6 +130,17 @@ export function HistoryProvider({
     let moments: RecordedMoment[] = [];
     let recorded: StoredEnvelope[] = [];
     let loaded: TimelineChoice | undefined;
+    // The window the strip, slider and crew bars were last told about; a failed or superseded
+    // seek returns to it, never to another seek's unpublished candidate.
+    let published: { moments: RecordedMoment[]; recorded: StoredEnvelope[] } = {
+      moments: [],
+      recorded: [],
+    };
+    // Registrations and finishes recorded before the loaded window, from sequence 1 on. A run
+    // that starts before the window and ends inside it needs them for its name, parent and start.
+    let crewHistory: StoredEnvelope[] = [];
+    let crewScanned = 0;
+    let crewScanning = false;
     // The head projection may prune retired agents; the loaded log still records them.
     let agents = new Map<
       string,
@@ -170,6 +181,10 @@ export function HistoryProvider({
       moments = [];
       recorded = [];
       loaded = undefined;
+      published = { moments: [], recorded: [] };
+      crewHistory = [];
+      crewScanned = 0;
+      crewScanning = false;
       agents = new Map();
       resetFidelity();
       metadata?.abort();
@@ -188,7 +203,7 @@ export function HistoryProvider({
     function seek(sequence: number) {
       const range = value.range;
       if (!active || !controller || !range || !Number.isSafeInteger(sequence)) return;
-      const known = moments.find((item) => item.sequence === sequence);
+      const known = published.moments.find((item) => item.sequence === sequence);
       // Only a windowed archive has positions it has not loaded yet.
       if (
         !known &&
@@ -200,6 +215,10 @@ export function HistoryProvider({
       controller.getState().pause();
       const requestGeneration = generation;
       const store = controller;
+      // An earlier seek's candidate window is dropped; this seek starts from what is on screen.
+      moments = published.moments;
+      recorded = published.recorded;
+      const current = () => requestGeneration === generation && seekToken === seekGeneration;
       void (async () => {
         let moment = known;
         if (!moment && loaded) {
@@ -207,36 +226,29 @@ export function HistoryProvider({
           const from = Math.max(range.first, sequence - Math.floor(WINDOW_EVENTS / 2));
           const to = Math.min(range.last, from + WINDOW_EVENTS - 1);
           const chunk = await walk(loaded, from, to);
-          if (!chunk || requestGeneration !== generation || seekToken !== seekGeneration) return;
+          if (!chunk || !current()) return;
           // The new window is installed for the seek to validate against, but only published
-          // once the state read succeeds; a failure restores the window still on screen.
-          const before = { moments, recorded };
+          // once its own state read succeeds and no later seek has superseded this one.
           moments = chunk.moments;
           recorded = chunk.recorded;
-          try {
-            moment = moments.find((item) => item.sequence === sequence);
-            if (!moment) throw new Error("events");
-            await store.getState().seekSequence(moment.sequence, moment.time);
-          } catch (error) {
-            if (moments === chunk.moments) {
-              moments = before.moments;
-              recorded = before.recorded;
-            }
-            throw error;
-          }
-          if (moments === chunk.moments) publishWindow();
+          moment = moments.find((item) => item.sequence === sequence);
+          if (!moment) throw new Error("events");
+          await store.getState().seekSequence(moment.sequence, moment.time);
+          if (current()) publishWindow();
           return;
         }
         if (!moment) throw new Error("events");
         await store.getState().seekSequence(moment.sequence, moment.time);
       })()
         .catch(() => {
-          if (requestGeneration === generation && seekToken === seekGeneration)
-            publish({ error: "Could not load recorded state." });
+          if (!current()) return;
+          // A failure returns to the window still on screen.
+          moments = published.moments;
+          recorded = published.recorded;
+          publish({ error: "Could not load recorded state." });
         })
         .finally(() => {
-          if (requestGeneration === generation && seekToken === seekGeneration)
-            explicitSeek = false;
+          if (current()) explicitSeek = false;
         });
     }
     /** Whether only a window of the timeline is held: long archives, never the live recording. */
@@ -347,15 +359,68 @@ export function HistoryProvider({
         throw new Error("events");
       return { moments: chunkMoments, recorded: chunk, taskStart };
     }
+    /** Subagent runs from the loaded window and the registrations recorded before it. */
+    function crewNow(timeline: TimelineChoice) {
+      const bySequence = new Map<number, StoredEnvelope>();
+      for (const event of crewHistory) bySequence.set(event.ingestSequence, event);
+      for (const event of published.recorded) bySequence.set(event.ingestSequence, event);
+      const events = [...bySequence.values()].sort((a, b) => a.ingestSequence - b.ingestSequence);
+      return crewRuns(events, (event) => momentTime(timeline, event));
+    }
     /** Publishes what the loaded window changed: moments, crew and agents. */
     function publishWindow() {
       const timeline = loaded;
       if (!timeline) return;
+      published = { moments, recorded };
       publish({
         moments,
-        crew: crewRuns(recorded, (event) => momentTime(timeline, event)),
+        crew: crewNow(timeline),
         agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
       });
+      void scanCrew();
+    }
+    /** Whether an agent finishes in the window with no registration recorded for it. */
+    function unregistered() {
+      const registered = new Set<string>();
+      for (const event of crewHistory)
+        if (event.type === "agent.registered" && event.agentId) registered.add(event.agentId);
+      for (const event of published.recorded)
+        if (event.type === "agent.registered" && event.agentId) registered.add(event.agentId);
+      return published.recorded.some(
+        (event) =>
+          event.type === "agent.finished" && event.agentId && !registered.has(event.agentId),
+      );
+    }
+    /** Reads the events before the window, oldest first, until every finish has its registration. */
+    async function scanCrew() {
+      const timeline = loaded;
+      const requestGeneration = generation;
+      if (!timeline || crewScanning || !unregistered()) return;
+      crewScanning = true;
+      try {
+        while (
+          loaded === timeline &&
+          requestGeneration === generation &&
+          unregistered() &&
+          crewScanned < (published.moments[0]?.sequence ?? 1) - 1
+        ) {
+          const from = crewScanned + 1;
+          const to = Math.min((published.moments[0]?.sequence ?? 1) - 1, from + WINDOW_EVENTS - 1);
+          const chunk = await walk(timeline, from, to);
+          if (!chunk || loaded !== timeline || requestGeneration !== generation) return;
+          crewScanned = to;
+          crewHistory = crewHistory.concat(
+            chunk.recorded.filter(
+              (event) => event.type === "agent.registered" || event.type === "agent.finished",
+            ),
+          );
+          publish({ crew: crewNow(timeline) });
+        }
+      } catch {
+        // The runs on screen stay valid; a later window tries again.
+      } finally {
+        if (requestGeneration === generation) crewScanning = false;
+      }
     }
     /** Appends the events after the window's end while playback runs into them. */
     async function extend(afterSequence: number) {
@@ -465,6 +530,7 @@ export function HistoryProvider({
         const { taskStart } = walked;
         moments = walked.moments;
         recorded = walked.recorded;
+        published = { moments, recorded };
         if (target && !taskStart) throw new Error("task creation unavailable");
         explicitSeek = true;
         controller = createHistoryStore({
@@ -537,9 +603,10 @@ export function HistoryProvider({
           timelines: choices,
           timeline,
           moments,
-          crew: crewRuns(recorded, (event) => momentTime(timeline, event)),
+          crew: crewNow(timeline),
           agents: [...agents.values()].map(({ id, name }) => ({ id, name })),
         });
+        void scanCrew();
         // Archives finishing while history is open join the picker; cancel() stops this on exit.
         clearInterval(refreshTimer);
         refreshTimer = setInterval(() => void refresh(), refreshEvery.current);
