@@ -45,6 +45,12 @@ import {
   registerClaudeCodeRoutes,
   replaySpool,
 } from "@taskville/engine/src/sources/claude-code/index.ts";
+import {
+  CodexSource,
+  drainCodexSpool,
+  registerCodexRoutes,
+  replayCodexSpool,
+} from "@taskville/engine/src/sources/codex/index.ts";
 import { GitWatcher } from "@taskville/engine/src/sources/git/index.ts";
 import { registerOtlpRoutes } from "@taskville/engine/src/sources/otlp/index.ts";
 import { bootEngine, type Engine } from "@taskville/engine/src/stream/index.ts";
@@ -410,6 +416,8 @@ export interface ServeParts {
   gitWatcher: GitWatcher;
   /** The Claude Code source and spool folder, for the spool replay (M2.07). */
   spool: Parameters<typeof replaySpool>[0];
+  /** The Codex source and the same spool folder, for the Codex spool replay (A1.02). */
+  codexSpool: Parameters<typeof replayCodexSpool>[0];
   /** Stops the Git watcher and closes the databases. */
   close(): Promise<void>;
 }
@@ -512,6 +520,15 @@ export function composeServe(
     // that answer them, and live PostToolUse telemetry closing a request answered in the terminal.
     wired = wirePermissionBridge({ app, engine, config, logger, now });
     registerClaudeCodeRoutes(app, claudeCode, { observeHook: wired.observeHook });
+    // Codex telemetry (A1.02): hooks from the Codex shim, and its PermissionRequest hook reaches
+    // the bridge route `wirePermissionBridge` registered. Accepted hooks also reach the bridge.
+    const codex = new CodexSource({
+      pipeline: engine.pipeline,
+      storage: engine.storage,
+      logger,
+      now,
+    });
+    registerCodexRoutes(app, codex, { observeHook: wired.observeCodexHook });
     // Optional OpenTelemetry receiver (M5.12): tokens and cost, persisted (M5.29).
     registerOtlpRoutes(app, { logger, storage: engine.storage });
     // Agent feed, crew, and evidence reads (M5.01): the stream cap and shutdown are the engine's.
@@ -555,7 +572,8 @@ export function composeServe(
       logger,
     });
     const spool = { spoolDir: prepared.paths.spoolDir, source: claudeCode, logger };
-    return { app, pairing, port: config.port, gitWatcher, spool, close };
+    const codexSpool = { spoolDir: prepared.paths.spoolDir, source: codex, logger };
+    return { app, pairing, port: config.port, gitWatcher, spool, codexSpool, close };
   } catch (error) {
     void close();
     throw error;
@@ -615,10 +633,11 @@ export async function runEngine(
   try {
     parts = composeServe(io, home, portFlag, logging);
     sweepRunDir(home, Date.now()); // file mtimes are real time, not the injected clock
-    const { pairing, spool } = parts;
+    const { pairing, spool, codexSpool } = parts;
     // Spooled telemetry (M2.07), after the config projects so their roots route it: one bounded
     // run before listening, the rest worked off in bounded runs afterwards.
     const first = await replaySpool(spool);
+    const codexFirst = await replayCodexSpool(codexSpool);
     try {
       server = await startServer({ app: parts.app, port: parts.port });
     } catch (error) {
@@ -633,6 +652,14 @@ export async function runEngine(
       draining = drainSpool({ ...spool, signal: stopDrain.signal }).catch((error: unknown) => {
         spool.logger?.error({ errName: (error as Error).name }, "spool drain failed");
       });
+    }
+    if (!codexFirst.failed && (codexFirst.deferredFiles > 0 || codexFirst.mainFile === "busy")) {
+      const claudeDrain = draining;
+      draining = drainCodexSpool({ ...codexSpool, signal: stopDrain.signal })
+        .catch((error: unknown) => {
+          codexSpool.logger?.error({ errName: (error as Error).name }, "codex spool drain failed");
+        })
+        .then(() => claudeDrain);
     }
     const base = `http://${LOOPBACK_ADDRESS}:${server.port}`;
     io.stdout(`Taskville engine listening on ${base} (home ${home})\n`);

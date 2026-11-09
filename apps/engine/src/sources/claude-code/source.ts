@@ -65,9 +65,24 @@ export interface ClaudeCodeSourceOptions extends ResolveOptions {
   /** Project registry (decision #110): read on every hook, so projects added at runtime route at once. */
   storage: Pick<StorageReads, "projects" | "findEventBySourceKey" | "head">;
   mapper: ClaudeCodeMapper;
+  /** The `sourceId` of every event. Default `claude-code`; the Codex source (A1.02) sets `codex`. */
+  sourceId?: string;
+  /**
+   * Called synchronously after the hook's events went through the pipeline, with nothing awaited
+   * in between, so a source that keeps state between hooks (Codex: open tool calls) sees the
+   * outcomes in order. A throw is logged by name and does not fail the hook.
+   */
+  afterIngest?: (done: HookIngested) => void;
   evidence?: EvidenceSink;
   now?: () => Date;
   logger?: Logger;
+}
+
+/** What `afterIngest` is told: the hook, what the mapper made of it, and one result per event. */
+export interface HookIngested {
+  payload: Record<string, unknown>;
+  mapped: MapResult;
+  results: readonly IngestResult[];
 }
 
 export interface HookInput {
@@ -105,12 +120,14 @@ export class ClaudeCodeSource {
   readonly #options: ClaudeCodeSourceOptions;
   readonly #evidence: EvidenceSink;
   readonly #now: () => Date;
+  readonly #sourceId: string;
   readonly #ownerName: string | undefined;
 
   constructor(options: ClaudeCodeSourceOptions) {
     this.#options = options;
     this.#evidence = options.evidence ?? noopEvidenceSink;
     this.#now = options.now ?? (() => new Date());
+    this.#sourceId = options.sourceId ?? CLAUDE_CODE_SOURCE_ID;
     this.#ownerName = osUserName();
   }
 
@@ -131,9 +148,14 @@ export class ClaudeCodeSource {
       return { projectId, results: [], heads: {}, ...(mapped.ignored ? { ignored: true } : {}) };
     }
     const events = mapped.events.map((event) =>
-      isPlainRecord(event) ? { ...event, projectId, sourceId: CLAUDE_CODE_SOURCE_ID, late } : event,
+      isPlainRecord(event) ? { ...event, projectId, sourceId: this.#sourceId, late } : event,
     );
     const { results, heads } = this.#ingestOnce(projectId, events);
+    try {
+      this.#options.afterIngest?.({ payload: input.payload, mapped, results });
+    } catch (error) {
+      this.#options.logger?.error({ errName: (error as Error).name }, "after-ingest hook failed");
+    }
     // Evidence only when this call recorded every event of the hook. A retry whose events are
     // duplicates or conflicts is not the logged hook (the events omit the bodies), so a partly
     // recorded hook adds no bodies either (roborev 5142 and its confirmation review).
@@ -167,7 +189,7 @@ export class ClaudeCodeSource {
       const key = isPlainRecord(event) ? event.sourceEventId : undefined;
       const existing =
         typeof key === "string"
-          ? this.#options.storage.findEventBySourceKey(projectId, CLAUDE_CODE_SOURCE_ID, key)
+          ? this.#options.storage.findEventBySourceKey(projectId, this.#sourceId, key)
           : undefined;
       if (typeof key === "string" && existing !== undefined) {
         known.set(index, compareWithLogged(key, event, existing));

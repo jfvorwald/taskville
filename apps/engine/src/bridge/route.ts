@@ -5,6 +5,8 @@ import { apiError } from "../http/errors.ts";
 import type { PermissionBridge } from "./bridge.ts";
 
 export const BRIDGE_PERMISSION_PATH = "/v1/bridge/claude-code/permission";
+/** The Codex twin (A1.02): the forwarder script posts the PermissionRequest hook body here. */
+export const CODEX_BRIDGE_PERMISSION_PATH = "/v1/bridge/codex/permission";
 
 /** A hook body over 1 MiB is refused with 413; a held request keeps at most 256 KiB of input. */
 const MAX_HOOK_BODY_BYTES = 1024 * 1024;
@@ -18,8 +20,22 @@ const MAX_HOOK_BODY_BYTES = 1024 * 1024;
  * A body that is not a JSON object with a session and a tool is 400, and one over 1 MiB is 413.
  */
 export function registerBridgeRoutes(app: Hono<AppEnv>, bridge: PermissionBridge): void {
+  registerPermissionRoute(app, BRIDGE_PERMISSION_PATH, (body, signal) =>
+    bridge.handle(body, signal),
+  );
+  // The same route for Codex's PermissionRequest hook (A1.02): `handleCodex` holds for 5 seconds.
+  registerPermissionRoute(app, CODEX_BRIDGE_PERMISSION_PATH, (body, signal) =>
+    bridge.handleCodex(body, signal),
+  );
+}
+
+function registerPermissionRoute(
+  app: Hono<AppEnv>,
+  path: string,
+  handle: (body: unknown, signal: AbortSignal) => Promise<Response | undefined>,
+): void {
   app.post(
-    BRIDGE_PERMISSION_PATH,
+    path,
     requireScope("bridge"),
     bodyLimit({
       maxSize: MAX_HOOK_BODY_BYTES,
@@ -27,7 +43,7 @@ export function registerBridgeRoutes(app: Hono<AppEnv>, bridge: PermissionBridge
     }),
     async (c) => {
       const body: unknown = await c.req.json().catch(() => undefined);
-      const response = await bridge.handle(body, c.req.raw.signal);
+      const response = await handle(body, c.req.raw.signal);
       return (
         response ?? apiError(c, 400, "bad_request", "Expected a PermissionRequest hook JSON object")
       );

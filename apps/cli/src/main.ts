@@ -11,6 +11,7 @@ import { events } from "./commands/events.ts";
 import { importCommand } from "./commands/import.ts";
 import { init } from "./commands/init.ts";
 import { install, uninstall } from "./commands/install.ts";
+import { installCodex, uninstallCodex } from "./commands/install-codex.ts";
 import { project } from "./commands/projects.ts";
 import { requests } from "./commands/requests.ts";
 import { serve } from "./commands/serve.ts";
@@ -58,8 +59,8 @@ Commands:
   import git|transcripts [--project <id>] [--root <path>]   Import history into an archive timeline
       (you start it; transcripts are read for the root from CLAUDE_CONFIG_DIR or ~/.claude and stored redacted)
   unpair                                      Revoke every paired browser
-  install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
-  uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
+  install claude-code|codex --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
+  uninstall claude-code|codex --scope user|project [--project-dir <dir>] [--yes] [--dry-run]
   demo run --offline --seed <n> --duration <t> [--pace <pace>] [--scenario <default|breaks>]
   demo [start] [--project <id>] [--seed <n>] [--pace <pace>] [--speed <x>] [--duration <t>] [--scenario <default|breaks>]
 
@@ -76,8 +77,8 @@ const COMMANDS: Record<string, (io: Io, args: string[]) => Promise<number>> = {
   import: importCommand,
   unpair,
   demo,
-  install,
-  uninstall,
+  install: (io, args) => (args[0] === "codex" ? installCodex(io, args) : install(io, args)),
+  uninstall: (io, args) => (args[0] === "codex" ? uninstallCodex(io, args) : uninstall(io, args)),
   init,
   doctor,
 };

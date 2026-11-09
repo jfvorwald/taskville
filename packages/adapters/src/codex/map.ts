@@ -268,7 +268,7 @@ function activityFor(toolName: string, input: unknown) {
   return activityForTool(toolName, input);
 }
 
-const stripNamespace = (name: string | undefined): string | undefined =>
+export const stripNamespace = (name: string | undefined): string | undefined =>
   name?.startsWith(NAMESPACE_PREFIX) && name.length > NAMESPACE_PREFIX.length
     ? name.slice(NAMESPACE_PREFIX.length)
     : name;

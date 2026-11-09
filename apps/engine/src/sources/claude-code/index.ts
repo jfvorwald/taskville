@@ -11,9 +11,12 @@ export {
 } from "./resolve-project.ts";
 export {
   CLAUDE_CODE_HOOKS_PATH,
+  type ClaudeCodeRouteOptions,
+  type HookSource,
   isShimSourceEventId,
   MAX_HOOK_BODY_BYTES,
   registerClaudeCodeRoutes,
+  registerHooksRoute,
   SHIM_SOURCE_EVENT_ID,
 } from "./route.ts";
 export {
@@ -23,6 +26,7 @@ export {
   type ClaudeCodeSourceOptions,
   type EvidenceSink,
   type HookEvidence,
+  type HookIngested,
   type HookIngestResponse,
   type HookInput,
   type MapContext,
