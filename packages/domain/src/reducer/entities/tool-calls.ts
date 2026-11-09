@@ -132,7 +132,13 @@ export function applyToolCallFinished(
   return updateAgent({ ...s, toolCalls }, owner, (agent) => {
     const counted = {
       ...agent,
-      consecutiveToolFailures: p.phase === "failed" ? agent.consecutiveToolFailures + 1 : 0,
+      // A returned call reports no outcome: it neither extends nor resets the streak.
+      consecutiveToolFailures:
+        p.phase === "failed"
+          ? agent.consecutiveToolFailures + 1
+          : p.phase === "returned"
+            ? agent.consecutiveToolFailures
+            : 0,
     };
     return clearLastTurn(counted, p.phase === "succeeded" ? "tool_succeeded" : "tool");
   });

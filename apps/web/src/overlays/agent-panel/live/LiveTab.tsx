@@ -326,6 +326,7 @@ const GLYPH: Readonly<Record<EntryState, string>> = {
   failed: "cross",
   running: "ring",
   unfinished: "dash",
+  returned: "arrow",
   "needs-you": "alert",
 };
 
@@ -843,7 +844,7 @@ function GroupCard({
   ];
   const onToggle = () => toggleOpen(calls[0].toolCallId, !open);
   // The group's node is its least settled member: running, then failed, then unfinished.
-  const state = (["running", "failed", "unfinished"] as const).find((phase) =>
+  const state = (["running", "failed", "unfinished", "returned"] as const).find((phase) =>
     calls.some((call) => stateOf(call.phase) === phase),
   );
   if (privacy) {
@@ -910,6 +911,7 @@ function GroupCard({
               ["running", "running"],
               ["failed", "failed"],
               ["unfinished", "unfinished"],
+              ["returned", "returned"],
             ]
               .map(
                 ([phase, label]) => [calls.filter((c) => c.phase === phase).length, label] as const,
