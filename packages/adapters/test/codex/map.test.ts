@@ -287,6 +287,22 @@ describe("tool calls", () => {
     expect(only(r, "activity.started").payload).toMatchObject({ activity });
   });
 
+  it("marks an MCP tool's researching activity heuristic, and no known-purpose tool", () => {
+    for (const tool of ["mcp__docs__search", "mcp__server__write"]) {
+      const r = map(pre(tool, { q: "x" }));
+      expect(only(r, "activity.started").payload).toEqual({
+        activity: "researching",
+        heuristic: true,
+      });
+    }
+    const patch = map(
+      pre("apply_patch", { command: "*** Begin Patch\n*** Add File: /a/b.py\n*** End Patch" }),
+    );
+    expect(only(patch, "activity.started").payload).toEqual({ activity: "implementing" });
+    const spawn = map(pre("collaborationspawn_agent", { message: "x" }));
+    expect(only(spawn, "activity.started").payload).toEqual({ activity: "dispatching" });
+  });
+
   it("flags a Bash test run as the heuristic testing activity", () => {
     const r = map(pre("Bash", { command: "pnpm test" }));
     expect(only(r, "activity.started").payload).toEqual({
