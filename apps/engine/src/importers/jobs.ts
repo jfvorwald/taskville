@@ -73,12 +73,18 @@ export interface ImportStatus {
 export interface ArchiveEvidenceSink {
   store(projectId: string, evidence: readonly ToolEvidence[], archiveId?: string): void;
   /**
-   * True once archive evidence has reached its cap; a new import's evidence is then dropped. The
-   * `excluding` archives are about to be pruned and do not count.
+   * The part of `evidence` that fits the archive evidence cap, checked body by body, and how many
+   * items lost a body to it. Those are dropped from the import and counted.
    */
-  archiveEvidenceFull?(excluding?: readonly { projectId: string; archiveId: string }[]): boolean;
-  /** Removes the evidence of one archive. */
-  deleteArchive?(projectId: string, archiveId: string): void;
+  fitArchiveEvidence?(evidence: readonly ToolEvidence[]): {
+    evidence: ToolEvidence[];
+    dropped: number;
+  };
+  /**
+   * Removes the evidence of one archive. With `keepPointers` the bodies go but the pointers stay,
+   * so a still-listed archive reads them as evicted.
+   */
+  deleteArchive?(projectId: string, archiveId: string, options?: { keepPointers?: boolean }): void;
 }
 
 export interface ImportJobsOptions {
@@ -555,18 +561,27 @@ export class ImportJobs {
     }
   }
 
-  /** Drops the staged evidence when archive evidence has already reached its cap. */
+  /** Drops the staged evidence bodies that do not fit what is left of the archive evidence cap. */
   #applyArchiveCap(projectId: string, kind: ArchiveKind, root: string, tally: Tally): void {
-    if (tally.evidence.length === 0 || !this.#evidence?.archiveEvidenceFull) return;
-    // Archives that the new one will push out of retention make room for it.
-    const excluding = this.#storage
-      .archives()
-      .listDoneIds(projectId, kind, root)
-      .slice(Math.max(0, this.#keepArchives - 1))
-      .map((archiveId) => ({ projectId, archiveId }));
-    if (!this.#evidence.archiveEvidenceFull(excluding)) return;
-    tally.evidenceDropped += tally.evidence.length;
-    tally.evidence = [];
+    const evidence = this.#evidence;
+    if (tally.evidence.length === 0 || !evidence?.fitArchiveEvidence) return;
+    // Archives that the new one will push out of retention make room for it, but only once their
+    // evidence is actually deleted: a failed deletion credits nothing.
+    if (evidence.deleteArchive) {
+      for (const id of this.#storage
+        .archives()
+        .listDoneIds(projectId, kind, root)
+        .slice(Math.max(0, this.#keepArchives - 1))) {
+        try {
+          evidence.deleteArchive(projectId, id, { keepPointers: true });
+        } catch (error) {
+          this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+        }
+      }
+    }
+    const fit = evidence.fitArchiveEvidence(tally.evidence);
+    tally.evidenceDropped += fit.dropped;
+    tally.evidence = fit.evidence;
   }
 
   /** Deletes the done archives of this project, kind and root beyond the newest `keepArchives`. */
@@ -575,9 +590,11 @@ export class ImportJobs {
       const archives = this.#storage.archives();
       for (const id of archives.listDoneIds(projectId, kind, root).slice(this.#keepArchives)) {
         try {
-          // Evidence first: if it fails the row stays, and the next prune retries.
-          this.#evidence?.deleteArchive?.(projectId, id);
+          // Evidence first: if it fails the row stays, and the next prune retries. The pointers
+          // stay until the row is gone, so a surviving archive reads its bodies as evicted.
+          this.#evidence?.deleteArchive?.(projectId, id, { keepPointers: true });
           archives.delete(id);
+          this.#evidence?.deleteArchive?.(projectId, id);
         } catch (error) {
           this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
         }
