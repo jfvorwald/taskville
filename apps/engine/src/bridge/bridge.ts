@@ -602,11 +602,11 @@ export class PermissionBridge {
     if (this.#lossySessions.has(sessionId)) return;
     // Another open call with the same fields could be the one the request was for.
     for (const call of this.#codexCalls.values()) if (call.key === key) return;
-    const matches = [...this.#tracked].filter(
-      ([, tracked]) => tracked.key === key && tracked.state === "open",
-    );
+    // Closed requests count too, as on the Claude Code path: a city-approved call's late
+    // PostToolUse must not be attributed to an identical request opened since.
+    const matches = [...this.#tracked].filter(([, tracked]) => tracked.key === key);
     const [match] = matches;
-    if (matches.length !== 1 || match === undefined) return;
+    if (matches.length !== 1 || match === undefined || match[1].state !== "open") return;
     this.#closeCodexRequest(match[0], match[1], "allow");
   }
 
