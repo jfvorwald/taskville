@@ -201,7 +201,12 @@ export function HistoryTimeline() {
                 aria-label={label}
                 title={label}
                 aria-pressed={sequence >= head.sequence && sequence <= tail.sequence}
-                onClick={() => history.seek(head.sequence)}
+                onClick={() =>
+                  // A bucket seeks to the marker it displays, not its first marker.
+                  history.seek(
+                    (bucket.moments.find((moment) => moment.marker === kind) ?? head).sequence,
+                  )
+                }
               >
                 {glyph(kind)}
               </button>
