@@ -77,10 +77,13 @@ async function importTagged(
   projectId: string,
   root: string,
   tags: readonly string[],
+  size = 10,
 ): Promise<string[]> {
   const ids: string[] = [];
   for (const tag of tags) {
-    const importer = fakeImporter([toolBatch(projectId, tag)], { kind: "transcripts" });
+    const importer = fakeImporter([toolBatch(projectId, tag, size)], {
+      kind: "transcripts",
+    });
     ids.push(await runImport(jobsOf(importer), projectId, "transcripts", root));
   }
   return ids;
@@ -283,6 +286,87 @@ describe("archive evidence cap", () => {
         env().root,
       );
       expect(store.get(PROJECT, "tc-small", id)?.output?.status).toBe("stored");
+    });
+  });
+});
+
+describe("archive retention and the evidence cap together", () => {
+  it("prunes before the cap check: a full cap still admits the new import's evidence", async () => {
+    // Each archive holds exactly 50 bytes of evidence; the cap is two archives' worth.
+    await withStore(100, async (store) => {
+      const jobsOf = (importer: Importer) =>
+        makeJobs(env(), [importer], { evidence: store, keepArchives: 2 } as Record<
+          string,
+          unknown
+        >);
+      const [one, two] = (await importTagged(jobsOf, PROJECT, env().root, ["one", "two"], 50)) as [
+        string,
+        string,
+      ];
+      expect(store.get(PROJECT, "tc-two", two)?.output?.status).toBe("stored");
+
+      const importer = fakeImporter([toolBatch(PROJECT, "three", 50)], { kind: "transcripts" });
+      const jobs = jobsOf(importer);
+      const { importId: three } = jobs.start({
+        projectId: PROJECT,
+        kind: "transcripts",
+        root: env().root,
+      });
+      const finished = await jobs.settled(three);
+
+      expect(finished.status).toBe("done");
+      expect(finished.counts.evidenceDropped).toBeUndefined();
+      expect(store.get(PROJECT, "tc-three", three)?.output?.status).toBe("stored");
+      // The oldest archive made room; the total stays within the cap (two archives of 50 bytes).
+      expect(gone(one)).toBe(true);
+      expect(store.get(PROJECT, "tc-one", one)).toBeUndefined();
+      expect(store.get(PROJECT, "tc-two", two)?.output?.status).toBe("stored");
+    });
+  });
+});
+
+describe("evidence deleted before the archive row", () => {
+  it("keeps the archive row when its evidence deletion fails, and the next prune retries", async () => {
+    await withStore(undefined, async (store) => {
+      let failed = false;
+      const sink = {
+        store: (projectId: string, evidence: Parameters<EvidenceStore["store"]>[1], id?: string) =>
+          store.store(projectId, evidence, id),
+        archiveEvidenceFull: () => store.archiveEvidenceFull(),
+        deleteArchive: (projectId: string, archiveId: string) => {
+          if (!failed) {
+            failed = true;
+            throw new Error("evidence delete failed");
+          }
+          store.deleteArchive(projectId, archiveId);
+        },
+      };
+      const jobsOf = (importer: Importer) =>
+        makeJobs(env(), [importer], { evidence: sink, keepArchives: 1 } as Record<string, unknown>);
+
+      const [a, b] = (await importTagged(jobsOf, PROJECT, env().root, ["a", "b"])) as [
+        string,
+        string,
+      ];
+      expect(failed).toBe(true);
+      // The deletion threw: the row (and its evidence) survive so the next prune can retry.
+      expect(gone(a)).toBe(false);
+      expect(eventsOf(a)).toBe(1);
+      expect(store.get(PROJECT, "tc-a", a)?.output?.status).toBe("stored");
+
+      const [c] = (await importTagged(jobsOf, PROJECT, env().root, ["c"])) as [string];
+      expect(gone(a)).toBe(true);
+      expect(gone(b)).toBe(true);
+      expect(eventsOf(a)).toBe(0);
+      expect(store.get(PROJECT, "tc-a", a)).toBeUndefined();
+      expect(store.get(PROJECT, "tc-b", b)).toBeUndefined();
+      expect(
+        env()
+          .storage.archives()
+          .listDone(PROJECT)
+          .map((x) => x.id),
+      ).toEqual([c]);
+      expect(store.get(PROJECT, "tc-c", c)?.output?.status).toBe("stored");
     });
   });
 });
