@@ -16,11 +16,12 @@ import {
 // own records (A1.02 wires them):
 // - `knownSession`: false when the engine has never seen this session start, so a SessionEnd
 //   (TUI quit before the first prompt) is ignored. Absent means known.
-// - `openToolCalls`: the tool calls started and not finished, so an Interrupt can close the ones
-//   of its turn. `sourceAgentId` is the hook `agent_id` of a subagent's call, if any.
+// - `openToolCalls`: accepted for compatibility; an Interrupt closes nothing. A denied or
+//   interrupted call may never have run, so its outcome stays unknown: the domain closes the
+//   agent's running calls as `unfinished` on session.turn_failed (reducer check in
+//   packages/domain/test/reducer/codex-streams.test.ts), and a subagent's on agent.finished.
 //
-// `returned` is the tool_call.finished phase A1.00 (issue #503) adds to protocol. Until that
-// lands, the schema check in `map` rejects a Post event; the literal is used on purpose.
+// `returned` (A1.00, #503) is the phase of a PostToolUse only.
 
 const SID = "01a1bd20-2aeb-78d2-8cd2-11d3026574a7";
 const TURN = "01a1bd20-6ac8-70e3-8c1d-0e04db1eed8b";
@@ -187,33 +188,20 @@ describe("session lifecycle", () => {
     expect(only(r, "session.turn_failed").payload).toEqual({ reason: "interrupted" });
   });
 
-  it("closes the open tool calls of the interrupted turn as returned, no result claimed", () => {
+  it("emits no tool_call.finished on an Interrupt, even with open calls (they stay unknown)", () => {
     const r = map(
       { ...turnBase, hook_event_name: "Interrupt" },
       {
         openToolCalls: [
           { toolCallId: "call_a", turnId: TURN },
-          { toolCallId: "call_b", turnId: TURN },
+          { toolCallId: "call_b", turnId: TURN, sourceAgentId: CHILD },
           { toolCallId: "call_other_turn", turnId: "another-turn" },
         ],
       },
     );
-    const finished = all(r, "tool_call.finished");
-    expect(finished.map((e) => e.payload.toolCallId).sort()).toEqual(["call_a", "call_b"]);
-    for (const e of finished) {
-      expect(e.payload.phase).toBe("returned");
-      expect(e.payload).not.toHaveProperty("durationMs");
-      expect(e.agentId).toBe(sessionAgentId(SID));
-    }
+    expect(types(r)).toEqual(["session.turn_failed", "activity.ended"]);
+    expect(JSON.stringify(r)).not.toContain("returned");
     expect(new Set(r.events.map((e) => e.sourceEventId)).size).toBe(r.events.length);
-  });
-
-  it("attributes an interrupted subagent call to that subagent", () => {
-    const r = map(
-      { ...turnBase, hook_event_name: "Interrupt" },
-      { openToolCalls: [{ toolCallId: "call_c", turnId: TURN, sourceAgentId: CHILD }] },
-    );
-    expect(only(r, "tool_call.finished").agentId).toBe(subagentAgentId(SID, CHILD));
   });
 
   it("emits no tool_call.finished on an Interrupt with nothing open", () => {
@@ -285,6 +273,22 @@ describe("tool calls", () => {
     const r = map(pre(tool, input));
     expect(types(r)).toEqual(["tool_call.started", "activity.started"]);
     expect(only(r, "activity.started").payload).toMatchObject({ activity });
+  });
+
+  it("marks an MCP tool's researching activity heuristic, and no known-purpose tool", () => {
+    for (const tool of ["mcp__docs__search", "mcp__server__write"]) {
+      const r = map(pre(tool, { q: "x" }));
+      expect(only(r, "activity.started").payload).toEqual({
+        activity: "researching",
+        heuristic: true,
+      });
+    }
+    const patch = map(
+      pre("apply_patch", { command: "*** Begin Patch\n*** Add File: /a/b.py\n*** End Patch" }),
+    );
+    expect(only(patch, "activity.started").payload).toEqual({ activity: "implementing" });
+    const spawn = map(pre("collaborationspawn_agent", { message: "x" }));
+    expect(only(spawn, "activity.started").payload).toEqual({ activity: "dispatching" });
   });
 
   it("flags a Bash test run as the heuristic testing activity", () => {

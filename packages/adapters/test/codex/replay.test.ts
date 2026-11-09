@@ -13,8 +13,6 @@ import {
 // in receive order, as the engine will, feeding back the context it would keep: the sessions it
 // has seen start and the tool calls it has seen start and not finish.
 //
-// Dependency: `tool_call.finished` with phase `returned` is added to protocol by A1.00 (#503).
-// Until it merges, the schema check here fails on every PostToolUse event.
 
 const FIXTURES = join(import.meta.dirname, "..", "..", "..", "..", "fixtures", "codex");
 const BASE_MS = Date.UTC(2026, 10, 8, 12, 0, 0);
@@ -171,19 +169,23 @@ describe("tui-hooks specifics", () => {
     }
   });
 
-  it("turns the Esc on the second prompt into an interrupted turn that closes the denied call", () => {
+  it("turns the Esc on the second prompt into an interrupted turn that finishes no call", () => {
     const at = mapped.findIndex((m) => m.hook === "Interrupt");
     const interrupt = mapped[at] as Mapped;
+    expect(interrupt.events.map((e) => e.type)).toEqual(["session.turn_failed", "activity.ended"]);
     const failed = interrupt.events.filter((e) => e.type === "session.turn_failed");
     expect(failed.map((e) => e.payload.reason)).toEqual(["interrupted"]);
-    const closed = interrupt.events.filter((e) => e.type === "tool_call.finished");
-    expect(closed).toHaveLength(1);
-    expect(closed[0]?.payload.phase).toBe("returned");
+    // The denied call was open when the Esc came and never gets a tool_call.finished.
     const pre = mapped
       .slice(0, at)
       .reverse()
       .find((m) => m.hook === "PreToolUse");
-    expect(closed[0]?.payload.toolCallId).toBe(pre?.payload.tool_use_id);
+    const deniedId = pre?.payload.tool_use_id;
+    expect(deniedId).toBeDefined();
+    const finishedIds = events
+      .filter((e) => e.type === "tool_call.finished")
+      .map((e) => e.payload.toolCallId);
+    expect(finishedIds).not.toContain(deniedId);
   });
 
   it("strips the collaboration prefix and registers the subagent under the main agent", () => {
