@@ -90,3 +90,33 @@ export const GIT_GLYPH: Readonly<Record<GitMarker, string>> = {
   "Git ref moved": "→",
   "Git merge": "◈",
 };
+
+/** An archive gap longer than this plays as GAP_PLAYBACK_MS. Live recordings are never compressed. */
+export const GAP_THRESHOLD_MS = 10 * 60_000;
+export const GAP_PLAYBACK_MS = 2_000;
+/** Archives longer than this load in windows of this many events, not all at once. */
+export const WINDOW_EVENTS = 5_000;
+
+/** Playback time between two neighbouring archive events. */
+export const compressedDuration = (gap: number) =>
+  gap > GAP_THRESHOLD_MS ? GAP_PLAYBACK_MS : Math.max(0, gap);
+
+export interface CompressedGap {
+  readonly sequence: number;
+  readonly from: number;
+  readonly to: number;
+}
+
+/** The loaded neighbours whose gap is compressed; `sequence` is the event after the gap. */
+export function compressedGaps(
+  moments: readonly { sequence: number; time: number }[],
+): CompressedGap[] {
+  const gaps: CompressedGap[] = [];
+  for (let index = 1; index < moments.length; index += 1) {
+    const before = moments[index - 1];
+    const after = moments[index];
+    if (before && after && after.time - before.time > GAP_THRESHOLD_MS)
+      gaps.push({ sequence: after.sequence, from: before.time, to: after.time });
+  }
+  return gaps;
+}
