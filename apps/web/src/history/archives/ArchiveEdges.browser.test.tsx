@@ -250,17 +250,21 @@ describe("crew runs resolved from before the window", () => {
       rewrite: rewriteAt({
         10: registration("a", "Worker A"),
         20: registration("b", "Worker B"),
-        7_000: finish("a"),
+        7000: finish("a"),
         [COUNT - 100]: finish("b"),
       }),
     });
     await expect.element(bar(/Worker B/)).toBeVisible();
     // A run fully before the window is still drawn, on the whole archive's scale, finished.
     await expect.element(bar(/Worker A/)).toBeVisible();
-    expect(barLabel(/Worker A/)).toContain(new Date(occurred(10)).toLocaleString());
-    expect(barLabel(/Worker A/)).toContain(`ran ${(7_000 - 10) * 60}s`);
-    expect(barLabel(/Worker B/)).toContain(new Date(occurred(20)).toLocaleString());
-    expect(barLabel(/Worker B/)).toContain(`ran ${(COUNT - 100 - 20) * 60}s`);
+    await expect
+      .poll(() => barLabel(/Worker A/))
+      .toContain(new Date(occurred(10)).toLocaleString());
+    await expect.poll(() => barLabel(/Worker A/)).toContain(`ran ${(7_000 - 10) * 60}s`);
+    await expect
+      .poll(() => barLabel(/Worker B/))
+      .toContain(new Date(occurred(20)).toLocaleString());
+    await expect.poll(() => barLabel(/Worker B/)).toContain(`ran ${(COUNT - 100 - 20) * 60}s`);
   }, 120_000);
 
   it("ignores a heuristic registration in the window and keeps the recorded start", async () => {
@@ -272,8 +276,12 @@ describe("crew runs resolved from before the window", () => {
       }),
     });
     await expect.element(bar(/Recorded worker/)).toBeVisible();
-    expect(barLabel(/Recorded worker/)).toContain(new Date(occurred(10)).toLocaleString());
-    expect(barLabel(/Recorded worker/)).toContain(`ran ${(COUNT - 100 - 10) * 60}s`);
+    await expect
+      .poll(() => barLabel(/Recorded worker/))
+      .toContain(new Date(occurred(10)).toLocaleString());
+    await expect
+      .poll(() => barLabel(/Recorded worker/))
+      .toContain(`ran ${(COUNT - 100 - 10) * 60}s`);
   }, 120_000);
 
   it("names the agent in the selector once the scan finds its registration", async () => {
