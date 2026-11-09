@@ -300,6 +300,38 @@ describe("a later PostToolUse resolves the request only on one unambiguous match
     await expectNoDecision(await pending);
   });
 
+  // roborev 7660 (high): the Claude Code path counts closed requests with the same correlation
+  // key in its ambiguity check. A city-approved call's asynchronous PostToolUse can arrive after an
+  // identical second request opened; the closed first request must still make the match ambiguous,
+  // or the second (unanswered) request is recorded as a terminal allow.
+  it("counts a closed request in the ambiguity check: a late Post of the first call leaves an identical second request open", async () => {
+    const h = boot();
+    // Request 1: Pre tracked, held, answered Allow in the city (closed).
+    const first = await openAfterPre(h, [codexPreToolUse("call-1")]);
+    expect(h.bridge.decide(first.requestId, { behavior: "allow" })).toBe(true);
+    expect(await (await first.pending).json()).toEqual(ALLOW_BODY);
+
+    // Request 2: the same session, turn, agent, tool and command, opened and held. Its own
+    // PreToolUse has not been seen yet, so only request 1's call is tracked.
+    const pending = postCodexPermission(h.app, codexPermissionHook());
+    // The city's answer leaves request 1 "open" in the projection, so wait for a second one.
+    const secondId = await eventually(() => {
+      const other = requestsOf(h.engine).find((r) => r.id !== first.requestId);
+      if (other === undefined) throw new Error("second request not recorded yet");
+      return other.id;
+    });
+
+    // Request 1's asynchronous PostToolUse arrives now.
+    observe(h, codexPostToolUse("call-1"));
+
+    expect(resolved(h)).toEqual([]);
+    expect(stateOf(h, secondId)).toBe("open");
+    // Still held and answerable by the city.
+    expect(h.bridge.lookup(secondId)).toBeDefined();
+    expect(h.bridge.decide(secondId, { behavior: "deny", message: "No" })).toBe(true);
+    expect(await (await pending).json()).toEqual(denyBody("No"));
+  });
+
   it("ignores a PostToolUse that arrives with no request to match", async () => {
     const h = boot();
     observe(h, codexPreToolUse("call-1"));
