@@ -13,6 +13,7 @@ import {
   openStorage,
   type ProjectionReducer,
   rebuildStaleProjections,
+  UPKEEP_WAIT_MS,
 } from "../../src/storage/index.ts";
 import { stateAtSequence } from "../../src/timelines/checkpoints.ts";
 import { seedLog } from "./day-log.ts";
@@ -101,6 +102,13 @@ const timed = <T>(fn: () => T): { value: T; ms: number } => {
 
 /** Runs per side in lockCost. The minimum of several runs drops the ones a busy CPU stretched. */
 const LOCK_RUNS = 3;
+/**
+ * Ceiling on the extra time a foreign lock may add to a budgeted upkeep. The budget is 250 ms, but
+ * wall time on a loaded machine overshoots it (405 and 437 ms were seen), so this is half the 5000 ms
+ * busy timeout: the regression (upkeep waiting out that timeout, 5000 ms or more per step) misses it
+ * by 2x or more, and a loaded budgeted run (250 ms plus stalls) stays far under it.
+ */
+const BUDGET_CEILING_MS = 2500;
 /** Per-test timeout for tests that fold the log 2 * LOCK_RUNS times; a loaded fold takes seconds. */
 const LOADED_TIMEOUT_MS = 90_000;
 
@@ -149,6 +157,30 @@ function writeWaitMs(conn: ReturnType<typeof openStorage>): number {
   return performance.now() - started;
 }
 
+/**
+ * The busy timeouts that `run` set on any connection below the engine's own (5000 ms) default, in
+ * order: each is one upkeep step's grant from the shared budget. The restores back to the default
+ * are not grants and are left out.
+ */
+function grantedBusyTimeouts(run: () => void): number[] {
+  const granted: number[] = [];
+  const exec = DatabaseSync.prototype.exec;
+  const spy = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (
+    this: DatabaseSync,
+    sql: string,
+  ) {
+    const match = /^PRAGMA busy_timeout = (\d+)$/.exec(sql);
+    if (match && Number(match[1]) < 5000) granted.push(Number(match[1]));
+    return exec.call(this, sql);
+  });
+  try {
+    run();
+  } finally {
+    spy.mockRestore();
+  }
+  return granted;
+}
+
 // Passes on main (pins), except where noted per test.
 describe("busy_timeout is restored after stateAtSequence", () => {
   beforeEach(() => seedLog(storage(), events));
@@ -170,7 +202,7 @@ describe("busy_timeout is restored after stateAtSequence", () => {
         stateAtSequence(storage(), PROJECT, 1250),
       );
       expect(value).toEqual(fullReplay(1250));
-      expect(extra).toBeLessThan(400); // the 250 ms budget is shared by all upkeep steps
+      expect(extra).toBeLessThan(BUDGET_CEILING_MS); // the 250 ms budget is shared by all upkeep steps
       db().exec("BEGIN IMMEDIATE");
       try {
         expect(writeWaitMs(storage())).toBeGreaterThan(4500);
@@ -182,7 +214,7 @@ describe("busy_timeout is restored after stateAtSequence", () => {
   );
 
   it(
-    "the budget is shared: even with bad rows to prune and rows to write, total stays under 400 ms",
+    "the budget is shared: even with bad rows to prune and rows to write, total stays far under the 5000 ms busy timeout",
     () => {
       const damaged = () => {
         clearCache();
@@ -195,7 +227,26 @@ describe("busy_timeout is restored after stateAtSequence", () => {
         stateAtSequence(storage(), PROJECT, LOG_LENGTH),
       );
       expect(value).toEqual(fullReplay(LOG_LENGTH));
-      expect(extra).toBeLessThan(400);
+      expect(extra).toBeLessThan(BUDGET_CEILING_MS);
+
+      // The wall-clock ceiling is loose on purpose, so check the sharing itself: the busy timeouts
+      // the upkeep steps were granted (what the connection was told to wait) add up to at most the
+      // budget. Separate budgets per step would grant about 250 ms each, and this sum would be a
+      // multiple of it. Counted from PRAGMA statements, so machine load cannot move it.
+      damaged();
+      const granted = grantedBusyTimeouts(() => {
+        db().exec("BEGIN IMMEDIATE");
+        try {
+          stateAtSequence(storage(), PROJECT, LOG_LENGTH);
+        } finally {
+          db().exec("ROLLBACK");
+        }
+      });
+      expect(granted.length, "upkeep reached a blocking write").toBeGreaterThan(0);
+      expect(
+        granted.reduce((sum, ms) => sum + ms, 0),
+        `timeouts granted: ${granted.join(", ")}`,
+      ).toBeLessThanOrEqual(UPKEEP_WAIT_MS);
     },
     LOADED_TIMEOUT_MS,
   );
