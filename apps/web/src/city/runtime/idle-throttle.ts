@@ -1,6 +1,8 @@
 /** ARCHITECTURE.md section 11: full rate while anything moves, 20 fps once nothing has. */
 export const FULL_FPS = 60;
 export const IDLE_FPS = 20;
+/** How long an idle pacer sleeps between checks: one idle frame. */
+export const IDLE_WAKE_MS = 1000 / IDLE_FPS;
 
 const DEFAULT_IDLE_AFTER_MS = 1000;
 const DISPLAY_FRAME_MS = 1000 / 60;
