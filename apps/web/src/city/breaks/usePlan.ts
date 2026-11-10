@@ -171,36 +171,47 @@ export function useBreakPlan({
   // Re-render when the lighting setting changes; `nightAt` reads it.
   const lighting = useLighting((s) => s.setting);
   const [tick, setTick] = useState(0);
+  const kept = useRef<BreakPlan | null>(null);
+  // The plan for a moment, from the latest render's inputs; the tick below samples it too.
+  const build = (at: number): BreakPlan =>
+    planBreaks(
+      planInputs({
+        now: at,
+        enabled: breakTime,
+        night: nightAt,
+        layout,
+        agents: agents as readonly Agent[],
+        activity: state?.activity ?? {},
+        attention: plannerAttention(attention, strictAttribution),
+        sessions: state?.sessions ?? {},
+      }),
+    );
+  const latest = useRef(build);
+  latest.current = build;
+  // M9.13: the tick samples the plan outside React and re-renders consumers only when it changed,
+  // so an idle tick costs no render and no frame. The clock is read here, in a timer callback,
+  // not during render.
   useEffect(() => {
     if (!breakTime) return;
-    const timer = setInterval(() => setTick((n) => n + 1), TICK_MS);
+    const timer = setInterval(() => {
+      const sampled = latest.current(store.now());
+      if (kept.current === null || !samePlan(kept.current, sampled)) setTick((n) => n + 1);
+    }, TICK_MS);
     return () => clearInterval(timer);
-  }, [breakTime]);
+  }, [breakTime, store]);
 
-  // The clock is read only when a tracked input changes (the tick, a store slice, a setting), never
-  // on any other render. React may render a component for a state update that turns out to change
-  // nothing (Bubbles' no-op setState), then bail out: it keeps that render's hook state but drops
-  // its effects. A plan that changed in such a render, only because the clock moved, would reach
-  // the consumers' memo and effect deps without their effects ever running for it (M9.14).
+  // The clock is read only when a tracked input changes (a changed tick, a store slice, a setting),
+  // never on any other render. React may render a component for a state update that turns out to
+  // change nothing (Bubbles' no-op setState), then bail out: it keeps that render's hook state but
+  // drops its effects. A plan that changed in such a render, only because the clock moved, would
+  // reach the consumers' memo and effect deps without their effects ever running for it (M9.14).
   // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the re-sample signals
   const now = useMemo(
     () => store.now(),
     [store, tick, agents, attention, state, breakTime, strictAttribution, lighting],
   );
 
-  const next = planBreaks(
-    planInputs({
-      now,
-      enabled: breakTime,
-      night: nightAt,
-      layout,
-      agents: agents as readonly Agent[],
-      activity: state?.activity ?? {},
-      attention: plannerAttention(attention, strictAttribution),
-      sessions: state?.sessions ?? {},
-    }),
-  );
-  const kept = useRef(next);
-  if (!samePlan(kept.current, next)) kept.current = next;
+  const next = build(now);
+  if (kept.current === null || !samePlan(kept.current, next)) kept.current = next;
   return kept.current;
 }
