@@ -133,11 +133,13 @@ describe("roborev 7754: a long prefix without a cwd", () => {
       root.replace(/[^A-Za-z0-9]/g, "-"),
     );
     mkdirSync(dir, { recursive: true });
-    // 2,000 cwd-free lines (more than one 500-line batch), then a line inside the root.
-    const lines: object[] = Array.from({ length: 2_000 }, (_, i) =>
-      userPrompt(`p${i}`, { ts: T(i), cwd: null }),
+    // M8.20 raised the allowance (5,000 lines or 16 MiB), so this prefix exceeds both: 20,000
+    // cwd-free lines of about 1 KiB, then a line inside the root.
+    const pad = "x".repeat(1_000);
+    const lines: object[] = Array.from({ length: 20_000 }, (_, i) =>
+      userPrompt(`${pad}${i}`, { ts: T(i % 3_600), cwd: null }),
     );
-    lines.push(userPrompt("late", { ts: T(2_001), cwd: root }));
+    lines.push(userPrompt("late", { ts: T(0), cwd: root }));
     writeFileSync(join(dir, "session.jsonl"), jsonl(lines));
 
     const gen = createTranscriptImporter().run({
@@ -159,5 +161,5 @@ describe("roborev 7754: a long prefix without a cwd", () => {
     expect(batches.reduce((n, b) => n + b.events.length, 0)).toBe(0);
     expect(counts?.imported).toBe(0);
     expect(counts?.skipped).toBe(1);
-  });
+  }, 60_000);
 });
