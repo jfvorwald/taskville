@@ -85,6 +85,8 @@ export interface ArchiveEvidenceSink {
    * so a still-listed archive reads them as evicted.
    */
   deleteArchive?(projectId: string, archiveId: string, options?: { keepPointers?: boolean }): void;
+  /** The archive IDs that hold pointers for a project, so ones whose row is gone can be swept. */
+  archiveIds?(projectId: string): string[];
 }
 
 export interface ImportJobsOptions {
@@ -377,6 +379,7 @@ export class ImportJobs {
         this.#applyArchiveCap(projectId, id, job.kind, root, tally, counts);
         this.#storeEvidence(projectId, id, tally);
         this.#prune(projectId, job.kind, root);
+        this.#sweepOrphans(projectId);
       }
     } catch (error) {
       this.#logger?.warn({ errName: errName(error) }, "import failed");
@@ -545,6 +548,10 @@ export class ImportJobs {
       contentHash: event.contentHash,
       envelope: { ...event.envelope, ingestSequence: index + 1 },
     }));
+    // Evidence still to be fitted under the archive cap may be dropped after this write. Until
+    // `#applyArchiveCap` records the real figure, assume all of it was, so that a failed update
+    // leaves counts that over-report drops instead of silently omitting them.
+    const pending = this.#evidence?.fitArchiveEvidence ? tally.evidence.length : 0;
     const counts: ArchiveCounts = {
       read: final.read,
       imported: events.length,
@@ -554,8 +561,12 @@ export class ImportJobs {
       ...(tally.truncated ? { truncated: true } : {}),
       ...(tally.evidenceDropped > 0 ? { evidenceDropped: tally.evidenceDropped } : {}),
     };
+    const written =
+      pending > 0 ? { ...counts, evidenceDropped: tally.evidenceDropped + pending } : counts;
     try {
-      this.#storage.archives().complete(id, { events, counts, finishedAt: this.#finishedAt() });
+      this.#storage
+        .archives()
+        .complete(id, { events, counts: written, finishedAt: this.#finishedAt() });
     } catch (error) {
       this.#logger?.warn({ errName: errName(error) }, "archive write failed");
       throw new WriteFailure();
@@ -594,14 +605,15 @@ export class ImportJobs {
       }
       const fit = evidence.fitArchiveEvidence(tally.evidence);
       tally.evidence = fit.evidence;
-      if (fit.dropped > 0) {
-        this.#storage.archives().updateCounts(id, {
-          ...counts,
-          evidenceDropped: (counts.evidenceDropped ?? 0) + fit.dropped,
-        });
-      }
+      // Always replaces the pessimistic figure `#write` recorded with the real one.
+      const dropped = (counts.evidenceDropped ?? 0) + fit.dropped;
+      this.#storage.archives().updateCounts(id, {
+        ...counts,
+        ...(dropped > 0 ? { evidenceDropped: dropped } : {}),
+      });
     } catch (error) {
-      // The archive is committed; its evidence is not stored rather than risk the cap.
+      // The archive is committed; its evidence is not stored rather than risk the cap. Its counts
+      // already say all of it was dropped, unless the update itself was what failed.
       this.#logger?.warn({ errName: errName(error) }, "import evidence not stored");
       tally.evidence = [];
     }
@@ -618,6 +630,28 @@ export class ImportJobs {
           this.#evidence?.deleteArchive?.(projectId, id, { keepPointers: true });
           archives.delete(id);
           this.#evidence?.deleteArchive?.(projectId, id);
+        } catch (error) {
+          this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+        }
+      }
+    } catch (error) {
+      this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+    }
+  }
+
+  /**
+   * Removes pointers whose archive row is gone, left by a pruned archive whose final pointer
+   * deletion failed. A listed (or running) archive is never touched.
+   */
+  #sweepOrphans(projectId: string): void {
+    const evidence = this.#evidence;
+    if (!evidence?.archiveIds || !evidence.deleteArchive) return;
+    try {
+      const archives = this.#storage.archives();
+      for (const archiveId of evidence.archiveIds(projectId)) {
+        if (archives.get(archiveId) !== undefined) continue;
+        try {
+          evidence.deleteArchive(projectId, archiveId);
         } catch (error) {
           this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
         }
