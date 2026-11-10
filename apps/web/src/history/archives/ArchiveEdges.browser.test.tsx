@@ -294,3 +294,33 @@ describe("crew runs resolved from before the window", () => {
     expect(agentOptions()).not.toContain(child("n"));
   }, 120_000);
 });
+
+// M8.16 (issue 509): out-of-order source events. A finish recorded before the agent's first
+// recorded registration, with the finish before the loaded window and the registration inside it.
+const barState = (name: RegExp) =>
+  (bar(name).element() as HTMLElement).getAttribute("data-state") ?? "";
+
+describe("a finish recorded before its registration, across windows", () => {
+  it("shows the agent as finished when the finish is before the window and the registration inside it", async () => {
+    await open({
+      rewrite: rewriteAt({
+        10: finish("early"),
+        [COUNT - 100]: registration("early", "Early finisher"),
+      }),
+    });
+    await expect.element(bar(/Early finisher/)).toBeVisible();
+    // The bar may only be settled once the backward scan has looked for the earlier finish.
+    await expect.poll(() => barState(/Early finisher/), { timeout: 30_000 }).toBe("finished");
+    expect(barLabel(/Early finisher/)).not.toContain("running");
+  }, 120_000);
+
+  it("control: an agent registered in the window with no finish anywhere stays running", async () => {
+    await open({
+      rewrite: rewriteAt({ [COUNT - 100]: registration("busy", "Busy worker") }),
+    });
+    await expect.element(bar(/Busy worker/)).toBeVisible();
+    await settle(1500);
+    expect(barState(/Busy worker/)).toBe("running");
+    expect(barLabel(/Busy worker/)).toContain("running");
+  }, 120_000);
+});
