@@ -356,28 +356,30 @@ describe("the subset fold equals the full fold: request.opened in another sessio
   });
 });
 
-// Structural guard (lead decision on roborev 7838): the subset must hold every event type that
-// retention reads, project-wide, so the two folds cannot drift again. Assumed export of
-// `apps/engine/src/storage/storage.ts`: `FEED_RETENTION_TYPES`, a ReadonlySet<string> of event
-// types that the feed subset query includes for the whole project, whatever agent or session.
+// Structural guard (lead decision on roborev 7838, reshaped in the M5.14 debug round 2). The
+// subset fold no longer runs retention: no bounded subset can reproduce it (an open request, an
+// unended team or a running call anywhere keeps an agent, and requests close on other sessions'
+// events). Instead `ToolCallTracker.needsFullFold` sends the feed to a full fold at the first event
+// where a drop of a FINISHED agent could show. That rule is sound only while retention drops
+// agents by `finishedAt` and removes with them only what the rule accounts for, and only while the
+// subset holds every event type the rule reads. Export of `apps/engine/src/storage/storage.ts`:
+// `FEED_PROJECT_WIDE_TYPES`, a ReadonlySet<string> of event types the subset query includes for
+// the whole project.
 //
-// The guard reads the state keys `retention.ts` touches. Each key maps to the event types whose
-// reducer handlers write it. A key that is not in the map fails the test, so a new retention
-// input has to be classified here and, if it is event-fed, added to the subset.
-describe("the subset includes every event type retention reads", () => {
-  // Keys that decide what is KEPT or what an agent drop is gated on, with their writer events:
-  //   agents: agent.registered (record, parentAgentId), agent.finished (finishedAt)
-  //   teams: team.started (leadAgentId), team.ended (endedAt)
-  //   requests: request.opened (open request, agentId), request.resolved, request.expired (close it)
-  // Keys that are only OUTPUT of a drop (activity, sessions, retired) or never gate an agent drop
-  // (tasks: only terminal tasks are dropped, nothing else reads them) need no project-wide types.
-  // toolCalls gates a drop through a running call, but agent.finished closes the agent's calls and
-  // tool_call events are per agent and per session; widening to every tool call would break the
-  // row bound (see "the row bound grows by the agent count").
+// The guard reads the state keys `retention.ts` touches. Each key maps to the event types the
+// fallback rule needs project-wide for it. A key that is not in the map fails the test, so a new
+// retention input or output has to be classified here, and `needsFullFold` reviewed for it.
+describe("the subset holds every event type the full-fold fallback rule reads", () => {
+  // agents: which agents have finished (the rule's count and its "finished X"), and which are
+  //   registered subagents (never own a session): agent.finished, agent.registered.
+  // teams, requests, toolCalls: only decide which finished agents are KEPT. The rule assumes any
+  //   finished agent may be dropped, so it needs none of them.
+  // activity, sessions, retired: only OUTPUT of a drop; sessions is what the rule watches (an
+  //   in-scope session whose owner is finished). tasks: only terminal tasks are dropped.
   const KEY_TYPES: Record<string, readonly string[]> = {
     agents: ["agent.registered", "agent.finished"],
-    teams: ["team.started", "team.ended"],
-    requests: ["request.opened", "request.resolved", "request.expired"],
+    teams: [],
+    requests: [],
     toolCalls: [],
     activity: [],
     sessions: [],
@@ -399,10 +401,10 @@ describe("the subset includes every event type retention reads", () => {
     expect(retentionKeys()).toEqual(expect.arrayContaining(["agents", "teams", "requests"]));
   });
 
-  it("FEED_RETENTION_TYPES holds every event type that feeds those keys", () => {
-    const exported = (storageModule as { FEED_RETENTION_TYPES?: ReadonlySet<string> })
-      .FEED_RETENTION_TYPES;
-    expect(exported, "storage.ts must export FEED_RETENTION_TYPES").toBeInstanceOf(Set);
+  it("FEED_PROJECT_WIDE_TYPES holds every event type the rule needs for those keys", () => {
+    const exported = (storageModule as { FEED_PROJECT_WIDE_TYPES?: ReadonlySet<string> })
+      .FEED_PROJECT_WIDE_TYPES;
+    expect(exported, "storage.ts must export FEED_PROJECT_WIDE_TYPES").toBeInstanceOf(Set);
     const needed = retentionKeys().flatMap((k) => KEY_TYPES[k] ?? []);
     expect(needed.length).toBeGreaterThan(0);
     const missing = needed.filter((t) => !exported?.has(t));
