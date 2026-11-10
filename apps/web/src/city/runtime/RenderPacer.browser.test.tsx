@@ -49,6 +49,18 @@ async function rendersOverWindow(): Promise<number> {
   return renders - before;
 }
 
+/**
+ * Mount the city and wait until the pacer has settled into idle. The settle time counts from the
+ * pacer's first render, not from `render()`: under load (CI runs ~80 WebGL browser files at once)
+ * R3F mounts the canvas children, and so starts the pacer, up to 1.5 s after `render()` returns,
+ * and the pacer by design runs at full rate for its first second.
+ */
+async function settleFromFirstRender() {
+  const deadline = Date.now() + 15000;
+  while (renders === 0 && Date.now() < deadline) await sleep(20); // setTimeout, not rAF
+  await sleep(IDLE_SETTLE_MS + 500);
+}
+
 async function mountCity() {
   renders = 0;
   await render(
@@ -78,7 +90,7 @@ describe("RenderPacer frame rate", () => {
   it("renders on at most 22 of 60 animation frames after 1.5 s with nothing moving", async () => {
     movementLabels.set([]);
     await mountCity();
-    await sleep(IDLE_SETTLE_MS + 500);
+    await settleFromFirstRender();
     expect(await rendersOverWindow()).toBeLessThanOrEqual(IDLE_MAX_RENDERS);
   });
 });
@@ -124,7 +136,7 @@ describe("RenderPacer idle wakeups", () => {
   it("runs at most 22 animation-frame callbacks per second after 1.5 s with nothing moving", async () => {
     movementLabels.set([]);
     await mountCity();
-    await sleep(IDLE_SETTLE_MS + 500);
+    await settleFromFirstRender();
     const ran = await callbacksOver(COUNT_WINDOW_MS);
     expect(ran).toBeLessThanOrEqual(IDLE_CALLBACKS_PER_SECOND_MAX);
   });
@@ -135,18 +147,35 @@ describe("RenderPacer idle wakeups", () => {
 // callback, the next animation frame lands on the following vsync, and a wake judged not yet due
 // sleeps another full period. The window is timed with setTimeout so the test adds no rAF callbacks.
 
-const IDLE_MIN_RENDERS_PER_SECOND = 19;
+// A fixed renders-per-second floor is wrong on a loaded machine: the browser delivers animation
+// frames irregularly there (gaps of 67 to 850 ms measured in CI). So the bound is relative to the
+// frames actually delivered during the window, counted by this test's own rAF chain (allowed in
+// this test only; the callback test above stays rAF-free). At a steady 60 Hz the pacer draws every
+// third frame; after a stall it draws on the first frame, so renders per delivered frame only
+// rises. The skip-a-frame bug (timer started from the callback) drew 56 renders in 180 delivered
+// frames; this bound is floor(180 / 3) - 2 = 58, so it still fails that.
+
 const IDLE_RATE_WINDOW_MS = 3000;
+const IDLE_FRAME_SLACK = 2;
 
 describe("RenderPacer idle frame rate", () => {
-  it("draws at least 19 renders per second after 1.5 s with nothing moving", async () => {
+  it("draws on about every third delivered animation frame after 1.5 s with nothing moving", async () => {
     movementLabels.set([]);
     await mountCity();
-    await sleep(IDLE_SETTLE_MS + 500);
+    await settleFromFirstRender();
+    let delivered = 0;
+    let counting = true;
+    const tick = () => {
+      if (!counting) return;
+      delivered += 1;
+      requestAnimationFrame(tick);
+    };
     const before = renders;
+    requestAnimationFrame(tick);
     await sleep(IDLE_RATE_WINDOW_MS);
-    const perSecond = ((renders - before) * 1000) / IDLE_RATE_WINDOW_MS;
-    expect(perSecond).toBeGreaterThanOrEqual(IDLE_MIN_RENDERS_PER_SECOND);
+    counting = false;
+    const drawn = renders - before;
+    expect(drawn).toBeGreaterThanOrEqual(Math.floor(delivered / 3) - IDLE_FRAME_SLACK);
   });
 });
 
@@ -172,7 +201,7 @@ async function framesUntilRender(change: () => void): Promise<number> {
 async function settleIdle() {
   movementLabels.set([]);
   await mountCity();
-  await sleep(IDLE_SETTLE_MS + 500);
+  await settleFromFirstRender();
 }
 
 describe("RenderPacer responsiveness while idle", () => {
