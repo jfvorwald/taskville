@@ -2,7 +2,21 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 UTC. **Main:** be5643e. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 2 done: M8.14, A1.03, M9.14 merged. Wave 3 in flight: M7.35 #515, M8.17 #517, M10.04 #489, M8.16 #509, M9.13 #497. Open follow-ups also: #471, #473. Staging deploy still held (#432).
+**Updated:** 2026-11-09 UTC. **Main:** d44d41c. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 3 done: M7.35, M8.17, M10.04, M8.16, M9.13 merged; wave run clean. Open follow-ups: #471, #473, #523. Staging deploy still held (#432).
+
+## Done in backlog wave 3 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.35 #515 staging budget test flake | #519 | measures CPU time with medians instead of wall time; bounds unchanged; a reintroduced per-request rebuild still fails it; [report](tasks/M7.35.md) |
+| M8.17 #517 archive pruning failure edges | #521 | the archive is committed with a pessimistic dropped count, then corrected; each import sweeps evidence pointers whose archive row is gone; [report](tasks/M8.17.md) |
+| M10.04 #489 logbook evidence budget and needs-you | #520 | open previews share one evidence budget with expanded groups (none reserved in privacy mode); a pending request with no single matching running call gets its own "Needs you" entry; 13 or more open previews filed as #523; [report](tasks/M10.04.md) |
+| M8.16 #509 finish recorded before registration | #525 | the backward crew scan also covers a registration in the window with no visible finish, and reads each stretch once; [report](tasks/M8.16.md) |
+| M9.13 #497 idle plan tick frames | #524 | the 1 s plan tick sets React state only when the plan changes, so an idle City requests no frame; [report](tasks/M9.13.md) |
+
+Follow-up filed: #523 (Live logbook preview bodies with 13 or more open previews exceed the evidence cache).
+
+Wave run on main d44d41c (push tier, each suite once in sequence): `pnpm check` 5,928 of 5,928; release 73 of 73; browser 1,146 of 1,146; app e2e all specs passed (breaks IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. No flakes. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs.
 
 ## Done in backlog wave 2 (2026-11-09)
 
