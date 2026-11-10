@@ -193,3 +193,108 @@ it("under privacy open previews reserve nothing, so an expanded group shows 32 p
     await view.unmount();
   }
 });
+
+// M10.05 (#523), red first: 14 open, unexpanded five-call previews ask for 14 x 5 x 2 = 140
+// bodies, over the 128-body cache, and no expanded group exists to shrink. Early preview bodies
+// are evicted and never retried, so a preview silently loses its names. Contract: every open
+// preview lists all five of its names, or shows a visible "not loaded" marker; never a silently
+// missing or partial list. Marked previews must load once demand falls (other previews collapse).
+// Either fix passes: request fewer body parts, or cap previews with a recoverable marker.
+it("never silently drops preview names when 14 open previews exceed the evidence cache", async () => {
+  const GROUPS = 14;
+  const namesOf = (g: number) =>
+    Array.from({ length: 5 }, (_, n) =>
+      g % 2 === 0 ? `/synthetic/budget/p${g}-${n}.ts` : `needle-p${g}-${n}`,
+    );
+  const specs = Array.from({ length: GROUPS }, (_, g) =>
+    Array.from({ length: 5 }, (_, n) =>
+      g % 2 === 0
+        ? read(`p${g}`, n)
+        : {
+            id: `budget-p${g}-${n}`,
+            tool: "Grep",
+            input: { pattern: `needle-p${g}-${n}` },
+            output: { filenames: [`/synthetic/budget/hit-p${g}-${n}.ts`] },
+          },
+    ),
+  ).flat();
+  const { calls, evidence } = build(specs);
+  selectProject(PROJECT);
+  // Hold every body response until all 14 previews are open, then release them as one burst.
+  // Bodies then land before any render can re-touch the ones it shows, so the cache's oldest
+  // 12 (the first preview's) are evicted for real, as they are when many responses arrive at once.
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), location.origin);
+    if (url.pathname.startsWith("/v1/evidence/")) {
+      await gate;
+      const id = decodeURIComponent(url.pathname.slice("/v1/evidence/".length));
+      return Response.json(evidence[id]);
+    }
+    if (!url.pathname.endsWith("/feed")) throw new Error("Unexpected synthetic route");
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          calls.forEach((data, index) => {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `id: ${index + 1}\nevent: toolcall\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          });
+        },
+      }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  });
+  const view = await render(
+    <div data-testid="agent-panel-tab-slot" style={{ height: 16000, width: 400, overflowY: "auto" }}>
+      <SessionProvider value="synthetic-m1005-many-previews">
+        <ConnectedLiveTab agentId={AGENT} store={seedStore()} select={vi.fn()} />
+      </SessionProvider>
+    </div>,
+  );
+  try {
+    const groups = page.getByTestId("agent-panel-tab-slot").getByRole("article");
+    await expect.poll(() => groups.elements().length).toBe(GROUPS);
+    for (let g = 0; g < GROUPS; g++) {
+      const toggle = groups.nth(g).getByRole("button", { name: /^details\b/i });
+      if (toggle.element().getAttribute("aria-expanded") === "false") await toggle.click();
+    }
+    release();
+    // "complete" = every name shown; "marked" = a visible not-loaded state; else it is silent.
+    const state = (g: number, closed: ReadonlySet<number>) => {
+      if (closed.has(g)) return "closed";
+      const text = groups.nth(g).element().textContent ?? "";
+      if (namesOf(g).every((name) => text.includes(name))) return "complete";
+      return /not loaded/i.test(text) ? "marked" : "silent";
+    };
+    const closed = new Set<number>();
+    const states = () => Array.from({ length: GROUPS }, (_, g) => state(g, closed));
+    await paint();
+    // No preview may stay silently short of its names (loading settles into complete or marked).
+    await expect
+      .poll(() => states().filter((s) => s === "silent").length, { timeout: 8000 })
+      .toBe(0);
+    await paint();
+    expect(states().filter((s) => s === "silent")).toEqual([]);
+    // Recovery: collapse loaded previews to free demand; every marked preview must then load.
+    const loaded = states().flatMap((s, g) => (s === "complete" ? [g] : []));
+    for (const g of loaded.slice(0, 8)) {
+      await groups
+        .nth(g)
+        .getByRole("button", { name: /^details\b/i })
+        .click();
+      closed.add(g);
+    }
+    await paint();
+    await expect
+      .poll(() => states().filter((s) => s !== "complete" && s !== "closed"), { timeout: 8000 })
+      .toEqual([]);
+  } finally {
+    await view.unmount();
+  }
+});
