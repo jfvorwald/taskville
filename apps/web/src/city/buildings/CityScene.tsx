@@ -20,12 +20,15 @@ export function CityScene({
 }) {
   const materials = useCityMaterials(palette);
   return (
-    <group name="city">
+    <>
+      {/* Beside the city group, not in it: the camera moves, and drei adds a group of its own. */}
       <CityCamera />
-      <Ground layout={layout} materials={materials} />
-      <Buildings layout={layout} materials={materials} />
-      <Scenery layout={layout} materials={materials} />
-      <BreakProps layout={layout} materials={materials} />
-    </group>
+      <group name="city" matrixAutoUpdate={false}>
+        <Ground layout={layout} materials={materials} />
+        <Buildings layout={layout} materials={materials} />
+        <Scenery layout={layout} materials={materials} />
+        <BreakProps layout={layout} materials={materials} />
+      </group>
+    </>
   );
 }

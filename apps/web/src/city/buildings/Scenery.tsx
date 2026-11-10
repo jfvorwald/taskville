@@ -40,7 +40,7 @@ export function Scenery({ layout, materials }: { layout: CityLayout; materials: 
     return { poles, heads, trunks, crowns };
   }, [layout]);
   return (
-    <group name="scenery">
+    <group name="scenery" matrixAutoUpdate={false}>
       <Instances
         geometry={geometry.pole}
         material={materials.lambert.lampPole}
