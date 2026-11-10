@@ -55,6 +55,7 @@ function mapStream(name: string, hooks: Hook[], late = false): MapResult[] {
   return hooks.map((h) =>
     mapCoreHook(h.input, {
       projectId: "proj-1",
+      ownerName: "owner",
       sourceEventId: `${name}-${h.seq}`,
       receivedAt: h.receivedAt,
       late,

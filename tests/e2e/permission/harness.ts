@@ -21,8 +21,18 @@ export const TELEMETRY_PATH = "/v1/sources/claude-code/hooks";
  */
 export const PROJECT_ID = "unsorted";
 
-/** The hold window the replay runs with (config.json `bridge.holdWindowSeconds`). */
+/**
+ * The short hold window (config.json `bridge.holdWindowSeconds`) for the replays that watch a hold
+ * end: the bridge lets the hook fall through after it.
+ */
 export const HOLD_WINDOW_SECONDS = 3;
+
+/**
+ * The hold window for the replays where the viewer answers. It must outlast the browser's path from
+ * the hook to the click (stream event, red row, card, exact input, settle), which takes longer than
+ * the short window on a loaded machine; the bridge then let the hook fall through first (M7.25).
+ */
+export const ANSWER_HOLD_WINDOW_SECONDS = 30;
 
 function freePort(): Promise<number> {
   return new Promise((done, fail) => {

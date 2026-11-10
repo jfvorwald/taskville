@@ -35,7 +35,7 @@ const PIP_SESSION = "cf7d0732-a271-4cf7-9a11-d0918b72fbd0";
 describe("heuristic red state (split-pane fixture seq 17, a worker permission prompt)", () => {
   const stuck = replay("team/split-pane", { upTo: 17 });
   const input = view(stuck);
-  const lead = agentNamed(stuck.state, "lead", "proj");
+  const lead = agentNamed(stuck.state, "lead", "owner");
 
   it("is shown while strict is off, with the 'for: pip' label", () => {
     const out = applyStrictAttribution(input, false);
@@ -104,7 +104,7 @@ describe("recorded links still show when strict (split-pane fixture, full stream
 
   it("keeps a recorded (non-heuristic) lead prompt red with no label (in-process fixture seq 37)", () => {
     const r = replay("team/in-process", { upTo: 37 });
-    const lead = agentNamed(r.state, "lead", "proj");
+    const lead = agentNamed(r.state, "lead", "owner");
     const out = crewAttribution(applyStrictAttribution(view(r), true));
     expect(out.red).toContain(lead.id);
     expect(out.forLabels).toEqual({});

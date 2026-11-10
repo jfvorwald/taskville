@@ -2,6 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { type RefObject, useEffect, useRef } from "react";
 import type { Group } from "three";
 import type { AgentView, AttentionLevelView } from "../agents/types.ts";
+import type { BreakActivity } from "../breaks/types.ts";
 import { attentionEmote, type Emote } from "./emote.ts";
 import { type AttentionMarks, createAttentionMarks } from "./marks.ts";
 import { attentionPulse, type PulseInput, type PulseState } from "./pulse.ts";
@@ -22,9 +23,15 @@ export function useAttentionMarks(
   const state = useRef<PulseState>({ intensity: 0, ring: false, hue: null, frequencyHz: 0 });
   const input = useRef<PulseInput>({ elapsedMs: 0, reducedMotion });
   // The emote follows the level and kind, which change rarely, so it is looked up on a change.
-  const shown = useRef<{ level: AttentionLevelView | null; kind: string; emote: Emote | null }>({
+  const shown = useRef<{
+    level: AttentionLevelView | null;
+    kind: string;
+    breakActivity: BreakActivity | null;
+    emote: Emote | null;
+  }>({
     level: null,
     kind: "",
+    breakActivity: null,
     emote: null,
   });
 
@@ -51,10 +58,12 @@ export function useAttentionMarks(
     const pulse = attentionPulse(a.level, input.current, state.current);
     const kind = a.kind ?? "";
     const was = shown.current;
-    if (was.level !== a.level || was.kind !== kind) {
+    const onBreak = a.breakActivity ?? null;
+    if (was.level !== a.level || was.kind !== kind || was.breakActivity !== onBreak) {
       was.level = a.level;
       was.kind = kind;
-      was.emote = attentionEmote({ level: a.level, kind });
+      was.breakActivity = onBreak;
+      was.emote = attentionEmote({ level: a.level, kind }, onBreak);
     }
     const emote = was.emote;
     if (marks.current === null) {

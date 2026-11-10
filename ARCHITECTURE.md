@@ -23,7 +23,9 @@ First release scope:
 - A headless engine that works with no browser, plus a CLI.
 - Local, single user, multiple projects, multiple viewer tabs.
 
-Out of the first release: typed replies to agents (planned next, see 9.4), AI-written quips, weather, a growing skyline, idle wandering, mascots, hosted multi-user operation, arbitrary third-party overlay code. Taskville observes agents and relays a few explicit commands. It is not a scheduler or an orchestrator.
+Out of the first release: typed replies to agents (planned next, see 9.4), AI-written quips, weather, a growing skyline, idle wandering (Break time follows as M9, see below), mascots, hosted multi-user operation, arbitrary third-party overlay code. Taskville observes agents and relays a few explicit commands. It is not a scheduler or an orchestrator.
+
+After the first release, **Break time** (M9, owner request 2026-11-07, [design](docs/superpowers/specs/2026-11-07-break-time-design.md)) lets waiting agents take breaks at a bar, a smoke corner and the plaza, and chat about made-up news. Sections 2.2 and 2.3 describe it where it changes the live view.
 
 ## 2. Live experience
 
@@ -53,7 +55,7 @@ Three attention levels, deliberately different in color and in shape so they nev
 | --- | --- | --- | --- |
 | **Needs you** | `PermissionRequest` held by the bridge (answerable); otherwise `Notification` of type `permission_prompt`, `Elicitation`, or an explicit input request (open-session only) | Agent stops where it is (a safe point on the street or at its workstation). Red hue pulses about once per second. Red rim glow. "!" emote. Quip bubble. | Yes: action card |
 | **Trouble** | `StopFailure`, three or more consecutive tool failures, or "running but silent" beyond a threshold (heuristic) | Amber, slow pulse, sweat-drop or "?" emote, occasional quip | Opens details |
-| **Waiting** | Turn ended (`Stop`), `Notification` of type `idle_prompt` | No hue. Sits at the workstation, small "..." or "zzz" emote | Opens details |
+| **Waiting** | Turn ended (`Stop`), `Notification` of type `idle_prompt` | No hue. Sits at the workstation, small "..." or "zzz" emote. With Break time (M9) on (default), after a seeded 60 to 120 s it leaves for a break activity (bar, smoke corner, plaza stroll, small diversions) with an activity emote; the label still reads Waiting, with "on break" as a note. Any work, needs-you or trouble ends the break at once | Opens details |
 
 Heuristic trouble is labeled as such ("quiet for 12 min") because the constitution forbids presenting guesses as facts. It depends on elapsed time, so it is computed by a selector with an injected clock (wall clock in live, replay clock in history) and never stored in reducer state.
 
@@ -72,7 +74,8 @@ Bubbles pop over the agent's head with a short built-in line, then fade after ab
 - Built-in phrase sets per state and per theme, for example needs-you: "Little help here?", "Need a yes on this one", "Permission to proceed, boss?"; steampunk: "Requesting authorization, guv'nor!"; cyberpunk: "Access denied. Need your override."
 - A bubble can include one short fact from the event, such as the tool name ("Needs OK: Bash"). Agent-supplied text is never placed in a bubble; it appears only, escaped, in the action card.
 - Line selection is deterministic: a hash of agent ID and event ID picks the line, so replay shows the same quips as live.
-- At most three bubbles on screen. Priority: needs-you by longest wait, then trouble, then the selected agent.
+- At most three bubbles on screen. Priority: needs-you by longest wait, then trouble, then the selected agent, then at most one break-time conversation (M9).
+- Break-time banter (M9): two agents on break together alternate a made-up headline and a reaction from the phrase files' `banter` lines. Headlines are built-in nonsense, never fetched news. Pairing and lines are seeded the same way as quips, so replay matches live.
 - Emotes are small billboard icons: "!", "?", "...", sweat drop, sparkle, "zzz".
 - Phrase sets are plain data files, so adding lines or a new theme's voice needs no code.
 
@@ -373,7 +376,7 @@ Rejected alternative: HTTP hooks for telemetry. They run synchronously, so every
 
 **Spike S-1 (before building the bridge):** confirm whether the terminal prompt appears while a PermissionRequest hook is pending, how a terminal answer is reported back, and whether an empty response falls through cleanly. If the terminal prompt is suppressed while the hook waits, the default hold window drops to a few seconds unless a viewer is actively focused. Resolved in M1 ([findings](docs/spikes/S-1-permission-bridge.md)): the terminal prompt stays visible, so the hold is focus-independent (decision #116).
 
-**Mapping.** `session_id` maps to Session. The main session is an agent, named from the session name or the project directory. `agent_id` and `agent_type` on any hook input identify the subagent that fired it; `SubagentStart` creates the child agent with a parent link and `SubagentStop` closes it. `teammate_name` and `agent_id` on `TeammateIdle`, `TaskCreated`, and `TaskCompleted` identify teammates; an Agent tool call with a `name` while agent teams are enabled marks the caller as a lead. `PreToolUse` and `PostToolUse` pairs, matched by `tool_use_id`, become ToolCall records whose inputs and outputs are stored as evidence for the code feed. The working directory maps to a project through configured repository roots; unknown directories go to an "Unsorted" project rather than being guessed. Tool names map to activities (Edit and Write to implementing, Read, Grep, and WebFetch to researching, agent spawns to dispatching). A Bash command that looks like a test run maps to testing and is flagged as heuristic.
+**Mapping.** `session_id` maps to Session. The main session is an agent, named after the OS user running the engine (owner-approved 2026-11-06, #413). `agent_id` and `agent_type` on any hook input identify the subagent that fired it; `SubagentStart` creates the child agent with a parent link and `SubagentStop` closes it. `teammate_name` and `agent_id` on `TeammateIdle`, `TaskCreated`, and `TaskCompleted` identify teammates; an Agent tool call with a `name` while agent teams are enabled marks the caller as a lead. `PreToolUse` and `PostToolUse` pairs, matched by `tool_use_id`, become ToolCall records whose inputs and outputs are stored as evidence for the code feed. The working directory maps to a project through configured repository roots; unknown directories go to an "Unsorted" project rather than being guessed. Tool names map to activities (Edit and Write to implementing, Read, Grep, and WebFetch to researching, agent spawns to dispatching). A Bash command that looks like a test run maps to testing and is flagged as heuristic.
 
 **Spike S-2 (before M2 is closed):** with agent teams enabled, confirm that teammates run hooks from user settings, whether each teammate has its own `session_id`, how teammate permission prompts are attributed in `PermissionRequest`, whether `MessageDisplay` fires inside subagents (which would add the agent's narration to the feed), and the actual `tool_response` shapes for Edit, Write, and Bash.
 
@@ -496,6 +499,7 @@ Answering permission prompts from a browser is effectively remote code execution
 - Bind `127.0.0.1` only. Reject any request, read or write, whose `Host` header is not the loopback host and port, which blocks DNS rebinding. Reads require authentication too.
 - **Browser pairing.** `taskville serve` prints a one-time URL carrying a pairing code in the URL fragment (never sent in request logs). The page exchanges it for a session secret kept in the origin's `localStorage` (scoped by port, unlike cookies) and sent as an `X-Taskville-Session` header on every request. No cookies are used, because browsers share cookies across ports and any other local server could pick one up. The SSE streams are read with `fetch` streaming so they can carry the header. State-changing routes also require a matching `Origin`. A pairing survives reloads; `taskville unpair` revokes all of them.
 - The CLI and the telemetry shim use a token in `$TASKVILLE_HOME/token` (mode 0600). The permission bridge uses a separate token. Neither can authorize commands (section 9.2).
+- The hook shim and the OTel headers helper send that token only to a live engine recorded in `$TASKVILLE_HOME/engine.json` (matching origin, live pid), so another local account that binds the port while the engine is down gets nothing. Remaining same-user limits (a same-user process can write its own `engine.json` or reuse a recorded pid; Claude Code caches helper headers between refreshes) are listed in `apps/cli/docs/hooks-security.md`.
 - Threat model limit: any process running as the same OS user can already do a lot, such as editing Claude Code settings. Taskville's job is not to add a cheap new path, especially not one where an agent approves its own prompts.
 - Import paths come only from configured repository roots.
 - Code-feed evidence is rendered as escaped text inside a highlighter, never as HTML or Markdown. Editor links are built from a fixed URL-scheme template with the path encoded; the engine never opens them itself.

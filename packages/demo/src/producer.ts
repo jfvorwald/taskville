@@ -4,12 +4,14 @@
 
 import type { EventBatchRequest, EventBatchResponse, IngestResult } from "@taskville/protocol";
 import type { Pace } from "./pace.ts";
-import { demoSteps } from "./scenario.ts";
+import { type DemoScenario, demoSteps } from "./scenario.ts";
 
 export interface ProducerOptions {
   readonly seed: number;
   readonly pace: Pace;
   readonly projectId: string;
+  /** Omitted means the default scenario. */
+  readonly scenario?: DemoScenario;
   /** Epoch milliseconds stamped as simulated time zero (the caller's clock for live runs). */
   readonly startAtMs?: number;
   /** Virtual clock multiplier: 1 is real time, 20 runs twenty times faster. Default 1. */

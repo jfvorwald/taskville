@@ -1,6 +1,16 @@
 // Engine storage: SQLite event log, projects, projections, and pairings
 // (ARCHITECTURE.md 7.4, specs/001 data-model.md).
 export {
+  type ArchiveCounts,
+  type ArchiveError,
+  type ArchiveEventWrite,
+  type ArchiveKind,
+  type ArchiveRecord,
+  type ArchiveStatus,
+  type NewArchive,
+  SqliteArchives,
+} from "./archives.ts";
+export {
   CHECKPOINT_INTERVAL,
   type CheckpointRow,
   SqliteCheckpoints,
@@ -8,6 +18,7 @@ export {
 } from "./checkpoints.ts";
 export { StorageError } from "./errors.ts";
 export { LATEST_SCHEMA_VERSION } from "./migrations.ts";
+export { type CostTotalsRow, MAX_SEEN_DIGESTS, SqliteOtlpCost } from "./otlp-cost.ts";
 export { SqlitePairingRecords } from "./pairings.ts";
 export { type ProjectionReducer, rebuildProjection, rebuildStaleProjections } from "./rebuild.ts";
 export {

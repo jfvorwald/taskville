@@ -12,6 +12,7 @@ const tokens: ThemeTokens = {
   "--tv-text-muted": "#b8c2db",
   "--tv-accent": "#35d6ff",
   "--tv-focus": "#ffb84d",
+  "--tv-ok": "#5fb98a",
   "--tv-neon": "#35d6ff",
   "--tv-radius": "4px",
   "--tv-font": '"Avenir Next", "Segoe UI", system-ui, sans-serif',
@@ -29,6 +30,9 @@ const tokens: ThemeTokens = {
   "--tv-city-lamp-glow": "#5fe3ff",
   "--tv-city-tree-trunk": "#3b3550",
   "--tv-city-tree-crown": "#3f8f86",
+  "--tv-city-bar-counter": "#7a3ad0",
+  "--tv-city-bar-stool": "#ff4fa3",
+  "--tv-city-smoke-bench": "#4a5a8a",
   "--tv-city-window-glow": "#ffe0a0",
 };
 

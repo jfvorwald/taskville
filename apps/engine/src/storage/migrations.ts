@@ -3,7 +3,7 @@ import type { Database } from "./sqlite.ts";
 
 // Schema migrations, applied in order inside one BEGIN IMMEDIATE transaction.
 // A migration is never edited after it ships; changes are new migrations.
-// Requests, commands, archives, and settings tables arrive with
+// Requests, commands, and settings tables arrive with
 // the milestones that need them (data-model.md, decision #114).
 
 const V1 = `
@@ -104,12 +104,101 @@ CREATE TABLE checkpoints (
 ) STRICT;
 `;
 
+// Telemetry cost (M5.29): per-agent token and cost totals from the OTLP receiver, and the hashed
+// identities of the data points already counted, so a re-delivered export is counted once. Both
+// are bounded by the receiver (agents and remembered identities are capped). Not event-log data.
+const V3 = `
+CREATE TABLE otlp_cost (
+  agent_id TEXT PRIMARY KEY CHECK (length(agent_id) <= 1024),
+  parent_agent_id TEXT CHECK (parent_agent_id IS NULL OR length(parent_agent_id) <= 256),
+  m_seen INTEGER NOT NULL CHECK (m_seen IN (0, 1)),
+  m_seen_tokens INTEGER NOT NULL CHECK (m_seen_tokens IN (0, 1)),
+  m_seen_cost INTEGER NOT NULL CHECK (m_seen_cost IN (0, 1)),
+  m_input REAL NOT NULL CHECK (m_input >= 0),
+  m_output REAL NOT NULL CHECK (m_output >= 0),
+  m_cache_read REAL NOT NULL CHECK (m_cache_read >= 0),
+  m_cache_creation REAL NOT NULL CHECK (m_cache_creation >= 0),
+  m_cost_usd REAL NOT NULL CHECK (m_cost_usd >= 0),
+  l_seen INTEGER NOT NULL CHECK (l_seen IN (0, 1)),
+  l_input REAL NOT NULL CHECK (l_input >= 0),
+  l_output REAL NOT NULL CHECK (l_output >= 0),
+  l_cache_read REAL NOT NULL CHECK (l_cache_read >= 0),
+  l_cache_creation REAL NOT NULL CHECK (l_cache_creation >= 0),
+  l_cost_usd REAL NOT NULL CHECK (l_cost_usd >= 0),
+  last_seen INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX otlp_cost_last_seen ON otlp_cost (last_seen);
+
+CREATE TABLE otlp_seen (
+  id INTEGER PRIMARY KEY,
+  digest TEXT NOT NULL UNIQUE CHECK (length(digest) = 64)
+) STRICT;
+`;
+
+// Archive timelines (M8.06): each import is its own read-only timeline, apart from the live log.
+// Positions are 1..n per archive; `occurred_ms` is the instant of `occurred_at` (which keeps the
+// source's offset), so "at or before" compares by the clock. Archive events are not live events:
+// nothing here touches `events`, a project head, or a projection.
+const V4 = `
+CREATE TABLE archives (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  kind TEXT NOT NULL CHECK (kind IN ('git', 'transcripts')),
+  label TEXT NOT NULL,
+  root TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'done', 'failed', 'cancelled')),
+  created_at TEXT NOT NULL,
+  finished_at TEXT,
+  counts_json TEXT NOT NULL,
+  error TEXT,
+  event_count INTEGER NOT NULL DEFAULT 0 CHECK (event_count >= 0),
+  first_at TEXT,
+  last_at TEXT
+) STRICT;
+
+CREATE INDEX archives_project ON archives (project_id, status, created_at);
+
+CREATE TABLE archive_events (
+  archive_id TEXT NOT NULL REFERENCES archives(id),
+  position INTEGER NOT NULL CHECK (position >= 1),
+  event_id TEXT NOT NULL UNIQUE,
+  source_id TEXT NOT NULL,
+  source_event_id TEXT NOT NULL,
+  source_sequence INTEGER,
+  occurred_at TEXT NOT NULL,
+  occurred_ms INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  envelope_json TEXT NOT NULL,
+  PRIMARY KEY (archive_id, position),
+  UNIQUE (archive_id, source_id, source_event_id)
+) STRICT;
+
+CREATE INDEX archive_events_time ON archive_events (archive_id, occurred_ms);
+`;
+
+// Archive checkpoints (M8.09): disposable caches of reducer state at every 1,000th position of an
+// archive, so a seek reduces at most 999 events. Keyed on the archive, never on the live
+// `(project_id, sequence)` of `checkpoints`; deleted with their archive. IF NOT EXISTS because
+// the migration tests rebuild an older schema by dropping only the tables they know of.
+const V5 = `
+CREATE TABLE IF NOT EXISTS archive_checkpoints (
+  archive_id TEXT NOT NULL REFERENCES archives(id),
+  position INTEGER NOT NULL CHECK (position >= 1),
+  reducer_version INTEGER NOT NULL,
+  state_hash TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  PRIMARY KEY (archive_id, position)
+) STRICT;
+`;
+
 // Agent index (M5.14): which events name which agent and session, so a feed, a crew and the
 // agent-to-project lookup read one agent's events and not the project's whole log. Derived from
 // the log by a trigger (so it holds for every connection) and backfilled for existing databases.
 // Only events that name an agent are indexed. Nothing reads it for correctness except those
 // lookups; the log stays the record.
-const V3 = `
+const V6 = `
 CREATE TABLE agent_events (
   project_id TEXT NOT NULL REFERENCES projects(id),
   agent_id TEXT NOT NULL,
@@ -136,7 +225,7 @@ SELECT project_id, json_extract(envelope_json, '$.agentId'), ingest_sequence,
 FROM events WHERE json_extract(envelope_json, '$.agentId') IS NOT NULL;
 `;
 
-const MIGRATIONS: readonly string[] = [V1, V2, V3];
+const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5, V6];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 

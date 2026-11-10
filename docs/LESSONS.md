@@ -20,6 +20,180 @@ Entry format:
 
 ## Entries
 
+### L-238: A shared contract file lets dependent tickets start in parallel
+- **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #463 · **Recorded by:** lead
+- **What happened:** The lead pushed a design note and an `Importer` interface (3f20bb8) before any code; the Git importer, the transcript importer and the archive foundation branched from that commit and merged without conflicts.
+- **Lesson:** When several tickets need a component none of them owns, write the interface and the design first, push it, and branch everyone from it.
+- **Action:** docs/superpowers/specs/2026-11-08-imports-design.md; apps/engine/src/importers/types.ts.
+
+### L-237: Red tests can be wrong in ways only green reveals
+- **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #92, #463, #475 · **Recorded by:** lead
+- **What happened:** Implementers found red tests that could never pass: a label used unescaped in a RegExp, `toHaveTextContent` used as a substring match (it is exact in this vitest), a controlled slider read without polling, tool events missing a required `agentId`, a row locator that matched the empty-list row.
+- **Lesson:** Test-writers should run each new assertion against a hand-made passing fixture before handing over, and prefer web-first or polling matchers for anything async.
+- **Action:** none, awareness only.
+
+### L-236: Imported evidence must be scoped away from live evidence
+- **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #463 · **Recorded by:** lead
+- **What happened:** Review found import evidence written eagerly into the shared per-project store, where it could evict live bodies, shadow a live tool call id, or survive a failed import; later a crafted evidence id could reach the archive scope through the live route.
+- **Lesson:** Keep imported data in its own scope end to end (storage key, budget, read route) and validate every component of an id that selects a scope.
+- **Action:** #466, #484; follow-up #485.
+
+### L-235: `mkdir` is only a lock where `mkdir` is atomic
+- **Date:** 2026-11-08 · **Milestone:** M7 · **Ticket:** #472 · **Recorded by:** lead (M7.32, debugger)
+- **What happened:** CI's ubuntu-26.04 ships uutils coreutils 0.8.0, whose `mkdir` can exit 0 for a directory that already exists, so two hook shims held the spool lock at once and corrupted the spool; it showed up as a flaky test 11 times over a week.
+- **Lesson:** Confirm lock ownership with an exclusive create (`set -C` file, `O_EXCL`), and when a flake recurs after a fix, collect every CI failure message before patching.
+- **Action:** #490.
+
+### L-234: A test that starts failing with no related change may be a real race
+- **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #459 · **Recorded by:** lead (M9.10)
+- **What happened:** The LiveEvidenceWindow navigation test failed in the wave, alone, and then in CI on a docs-only PR, though nothing nearby had changed. Clock pinning ruled out a date dependency; a write trap on `scrollTop` showed the follow effect pinning over the reader's scroll whenever a render landed before the scroll event.
+- **Lesson:** Treat a second consecutive failure as a product bug until proven otherwise, and instrument the shared state (here scroll writes) before blaming time or load.
+- **Action:** #462.
+
+### L-233: Fixing a stamping bug can break the tests that were written around it
+- **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #453 · **Recorded by:** lead (M9.09)
+- **What happened:** The breaks e2e backdated a sped-up demo to work around ahead-of-time stamps (L-230). Once the demo stamped at wall time, every event arrived already stale and the needs-you bubble window had passed. The spec now runs at speed 2 with deadlines measured from the producer start, and takes about 5.5 minutes.
+- **Lesson:** When a ticket fixes a known quirk, grep for tests that compensate for it and plan their update in the same ticket. Measure e2e deadlines from a fixed start, not from the previous step.
+- **Action:** #458; wave flake on the chatter count filed as #460.
+
+### L-232: A seeded fuzz found what hand-written navigator cases missed
+- **Date:** 2026-11-08 · **Milestone:** M9 · **Ticket:** #453 · **Recorded by:** lead (M9.09)
+- **What happened:** The code review said the plaza fix covered only slot goals. About 120 hand-built home and spot variants all passed, but the existing seeded fuzz with short random steps found two failing seeds in 1,500. The general rule (a resting agent told to stay never stops on a held node) fixed both without a second reservation source.
+- **Lesson:** For movement invariants, search seeds in the existing fuzz before hand-building scenarios, and fix the rule rather than the goal kind.
+- **Action:** seeds 3590 and 44475 pinned in `navigator.break.test.ts` (#458).
+
+### L-231: A port-trust check in shell must compare canonical origins
+- **Date:** 2026-11-08 · **Milestone:** M7 · **Ticket:** #434 · **Recorded by:** lead (M7.30)
+- **What happened:** The shim's new live-engine check compared `TASKVILLE_URL` with `engine.json` byte for byte. Hooks installed with `localhost` would have spooled forever against an engine that records `127.0.0.1` (roborev 7378). The security review also noted that Claude Code caches OTel helper output, so a per-call check cannot cover headers already handed out.
+- **Lesson:** Canonicalize hosts before comparing, and document which guarantees depend on the caller re-running the check.
+- **Action:** #456; `apps/cli/docs/hooks-security.md`.
+
+### L-230: A sped-up demo stamps events ahead of wall time
+- **Date:** 2026-11-07 · **Milestone:** M9 · **Ticket:** #443 · **Recorded by:** lead (M9.07)
+- **What happened:** `taskville demo --speed N` timestamps events N times ahead of the wall clock, so wall-clock features (break delays, 4 s bubbles) started late or were missed in e2e.
+- **Lesson:** Test wall-clock behavior with an in-process producer whose start time is set in the past, or at speed 1.
+- **Action:** breaks.spec.ts does this; demo fix in #453.
+
+### L-229: When one bug class keeps coming back, hand it to the debugger after the second patch
+- **Date:** 2026-11-07 · **Milestone:** M9 · **Ticket:** #451 · **Recorded by:** lead
+- **What happened:** Two agents sharing a plaza node came back in four roborev rounds (7314, 7331, 7349, 7351), each patched locally. The debugger found four claim mechanisms that every chooser checked differently and replaced them with one reservation source and a reconcile pass.
+- **Lesson:** Treat a recurring class as one finding surviving its fixes: stop patching after the second round and root-cause it, as the review rules already say.
+- **Action:** Fixed in #452 (plazaClaim, heldByOther, reconcile) with seeded invariant tests.
+
+### L-228: Give long background runs an explicit timeout, or detach them
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #87 · **Recorded by:** lead
+- **What happened:** Claude Code background shells stop at 30 minutes by default and at most 2 hours. The cache keepalive was stopped at the default, an earlier wave run hit the limit, and the live engine started for the owner is bounded by it.
+- **Lesson:** Pass the longest timeout a run needs, run push-tier suites sequentially with a per-suite summary so a stop leaves partial results, and start anything meant to outlive the session outside the agent's shell.
+- **Action:** M7.06 push tier ran this way in about 8 minutes (docs/tasks/M7.06.md).
+
+### L-227: Confirm a hosted deploy with the owner before building it
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #86 · **Recorded by:** lead
+- **What happened:** The roadmap named private staging, the spike recommended a Cloudflare Worker, and decision #415 accepted it by default, but when the first deploy needed an Access token the owner asked why Taskville was being deployed and held it (#432).
+- **Lesson:** For a local-first product, a hosted environment is a scope choice. Ask for it explicitly, with its purpose and the cheaper local alternative, before building it, not when credentials are needed.
+- **Action:** Decision #432; G7 summary asks whether to resume or drop hosted staging.
+
+### L-226: `--home` picks the token, not the engine
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #85 · **Recorded by:** lead (roborev 7251, 7252)
+- **What happened:** The runbook's restore checks and `unpair` omitted `--home`, and even with it, `--url` and `TASKVILLE_URL` win over the home's `engine.json` (`apps/cli/src/context.ts`), so a check could hit another engine.
+- **Lesson:** Any procedure that names a non-default home must pass `--home` on every command and clear `TASKVILLE_URL`, and a rollback must call the old binary by path.
+- **Action:** Fixed in docs/RUNBOOK.md (PR #429).
+
+### L-225: Pin the platform in tests whose fixtures drop a platform binary
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #428 · **Recorded by:** lead (roborev 7242)
+- **What happened:** After the lockfile guard learned the current platform, a fixture missing the linux-x64 binary passed on the Mac and would have failed on the Ubuntu runner.
+- **Lesson:** When code depends on the host platform, take it as a parameter and pin it in every test; verify by forcing the default to the CI platform locally.
+- **Action:** Done in PR #433.
+
+### L-224: A bundler flattens the tree, so never derive a path from a module's own depth
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #421, #83 · **Recorded by:** Claude (lead)
+- **What happened:** M7.26 set the release directory as `new URL("../../", import.meta.url)` in `commands/serve.ts`. Correct in a checkout, but rolldown puts every module in `bin/taskville.js`, so every installed release would have reported itself as a dev build, silently. roborev passed it; the code reviewer, told to check the bundled layout, caught it.
+- **Lesson:** Resolve package paths from one module that sits at a fixed depth (`src/package-root.ts`), make the release build fail closed on any other `import.meta.url`, and test the installed package, not only the source layout.
+- **Action:** #423 (package-root), #424 (bundle guard, installed `/health` test), #430 (clean-machine install check).
+
+### L-223: Give the code reviewer the cross-ticket question roborev cannot see
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #421, #84 · **Recorded by:** Claude (lead)
+- **What happened:** roborev passed M7.26 and found three mediums on M7.03; the specialist reviewers found the bundle path bug (M7.26), a missing builtin `unsorted` project that would freeze the staging page, and a per-request CPU cost three times the Workers Free limit (M7.03). Each came from a brief that named a concrete question beyond the diff.
+- **Lesson:** Brief the code and security reviewers with the integration questions the diff alone cannot answer (other branch, deploy target limits, what the unchanged client expects).
+- **Action:** none, awareness only.
+
+### L-222: Cap review rounds on defense-in-depth checks and move the rest to a ticket
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #425 · **Recorded by:** Claude (lead)
+- **What happened:** The release lockfile guard drew new mediums in every roborev round (keys, then integrity and importers, then omissions, then platform match). The real control is a fresh frozen install on a clean runner.
+- **Lesson:** When each round finds a narrower bypass in a secondary check, merge the improvement at the cap and ticket the residue with the primary control named.
+- **Action:** #426 merged; residue in #428.
+
+### L-221: A workflow with only workflow_dispatch cannot run on its own PR
+- **Date:** 2026-11-07 · **Milestone:** M7 · **Ticket:** #427 · **Recorded by:** Claude (lead)
+- **What happened:** The new release workflow could not be dispatched before merge; its first real run would have been on main. A paths-limited `pull_request` trigger gave it a run on the PR, which failed at once on a duplicate lockfile match that local checks missed.
+- **Lesson:** Give new workflows a paths-limited pull_request trigger so they run before merge.
+- **Action:** #430.
+
+### L-220: Watch the product with the session that builds it
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #412, #413 · **Recorded by:** Claude (lead)
+- **What happened:** The owner watched the lead session work for minutes while the town showed it idle and named after the directory. Only classified tools set activity, so unclassified Bash calls and new prompts left a session idle; every main session was called "taskville".
+- **Lesson:** Dogfood the live view during real work, not only with the demo; the demo exercises the mapped paths and hides the unmapped ones.
+- **Action:** #416 and #417.
+
+### L-219: A friendlier label can break the honesty rule
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #412 · **Recorded by:** Claude (lead)
+- **What happened:** M7.23 relabelled activity `unknown` as "Working". roborev rated it High: the constitution keeps unknown source states visible as unknown, and an existing test said so ("never as Working"); the red phase rewrote that test.
+- **Lesson:** When a red phase edits an existing assertion, treat it as a design change and check it against the constitution before green.
+- **Action:** label change reverted in #416.
+
+### L-218: A security tradeoff the lead accepts can still be wrong; let the reviewer overrule it
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #400 · **Recorded by:** Claude (lead)
+- **What happened:** The lead accepted putting the one-time pairing code on the opener's argv (decision #408, default accepted). roborev 7127 rated it High: another local user can read the process list and exchange the code first for a persistent session. The fix (osascript stdin on macOS, 0600 redirect page elsewhere) was small.
+- **Lesson:** Before accepting a credential-exposure tradeoff as a default, look for a channel that avoids it (stdin, a 0600 file); a cheap alternative usually exists.
+- **Action:** #409; decision #408 closed.
+
+### L-217: Normalizing argv before dispatch has to respect subcommands and last-wins order
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #399 · **Recorded by:** Claude (lead)
+- **What happened:** M7.18 moved leading global options after the command name, which collided with subcommands (`--json project list`), then appended them at the end, which reversed precedence for repeated options. Two roborev rounds.
+- **Lesson:** When reordering argv, insert leading globals before the first option of the remaining arguments, and test commands with subcommands, positional targets and repeated options.
+- **Action:** #406.
+
+### L-216: Pin the clock for one-shot animations in browser tests
+- **Date:** 2026-11-06 · **Milestone:** M7 · **Ticket:** #402 · **Recorded by:** Claude (lead)
+- **What happened:** A CrewHighlight test failed every time on the owner's Mac and passed in CI. A 450 ms one-shot hop was missed because SwiftShader draws on a loaded CPU came more than 450 ms apart.
+- **Lesson:** Do not poll wall-clock one-shot animations with waitFor; pin `performance.now` (or whatever clock the code reads) per draw. Reproduce "fails only locally" with CPU hogs (`yes` processes).
+- **Action:** #407.
+
+### L-215: Call the domain's rule instead of copying it
+- **Date:** 2026-11-04 · **Milestone:** M6 · **Ticket:** #79 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** M6.07's crewRuns re-derived registration rules; each review found a new mismatch (guesses overwriting recorded links, dropped finishes) until it folded registrations through the domain's exported applyRegistration.
+- **Lesson:** When the web needs a domain rule, export the domain function (export-only change) and call it; a copy drifts.
+- **Action:** PR #358.
+
+### L-214: Cap parallel full checks by machine load
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** many · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Seven workers plus roborev each ran `pnpm check`; load reached 150 and timing tests failed on most tickets, each needing a rerun and a judgement.
+- **Lesson:** Above load average 20 workers skip `pnpm check` and CI decides; the lead runs the wave on an idle machine.
+- **Action:** Worker briefs from 2026-11-04.
+
+### L-213: A recurring CI failure in untouched code is a bug until proven a flake
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** #365 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** The shim spool concurrency test failed in CI on two PRs that touched only engine and web code; the debugger found a real stale-lock race that could corrupt hook events.
+- **Lesson:** The second unexplained CI failure in unrelated code gets a debugger, not a rerun.
+- **Action:** PR #371.
+
+### L-212: A capture-phase handler inherits the rules of what it pre-empts
+- **Date:** 2026-11-04 · **Milestone:** M6 · **Ticket:** #311 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Moving history's Escape to the capture phase with stopPropagation took Escape away from dialogs, which the city's own handler had respected.
+- **Lesson:** When a handler moves earlier and stops events, test every rule the later handlers enforced (dialogs, text fields).
+- **Action:** PR #354.
+
+### L-211: A subset fold needs an equivalence test against the full fold
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** #281 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** Folding only an agent's indexed events diverged from the full fold through retention and late session entry; row-count bounds could not see it.
+- **Lesson:** Any optimisation that folds part of a log ships with a test comparing its output to the full fold on fixtures built to hit every global rule.
+- **Action:** PR #375 held pending decision #376.
+
+### L-210: Grep every consumer before changing a wire format
+- **Date:** 2026-11-04 · **Milestone:** M5 · **Ticket:** #285 · **Recorded by:** CTO (Opus 5.5)
+- **What happened:** The lead chose idless feed frames for M5.15 and wrote that the web was unaffected; both web consumers dropped idless frames.
+- **Lesson:** Before deciding a frame or payload scheme, grep every reader of that field in every app.
+- **Action:** PR #351 round 2.
+
 ### L-209: A fetch budget for virtualized lists is per window, not per stream
 - **Date:** 2026-11-03 · **Milestone:** M5 · **Ticket:** #341 · **Recorded by:** CTO (Opus 5.5)
 - **What happened:** A per-group cap let five visible privacy search groups request 160 bodies against a 128-body cache; the fix, a lifetime ledger, then starved every new group at a live tail after about 64 calls.

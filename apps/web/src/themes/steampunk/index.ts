@@ -12,6 +12,7 @@ const tokens: ThemeTokens = {
   "--tv-text-muted": "#6a5241",
   "--tv-accent": "#975f22",
   "--tv-focus": "#9d631f",
+  "--tv-ok": "#1f7a4d",
   "--tv-neon": "#c8913a",
   "--tv-radius": "8px",
   "--tv-font": '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
@@ -29,6 +30,9 @@ const tokens: ThemeTokens = {
   "--tv-city-lamp-glow": "#ffc766",
   "--tv-city-tree-trunk": "#6a4630",
   "--tv-city-tree-crown": "#a8693f",
+  "--tv-city-bar-counter": "#6a3f26",
+  "--tv-city-bar-stool": "#b8793a",
+  "--tv-city-smoke-bench": "#8a5a38",
   "--tv-city-window-glow": "#ffcf7a",
 };
 
@@ -39,6 +43,7 @@ const night: Partial<ThemeTokens> = {
   "--tv-text": "#f3e3cc",
   "--tv-text-muted": "#d0bca6",
   "--tv-focus": "#d9892b",
+  "--tv-ok": "#5fb98a",
   "--tv-neon": "#ffb54d",
   "--tv-accent": "#e8a24a",
   "--tv-city-wall": "#8a6c4e",

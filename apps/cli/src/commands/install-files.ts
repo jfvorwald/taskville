@@ -46,8 +46,8 @@ export interface SettingsTarget {
  * User scope: `<CLAUDE_CONFIG_DIR or $HOME/.claude>/settings.json`. A symlinked file (dotfiles) is
  * followed, and its target is written in place so the link survives (decision #190 D2).
  */
-export function userSettingsTarget(configDir: string): SettingsTarget {
-  const shown = join(configDir, "settings.json");
+export function userSettingsTarget(configDir: string, file = "settings.json"): SettingsTarget {
+  const shown = join(configDir, file);
   const stat = lstatOrUndefined(shown);
   if (stat?.isSymbolicLink()) {
     let path: string;
@@ -62,18 +62,23 @@ export function userSettingsTarget(configDir: string): SettingsTarget {
 }
 
 /**
- * Project scope: `<project>/.claude/settings.local.json` (decision #190 D1). A symlinked `.claude`
+ * Project scope: `<project>/.claude/settings.local.json` (decision #190 D1); the Codex installer
+ * (A1.02) passes `.codex` and `hooks.json`. A symlinked `.claude`
  * or settings file is refused: a cloned repository could aim it at another file (D2).
  */
-export function projectSettingsTarget(projectDir: string): SettingsTarget {
+export function projectSettingsTarget(
+  projectDir: string,
+  dirName = ".claude",
+  file = "settings.local.json",
+): SettingsTarget {
   const project = lstatOrUndefined(projectDir);
   if (project === undefined || (!project.isDirectory() && !project.isSymbolicLink())) {
     fail(`project directory ${projectDir} does not exist`);
   }
-  const dir = join(projectDir, ".claude");
+  const dir = join(projectDir, dirName);
   if (lstatOrUndefined(dir)?.isSymbolicLink())
     fail(`${dir} is a symlink; refusing to write through it`);
-  const path = join(dir, "settings.local.json");
+  const path = join(dir, file);
   if (lstatOrUndefined(path)?.isSymbolicLink())
     fail(`${path} is a symlink; refusing to write through it`);
   return { shown: path, path };

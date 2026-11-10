@@ -17,6 +17,8 @@ const SCHEMA_VERSION = 1;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to find them
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const EVICT_BATCH = 64;
+// Joins a project ID and an archive ID into one scope key; C0 controls never appear in either.
+const ARCHIVE_SEPARATOR = "\u0001archive\u0001";
 
 export type BodyPart = "input" | "output";
 
@@ -41,6 +43,8 @@ export interface ToolCallEvidence {
 export interface EvidenceStoreOptions {
   /** Per-project cap on stored body bytes. Default 1 GB. */
   capBytes?: number;
+  /** Cap on archive-scoped body bytes across all archives and projects. Default 1 GiB. */
+  archiveCapBytes?: number;
   busyTimeoutMs?: number;
   now?: () => Date;
   logger?: Logger;
@@ -75,6 +79,7 @@ interface BodyRow {
  */
 export class EvidenceStore implements EvidenceSink {
   readonly capBytes: number;
+  readonly archiveCapBytes: number;
   readonly #db: Database;
   readonly #now: () => Date;
   readonly #logger: Logger | undefined;
@@ -83,6 +88,7 @@ export class EvidenceStore implements EvidenceSink {
   constructor(db: Database, options: EvidenceStoreOptions) {
     this.#db = db;
     this.capBytes = options.capBytes ?? DEFAULT_CAP_BYTES;
+    this.archiveCapBytes = options.archiveCapBytes ?? DEFAULT_CAP_BYTES;
     this.#now = options.now ?? (() => new Date());
     this.#logger = options.logger;
     const row = db.prepare("SELECT COALESCE(MAX(last_used), 0) AS tick FROM bodies").get();
@@ -93,8 +99,13 @@ export class EvidenceStore implements EvidenceSink {
     return String(this.#db.prepare("PRAGMA journal_mode").get()?.journal_mode);
   }
 
-  /** The `EvidenceSink` the Claude Code source calls after its events commit. */
-  store(projectId: string, evidence: readonly HookEvidence[]): void {
+  /**
+   * The `EvidenceSink` the Claude Code source calls after its events commit. With `archiveId`
+   * the bodies belong to that import's archive: a separate scope with its own pointers, usage and
+   * eviction, so they never shadow, count against, or evict the project's live bodies.
+   */
+  store(projectId: string, evidence: readonly HookEvidence[], archiveId?: string): void {
+    const scope = scopeOf(projectId, archiveId);
     const writes: { toolCallId: string; part: BodyPart; body: PreparedBody }[] = [];
     for (const item of evidence) {
       if (!isToolCallId(item.toolCallId)) continue;
@@ -107,12 +118,15 @@ export class EvidenceStore implements EvidenceSink {
     }
     if (writes.length === 0) return;
     this.#transaction(() => {
-      for (const write of writes) this.#write(projectId, write.toolCallId, write.part, write.body);
+      for (const write of writes) this.#write(scope, write.toolCallId, write.part, write.body);
     });
   }
 
-  /** A tool call's bodies, or undefined when nothing was ever stored for it. */
-  get(projectId: string, toolCallId: string): ToolCallEvidence | undefined {
+  /**
+   * A tool call's bodies, or undefined when nothing was ever stored for it. Without `archiveId`
+   * this is the live read and never returns archive bodies; with it, only that archive's.
+   */
+  get(projectId: string, toolCallId: string, archiveId?: string): ToolCallEvidence | undefined {
     const rows = this.#db
       .prepare(
         `SELECT p.part AS part, p.hash AS hash, b.body AS body, b.bytes AS bytes,
@@ -121,7 +135,9 @@ export class EvidenceStore implements EvidenceSink {
            LEFT JOIN bodies b ON b.project_id = p.project_id AND b.hash = p.hash
           WHERE p.project_id = ? AND p.tool_call_id = ?`,
       )
-      .all(projectId, toolCallId) as unknown as (BodyRow & { part: BodyPart })[];
+      .all(scopeOf(projectId, archiveId), toolCallId) as unknown as (BodyRow & {
+      part: BodyPart;
+    })[];
     if (rows.length === 0) return undefined;
     const result: ToolCallEvidence = { toolCallId, input: null, output: null };
     for (const row of rows) result[row.part] = toBody(row);
@@ -136,17 +152,102 @@ export class EvidenceStore implements EvidenceSink {
     return { bodies: Number(row?.bodies ?? 0), bytes: Number(row?.bytes ?? 0) };
   }
 
-  /** Removes every body and pointer of a project. */
+  /** True once the bodies of all archives together have reached `archiveCapBytes`. */
+  archiveEvidenceFull(): boolean {
+    return this.#archiveBytes() >= this.archiveCapBytes;
+  }
+
+  /**
+   * The part of `evidence` that fits the archive budget left, and how many items lost a body to
+   * it. Each body is checked in order against what remains, so a body too big for the room left is
+   * dropped while a smaller one after it may still be stored. Sizes are the stored (redacted, cut)
+   * bytes, counted without sharing between bodies, so the total never passes the cap.
+   */
+  fitArchiveEvidence<T extends HookEvidence>(
+    evidence: readonly T[],
+  ): { evidence: T[]; dropped: number } {
+    let remaining = this.archiveCapBytes - this.#archiveBytes();
+    const fit: T[] = [];
+    let dropped = 0;
+    for (const item of evidence) {
+      const kept: T = { ...item };
+      let lost = false;
+      let held = false;
+      for (const part of ["input", "output"] as const) {
+        if (item[part] === undefined) continue;
+        const body = this.#prepare(item[part]);
+        if (body !== undefined && body.bytes > remaining) {
+          delete kept[part];
+          lost = true;
+        } else {
+          held = true;
+          if (body !== undefined) remaining -= body.bytes;
+        }
+      }
+      if (lost) dropped += 1;
+      if (held || !lost) fit.push(kept);
+    }
+    return { evidence: fit, dropped };
+  }
+
+  /**
+   * Removes the bodies of one archive and its usage, and its pointers too unless `keepPointers` is
+   * set: kept pointers make a still-listed archive's bodies read as evicted, not missing.
+   */
+  deleteArchive(
+    projectId: string,
+    archiveId: string,
+    options: { keepPointers?: boolean } = {},
+  ): void {
+    const scope = scopeOf(projectId, archiveId);
+    const tables =
+      options.keepPointers === true ? ["bodies", "usage"] : ["tool_call_bodies", "bodies", "usage"];
+    this.#transaction(() => {
+      for (const table of tables) {
+        this.#db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(scope);
+      }
+    });
+  }
+
+  /** The IDs of the archives that hold pointers for a project, including ones whose row is gone. */
+  archiveIds(projectId: string): string[] {
+    const low = `${projectId}${ARCHIVE_SEPARATOR}`;
+    const high = `${projectId}${ARCHIVE_SEPARATOR.slice(0, -1)}\u0002`;
+    const rows = this.#db
+      .prepare(
+        "SELECT DISTINCT project_id AS scope FROM tool_call_bodies WHERE project_id >= ? AND project_id < ?",
+      )
+      .all(low, high) as unknown as { scope: string }[];
+    return rows.map((row) => row.scope.slice(low.length));
+  }
+
+  /** Removes every body and pointer of a project, archive scopes included. */
   deleteProject(projectId: string): void {
+    // Archive scopes are `projectId + SEPARATOR + archiveId`: a range over the prefix (binary
+    // collation), the separator's last character bumped by one for the upper bound.
+    const low = `${projectId}${ARCHIVE_SEPARATOR}`;
+    const high = `${projectId}${ARCHIVE_SEPARATOR.slice(0, -1)}\u0002`;
     this.#transaction(() => {
       for (const table of ["tool_call_bodies", "bodies", "usage"]) {
-        this.#db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(projectId);
+        this.#db
+          .prepare(
+            `DELETE FROM ${table} WHERE project_id = ? OR (project_id >= ? AND project_id < ?)`,
+          )
+          .run(projectId, low, high);
       }
     });
   }
 
   close(): void {
     if (this.#db.isOpen) this.#db.close();
+  }
+
+  /** Stored bytes of every archive scope, across all projects. */
+  #archiveBytes(): number {
+    const row = this.#db
+      .prepare("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM usage WHERE instr(project_id, ?) > 0")
+      .get(ARCHIVE_SEPARATOR);
+    return Number(row?.bytes ?? 0);
   }
 
   #prepare(value: unknown): PreparedBody | undefined {
@@ -243,6 +344,11 @@ function toBody(row: BodyRow): EvidenceBody {
   };
 }
 
+/** The storage key of a scope: the project itself (live), or one of its archives. */
+function scopeOf(projectId: string, archiveId?: string): string {
+  return archiveId === undefined ? projectId : `${projectId}${ARCHIVE_SEPARATOR}${archiveId}`;
+}
+
 /** A tool call ID is stored unmasked, so it must be a plain ID the redactor leaves alone. */
 function isToolCallId(value: unknown): value is string {
   return (
@@ -264,6 +370,10 @@ export function openEvidenceStore(path: string, options: EvidenceStoreOptions = 
   const cap = options.capBytes ?? DEFAULT_CAP_BYTES;
   if (!Number.isSafeInteger(cap) || cap < 1) {
     throw new RangeError("capBytes must be a positive whole number of bytes");
+  }
+  const archiveCap = options.archiveCapBytes ?? DEFAULT_CAP_BYTES;
+  if (!Number.isSafeInteger(archiveCap) || archiveCap < 1) {
+    throw new RangeError("archiveCapBytes must be a positive whole number of bytes");
   }
   secureDatabaseFiles(path);
   const db = new Database(path, { timeout: options.busyTimeoutMs ?? 5000, defensive: true });
@@ -312,7 +422,7 @@ export function openEvidenceStore(path: string, options: EvidenceStoreOptions = 
         COMMIT;
       `);
     }
-    return new EvidenceStore(db, { ...options, capBytes: cap });
+    return new EvidenceStore(db, { ...options, capBytes: cap, archiveCapBytes: archiveCap });
   } catch (error) {
     db.close();
     throw error;

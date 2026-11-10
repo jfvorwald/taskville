@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   articles,
   type CallSpec,
+  openDetails,
   paint,
   renderConstrained,
   renderPlain,
@@ -178,6 +179,7 @@ describe("group cards in the feed", () => {
     await expect.poll(() => articles().elements().length).toBe(1);
     await expect.element(articles()).toMatchTextContent("Searched 2 times");
     const toggle = () => articles().getByRole("button", { name: /expand patterns/i });
+    await openDetails(articles());
     await toggle().click();
     expect(toggle().element().getAttribute("aria-expanded")).toBe("true");
     expect(articles().element().querySelectorAll("li")).toHaveLength(2);
@@ -195,6 +197,7 @@ describe("group cards in the feed", () => {
     const { rerender } = await renderConstrained([read(1), read(2)]);
     await expect.poll(() => articles().elements().length).toBe(1);
     const toggle = () => articles().getByRole("button", { name: /expand paths/i });
+    await openDetails(articles());
     await toggle().click();
     expect(toggle().element().getAttribute("aria-expanded")).toBe("true");
 

@@ -141,6 +141,32 @@ const isFaded = (g: Group | undefined) => {
 
 afterEach(() => selectionStore.select(null));
 
+/**
+ * Draws the main scene with the hop clock (performance.now) pinned to `ms`, so the hop's timing is
+ * set by the test, not by the wall clock. With real time the test needed two draws within the
+ * 450 ms hop; on a busy machine (software WebGL, SwiftShader, sharing the CPU) the first draws
+ * after mount came more than 450 ms apart, the hop was over unseen, and it never restarts (#402).
+ */
+function drawAt(h: Harness, ms: number) {
+  const now = vi.spyOn(performance, "now").mockReturnValue(ms);
+  try {
+    h.drawMain();
+  } finally {
+    now.mockRestore();
+  }
+}
+
+/** Starts the hop at clock 0 and draws 200 ms into it, retrying until CrewHighlight sees the hover. */
+async function drawMidHop(h: Harness) {
+  await vi.waitFor(() => {
+    // The first main draw that sees the hover starts the hop; both draws run in one task, so the
+    // hover cannot arrive between them.
+    drawAt(h, 0);
+    drawAt(h, 200);
+    expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
+  }, FRAME);
+}
+
 describe("gl.render wrapper only syncs the main scene", () => {
   it("a render of another scene does not forget the main scene's dim set", async () => {
     const inputs = createHighlightStore();
@@ -168,15 +194,10 @@ describe("gl.render wrapper only syncs the main scene", () => {
     const h = await mount((store) => <CrewHighlight store={store} inputs={inputs} />);
     inputs.open("L");
     inputs.hover("c1");
-    // The hop starts at the first main draw that sees the hover.
-    await vi.waitFor(() => {
-      h.drawMain();
-      expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
-    }, FRAME);
+    await drawMidHop(h);
     h.gl.render(new Scene(), h.camera);
     // The hop is 450 ms. After it, a main draw must leave the bot at rest, not stuck up.
-    await wait(700);
-    h.drawMain();
+    drawAt(h, 700);
     expect(h.groups.c1?.position.y).toBeCloseTo(0, 6);
   });
 });
@@ -243,10 +264,7 @@ describe("unmount cleanup", () => {
     const h = await mount((store) => withHighlight(store, true));
     inputs.open("L");
     inputs.hover("c1");
-    await vi.waitFor(() => {
-      h.drawMain();
-      expect(h.groups.c1?.position.y).toBeGreaterThan(0.01);
-    }, FRAME);
+    await drawMidHop(h);
     // Unmount inside the hop (450 ms), with no draw in between.
     await h.rerender(withHighlight(h.store, false));
     expect(h.groups.c1?.position.y).toBeCloseTo(0, 6);

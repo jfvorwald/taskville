@@ -10,6 +10,8 @@ export interface HookContext {
   receivedAt: string;
   /** True for payloads replayed from the telemetry spool. */
   late: boolean;
+  /** The OS user running the engine; names the main session (#413). Never the project directory. */
+  ownerName?: string;
 }
 
 /** Raw tool input or output for the evidence store (M2.06), which redacts it. */

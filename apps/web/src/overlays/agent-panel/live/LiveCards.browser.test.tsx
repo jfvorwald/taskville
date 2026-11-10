@@ -11,6 +11,7 @@ import { createAnchorSource } from "../../host/anchors.ts";
 import type { OverlayProps } from "../../host/types.ts";
 import recorded from "../files/recorded-feed.fixture.json";
 import { AgentPanel } from "../shell/AgentPanel.tsx";
+import { openDetails } from "./liveKit.tsx";
 
 // No future LiveTab import or renderTab injection in card cases. This is the real default slot.
 // Immutable S-2 wire fixture provenance: test/overlays/agent-panel/files/recorded-feed.test.ts.
@@ -211,6 +212,9 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
   it("shows only the exact recorded Edit fragment and a safe editor link", async () => {
     recordedTool("Edit", A);
     await mount();
+    // M10.02: details start collapsed; open them to read the fragment.
+    await expect.poll(() => cards().elements().length).toBe(1);
+    await openDetails(cards().first());
     await expect.element(slot().getByText("beta", { exact: true }), { timeout: 800 }).toBeVisible();
     await expect.element(slot().getByText("BETA", { exact: true })).toBeVisible();
     expect(cards().elements()).toHaveLength(1);
@@ -238,7 +242,9 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
     await expect.element(card("cat /tmp/spike-s2/proj/hello.txt"), { timeout: 800 }).toBeVisible();
     const bash = card("cat /tmp/spike-s2/proj/hello.txt");
     await expect.element(bash).toMatchTextContent("hello from B");
-    await bash.getByRole("button", { name: /expand|output|details/i }).click();
+    // M10.02: Expand output sits inside Details, so the old broad button name would match both.
+    await openDetails(bash);
+    await bash.getByRole("button", { name: /expand output/i }).click();
     expect(bash.element().querySelector("pre")?.textContent).toContain("hello from B");
   });
 
@@ -254,7 +260,8 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
     await expect.element(card("printf captured-output"), { timeout: 800 }).toBeVisible();
     const bash = card("printf captured-output");
     await expect.element(bash).toMatchTextContent("captured-line-40");
-    await bash.getByRole("button", { name: /expand|output|details/i }).click();
+    await openDetails(bash);
+    await bash.getByRole("button", { name: /expand output/i }).click();
     expect(Array.from(bash.element().querySelectorAll("pre"), (pre) => pre.textContent)).toContain(
       stdout,
     );
@@ -292,6 +299,7 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
     const select = vi.fn();
     await mount(LEAD, select);
     await expect.element(cards(), { timeout: 800 }).toBeVisible();
+    await openDetails(cards());
     await cards()
       .getByRole("button", { name: /Editor|afdf84bea07a9064c/i })
       .click();
@@ -314,6 +322,7 @@ describe("M5.06 default Live card contracts (intentional red)", () => {
     const select = vi.fn();
     await mount(A, select);
     await expect.element(cards(), { timeout: 800 }).toBeVisible();
+    await openDetails(cards());
     await cards()
       .getByRole("button", { name: /Pip|a0b4668e13e056653/i })
       .click();

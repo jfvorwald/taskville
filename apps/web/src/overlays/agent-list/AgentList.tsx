@@ -1,24 +1,67 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { GridList, GridListItem } from "react-aria-components";
+import { Button, GridList, GridListItem } from "react-aria-components";
 import { TeamTaskQueue } from "../../city/crew/teams/TeamTaskQueue.tsx";
 import { movementLabels } from "../../city/movement/labels.ts";
 import type { DataStore } from "../../data/store.ts";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { getSettingsStore } from "../settings/store.ts";
 import styles from "./agent-list.module.css";
 import { agentListRows } from "./rows.ts";
+
+const GUIDE_URL = "https://github.com/jfvorwald/taskville#try-it";
+
+function Command({ command }: { command: string }) {
+  return (
+    <span className={styles.command}>
+      <code>{command}</code>
+      <Button
+        className={styles.copy}
+        aria-label={`Copy ${command}`}
+        onPress={() => void navigator.clipboard?.writeText(command)}
+      >
+        Copy
+      </Button>
+    </span>
+  );
+}
+
+function EmptyGuidance() {
+  return (
+    <section className={styles.guidance} aria-label="Get agents">
+      <p>
+        To see the city at work, run <Command command="taskville demo" />
+      </p>
+      <p>
+        <a href={GUIDE_URL} target="_blank" rel="noopener noreferrer">
+          User guide
+        </a>
+      </p>
+      <p>
+        To watch your Claude Code sessions, run <Command command="taskville init" /> in your
+        repository.
+      </p>
+    </section>
+  );
+}
 
 /**
  * The scene's agents as a list for keyboard and screen reader users. One tab stop, arrows move
  * between rows, Enter selects the agent in the city, and the selected row is aria-selected. It reads the same rows as the world labels.
  */
-export function AgentList({ selection, store }: OverlayProps & { store?: DataStore }) {
+export function AgentList({ mode, selection, store }: OverlayProps & { store?: DataStore }) {
   const labels = useSyncExternalStore(
     movementLabels.subscribe,
     movementLabels.getSnapshot,
     movementLabels.getSnapshot,
   );
-  const rows = useMemo(() => agentListRows(labels), [labels]);
+  const settings = getSettingsStore();
+  const { breakTime } = useSyncExternalStore(
+    settings.subscribe,
+    settings.getSnapshot,
+    settings.getSnapshot,
+  );
+  const rows = useMemo(() => agentListRows(labels, breakTime), [labels, breakTime]);
   const selectedId = selection.selectedId;
   const selectedKeys = useMemo(() => (selectedId === null ? [] : [selectedId]), [selectedId]);
   return (
@@ -37,7 +80,9 @@ export function AgentList({ selection, store }: OverlayProps & { store?: DataSto
         }}
         onAction={(key) => selection.select(String(key))}
         items={rows}
-        renderEmptyState={() => <p className={styles.empty}>No agents yet</p>}
+        renderEmptyState={() =>
+          mode === "live" ? <EmptyGuidance /> : <p className={styles.empty}>No agents yet</p>
+        }
       >
         {(row) => (
           <GridListItem

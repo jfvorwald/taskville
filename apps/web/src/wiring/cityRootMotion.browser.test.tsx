@@ -31,6 +31,10 @@ vi.mock("../city/movement/index.ts", () => ({
     return null;
   },
 }));
+// CrewHighlight (M5.08) and EnvelopeLayer (M5.04) call R3F hooks at render, and this test
+// mounts CityRoot without a Canvas, so they are stubbed like the other scene children.
+vi.mock("../city/crew/highlight/index.ts", () => ({ CrewHighlight: () => null }));
+vi.mock("../city/crew/envelopes/EnvelopeLayer.tsx", () => ({ EnvelopeLayer: () => null }));
 vi.mock("../city/lighting/index.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../city/lighting/index.ts")>()),
   DayNightLighting: () => null,

@@ -14,6 +14,11 @@ export function useSession(): string {
   return secret;
 }
 
+/** The session secret, or null outside a paired app. For UI that simply hides when unpaired. */
+export function useOptionalSession(): string | null {
+  return useContext(SessionContext);
+}
+
 const attempts = new Attempts();
 
 export type PairingStatus = PairingState | { status: "checking" };

@@ -27,6 +27,8 @@ export interface SettingsValues {
   privacyMode: boolean;
   /** Show only recorded teammate links and red states, not guesses from text (M5.13). */
   strictAttribution: boolean;
+  /** Show the "on break" note on a Waiting agent whose break plan says it is on a break (M9.04). */
+  breakTime: boolean;
 }
 
 export const DEFAULT_SETTINGS: SettingsValues = {
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   desktopNotifications: false,
   privacyMode: false,
   strictAttribution: false,
+  breakTime: true,
 };
 
 export interface SettingsStore extends Selector<SettingsValues> {
@@ -59,6 +62,7 @@ const VALID: Validators = {
   desktopNotifications: (value): value is boolean => typeof value === "boolean",
   privacyMode: (value): value is boolean => typeof value === "boolean",
   strictAttribution: (value): value is boolean => typeof value === "boolean",
+  breakTime: (value): value is boolean => typeof value === "boolean",
 };
 
 const KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof SettingsValues)[];

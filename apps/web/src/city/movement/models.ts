@@ -3,9 +3,10 @@ import type { AgentCounts } from "../../overlays/host/types.ts";
 import { identityKey } from "../agents/identity.ts";
 import type { AgentView, AttentionView, Placement } from "../agents/types.ts";
 import { troubleDetail } from "../attention/detail.ts";
+import type { AgentBreak } from "../breaks/types.ts";
 import { crewLineage } from "../crew/subagents/generation.ts";
 import { type ActivityAreaTable, areaFor } from "./areas.ts";
-import type { NavIntent, RestState } from "./navigator.ts";
+import type { BreakDestination, NavIntent, RestState } from "./navigator.ts";
 
 // The glue between the M3.02 store and the city: domain agents, activity and attention become
 // M3.05 `AgentView`s (what the bots and labels show) and navigation intents (where they go).
@@ -22,6 +23,9 @@ export interface ModelInput {
   readonly activity: Readonly<Record<string, AgentActivity | undefined>>;
   /** Most urgent first (the store's order). */
   readonly attention: readonly Attention[];
+  /** M9.08: who is on break (`useBreakPlan`), and where each break stands. Absent: no breaks. */
+  readonly breaks?: ReadonlyMap<string, AgentBreak>;
+  readonly breakSpots?: ReadonlyMap<string, BreakDestination>;
 }
 
 export interface Models {
@@ -33,7 +37,10 @@ export interface Models {
 
 const MAX_DEPTH = 8;
 
-function attentionView(record: Attention | undefined): AttentionView | undefined {
+function attentionView(
+  record: Attention | undefined,
+  breakActivity?: AgentBreak["activity"],
+): AttentionView | undefined {
   if (record === undefined) return undefined;
   const detail = troubleDetail(record);
   const sinceMs = Date.parse(record.since);
@@ -43,6 +50,7 @@ function attentionView(record: Attention | undefined): AttentionView | undefined
     heuristic: record.heuristic,
     ...(Number.isNaN(sinceMs) ? {} : { sinceMs }),
     ...(detail === undefined ? {} : { detail: detail.text }),
+    ...(breakActivity === undefined || record.level !== "waiting" ? {} : { breakActivity }),
   };
 }
 
@@ -96,7 +104,7 @@ export function buildModels(
     if (agent.finishedAt !== undefined) continue;
     const activity = input.activity[agent.id]?.activity ?? "unknown";
     const record = firstAttention.get(agent.id);
-    const attention = attentionView(record);
+    const attention = attentionView(record, input.breaks?.get(agent.id)?.activity);
     const parent = agent.parentAgentId === undefined ? undefined : byId.get(agent.parentAgentId);
     const agentType = agent.kind === "subagent" ? agent.role : undefined;
     // A subagent whose parent is known is drawn by the crew layer (M5.02), so it has an intent
@@ -143,6 +151,9 @@ export function buildModels(
         : {}),
       hold: record?.level === "needs_you",
       rest,
+      ...(input.breakSpots?.get(agent.id) === undefined
+        ? {}
+        : { breakSpot: input.breakSpots.get(agent.id) as BreakDestination }),
       ...(agent.parentAgentId === undefined ? {} : { parentId: agent.parentAgentId }),
     });
   }

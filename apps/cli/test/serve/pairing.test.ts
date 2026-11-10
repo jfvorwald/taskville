@@ -352,11 +352,13 @@ describe("no route mints a pairing code (#113, #174)", () => {
         // deliberate change to this test. Neither pairing route issues a code.
         expect(routes).toEqual([
           "GET /health",
+          "GET /v1/agents/:id/cost",
           "GET /v1/agents/:id/crew",
           "GET /v1/agents/:id/feed",
           "GET /v1/attention/events",
           "GET /v1/commands/:id",
           "GET /v1/evidence/:id",
+          "GET /v1/imports/:id",
           "GET /v1/projects",
           "GET /v1/projects/:id/events",
           "GET /v1/projects/:id/snapshot",
@@ -365,12 +367,17 @@ describe("no route mints a pairing code (#113, #174)", () => {
           "GET /v1/timelines/:id/events",
           "GET /v1/timelines/:id/state",
           "POST /v1/bridge/claude-code/permission",
+          "POST /v1/bridge/codex/permission",
           "POST /v1/commands",
           "POST /v1/events/batch",
+          "POST /v1/imports",
+          "POST /v1/otlp/v1/logs",
+          "POST /v1/otlp/v1/metrics",
           "POST /v1/pairing",
           "POST /v1/pairing/revoke",
           "POST /v1/projects",
           "POST /v1/sources/claude-code/hooks",
+          "POST /v1/sources/codex/hooks",
         ]);
       } finally {
         await parts.close();

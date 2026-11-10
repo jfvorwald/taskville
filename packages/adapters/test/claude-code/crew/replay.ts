@@ -48,6 +48,7 @@ export function replay(name: string): Mapped[] {
   return readFixture(name).map((line) => {
     const result = mapCrewHook(line.input, {
       projectId: PROJECT,
+      ownerName: "owner",
       sourceEventId: line.sourceEventId,
       receivedAt: line.receivedAt,
       late: false,

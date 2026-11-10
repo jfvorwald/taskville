@@ -78,7 +78,7 @@ export function ensureHome(home: string): PreparedHome {
   return { paths, cliToken, bridgeToken };
 }
 
-function ensurePrivateDir(dir: string): void {
+export function ensurePrivateDir(dir: string): void {
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   } catch (err) {

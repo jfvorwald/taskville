@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { LiveTab } from "../live/LiveTab.tsx";
-import { AGENT, articles, build, paint, seedStore } from "../live/liveKit.tsx";
+import { AGENT, articles, build, openDetails, paint, seedStore } from "../live/liveKit.tsx";
 import { fakeBackend } from "./codeKit.tsx";
 import { createCodeHighlighter } from "./highlighter.ts";
 
@@ -37,6 +37,7 @@ async function expanded(path: string) {
     </div>,
   );
   await paint();
+  await openDetails(articles());
   await articles()
     .getByRole("button", { name: /^expand/i })
     .click();

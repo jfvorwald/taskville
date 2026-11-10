@@ -14,7 +14,12 @@ export type PairingState =
    * address bar, so retrying from the page cannot work; a new link is needed. `network`: a
    * stored session could not be verified, and trying again can work.
    */
-  | { status: "failed"; reason: "invalid_code" | "network" | "pairing_network" | "storage" };
+  | {
+      status: "failed";
+      reason: "invalid_code" | "network" | "pairing_network" | "storage";
+      /** From a pairing link: true when it said the engine listens for the p key. */
+      keyListener?: boolean;
+    };
 
 /** The browser pieces pairing needs, injectable so the logic runs without a browser. */
 export interface PairingEnv {
@@ -30,8 +35,9 @@ export async function establishSession(env: PairingEnv): Promise<PairingState> {
   if (fragment.present) {
     // Clear first, so the code is gone from the address bar and history whatever happens next.
     env.history.replaceState(null, "", env.location.pathname + env.location.search);
-    if (fragment.code === null) return { status: "failed", reason: "invalid_code" };
-    return exchange(env, fragment.code);
+    if (fragment.code === null)
+      return { status: "failed", reason: "invalid_code", keyListener: fragment.keyListener };
+    return withKeyListener(await exchange(env, fragment.code), fragment.keyListener);
   }
   return resumeStored(env);
 }
@@ -88,4 +94,9 @@ async function resumeStored(env: PairingEnv): Promise<PairingState> {
   }
   if (!response.ok) return { status: "failed", reason: "network" };
   return { status: "paired", secret };
+}
+
+/** Failed states from a pairing link remember whether the link said the engine listens for p. */
+function withKeyListener(state: PairingState, keyListener: boolean): PairingState {
+  return state.status === "failed" ? { ...state, keyListener } : state;
 }

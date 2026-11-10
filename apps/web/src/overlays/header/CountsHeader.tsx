@@ -1,7 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_PROJECT_ID, selectProject, useCurrentProjectId } from "../../data/project.ts";
+import { useRelease } from "../../release/identity.ts";
+import { ReleaseBadge, ReleaseBanner } from "../../release/ReleaseBadge.tsx";
 import { InteractiveRegion } from "../host/InteractiveRegion.tsx";
 import type { OverlayDefinition, OverlayProps } from "../host/types.ts";
+import { ProjectPicker } from "../project-picker/ProjectPicker.tsx";
 import { selectAttentionHeader } from "./attention.ts";
 import { AttentionChips } from "./attentionChips.tsx";
 import { useAttentionFeed, useAttentionReady } from "./attentionSync.ts";
@@ -24,8 +27,10 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
   const needsYou = mode === "live" && ready ? needsYouTotal : value.needsYou;
   const shown = { ...value, needsYou };
   const away = currentProjectId !== DEFAULT_PROJECT_ID;
+  const release = useRelease();
   return (
     <div className={styles.row}>
+      <ReleaseBanner release={release} />
       <p
         className={styles.counts}
         role="status"
@@ -34,6 +39,7 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
       >
         {formatCounts(shown)}
       </p>
+      <ProjectPicker />
       {otherProjects.length > 0 || away ? (
         <InteractiveRegion
           className={styles.chips}
@@ -41,7 +47,7 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
         >
           <AttentionChips otherProjects={otherProjects} onSwitch={selectProject} />
           {away ? (
-            // Until a project switcher exists, a chip is the only way in, so there must be a way back.
+            // Kept alongside the picker: one click home, and the only way back when unpaired.
             <button
               type="button"
               className={styles.chip}
@@ -52,6 +58,7 @@ export function CountsHeader({ selectors, mode }: OverlayProps) {
           ) : null}
         </InteractiveRegion>
       ) : null}
+      <ReleaseBadge release={release} />
     </div>
   );
 }

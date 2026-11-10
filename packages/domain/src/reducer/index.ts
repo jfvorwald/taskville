@@ -39,7 +39,7 @@ export {
   type Retired,
 } from "./retention.ts";
 
-export const REDUCER_VERSION = 7;
+export const REDUCER_VERSION = 9;
 
 export interface ProjectMeta {
   readonly projectId: string;

@@ -43,6 +43,8 @@ export interface BridgeHookParts {
 
 /** File name of the installed shim. Distinctive, because it is how entries are recognized. */
 export const SHIM_NAME = "taskville-claude-code-shim.sh";
+/** The `otelHeadersHelper` script (M5.12): prints the Authorization header from the home's token. */
+export const OTEL_HELPER_NAME = "taskville-claude-code-otel-headers.sh";
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type JsonObject = { [key: string]: Json };
@@ -191,7 +193,7 @@ export function duplicateKey(text: string): string | undefined {
 }
 
 /** Own-property copy that never invokes a `__proto__` setter (L-18). */
-function put(obj: JsonObject, key: string, value: Json): JsonObject {
+export function put(obj: JsonObject, key: string, value: Json): JsonObject {
   const out: JsonObject = {};
   for (const [k, v] of Object.entries(obj)) Object.defineProperty(out, k, descriptor(v));
   Object.defineProperty(out, key, descriptor(value));
@@ -215,9 +217,13 @@ const descriptor = (value: Json): PropertyDescriptor => ({
 /**
  * Removes every handler this installer wrote. A matcher group left with no handlers is dropped,
  * then an event left with no groups, then `hooks` if it is left empty. Groups and events that held
- * only other tools' hooks are never touched.
+ * only other tools' hooks are never touched. `isMine` says which handlers are the installer's:
+ * Claude Code's by default, the Codex installer's (A1.02) when it passes its own.
  */
-export function removeTaskvilleHooks(settings: JsonObject): {
+export function removeTaskvilleHooks(
+  settings: JsonObject,
+  isMine: (handler: unknown) => boolean = isTaskvilleEntry,
+): {
   settings: JsonObject;
   removed: number;
 } {
@@ -231,14 +237,14 @@ export function removeTaskvilleHooks(settings: JsonObject): {
     const kept: Json[] = [];
     for (const group of groups) {
       const handlers = isObject(group) && Array.isArray(group.hooks) ? group.hooks : undefined;
-      const mine = handlers?.filter(isTaskvilleEntry).length ?? 0;
+      const mine = handlers?.filter(isMine).length ?? 0;
       if (handlers === undefined || mine === 0) {
         kept.push(group);
         continue;
       }
       removed += mine;
       changed = true;
-      const rest = handlers.filter((h) => !isTaskvilleEntry(h));
+      const rest = handlers.filter((h) => !isMine(h));
       if (rest.length > 0) kept.push(put(group as JsonObject, "hooks", rest));
     }
     if (!changed) continue;
@@ -275,6 +281,78 @@ export function addTaskvilleHooks(
     hooks = put(hooks, BRIDGE_HOOK_EVENT, [...existing, { hooks: [bridge] }]);
   }
   return put(base, "hooks", hooks);
+}
+
+/** The `env` settings that point Claude Code's OpenTelemetry export at the engine (M5.12). */
+export function otelEnv(port: number): Record<string, string> {
+  return {
+    CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+    OTEL_METRICS_EXPORTER: "otlp",
+    OTEL_LOGS_EXPORTER: "otlp",
+    OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
+    OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp`,
+    // Pinned too, so a shared settings file cannot redirect one signal (security review H1).
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp/v1/metrics`,
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `http://127.0.0.1:${port}/v1/otlp/v1/logs`,
+    OTEL_TRACES_EXPORTER: "none",
+  };
+}
+
+/** True when `settings` already has exactly these OpenTelemetry settings. */
+export function hasOtelSettings(settings: JsonObject, port: number, helper: string): boolean {
+  const env = settings.env;
+  return (
+    settings.otelHeadersHelper === helper &&
+    isObject(env) &&
+    Object.entries(otelEnv(port)).every(([key, value]) => env[key] === value)
+  );
+}
+
+/**
+ * Adds the OpenTelemetry `env` keys (merged into any existing `env`) and `otelHeadersHelper`.
+ * Never an `OTEL_EXPORTER_OTLP_HEADERS` or a token: the helper reads the token from the home.
+ */
+export function addOtelSettings(settings: JsonObject, port: number, helper: string): JsonObject {
+  const env = isObject(settings.env) ? settings.env : {};
+  let next = put(settings, "env", { ...env, ...otelEnv(port) });
+  next = put(next, "otelHeadersHelper", helper);
+  return next;
+}
+
+const OTEL_HELPER_MARKER = new RegExp(
+  `^TASKVILLE_HOME=${QUOTED} TASKVILLE_URL='http://127\\.0\\.0\\.1:([0-9]{1,5})' '(?:[^']|'\\\\'')*/${OTEL_HELPER_NAME.replaceAll(".", "\\.")}'$`,
+);
+
+/**
+ * Removes what `install --otel` wrote: the `otelHeadersHelper` when it is exactly a Taskville
+ * helper command, and each `env` key whose value is exactly what install wrote for that command's
+ * port. Anything the user changed since stays. An `env` left empty is dropped.
+ */
+export function removeOtelSettings(settings: JsonObject): {
+  settings: JsonObject;
+  removed: number;
+} {
+  const helper = settings.otelHeadersHelper;
+  const match = typeof helper === "string" ? OTEL_HELPER_MARKER.exec(helper) : null;
+  if (match === null) return { settings, removed: 0 };
+  let next = without(settings, "otelHeadersHelper");
+  let removed = 1;
+  if (isObject(settings.env)) {
+    const kept: JsonObject = {};
+    for (const [key, value] of Object.entries(settings.env)) {
+      if (otelEnv(Number(match[1]))[key] === value) removed += 1;
+      else Object.defineProperty(kept, key, descriptor(value));
+    }
+    next = Object.keys(kept).length > 0 ? put(next, "env", kept) : without(next, "env");
+  }
+  return { settings: next, removed };
+}
+
+/** The port in a Taskville `otelHeadersHelper` command, if `settings` has one. */
+export function installedOtel(settings: JsonObject): { port: number; helper: string } | undefined {
+  const helper = settings.otelHeadersHelper;
+  const match = typeof helper === "string" ? OTEL_HELPER_MARKER.exec(helper) : null;
+  return match === null ? undefined : { port: Number(match[1]), helper: helper as string };
 }
 
 /** The file's indent (two spaces when it cannot tell), so a rewrite keeps its look. */

@@ -5,6 +5,7 @@ import {
   applyTeamStarted,
   clearLastTurn,
   setLastTurn,
+  staleForAgent,
   touchAgent,
   updateAgent,
 } from "./agents.ts";
@@ -12,6 +13,7 @@ import {
   applySessionEnded,
   applySessionSeen,
   applySessionStarted,
+  leaveIdle,
   refreshActivity,
   setActivity,
   setLatestEvidence,
@@ -60,6 +62,8 @@ export function reduceEntities<S extends EntitiesState>(state: S, event: DomainE
 
 function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
   const agentId = e.agentId;
+  // Judged before this event widens the agent's seen times (M7.15).
+  const stale = agentId !== undefined && staleForAgent(s0, e, agentId);
   // Registration decides for itself whether the event counts (an identity conflict does not).
   let s = agentId === undefined || e.type === "agent.registered" ? s0 : touchAgent(s0, e, agentId);
 
@@ -99,8 +103,9 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       if (e.type === "session.started") s = applySessionStarted(s, e, agentId, sessionId);
       else if (e.type === "session.ended") s = applySessionEnded(s, e, agentId, sessionId);
       else s = applySessionSeen(s, e, agentId, sessionId);
-      s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt));
+      if (!stale) s = updateAgent(s, agentId, (a) => turnEffect(a, e.type, e.occurredAt));
       if (CLOSES_UNFINISHED.has(e.type)) s = closeUnfinishedCalls(s, e, agentId);
+      if (e.type === "session.prompt_submitted" && !stale) s = leaveIdle(s, e, agentId, sessionId);
       return refreshActivity(s, e, agentId);
     }
     case "task.created":
@@ -143,9 +148,11 @@ function applyEvent(s0: EntitiesState, e: DomainEvent): EntitiesState {
       return refreshActivity(setActivity(s, e, agentId, e.sessionId, entry), e, agentId);
     }
     case "tool_call.started":
-      return agentId === undefined ? s : applyToolCallStarted(s, e, agentId);
+      if (agentId === undefined) return s;
+      s = applyToolCallStarted(s, e, agentId, stale);
+      return stale ? s : refreshActivity(leaveIdle(s, e, agentId, e.sessionId), e, agentId);
     case "tool_call.finished":
-      return agentId === undefined ? s : applyToolCallFinished(s, e, agentId);
+      return agentId === undefined ? s : applyToolCallFinished(s, e, agentId, stale);
     case "test.result":
       if (agentId === undefined) return s;
       return setLatestEvidence(s, agentId, {

@@ -37,31 +37,66 @@ import {
 } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import { join } from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { compareTimestamps } from "@taskville/domain/reducer";
 import { timestampSchema } from "@taskville/protocol";
 import type { Logger } from "pino";
 import { isShimSourceEventId, MAX_HOOK_BODY_BYTES } from "./route.ts";
-import type { ClaudeCodeSource } from "./source.ts";
+import type { HookIngestResponse, HookInput } from "./source.ts";
+
+/**
+ * The file names of one source's spool inside the spool directory (`<prefix>.jsonl` and what
+ * hangs off it). Claude Code's shim uses `claude-code`, the Codex shim (A1.02) `codex`: one
+ * replay, two prefixes, so each source's files, lock and retry state stay apart.
+ */
+interface SpoolNames {
+  /** The shim's main spool file. */
+  main: string;
+  /** Hooks whose ingest failed MAX_HOOK_ATTEMPTS times; never replayed, kept for a person to look at. */
+  poison: string;
+  /**
+   * Retry state across runs: `{ "attempts": { "<uuid>": n }, "quarantined": ["<uuid>"] }`.
+   * A quarantined hook is skipped until a run that read it completes, which removes its file or
+   * advances the file past it.
+   */
+  attempts: string;
+  lock: string;
+  breaker: string;
+  /** Files to replay: per-event files `<prefix>.<uuid>.jsonl` and claimed `<prefix>.replay-<uuid>.jsonl`. */
+  spoolName: RegExp;
+  offsetName: RegExp;
+  /** Shim temporaries, set-aside locks, and offset temporaries. Never read; removed once stale. */
+  tempPrefix: string;
+  /** Where the main file is renamed to while it is read. */
+  replayPrefix: string;
+}
+
+function spoolNames(prefix: string): SpoolNames {
+  const lock = `${prefix}.lock`;
+  return {
+    main: `${prefix}.jsonl`,
+    poison: `${prefix}.poison.jsonl`,
+    attempts: `${prefix}.attempts.json`,
+    lock,
+    breaker: `${lock}.break`,
+    spoolName: new RegExp(`^${prefix}\\.[A-Za-z0-9-]+\\.jsonl$`),
+    offsetName: new RegExp(`^${prefix}\\.[A-Za-z0-9-]+\\.jsonl\\.offset$`),
+    tempPrefix: `.${prefix}.`,
+    replayPrefix: `${prefix}.replay-`,
+  };
+}
+
+/** The Claude Code shim's spool, and the default of every replay. */
+const CLAUDE_CODE_NAMES = spoolNames("claude-code");
+/** The Codex shim's spool (A1.02). */
+const CODEX_NAMES = spoolNames("codex");
 
 /** The shim's main spool file inside the spool directory. */
-export const SPOOL_FILE = "claude-code.jsonl";
+export const SPOOL_FILE = CLAUDE_CODE_NAMES.main;
 /** Hooks whose ingest failed MAX_HOOK_ATTEMPTS times; never replayed, kept for a person to look at. */
-export const POISON_FILE = "claude-code.poison.jsonl";
-/**
- * Retry state across runs: `{ "attempts": { "<uuid>": n }, "quarantined": ["<uuid>"] }`.
- * A quarantined hook is skipped until a run that read it completes, which removes its file or
- * advances the file past it.
- */
-const ATTEMPTS_FILE = "claude-code.attempts.json";
-/** Failed attempts on one hook, across runs, before it is quarantined in POISON_FILE. */
+export const POISON_FILE = CLAUDE_CODE_NAMES.poison;
+/** Failed attempts on one hook, across runs, before it is quarantined in the poison file. */
 export const MAX_HOOK_ATTEMPTS = 3;
-const LOCK = "claude-code.lock";
-const BREAKER = `${LOCK}.break`;
-/** Files to replay: per-event files `claude-code.<uuid>.jsonl` and claimed `claude-code.replay-<uuid>.jsonl`. */
-const SPOOL_NAME = /^claude-code\.[A-Za-z0-9-]+\.jsonl$/;
-const OFFSET_NAME = /^claude-code\.[A-Za-z0-9-]+\.jsonl\.offset$/;
-/** Shim temporaries, set-aside locks, and offset temporaries. Never read; removed once stale. */
-const TEMP_PREFIX = ".claude-code.";
 
 /** The shim never writes a line longer than its cap plus the wrapper; anything longer is junk. */
 export const MAX_SPOOL_LINE_BYTES = MAX_HOOK_BODY_BYTES + 64 * 1024;
@@ -71,6 +106,8 @@ export const MAX_SPOOL_LINE_BYTES = MAX_HOOK_BODY_BYTES + 64 * 1024;
  * the development Mac), so a run before listen adds about 3 s at most.
  */
 export const DEFAULT_MAX_HOOKS = 2000;
+/** Hooks ingested between turns of the event loop, so live hooks are not starved by a drain. */
+const YIELD_EVERY_HOOKS = 25;
 /** ... or reads this many bytes, whichever comes first; the rest waits for the next run. */
 export const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
 /** How long to wait for a live shim to release the lock before leaving the main file. */
@@ -92,7 +129,10 @@ const LINE_KEYS: ReadonlySet<string> = new Set([
 export interface SpoolReplayOptions {
   /** `$TASKVILLE_HOME/spool` (config `homePaths(home).spoolDir`). */
   spoolDir: string;
-  source: Pick<ClaudeCodeSource, "ingestHook">;
+  /** Any source with the shim's hook entry point: Claude Code's, or Codex's. */
+  source: { ingestHook(input: HookInput): Promise<HookIngestResponse> };
+  /** Which shim's spool to replay. Default `claude-code`. */
+  prefix?: "claude-code" | "codex";
   logger?: Logger | undefined;
   /** Wall clock in ms, for stale-lock and temporary ages (file mtimes are wall time). */
   now?: () => number;
@@ -102,7 +142,7 @@ export interface SpoolReplayOptions {
 }
 
 export interface SpoolReplayReport {
-  /** What happened to `claude-code.jsonl`: none there, renamed aside and read, or left (lock held). */
+  /** What happened to the main file (`claude-code.jsonl`): none there, renamed aside and read, or left (lock held). */
   mainFile: "absent" | "claimed" | "busy";
   /** Spool files read this run. */
   files: number;
@@ -153,6 +193,7 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
   const report = emptyReport();
   const { spoolDir, logger } = options;
   const now = options.now ?? Date.now;
+  const names = options.prefix === "codex" ? CODEX_NAMES : CLAUDE_CODE_NAMES;
   const maxHooks = options.maxHooks ?? DEFAULT_MAX_HOOKS;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 
@@ -163,13 +204,18 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
     return report;
   }
 
-  clearStale(spoolDir, now());
-  report.mainFile = await claimMain(spoolDir, options.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS, now);
+  clearStale(spoolDir, now(), names);
+  report.mainFile = await claimMain(
+    spoolDir,
+    options.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS,
+    now,
+    names,
+  );
 
   const batch: Entry[] = [];
   const plans: FilePlan[] = [];
   const budget: Budget = { hooks: 0, bytes: 0, maxHooks, maxBytes };
-  for (const name of spoolFiles(spoolDir)) {
+  for (const name of spoolFiles(spoolDir, names)) {
     const path = join(spoolDir, name);
     if (spent(budget)) {
       report.deferredFiles += 1;
@@ -195,12 +241,18 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
 
   // Ingest order is history order: oldest hook first; ties keep spool order (sort is stable).
   batch.sort((a, b) => compareTimestamps(a.spooledAt, b.spooledAt));
-  const retry = readRetry(spoolDir);
+  const retry = readRetry(spoolDir, names);
   const { attempts, quarantined } = retry;
   let attemptsChanged = false;
+  let sinceYield = 0;
   for (const entry of batch) {
     // Already in the poison file: a later failure kept its spool file, so it is read again.
     if (quarantined.has(entry.sourceEventId)) continue;
+    if (sinceYield >= YIELD_EVERY_HOOKS) {
+      sinceYield = 0;
+      await nextTurn();
+    }
+    sinceYield += 1;
     try {
       const res = await options.source.ingestHook({
         sourceEventId: entry.sourceEventId,
@@ -223,7 +275,7 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
       const tries = (attempts.get(entry.sourceEventId) ?? 0) + 1;
       attempts.set(entry.sourceEventId, tries);
       attemptsChanged = true;
-      if (tries >= MAX_HOOK_ATTEMPTS && quarantine(spoolDir, entry)) {
+      if (tries >= MAX_HOOK_ATTEMPTS && quarantine(spoolDir, entry, names)) {
         // Out of the way until its spool file is removed or advanced past it.
         attempts.delete(entry.sourceEventId);
         quarantined.add(entry.sourceEventId);
@@ -237,7 +289,7 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
     }
   }
   // New quarantines are on disk before any spool file is touched.
-  if (attemptsChanged) writeRetry(spoolDir, retry);
+  if (attemptsChanged) writeRetry(spoolDir, retry, names);
 
   if (!report.failed) {
     const done = new Set<string>();
@@ -245,7 +297,7 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
       try {
         if (plan.cut !== undefined) {
           // The rest waits for the next run, which starts reading at the offset.
-          writeOffset(spoolDir, plan.path, plan.cut);
+          writeOffset(spoolDir, plan.path, plan.cut, names);
           done.add(plan.path);
           report.deferredFiles += 1;
           continue;
@@ -264,7 +316,7 @@ export async function replaySpool(options: SpoolReplayOptions): Promise<SpoolRep
     for (const entry of batch) {
       if (done.has(entry.file) && quarantined.delete(entry.sourceEventId)) cleared = true;
     }
-    if (cleared) writeRetry(spoolDir, retry);
+    if (cleared) writeRetry(spoolDir, retry, names);
   }
 
   if (hasActivity(report)) logger?.info({ ...report }, "spool replayed");
@@ -304,10 +356,10 @@ function hasActivity(r: SpoolReplayReport): boolean {
 // --- Files ---------------------------------------------------------------------------------
 
 /** Spool files to read, oldest modification first, then by name. */
-function spoolFiles(dir: string): string[] {
+function spoolFiles(dir: string, names: SpoolNames): string[] {
   const found: { name: string; mtime: number }[] = [];
   for (const name of readdirSync(dir)) {
-    if (!SPOOL_NAME.test(name) || name === POISON_FILE) continue;
+    if (!names.spoolName.test(name) || name === names.poison) continue;
     const stats = lstatOrUndefined(join(dir, name));
     if (stats !== undefined) found.push({ name, mtime: stats.mtimeMs });
   }
@@ -486,8 +538,8 @@ function readOffset(path: string): number {
 }
 
 /** Written to a temporary and renamed, so the offset file is never torn. */
-function writeOffset(dir: string, path: string, cut: number): void {
-  const tmp = join(dir, `${TEMP_PREFIX}offset-${randomUUID()}`);
+function writeOffset(dir: string, path: string, cut: number, names: SpoolNames): void {
+  const tmp = join(dir, `${names.tempPrefix}offset-${randomUUID()}`);
   writeFileSync(tmp, `${cut}\n`, { mode: 0o600, flag: "wx" });
   renameSync(tmp, offsetPath(path));
 }
@@ -495,16 +547,16 @@ function writeOffset(dir: string, path: string, cut: number): void {
 // --- Poison hooks ---------------------------------------------------------------------------
 
 /**
- * Appends the hook, re-serialized in the shim's line format, to POISON_FILE
+ * Appends the hook, re-serialized in the shim's line format, to the poison file
  * (0600, never through a symlink, only a regular file of this user's). False if
  * that fails, so the caller keeps the hook in the spool instead of dropping it.
  */
-function quarantine(dir: string, entry: Entry): boolean {
+function quarantine(dir: string, entry: Entry, names: SpoolNames): boolean {
   const text = `{"payload":${JSON.stringify(entry.payload)},"sourceEventId":${JSON.stringify(entry.sourceEventId)},"spooledAt":${JSON.stringify(entry.spooledAt)}}\n`;
   let fd: number | undefined;
   try {
     fd = openSync(
-      join(dir, POISON_FILE),
+      join(dir, names.poison),
       constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | NOFOLLOW | NONBLOCK,
       0o600,
     );
@@ -527,10 +579,10 @@ interface RetryState {
 }
 
 /** The retry state; anything unreadable or malformed counts as none (L-18, L-39). */
-function readRetry(dir: string): RetryState {
+function readRetry(dir: string, names: SpoolNames): RetryState {
   const state: RetryState = { attempts: new Map(), quarantined: new Set() };
   try {
-    const path = join(dir, ATTEMPTS_FILE);
+    const path = join(dir, names.attempts);
     if (!lstatSync(path).isFile()) return state;
     const value: unknown = JSON.parse(readFileSync(path, "utf8"));
     if (!isPlainRecord(value)) return state;
@@ -554,8 +606,8 @@ function readRetry(dir: string): RetryState {
 }
 
 /** Written to a temporary and renamed; removed when nothing is pending. */
-function writeRetry(dir: string, state: RetryState): void {
-  const path = join(dir, ATTEMPTS_FILE);
+function writeRetry(dir: string, state: RetryState, names: SpoolNames): void {
+  const path = join(dir, names.attempts);
   try {
     if (state.attempts.size === 0 && state.quarantined.size === 0) {
       rmSync(path, { force: true });
@@ -565,7 +617,7 @@ function writeRetry(dir: string, state: RetryState): void {
       attempts: Object.fromEntries(state.attempts),
       quarantined: [...state.quarantined],
     };
-    const tmp = join(dir, `${TEMP_PREFIX}attempts-${randomUUID()}`);
+    const tmp = join(dir, `${names.tempPrefix}attempts-${randomUUID()}`);
     writeFileSync(tmp, `${JSON.stringify(body)}\n`, { mode: 0o600, flag: "wx" });
     renameSync(tmp, path);
   } catch {
@@ -575,19 +627,20 @@ function writeRetry(dir: string, state: RetryState): void {
 
 // --- The shim's lock (mkdir protocol, claude-code-shim.sh header) --------------------------
 
-/** Renames `claude-code.jsonl` aside under the lock, so new shim writes start a fresh file. */
+/** Renames the main file (`claude-code.jsonl`) aside under the lock, so new shim writes start a fresh file. */
 async function claimMain(
   dir: string,
   waitMs: number,
   now: () => number,
+  names: SpoolNames,
 ): Promise<SpoolReplayReport["mainFile"]> {
-  const main = join(dir, SPOOL_FILE);
+  const main = join(dir, names.main);
   if (lstatOrUndefined(main) === undefined) return "absent";
-  const lock = join(dir, LOCK);
+  const lock = join(dir, names.lock);
   const deadline = now() + waitMs;
   for (;;) {
     if (takeLock(lock)) break;
-    if (breakStaleLock(dir, now()) && takeLock(lock)) break;
+    if (breakStaleLock(dir, now(), names) && takeLock(lock)) break;
     if (now() >= deadline) return "busy";
     await new Promise((resolve) => setTimeout(resolve, NAP_MS));
   }
@@ -595,7 +648,7 @@ async function claimMain(
     const stats = lstatOrUndefined(main);
     // A symlink or other odd entry is never renamed into the replay set.
     if (stats === undefined || !stats.isFile()) return "absent";
-    renameSync(main, join(dir, `claude-code.replay-${randomUUID()}.jsonl`));
+    renameSync(main, join(dir, `${names.replayPrefix}${randomUUID()}.jsonl`));
     return "claimed";
   } finally {
     releaseLock(lock);
@@ -608,16 +661,41 @@ function takeLock(lock: string): boolean {
   } catch {
     return false;
   }
+  return claimPid(lock);
+}
+
+/**
+ * Held only once our pid file is created exclusively, as the shim takes it (M7.32): a
+ * shim whose mkdir(1) is not atomic (uutils coreutils 0.8.0, Ubuntu 26.04) can report
+ * success for the directory we just made and create its pid file first; then it holds.
+ * A directory left without a pid (another failure) is judged by age, like a shim killed
+ * before writing its PID.
+ */
+function claimPid(dir: string): boolean {
   try {
-    writeFileSync(join(lock, "pid"), `${process.pid}\n`, { mode: 0o600, flag: "wx" });
+    writeFileSync(join(dir, "pid"), `${process.pid}\n`, { mode: 0o600, flag: "wx" });
+    return true;
   } catch {
-    // An empty lock is judged by age, like a shim killed before writing its PID.
+    return false;
   }
-  return true;
+}
+
+/** Removes a lock directory we hold: our pid file, then the directory only if it is empty. */
+function dropDir(dir: string): void {
+  try {
+    unlinkSync(join(dir, "pid"));
+  } catch {
+    // Already gone.
+  }
+  try {
+    rmdirSync(dir);
+  } catch {
+    // A shim claimed it after our pid went (it holds it now), or left for the stale check.
+  }
 }
 
 function releaseLock(lock: string): void {
-  if (lockOwner(lock) === String(process.pid)) rmSync(lock, { recursive: true, force: true });
+  if (lockOwner(lock) === String(process.pid)) dropDir(lock);
 }
 
 function lockOwner(lock: string): string {
@@ -635,14 +713,16 @@ function lockOwner(lock: string): string {
  * no PID and is older than STALE_MS; a lock with a running PID is never broken.
  * Serialized by the break lock, so the lock judged is the lock moved.
  */
-function breakStaleLock(dir: string, nowMs: number): boolean {
-  const lock = join(dir, LOCK);
-  const breaker = join(dir, BREAKER);
+function breakStaleLock(dir: string, nowMs: number, names: SpoolNames): boolean {
+  const lock = join(dir, names.lock);
+  const breaker = join(dir, names.breaker);
   try {
     mkdirSync(breaker, { mode: 0o700 });
   } catch {
     return false;
   }
+  // The break lock is pid-owned like the lock: one a shim claimed first is not ours.
+  if (!claimPid(breaker)) return false;
   try {
     const stats = lstatOrUndefined(lock);
     if (stats === undefined || !stats.isDirectory()) return false;
@@ -651,18 +731,17 @@ function breakStaleLock(dir: string, nowMs: number): boolean {
       ? !running(Number(owner))
       : owner === "" && nowMs - stats.mtimeMs > STALE_MS;
     if (!stale) return false;
-    const aside = join(dir, `${TEMP_PREFIX}stale-${randomUUID()}`);
+    // Re-read right before moving: a live process may have taken the lock since.
+    const again = lockOwner(lock);
+    if (again !== owner || (again !== "" && running(Number(again)))) return false;
+    const aside = join(dir, `${names.tempPrefix}stale-${randomUUID()}`);
     renameSync(lock, aside);
     rmSync(aside, { recursive: true, force: true });
     return true;
   } catch {
     return false;
   } finally {
-    try {
-      rmdirSync(breaker);
-    } catch {
-      // Left for the next start's stale check.
-    }
+    dropDir(breaker);
   }
 }
 
@@ -682,16 +761,16 @@ function running(pid: number): boolean {
  * older than STALE_MS has no live holder, and no one else can remove or replace
  * it meanwhile) and temporaries or set-aside locks older than STALE_MS.
  */
-function clearStale(dir: string, nowMs: number): void {
+function clearStale(dir: string, nowMs: number, names: SpoolNames): void {
   for (const name of readdirSync(dir)) {
     // An offset whose spool file is gone (a crash between the two deletes).
-    if (OFFSET_NAME.test(name)) {
+    if (names.offsetName.test(name)) {
       if (lstatOrUndefined(join(dir, name.slice(0, -".offset".length))) === undefined) {
         rmSync(join(dir, name), { force: true });
       }
       continue;
     }
-    if (name !== BREAKER && !name.startsWith(TEMP_PREFIX)) continue;
+    if (name !== names.breaker && !name.startsWith(names.tempPrefix)) continue;
     const path = join(dir, name);
     const stats = lstatOrUndefined(path);
     if (stats === undefined || nowMs - stats.mtimeMs <= STALE_MS) continue;

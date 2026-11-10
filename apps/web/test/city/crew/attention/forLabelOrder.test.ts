@@ -21,7 +21,7 @@ describe("the lead's 'for:' label with two open worker prompts", () => {
     input: { ...first.input, message: "bo needs permission for Read" },
   };
   const stuck = replay("team/split-pane", { upTo: 17, extra: [second] });
-  const lead = agentNamed(stuck.state, "lead", "proj");
+  const lead = agentNamed(stuck.state, "lead", "owner");
   const records = recordsOf(stuck).filter((r) => r.level === "needs_you" && r.agentId === lead.id);
 
   it("starts from two separate heuristic records on the lead (precondition)", () => {

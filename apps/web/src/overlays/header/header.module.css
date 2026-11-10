@@ -43,6 +43,18 @@
   box-shadow: inset 0 0 0 1px var(--tv-accent);
 }
 
+.picker {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--tv-radius);
+  background: var(--tv-surface);
+  color: var(--tv-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.picker:focus-visible,
 .chip:focus-visible {
   outline: 2px solid var(--tv-focus);
   outline-offset: 2px;

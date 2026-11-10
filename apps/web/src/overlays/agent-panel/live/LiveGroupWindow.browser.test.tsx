@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import { DEFAULT_PROJECT_ID, selectProject } from "../../../data/project.ts";
 import { SessionProvider } from "../../../pairing/session.tsx";
 import { ConnectedLiveTab } from "./ConnectedLiveTab.tsx";
-import { AGENT, articles, build, PROJECT, paint, seedStore } from "./liveKit.tsx";
+import { AGENT, articles, build, openDetails, PROJECT, paint, seedStore } from "./liveKit.tsx";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -60,6 +60,8 @@ it("keeps every oversized Search group's details reachable and refetches revisit
   try {
     await expect.element(articles()).toMatchTextContent("Searched 160 times");
     await userEvent.keyboard("f");
+    // M10.02: the group's inner controls sit inside its Details.
+    await openDetails(articles());
     await articles().getByRole("button", { name: "Expand patterns" }).click();
     await expect.poll(() => reads.length).toBeGreaterThan(0);
     await expect.poll(() => active).toBe(0);

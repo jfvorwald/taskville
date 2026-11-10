@@ -130,7 +130,7 @@ describe("an in-process teammate that needs you (S-2 team/in-process, #120 D1)",
   const stuck = replay("team/in-process", { upTo: 31, bridge: promptAt(31, PIP) });
   const pip = agentNamed(stuck.state, "teammate", "pip");
   const bo = agentNamed(stuck.state, "teammate", "bo");
-  const lead = agentNamed(stuck.state, "lead", "proj");
+  const lead = agentNamed(stuck.state, "lead", "owner");
 
   it("turns pip red and nobody else on the team", () => {
     expect(pip.sourceAgentId).toBe(PIP);
@@ -152,7 +152,7 @@ describe("a split-pane teammate that needs you (S-2 team/split-pane, #120 D2)", 
   // Fixture seq 17: no PermissionRequest fires; the lead gets a worker_permission_prompt
   // notification "pip needs permission for Bash". pip's own session is not linked to the team yet.
   const stuck = replay("team/split-pane", { upTo: 17 });
-  const lead = agentNamed(stuck.state, "lead", "proj");
+  const lead = agentNamed(stuck.state, "lead", "owner");
 
   it("turns the lead red, not any teammate or unlinked session", () => {
     expect(attribute(stuck).red).toEqual([lead.id]);
@@ -177,7 +177,7 @@ describe("a split-pane teammate that needs you (S-2 team/split-pane, #120 D2)", 
 describe("a lead's own prompt in an in-process team (S-2 team/in-process seq 37)", () => {
   it("is red with no 'for:' label, because a recorded prompt is not indirect", () => {
     const r = replay("team/in-process", { upTo: 37 });
-    const lead = agentNamed(r.state, "lead", "proj");
+    const lead = agentNamed(r.state, "lead", "owner");
     const out = attribute(r);
     expect(out.red).toContain(lead.id);
     expect(out.forLabels).toEqual({});

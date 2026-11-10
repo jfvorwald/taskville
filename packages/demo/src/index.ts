@@ -19,8 +19,10 @@ export {
 } from "./producer.ts";
 export { mulberry32, type Random, type Rng, seededRng } from "./rng.ts";
 export {
+  DEMO_SCENARIOS,
   type DemoEvent,
   type DemoOptions,
+  type DemoScenario,
   type DemoStep,
   demoSteps,
   generateDemo,

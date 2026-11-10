@@ -8,6 +8,7 @@ import {
   build,
   type CallSpec,
   HIDDEN,
+  openDetails,
   renderPlain,
   seedStore,
   slot,
@@ -57,6 +58,7 @@ describe("G: hidden and reordering characters render as visible <U+XXXX> markers
     });
     expectVisible(card, `out${MARKS}end`);
     expectVisible(card, `err${MARKS}end`);
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand output/i })
       .click();
@@ -217,6 +219,7 @@ describe("H: a deep or huge body renders a bounded amount of text", () => {
     const card = articles().element();
     expect(card.textContent).toMatch(/truncated/i);
     for (const length of preLengths(card)) expect(length).toBeLessThanOrEqual(CAP);
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand output/i })
       .click();
@@ -239,6 +242,7 @@ describe("H: a deep or huge body renders a bounded amount of text", () => {
       },
     ]);
     await expect.poll(() => articles().elements().length).toBe(1);
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand output/i })
       .click();

@@ -113,6 +113,8 @@ export function applySessionEnded(
   const ensured = ensureSession(s, e, agentId, sessionId);
   const session = ownSession(ensured, agentId, sessionId);
   if (session === undefined || session.endedAt !== undefined) return ensured;
+  // A late end older than the session's activity is history: the session has moved on (M7.15).
+  if (e.late && compareTimestamps(e.occurredAt, session.activity.since) < 0) return ensured;
   return {
     ...ensured,
     sessions: put(ensured.sessions, sessionId, { ...session, endedAt: e.occurredAt }),
@@ -164,12 +166,31 @@ export function setActivity(
     state = ensureSession(state, e, agentId, sessionId);
     target = ownSession(state, agentId, sessionId);
   }
+  // A late (replayed) entry older than the activity it would replace must not regress it.
+  const held = target !== undefined ? target.activity : getOwn(state.activity, agentId);
+  if (e.late && held !== undefined && compareTimestamps(e.occurredAt, held.since) < 0) return state;
   if (target !== undefined) {
     return { ...state, sessions: put(state.sessions, target.id, { ...target, activity: entry }) };
   }
   const current = getOwn(state.activity, agentId);
   if (current === undefined) return state;
   return { ...state, activity: put(state.activity, agentId, { ...viewBase(current), ...entry }) };
+}
+
+/**
+ * An event that proves the agent is mid-turn (a prompt, a tool call) takes its session out of
+ * idle, to unknown, until a classified activity arrives. Any activity other than idle is kept.
+ */
+export function leaveIdle(
+  s: EntitiesState,
+  e: DomainEvent,
+  agentId: string,
+  sessionId: string | undefined,
+): EntitiesState {
+  const target =
+    sessionId === undefined ? primarySession(s, agentId) : ownSession(s, agentId, sessionId);
+  if (target === undefined || target.activity.activity !== "idle") return s;
+  return setActivity(s, e, agentId, target.id, unknownActivity(e.occurredAt));
 }
 
 export function setLatestEvidence(

@@ -1,5 +1,6 @@
 export { Bubbles, bubblesOverlay } from "./Bubbles.tsx";
 export { bubbleCandidates, type RequestTools } from "./candidates.ts";
+export { type BreakBubble, type BreakBubbleInput, selectBubblesWithBreaks } from "./chatter.ts";
 export { type BubbleFactInput, bubbleFact } from "./fact.ts";
 export {
   type Bubble,

@@ -20,17 +20,22 @@ import {
   writeBackupOnce,
 } from "./install-files.ts";
 import {
+  addOtelSettings,
   addTaskvilleHooks,
   BRIDGE_HOOK_EVENT,
   BRIDGE_TOKEN_ENV,
   bridgeHookHandler,
   detectIndent,
   HOOK_EVENTS,
+  hasOtelSettings,
   hookCommand,
+  installedOtel,
   isTaskvilleBridgeHook,
   isTaskvilleHook,
   type JsonObject,
+  OTEL_HELPER_NAME,
   parseSettings,
+  removeOtelSettings,
   removeTaskvilleHooks,
   SettingsError,
   SHIM_NAME,
@@ -49,27 +54,30 @@ import {
 // reformatted, and the diff shows it before anything is written.
 
 const INSTALL_USAGE =
-  "taskville install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>] [--url <base>]";
+  "taskville install claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>] [--url <base>] [--otel]";
 const UNINSTALL_USAGE =
   "taskville uninstall claude-code --scope user|project [--project-dir <dir>] [--yes] [--dry-run] [--home <dir>]";
 
-const OPTIONS = {
+/** The options both installers take; `--otel` is Claude Code's alone. */
+export const CODEX_OPTIONS = {
   scope: { type: "string" },
   "project-dir": { type: "string" },
   yes: { type: "boolean" },
   "dry-run": { type: "boolean" },
 } as const;
+const OPTIONS = { ...CODEX_OPTIONS, otel: { type: "boolean" } } as const;
 
 const SHIM_SOURCE = new URL("../../hooks/claude-code-shim.sh", import.meta.url);
+const OTEL_HELPER_SOURCE = new URL("../../hooks/claude-code-otel-headers.sh", import.meta.url);
 
 const usageError = (message: string, usage: string): never => {
   throw new CliError(EXIT.failure, `${message}\nUsage: ${usage}`);
 };
-const fail = (message: string): never => {
+export const fail = (message: string): never => {
   throw new CliError(EXIT.failure, message);
 };
 
-interface Plan {
+export interface Plan {
   io: Io;
   scope: "user" | "project";
   target: SettingsTarget;
@@ -77,11 +85,22 @@ interface Plan {
   values: Values;
 }
 
-function plan(io: Io, args: string[], usage: string): Plan {
+export function plan(
+  io: Io,
+  args: string[],
+  usage: string,
+  tool: "claude-code" | "codex" = "claude-code",
+): Plan {
   const [target, ...rest] = args;
-  if (target !== "claude-code") usageError(`unknown or missing target "${target ?? ""}"`, usage);
-  const { values } = parseCommand(io, rest, OPTIONS, usage);
+  if (target !== tool) usageError(`unknown or missing target "${target ?? ""}"`, usage);
+  const { values } = parseCommand(io, rest, tool === "codex" ? CODEX_OPTIONS : OPTIONS, usage);
   const scope = values.scope;
+  if (usage === INSTALL_USAGE && values.otel === true && scope !== "project") {
+    usageError(
+      "--otel needs --scope project: the helper hands the CLI token to the endpoint Claude Code resolves, so it is never installed into a user-wide file",
+      usage,
+    );
+  }
   if (scope !== "user" && scope !== "project") usageError("--scope must be user or project", usage);
 
   // Never fall back to the OS home directory: HOME comes from the caller's environment only, so a
@@ -89,7 +108,20 @@ function plan(io: Io, args: string[], usage: string): Plan {
   const userHome = nonEmpty(io.env.HOME);
   const home = resolveTaskvilleHome(io, values, userHome);
   let settings: SettingsTarget;
-  if (scope === "user") {
+  if (tool === "codex") {
+    // Codex's hooks file: <HOME>/.codex/hooks.json or <project>/.codex/hooks.json, never config.toml.
+    if (scope === "user") {
+      if (userHome === undefined) fail("HOME is not set, so ~/.codex cannot be located; set HOME");
+      settings = userSettingsTarget(join(userHome as string, ".codex"), "hooks.json");
+    } else {
+      const dir = values["project-dir"];
+      settings = projectSettingsTarget(
+        resolve(io.cwd, typeof dir === "string" ? dir : "."),
+        ".codex",
+        "hooks.json",
+      );
+    }
+  } else if (scope === "user") {
     const configDir = nonEmpty(io.env.CLAUDE_CONFIG_DIR);
     if (configDir === undefined && userHome === undefined) {
       fail(
@@ -129,7 +161,7 @@ const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost):([0-9]{1,5})\/?$/;
  * value (a hold window outside 1 to 300, say) stops the install, and the bridge hook's timeout
  * (hold window plus 5 s) comes from it even when the URL is given.
  */
-function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds: number } {
+export function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds: number } {
   const userHome = nonEmpty(p.io.env.HOME);
   let config: ReturnType<typeof loadConfig>["config"];
   try {
@@ -155,7 +187,7 @@ function engineTarget(p: Plan): { url: string; port: number; hookTimeoutSeconds:
   return { url: `http://${match[1]}:${port}`, port, hookTimeoutSeconds };
 }
 
-function readSettings(target: SettingsTarget): { state: FileState; settings: JsonObject } {
+export function readSettings(target: SettingsTarget): { state: FileState; settings: JsonObject } {
   const state = readState(target.path);
   if (state.text === undefined) return { state, settings: {} };
   try {
@@ -170,10 +202,16 @@ function readSettings(target: SettingsTarget): { state: FileState; settings: Jso
   }
 }
 
-const showPath = (t: SettingsTarget) => (t.shown === t.path ? t.path : `${t.shown} -> ${t.path}`);
+export const showPath = (t: SettingsTarget) =>
+  t.shown === t.path ? t.path : `${t.shown} -> ${t.path}`;
 
 /** Prints the diff, then gets a yes: --yes, an interactive answer, or a refusal. */
-async function approve(p: Plan, diff: string, extra: string[], question: string): Promise<boolean> {
+export async function approve(
+  p: Plan,
+  diff: string,
+  extra: string[],
+  question: string,
+): Promise<boolean> {
   p.io.stdout(`Settings file: ${showPath(p.target)}\n`);
   for (const line of extra) p.io.stdout(`${line}\n`);
   p.io.stdout(diff);
@@ -191,7 +229,7 @@ async function approve(p: Plan, diff: string, extra: string[], question: string)
 }
 
 /** Refuses if the file changed while the user read the diff. */
-function unchangedSince(p: Plan, before: FileState): void {
+export function unchangedSince(p: Plan, before: FileState): void {
   const now = readState(p.target.path);
   if (now.text !== before.text)
     fail(
@@ -271,25 +309,52 @@ export async function install(io: Io, args: string[]): Promise<number> {
   });
 
   const { state, settings } = readSettings(p.target);
-  const settingsDone = alreadyInstalled(settings, command, bridge);
-  if (settingsDone && !shim.changes) {
+  // `--otel` (M5.12): the OpenTelemetry settings and the headers helper, on top of the hooks.
+  const otel =
+    p.values.otel === true
+      ? (() => {
+          const source = readFileSync(OTEL_HELPER_SOURCE, "utf8");
+          const helper = checkShim(p.home, OTEL_HELPER_NAME, source);
+          return {
+            source,
+            helper,
+            command: hookCommand({
+              shimPath: helper.path,
+              home: p.home,
+              url: `http://127.0.0.1:${port}`,
+            }),
+          };
+        })()
+      : undefined;
+  const hooksDone = alreadyInstalled(settings, command, bridge);
+  const otelDone = otel === undefined || hasOtelSettings(settings, port, otel.command);
+  const settingsDone = hooksDone && otelDone;
+  if (settingsDone && !shim.changes && otel?.helper.changes !== true) {
     io.stdout(`Already installed in ${showPath(p.target)}; nothing to change.\n`);
     return EXIT.ok;
   }
-  const next = settingsDone
-    ? state.text
-    : serialize(addTaskvilleHooks(settings, command, bridge), detectIndent(state.text ?? ""));
+  let planned = hooksDone ? settings : addTaskvilleHooks(settings, command, bridge);
+  if (otel !== undefined) planned = addOtelSettings(planned, port, otel.command);
+  const next = settingsDone ? state.text : serialize(planned, detectIndent(state.text ?? ""));
   const diff = settingsDiff(p.target.shown, state.text, next);
   const extra = [
     `Hook command: ${command}`,
     shim.changes ? `Shim: copy to ${shim.path} (0755)` : `Shim: ${shim.path} is current`,
   ];
+  if (otel !== undefined) {
+    extra.push(
+      otel.helper.changes
+        ? `OpenTelemetry headers helper: copy to ${otel.helper.path} (0755)`
+        : `OpenTelemetry headers helper: ${otel.helper.path} is current`,
+    );
+  }
   if (!(await approve(p, diff, extra, `Write these hooks to ${p.target.shown}?`))) {
     return p.values["dry-run"] === true ? EXIT.ok : EXIT.failure;
   }
   unchangedSince(p, state);
 
   installShim(p.home, SHIM_NAME, shimSource);
+  if (otel !== undefined) installShim(p.home, OTEL_HELPER_NAME, otel.source);
   if (!settingsDone && next !== undefined) {
     // Keep the original for a byte-for-byte uninstall, unless an earlier install's entries are
     // already in it (then the first install's backup, if any, is the original).
@@ -304,6 +369,11 @@ export async function install(io: Io, args: string[]): Promise<number> {
   io.stdout(
     `To let Claude Code reach the bridge, start it with the token (file ${join(p.home, "bridge-token")}) for that launch only, for example: env ${BRIDGE_TOKEN_ENV}="$(cat ${shellQuote(join(p.home, "bridge-token"))})" claude\n`,
   );
+  if (otel !== undefined) {
+    io.stdout(
+      `OpenTelemetry export is set to ${url.replace(/localhost/, "127.0.0.1")}/v1/otlp; the engine keeps tokens and cost in memory (the token is read from ${join(p.home, "token")} by the headers helper, never written to settings).\n`,
+    );
+  }
   if (p.scope === "project") {
     io.stdout(
       "Note: .claude/settings.local.json holds machine-specific paths. Claude Code git-ignores it only when it creates the file itself, so add it to .gitignore if this project is a git repository.\n",
@@ -341,7 +411,10 @@ function installedBridge(settings: JsonObject): JsonObject | undefined {
 export async function uninstall(io: Io, args: string[]): Promise<number> {
   const p = plan(io, args, UNINSTALL_USAGE);
   const { state, settings } = readSettings(p.target);
-  const { settings: stripped, removed } = removeTaskvilleHooks(settings);
+  const hooksStripped = removeTaskvilleHooks(settings);
+  const otelStripped = removeOtelSettings(hooksStripped.settings);
+  const stripped = otelStripped.settings;
+  const removed = hooksStripped.removed + otelStripped.removed;
   if (removed === 0) {
     io.stdout(`Taskville hooks are not installed in ${showPath(p.target)}; nothing to change.\n`);
     return EXIT.ok;
@@ -359,13 +432,16 @@ export async function uninstall(io: Io, args: string[]): Promise<number> {
       // Only when the file is exactly what install wrote from the backup: a formatting-only edit
       // since then must survive (roborev 5210).
       const command = installedCommand(settings);
-      const written =
+      const otel = installedOtel(settings);
+      let restored =
         command === undefined
           ? undefined
-          : serialize(
-              addTaskvilleHooks(parseSettings(backup), command, installedBridge(settings)),
-              detectIndent(backup),
-            );
+          : addTaskvilleHooks(parseSettings(backup), command, installedBridge(settings));
+      if (restored !== undefined && otel !== undefined) {
+        restored = addOtelSettings(restored, otel.port, otel.helper);
+      }
+      const written =
+        restored === undefined ? undefined : serialize(restored, detectIndent(backup));
       if (written === state.text) {
         next = backup;
         how = "restoring the original from the backup, byte for byte";

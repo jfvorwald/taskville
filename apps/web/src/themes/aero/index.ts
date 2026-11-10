@@ -12,6 +12,7 @@ const tokens: ThemeTokens = {
   "--tv-text-muted": "#385c7e",
   "--tv-accent": "#1873b3",
   "--tv-focus": "#a16410",
+  "--tv-ok": "#1f7a4d",
   "--tv-neon": "#5fd8ff",
   "--tv-radius": "14px",
   "--tv-font": '"Segoe UI", "Frutiger", "Avenir Next", system-ui, sans-serif',
@@ -29,6 +30,9 @@ const tokens: ThemeTokens = {
   "--tv-city-lamp-glow": "#e6fbff",
   "--tv-city-tree-trunk": "#6b8a78",
   "--tv-city-tree-crown": "#3fae6a",
+  "--tv-city-bar-counter": "#7fa6c4",
+  "--tv-city-bar-stool": "#e08a5c",
+  "--tv-city-smoke-bench": "#b8a27a",
   "--tv-city-window-glow": "#fff4c2",
 };
 
@@ -40,6 +44,7 @@ const night: Partial<ThemeTokens> = {
   "--tv-text-muted": "#9cc2e4",
   "--tv-accent": "#40a2e6",
   "--tv-focus": "#ff9f1a",
+  "--tv-ok": "#5fb98a",
   "--tv-neon": "#8ae8ff",
   "--tv-city-wall": "#aec4da",
   "--tv-city-roof": "#92a9c2",

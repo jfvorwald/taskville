@@ -22,6 +22,24 @@
 #                   config.json: an installer for a non-default port must set
 #                   TASKVILLE_URL in the hook command.
 #
+# LIVE ENGINE (M7.30, #434)
+#   The token and the payload are posted only to an engine that recorded itself
+#   in $TASKVILLE_HOME/engine.json (one JSON line written by `taskville serve`:
+#   {"url":...,"pid":...,...}). The shim posts only when that file is a regular
+#   file (not a symlink), its "url" equals the target origin (TASKVILLE_URL with
+#   trailing slashes stripped) and its "pid" (digits only, not 0) is alive
+#   (`kill -0`; at most 7 digits). Otherwise it does not contact the port at
+#   all and spools the event, so a stale engine.json or any other process that
+#   took the port after the engine exited never receives the token. The host
+#   "localhost" is treated as 127.0.0.1 in both the target and the recorded url
+#   (exact host only). engine.json is read with sed (no jq); anything that does
+#   not look like the one-line object above counts as missing. Remaining
+#   limits: another process of the same user can still listen on the port while
+#   the recorded engine is alive, or write its own engine.json; a process of the
+#   same user can reuse the recorded pid; and the engine can exit in the
+#   milliseconds between the check and the POST (accepted). See
+#   apps/cli/docs/hooks-security.md.
+#
 # REQUEST (the hooks endpoint, M2.02 / #21: apps/engine/src/sources/claude-code/route.ts)
 #   POST <TASKVILLE_URL>/v1/sources/claude-code/hooks
 #   Authorization: Bearer <contents of $TASKVILLE_HOME/token>
@@ -63,8 +81,13 @@
 #   mid-append, or a malformed payload) must be skipped, not fatal: the shim
 #   starts a fresh line when the file does not end in LF, so a torn line never
 #   swallows the next event.
-#   Lock       claude-code.lock, a directory made with mkdir (atomic), holding
-#              a file "pid" with the holder's PID. Any reader that renames or
+#   Lock       claude-code.lock, a directory made with mkdir, holding a file
+#              "pid" with the holder's PID. The shim holds it only once it has
+#              also created "pid" exclusively (set -C): mkdir(1) is not atomic
+#              everywhere (uutils coreutils before 0.11, Ubuntu 26.04's default,
+#              can exit 0 for a directory that already exists; M7.32). It
+#              releases by removing its "pid" and then the directory only if
+#              empty. Any reader that renames or
 #              truncates claude-code.jsonl must hold this lock while doing so.
 #              A lock is stale when its PID is not running, or when it has no
 #              PID file and is more than a minute old. A lock whose PID is
@@ -75,10 +98,12 @@
 #              The breaker reads the PID again after finding it not running and
 #              breaks only if it is unchanged (the holder may have released and
 #              a live shim taken a new lock meanwhile), so the lock judged stale
-#              is the lock removed. The break lock is
-#              held for a few milliseconds and never reclaimed automatically;
+#              is the lock removed. The break lock is taken the same way as
+#              the lock (directory plus exclusive "pid"),
+#              held for a few milliseconds and never reclaimed by the shim;
 #              if a shim is killed while holding it, later events go to
-#              per-event files until it is removed by hand. Nothing is lost.
+#              per-event files until the engine's next start or a hand
+#              removal clears it. Nothing is lost.
 #
 # LIMITS
 #   At most 5 MiB minus 1 KiB (5,241,856 bytes) of hook JSON is kept: the
@@ -245,12 +270,39 @@ valid_uuid "$uuid" || exit 0
 
 # --- POST to the engine -------------------------------------------------------
 
+# Prints $1 with the host "localhost" replaced by 127.0.0.1 (exact host only:
+# http://localhost:PORT becomes http://127.0.0.1:PORT); anything else unchanged.
+canon_origin() {
+  case $1 in
+    http://localhost:*) printf '%s' "http://127.0.0.1:${1#http://localhost:}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# True when $home/engine.json names a live engine at origin $1: a regular file
+# whose one-line JSON object has "url" equal to $1 and a "pid" that is running.
+live_engine() {
+  _ej=$home/engine.json
+  if [ -h "$_ej" ] || [ ! -f "$_ej" ]; then return 1; fi
+  _info=$(head -c 4096 "$_ej" | tr -d '\r\n') || return 1
+  case $_info in '{'*'}') ;; *) return 1 ;; esac
+  _eurl=$(printf '%s' "$_info" | sed -n 's/.*"url":"\([^"\\]*\)".*/\1/p')
+  _epid=$(printf '%s' "$_info" | sed -n 's/.*"pid":\([0-9]*\)[,}].*/\1/p')
+  [ -n "$_eurl" ] || return 1
+  [ "$(canon_origin "$(strip_slashes "$_eurl")")" = "$1" ] || return 1
+  case $_epid in '' | *[!0-9]*) return 1 ;; esac
+  # At most 7 digits: some shells truncate an oversized pid to 0, and kill 0
+  # signals the caller's own process group.
+  [ ${#_epid} -le 7 ] && [ "$_epid" -gt 0 ] || return 1
+  kill -0 "$_epid" 2>/dev/null
+}
+
 post() {
   # The oversized marker has no object payload; the endpoint would refuse it.
   [ -z "$extra" ] || return 1
   command -v curl >/dev/null || return 1
 
-  url=$(strip_slashes "${TASKVILLE_URL:-http://127.0.0.1:4807}")
+  url=$(canon_origin "$(strip_slashes "${TASKVILLE_URL:-http://127.0.0.1:4807}")")
   case $url in
     http://127.0.0.1:*) port=${url#http://127.0.0.1:} ;;
     http://localhost:*) port=${url#http://localhost:} ;;
@@ -258,6 +310,8 @@ post() {
   esac
   case $port in '' | *[!0-9]*) return 1 ;; esac
   [ ${#port} -le 5 ] || return 1
+
+  live_engine "$url" || return 1
 
   token_file=$home/token
   if [ -h "$token_file" ] || [ ! -f "$token_file" ]; then return 1; fi
@@ -303,19 +357,33 @@ lock_owner() {
   printf '%s' "$_owner"
 }
 
+# Makes the mkdir lock directory $1 and records our PID in it. Held only when the
+# PID file is created too, exclusively (set -C opens it with O_EXCL in sh and
+# dash): some mkdir(1)s exit 0 when the directory already exists (uutils
+# coreutils before 0.11, the Ubuntu 26.04 default; M7.32), so mkdir alone could
+# give two holders. Whoever creates the PID file holds; the other backs off.
+claim_dir() {
+  mkdir "$1" 2>/dev/null || return 1
+  (set -C && printf '%s\n' "$$" >"$1/pid") 2>/dev/null
+}
+
+# Removes a lock directory we hold: our PID file, then the directory only if it
+# is empty, so a PID a later claimer wrote meanwhile is never deleted.
+drop_dir() {
+  rm -f "$1/pid"
+  rmdir "$1" 2>/dev/null
+}
+
 take_lock() {
-  if mkdir "$lock" 2>/dev/null; then
-    lock_held=yes
-    printf '%s\n' "$$" >"$lock/pid"
-    return 0
-  fi
-  return 1
+  claim_dir "$lock" || return 1
+  lock_held=yes
+  return 0
 }
 
 release_lock() {
   lock_held=no
   # Only remove the lock if it is still ours (a waiter may have judged it stale).
-  if [ "$(lock_owner "$lock")" = "$$" ]; then rm -rf "$lock"; fi
+  if [ "$(lock_owner "$lock")" = "$$" ]; then drop_dir "$lock"; fi
 }
 
 # Removes claude-code.lock if it is stale. Serialized by claude-code.lock.break,
@@ -323,7 +391,7 @@ release_lock() {
 # it; a live holder never loses its lock (one with a running PID is not stale).
 break_stale_lock() {
   breaker=$lock.break
-  mkdir "$breaker" 2>/dev/null || return 1
+  claim_dir "$breaker" || return 1
   broke=no
   owner=$(lock_owner "$lock")
   stale=no
@@ -337,7 +405,7 @@ break_stale_lock() {
   # still names it now is the lock moved below.
   if [ "$stale" = yes ] && [ "$(lock_owner "$lock")" != "$owner" ]; then stale=no; fi
   if [ "$stale" = yes ] && mv "$lock" "$work/stale-lock" 2>/dev/null; then broke=yes; fi
-  rmdir "$breaker" 2>/dev/null
+  drop_dir "$breaker"
   [ "$broke" = yes ]
 }
 

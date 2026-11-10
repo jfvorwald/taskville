@@ -33,6 +33,7 @@ const CODE_NAMES = [
   "celebrations",
   "accessibility",
   "movement",
+  "breaks",
   "lighting",
   "web",
 ];

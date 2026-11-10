@@ -25,7 +25,7 @@ import {
   runShim,
   SHELLS,
   SHIM,
-  shimEnv,
+  liveShimEnv as shimEnv,
   spoolFiles,
   spoolLines,
   startServer,
@@ -593,14 +593,85 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(spoolLines(home)).toHaveLength(1);
   }, 15_000);
 
+  /**
+   * A PATH whose mkdir acts like uutils coreutils 0.8.0, the Ubuntu 26.04 default (uutils
+   * issue 13970, fixed in 0.11.0): when mkdir(2) fails on a path that is a directory, it
+   * exits 0. With `race`, it keeps 0.8.0's exists() precheck, so it lies only when the
+   * directory appears between the check and the call; without, that outcome every time.
+   */
+  async function uutilsMkdirPath(race: boolean): Promise<string> {
+    const real = (await exec("sh", ["-c", "command -v mkdir"])).stdout.trim();
+    const bin = join(home.root, "uutils-bin");
+    mkdirSync(bin);
+    const script = [
+      "#!/bin/sh",
+      "for d; do :; done",
+      ...(race ? ['[ -e "$d" ] && exit 1'] : []),
+      `'${real}' "$@" 2>/dev/null || [ -d "$d" ]`,
+      "",
+    ];
+    writeFileSync(join(bin, "mkdir"), script.join("\n"));
+    chmodSync(join(bin, "mkdir"), 0o755);
+    return `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}`;
+  }
+
+  it("never shares a live lock when mkdir reports success for an existing directory", async () => {
+    // M7.32: the CI concurrency failures. Under uutils mkdir 0.8.0 two shims both took
+    // the lock and appended at once; one's torn-line repair left an empty line.
+    const PATH = await uutilsMkdirPath(false);
+    const lock = join(home.spoolDir, "claude-code.lock");
+    mkdirSync(lock, { mode: 0o700 });
+    writeFileSync(join(lock, "pid"), `${process.pid}\n`);
+    const run = await runShim({
+      shell,
+      input: JSON.stringify(hookPayload(600)),
+      env: shimEnv(home, await deadUrl(), { PATH }),
+    });
+    expect(run.code).toBe(0);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${process.pid}\n`);
+    expect(existsSync(home.spoolFile)).toBe(false);
+    expect(spoolLines(home)).toHaveLength(1);
+  });
+
+  it("never breaks a lock while a live shim holds the break lock, whatever mkdir reports", async () => {
+    const PATH = await uutilsMkdirPath(false);
+    const lock = join(home.spoolDir, "claude-code.lock");
+    mkdirSync(lock, { mode: 0o700 });
+    const dead = (await exec("sh", ["-c", "sh -c 'echo $$'"])).stdout.trim();
+    writeFileSync(join(lock, "pid"), `${dead}\n`);
+    // A live shim in the middle of breaking it (a breaker records its PID, M7.32).
+    const breaker = `${lock}.break`;
+    mkdirSync(breaker, { mode: 0o700 });
+    writeFileSync(join(breaker, "pid"), `${process.pid}\n`);
+    const run = await runShim({
+      shell,
+      input: JSON.stringify(hookPayload(601)),
+      env: shimEnv(home, await deadUrl(), { PATH }),
+    });
+    expect(run.code).toBe(0);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${dead}\n`);
+    expect(readFileSync(join(breaker, "pid"), "utf8")).toBe(`${process.pid}\n`);
+    expect(existsSync(home.spoolFile)).toBe(false);
+    expect(spoolLines(home)).toHaveLength(1);
+  });
+
   it("does not corrupt the spool under concurrent invocations", async () => {
+    await expectConcurrentSpoolIntact({});
+  }, 30_000);
+
+  it("does not corrupt the spool under concurrent invocations with uutils mkdir 0.8.0", async () => {
+    // Without the M7.32 fix this failed 17 of 20 rounds on macOS (empty and interleaved lines).
+    await expectConcurrentSpoolIntact({ PATH: await uutilsMkdirPath(true) });
+  }, 30_000);
+
+  async function expectConcurrentSpoolIntact(extra: Record<string, string>): Promise<void> {
     const url = await deadUrl();
     const count = 24;
     // 900 KB each: larger than one cat(1) write, so unlocked appends interleave (seen with the lock removed).
     const payloads = Array.from({ length: count }, (_, i) => hookPayload(100 + i, 900_000));
     const runs = await Promise.all(
       payloads.map((payload) =>
-        runShim({ shell, input: JSON.stringify(payload), env: shimEnv(home, url) }),
+        runShim({ shell, input: JSON.stringify(payload), env: shimEnv(home, url, extra) }),
       ),
     );
     for (const run of runs) expect(run).toMatchObject({ code: 0, stdout: "" });
@@ -614,5 +685,5 @@ describe.each(SHELLS)("claude-code-shim.sh under %s", (shell) => {
     expect(new Set(lines.map((l) => l.sourceEventId)).size).toBe(count);
     // No lock or temporary file is left behind.
     expect(readdirSync(home.spoolDir).filter((n) => !n.endsWith(".jsonl"))).toEqual([]);
-  }, 30_000);
+  }
 });

@@ -147,6 +147,16 @@ After the first release. Git and transcript imports, typed-replies spike. Ends a
 
 Gate: [#93](https://github.com/jfvorwald/taskville/issues/93) Review gate G8: M8 Post-release: imports and replies
 
+### M9 Break time (owner request 2026-11-07)
+
+Not gated by G7 or G8: the owner asked for it directly. Design: [break time](superpowers/specs/2026-11-07-break-time-design.md). Waiting agents take breaks, wander and chat about made-up news.
+
+| Batch | Tickets |
+| --- | --- |
+| 1 | M9.01 Break planner *(Web city)*, M9.02 Break sites in the layout *(Web city)*, M9.06 Demo scenario with idle agents *(Engine)* |
+| 2 | M9.03 Banter phrases and conversation bubbles *(Web UI)*, M9.04 Break time setting and labels *(Web UI)*, M9.05 Navigator wiring *(Web city)* |
+| 3 | M9.07 Break time browser and e2e check *(Review)* |
+
 ## Conventions
 
 - Ticket titles start with their key, for example `[M1.05]`. Pull requests use the same key, follow the PR template, and close the issue.

@@ -3,6 +3,7 @@ import { page } from "vitest/browser";
 import {
   articles,
   type CallSpec,
+  openDetails,
   paint,
   renderConstrained,
   renderPlain,
@@ -47,11 +48,12 @@ describe("D: each card is an article with an accessible name", () => {
       },
     ]);
     await expect.poll(() => articles().elements()).toHaveLength(3);
-    const named = (tool: string, subject: string) =>
-      page.getByRole("article", { name: new RegExp(`${tool}.*${escapeRe(subject)}`, "i") });
-    expect(named("Bash", "pnpm test --filter alpha").elements()).toHaveLength(1);
-    expect(named("Write", "/r5/write-target.txt").elements()).toHaveLength(1);
-    expect(named("Edit", "/r5/edit-target.ts").elements()).toHaveLength(1);
+    // M10.02: the card is named by its sentence (verb and file name), no longer "Tool: full path".
+    const named = (verb: string, subject: string) =>
+      page.getByRole("article", { name: new RegExp(`${verb}.*${escapeRe(subject)}`, "i") });
+    expect(named("Ran", "pnpm test --filter alpha").elements()).toHaveLength(1);
+    expect(named("Wrote", "write-target.txt").elements()).toHaveLength(1);
+    expect(named("Edited", "edit-target.ts").elements()).toHaveLength(1);
     // The name comes from the card's own heading through aria-labelledby, not from a copy.
     for (const card of articles().elements()) {
       const ids = (card.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
@@ -68,6 +70,9 @@ describe("D: each card is an article with an accessible name", () => {
   it("Expand output buttons name their own card", async () => {
     await renderPlain([bash(1, "echo first-card"), bash(2, "echo second-card")]);
     await expect.poll(() => articles().elements()).toHaveLength(2);
+    // M10.02: the Expand output control lives inside Details.
+    await openDetails(articles().nth(0));
+    await openDetails(articles().nth(1));
     const [first, second] = articles().elements();
     const firstButton = page.getByRole("button", { name: /expand output.*first-card/i });
     const secondButton = page.getByRole("button", { name: /expand output.*second-card/i });

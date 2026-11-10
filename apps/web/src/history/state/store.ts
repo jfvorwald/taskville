@@ -2,6 +2,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import { type ProjectState, REDUCER_VERSION, snapshotResponseSchema } from "../../data/domain.ts";
 import type { DataStore } from "../../data/store.ts";
 import { SESSION_HEADER } from "../../pairing/pair.ts";
+import { compressedDuration } from "../archives/archive-timelines.ts";
 
 export type ReplayRate = 1 | 10 | 60 | 600;
 
@@ -17,6 +18,8 @@ export interface HistoryState {
   play(): void;
   pause(): void;
   setRate(rate: ReplayRate): void;
+  /** Drops any state read still in flight; the presented state stays as it is. */
+  cancelRead(): void;
   /** Scheduling belongs to the caller. */
   tick(): Promise<void>;
   returnLive(): void;
@@ -30,7 +33,19 @@ export interface HistoryStoreOptions {
   secret: string;
   fetch?: typeof fetch;
   now?: () => number;
-  moments?: readonly { sequence: number; time: number }[];
+  /** Recorded positions in order; a function when the loaded window grows or moves. */
+  moments?: readonly Moment[] | (() => readonly Moment[]);
+  /** Archives play long gaps compressed. */
+  compressGaps?: boolean;
+  /** Last sequence of the timeline when `moments` holds only a window of it. */
+  lastSequence?: number;
+  /** Loads the events after the window's end, so `moments` grows. */
+  extend?(afterSequence: number): Promise<void>;
+}
+
+interface Moment {
+  sequence: number;
+  time: number;
 }
 
 export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
@@ -45,15 +60,25 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
   let elapsedAt = now();
   let target: number | null = null;
   let exact = false;
-  const moments = options.moments?.map((moment, index, all) => ({
-    ...moment,
-    duration: index === 0 ? 0 : Math.max(0, moment.time - (all[index - 1]?.time ?? moment.time)),
-  }));
-  let duration = 0;
-  const positions = moments?.map((moment) => {
-    duration += moment.duration;
-    return { ...moment, elapsed: duration };
-  });
+  let extending = false;
+  const source = options.moments;
+  let cached:
+    | { from: readonly Moment[]; positions: Array<Moment & { elapsed: number }> }
+    | undefined;
+  /** Elapsed playback time at each moment, recomputed when the loaded moments change. */
+  function positionsOf() {
+    const from = typeof source === "function" ? source() : source;
+    if (!from) return undefined;
+    if (cached?.from === from) return cached.positions;
+    let elapsed = 0;
+    const positions = from.map((moment, index) => {
+      const gap = index === 0 ? 0 : moment.time - (from[index - 1]?.time ?? moment.time);
+      elapsed += options.compressGaps ? compressedDuration(gap) : Math.max(0, gap);
+      return { ...moment, elapsed };
+    });
+    cached = { from, positions };
+    return positions;
+  }
 
   function cancel() {
     generation += 1;
@@ -67,13 +92,13 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     if (exact && !resetPosition && target !== null) {
       if (store.getState().playing) {
         target += Math.max(0, elapsed - elapsedAt) * store.getState().rate;
-        const end = positions?.at(-1)?.elapsed;
+        const end = positionsOf()?.at(-1)?.elapsed;
         if (end !== undefined) target = Math.min(target, end);
       }
     } else {
       target = exact
-        ? (positions?.find((moment) => moment.sequence === store.getState().state?.head)?.elapsed ??
-          null)
+        ? (positionsOf()?.find((moment) => moment.sequence === store.getState().state?.head)
+            ?.elapsed ?? null)
         : store.getState().time;
     }
     elapsedAt = elapsed;
@@ -144,6 +169,7 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
     seekSequence: (sequence, time) => {
       if (!Number.isSafeInteger(sequence) || sequence < 1 || !Number.isFinite(time))
         return Promise.reject(new Error("bad_position"));
+      const positions = positionsOf();
       if (
         positions &&
         !positions.some((moment) => moment.sequence === sequence && moment.time === time)
@@ -168,14 +194,27 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
       anchor();
       set({ rate });
     },
+    cancelRead: () => {
+      if (disposed) return;
+      cancel();
+      anchor();
+    },
     tick: async () => {
       // Leave an explicit seek or playback read in flight. The next scheduled tick includes
       // all elapsed time since the last read, so skipped ticks neither starve reads nor lose time.
-      if (disposed || request || !get().playing || get().mode !== "history" || target === null)
+      if (
+        disposed ||
+        request ||
+        extending ||
+        !get().playing ||
+        get().mode !== "history" ||
+        target === null
+      )
         return;
       const elapsed = now();
       target += Math.max(0, elapsed - elapsedAt) * get().rate;
       elapsedAt = elapsed;
+      const positions = positionsOf();
       if (exact && positions?.length) {
         const end = positions[positions.length - 1];
         if (!end) return;
@@ -190,7 +229,18 @@ export function createHistoryStore(options: HistoryStoreOptions): HistoryStore {
           if (moment.sequence !== get().state?.head) await seek(time, true, moment.sequence);
           else if (time !== get().time) set({ time });
         }
-        if (get().state?.head === end.sequence) get().pause();
+        if (get().state?.head === end.sequence) {
+          if (options.lastSequence === undefined || end.sequence >= options.lastSequence)
+            get().pause();
+          else if (options.extend) {
+            extending = true;
+            try {
+              await options.extend(end.sequence);
+            } finally {
+              extending = false;
+            }
+          }
+        }
       } else {
         await seek(target, true);
       }

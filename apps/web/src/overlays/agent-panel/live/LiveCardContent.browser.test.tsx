@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { articles, type CallSpec, paint, renderPlain, slot } from "./liveKit.tsx";
+import { articles, type CallSpec, openDetails, paint, renderPlain, slot } from "./liveKit.tsx";
 
 // M5.06 round 5 items B (repeated diff tokens), C (grouped Read and Search) and F (Bash tail).
 
@@ -84,6 +84,7 @@ describe("C: consecutive Read and Search calls group into one card (ARCHITECTURE
     await cardCount(1);
     await expect.element(articles()).toMatchTextContent("Read 3 files");
     const group = articles();
+    await openDetails(group);
     const toggle = group.getByRole("button", { name: /expand/i });
     expect(toggle.element().getAttribute("aria-expanded")).toBe("false");
     await toggle.click();
@@ -99,6 +100,7 @@ describe("C: consecutive Read and Search calls group into one card (ARCHITECTURE
     await renderPlain([read(1), read(2), read(3)]);
     await cardCount(1);
     await expect.element(articles()).toMatchTextContent("Read 3 files");
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand/i })
       .click();
@@ -125,6 +127,7 @@ describe("C: consecutive Read and Search calls group into one card (ARCHITECTURE
     await cardCount(1);
     await expect.element(articles()).toMatchTextContent("Searched 2 times");
     const group = articles();
+    await openDetails(group);
     await group.getByRole("button", { name: /expand/i }).click();
     const items = Array.from(group.element().querySelectorAll("li"), (li) =>
       li.textContent?.trim(),
@@ -172,6 +175,8 @@ describe("F: Bash collapsed tail is exactly the last 10 lines", () => {
     await renderPlain([stdoutCall(lines(1, 25).join("\n"))]);
     await expect.element(articles()).toMatchTextContent("out-line-25");
     const card = articles().element();
+    // M10.02: the output controls live inside Details.
+    await openDetails(articles());
     expect(tailPre(card)?.textContent).toBe(lines(16, 25).join("\n"));
     await articles()
       .getByRole("button", { name: /expand output/i })
@@ -186,6 +191,7 @@ describe("F: Bash collapsed tail is exactly the last 10 lines", () => {
     const shown = tailPre(card)?.textContent ?? "";
     expect(shown.replace(/\n$/, "")).toBe(lines(16, 25).join("\n"));
     expect(shown).not.toContain("out-line-15\n");
+    await openDetails(articles());
     await articles()
       .getByRole("button", { name: /expand output/i })
       .click();

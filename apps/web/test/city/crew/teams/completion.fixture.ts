@@ -53,6 +53,7 @@ export function completionScenario() {
       const hook = JSON.parse(line) as { seq: number; input: Record<string, unknown> };
       return mapClaudeCodeHook(hook.input, {
         projectId: PROJECT,
+        ownerName: "owner",
         sourceEventId: `recorded-${hook.seq}`,
         receivedAt: AT,
         late: false,

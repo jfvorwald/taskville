@@ -1,10 +1,12 @@
 import { canonicalJson, sha256Hex } from "@taskville/domain/hash";
 import type { StoredEnvelope } from "@taskville/protocol";
 import type { PairingRecords } from "../auth/pairing.ts";
+import { SqliteArchives } from "./archives.ts";
 import { SqliteCheckpoints } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import { secureDatabaseFiles } from "./file-mode.ts";
 import { currentSchemaVersion, migrate } from "./migrations.ts";
+import { SqliteOtlpCost } from "./otlp-cost.ts";
 import { SqlitePairingRecords } from "./pairings.ts";
 import { Database, type Statement } from "./sqlite.ts";
 
@@ -158,6 +160,9 @@ function prepareStatements(db: Database) {
     project: prepare("SELECT * FROM projects WHERE id = ?"),
     projects: prepare("SELECT * FROM projects ORDER BY id"),
     head: prepare("SELECT head FROM projects WHERE id = ?"),
+    lastEventAt: prepare(
+      "SELECT received_at FROM events WHERE project_id = ? ORDER BY ingest_sequence DESC LIMIT 1",
+    ),
     insertProject: prepare(
       "INSERT INTO projects (id, name, created_at, roots_json, builtin) VALUES (?, ?, ?, ?, ?)",
     ),
@@ -236,6 +241,8 @@ export class Storage implements StorageReads {
   readonly #stmt: Statements;
   #pairings: SqlitePairingRecords | undefined;
   #checkpoints: SqliteCheckpoints | undefined;
+  #otlpCost: SqliteOtlpCost | undefined;
+  #archives: SqliteArchives | undefined;
 
   constructor(db: Database, now: () => Date) {
     this.#db = db;
@@ -268,6 +275,12 @@ export class Storage implements StorageReads {
   head(projectId: string): number | undefined {
     const row = this.#stmt.head.get(projectId) as { head: number } | undefined;
     return row?.head;
+  }
+
+  /** The receivedAt of the project's last event (a primary-key lookup), or undefined with none. */
+  lastEventAt(projectId: string): string | undefined {
+    const row = this.#stmt.lastEventAt.get(projectId) as { received_at: string } | undefined;
+    return row?.received_at;
   }
 
   projection<S = unknown>(projectId: string): ProjectionRecord<S> | undefined {
@@ -440,6 +453,18 @@ export class Storage implements StorageReads {
   checkpoints(): SqliteCheckpoints {
     this.#checkpoints ??= new SqliteCheckpoints(this.#db);
     return this.#checkpoints;
+  }
+
+  /** Telemetry cost totals and counted data-point identities (M5.29). */
+  otlpCost(): SqliteOtlpCost {
+    this.#otlpCost ??= new SqliteOtlpCost(this.#db);
+    return this.#otlpCost;
+  }
+
+  /** Archive timelines: imported history, read-only once finished (M8.06). */
+  archives(): SqliteArchives {
+    this.#archives ??= new SqliteArchives(this.#db);
+    return this.#archives;
   }
 
   close(): void {

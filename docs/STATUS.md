@@ -2,7 +2,162 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-04 02:30 UTC. **Main:** 53563fe. **State:** G4 #75 closed by the owner ("keep going", 2026-11-02). M5 and M6 in progress under the owner's M4 to M6 authorization. Decisions #333, #336, #198 and #289 answered by the owner on 2026-11-03; all four took the default (applied below).
+**Updated:** 2026-11-09 UTC. **Main:** 5a69165. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 4 done: M10.05, M8.10, M8.18, M8.09 merged; wave run clean apart from one first-time flake. Open follow-ups: #531, #533. Staging deploy still held (#432).
+
+## Done in backlog wave 4 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M10.05 #523 many open previews | #528 | previews fetch only the input body; demand is granted within the 128-body cache; a preview past it shows "details not loaded" and recovers; [report](tasks/M10.05.md) |
+| M8.10 #473 transcript importer hardening | #527 | swapped-file check, one 100,000-node budget per line, 1,000 blocks per line, 1,000-event batches, capped maps, session-scoped keys, transactional line state; security review PASS WITH FINDINGS (M1, M2 fixed; L1, L2 to #529); [report](tasks/M8.10.md) |
+| M8.18 #529 one descriptor, no re-registration | #532 | one descriptor per file, the imported content's first cwd is validated, a cwd-free prefix is skipped after one batch, new sessions refused at the cap; security review PASS WITH FINDINGS (four lows to #533); [report](tasks/M8.18.md) |
+| M8.09 #471 archive seeks | #530 | measured 9 to 12 s near the end of a 200,000-event archive, blocking the event loop; archive checkpoints every 1,000 positions bring it to 15 to 27 ms; replays yield; upkeep shares a 250 ms lock-wait budget; first seek before checkpoints still 6.7 s (yielding), build-after-import filed as #531; [report](tasks/M8.09.md) |
+
+Follow-ups filed: #531 (build archive checkpoints right after import), #533 (validate each session's cwd where it is used).
+
+Wave run on main 5a69165 (push tier, each suite once in sequence): `pnpm check` 5,971 of 5,971; release 73 of 73; browser 1,147 of 1,148 (LiveFollow "scrolling up preserves the read position on append" read 62 against a bound of 3 after ResizeObserver loop errors, passed alone 22 of 22: flake, first time); app e2e all specs passed (breaks IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs.
+
+## Done in backlog wave 3 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.35 #515 staging budget test flake | #519 | measures CPU time with medians instead of wall time; bounds unchanged; a reintroduced per-request rebuild still fails it; [report](tasks/M7.35.md) |
+| M8.17 #517 archive pruning failure edges | #521 | the archive is committed with a pessimistic dropped count, then corrected; each import sweeps evidence pointers whose archive row is gone; [report](tasks/M8.17.md) |
+| M10.04 #489 logbook evidence budget and needs-you | #520 | open previews share one evidence budget with expanded groups (none reserved in privacy mode); a pending request with no single matching running call gets its own "Needs you" entry; 13 or more open previews filed as #523; [report](tasks/M10.04.md) |
+| M8.16 #509 finish recorded before registration | #525 | the backward crew scan also covers a registration in the window with no visible finish, and reads each stretch once; [report](tasks/M8.16.md) |
+| M9.13 #497 idle plan tick frames | #524 | the 1 s plan tick sets React state only when the plan changes, so an idle City requests no frame; [report](tasks/M9.13.md) |
+
+Follow-up filed: #523 (Live logbook preview bodies with 13 or more open previews exceed the evidence cache).
+
+Wave run on main d44d41c (push tier, each suite once in sequence): `pnpm check` 5,928 of 5,928; release 73 of 73; browser 1,146 of 1,146; app e2e all specs passed (breaks IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. No flakes. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs.
+
+## Done in backlog wave 2 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M8.14 #500 strict archive evidence cap | #514 | cap checked per body; the new archive is committed before old evidence is pruned; an evicted archive's details read "no longer stored"; roborev 7668 high fixed, two failure-of-failure edges filed as #517; [report](tasks/M8.14.md) |
+| A1.03 #511 Codex forwarder shim test flake | #516 | a desktop app probed new loopback ports; the test listener now ignores non-curl clients like the shared harness; [report](tasks/A1.03.md) |
+| M9.14 #512 break-time chatter flake | #518 | a real bug: `useBreakPlan` read the clock during render, so a React bail-out render dropped Bubbles' plan effect; the clock is now read only when a tracked input changes; deterministic regression test; [report](tasks/M9.14.md) |
+
+Follow-ups filed: #515 (staging worker budget timing test flakes under load), #517 (archive pruning: atomic counts, no orphaned pointers on failure).
+
+## Done in backlog wave (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| A1.00 #503 phase `returned` | #505 | a tool call can finish with no outcome reported; domain and logbook handle it (neutral node, "Edit returned: <file>"); [report](tasks/A1.00.md) |
+| A1.01 #483 Codex hook mapper | #506 | pure mapper per S-5; Interrupt leaves open calls unfinished; MCP activity marked heuristic; [report](tasks/A1.01.md) |
+| A1.02 #507 Codex route, bridge, installer | #510 | `POST /v1/sources/codex/hooks`, permission bridge with a 5 s hold and exact-match resolution, `taskville install codex` writing `.codex/hooks.json` only; security review PASS WITH FINDINGS (fixed); live Codex run NOT RUN (needs hooks trusted in /hooks); [report](tasks/A1.02.md) |
+| M8.15 #501 archive window edges | #508 | superseded seeks, bucket click target, crew runs across windows; [report](tasks/M8.15.md) |
+| M7.34 #493 engine break lock re-read | #504 | re-reads the pid before renaming; [report](tasks/M7.34.md) |
+
+Wave run on main d971e75 (each suite once): `pnpm check` 5,922 of 5,922; release 73 of 73; browser 1,135 of 1,136 (BreakTime.chatter speaker alternation failed under load, passed alone: third time, #512); app e2e all specs (breaks discarded a window with movement, then IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs.
+
+## Done in post-G8 follow-ups (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M9.12 #494 idle fps on CI | #496 | not a product bug: a walk could start inside the sample; the spec now discards windows with movement; [report](tasks/M9.12.md) |
+| M8.12 #485 archive retention and evidence cap | #498 | newest 5 archives per project, kind and root; soft 1 GiB archive evidence cap; byte-based yielding; strict cap filed as #500; [report](tasks/M8.12.md) |
+| M8.13 #488 archive playback and strip | #499 | gaps over 10 minutes play as 2 s; bounded strip; windowed paging; picker refresh every 15 s; edge cases filed as #501; [report](tasks/M8.13.md) |
+
+## Done in M8 Post-release: imports and replies (2026-11-08)
+
+Design: [imports](superpowers/specs/2026-11-08-imports-design.md). Retro: [retros/M8.md](retros/M8.md).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M8.06 #463 archives storage, job runner, imports API | #466 | archive scope for evidence, conflicts, caps, one import engine-wide; security review and roborev 7422, 7448 fixed; [report](tasks/M8.06.md) |
+| M8.01 #89 Git importer | #467 | NUL-framed log, detached HEAD, bounded source id, error codes; roborev 7428, 7439 fixed; [report](tasks/M8.01.md) |
+| M8.02 #90 transcript importer | #468 | redact whole strings before cutting, slug scope by cwd, line cap, O_NOFOLLOW and O_NONBLOCK; security confirm PASS; [report](tasks/M8.02.md) |
+| M8.07 #464 archive timelines | #469 | archive state, events and listing on the occurredAt clock, chunked replay; [report](tasks/M8.07.md) |
+| M8.08 #465 `taskville import` | #470 | defaults from cwd, retries, clean Ctrl-C; [report](tasks/M8.08.md) |
+| M8.04 #91 spike: typed replies | #480 | no-go for now (development flag, interactive only, no delivery ack); [S-4](spikes/S-4-replies.md) |
+| M8.05 #105 spike: Codex adapter | #482 | go, hooks-first; adapter ticket #483; [S-5](spikes/S-5-codex.md) |
+| M8.11 #478 importers wired, archive evidence over HTTP | #484 | end-to-end import test against a real engine; project id validated in evidence ids; [report](tasks/M8.11.md) |
+| M8.03 #92 archives in the history UI | #487 | timeline picker, Git markers and chip, archive clock for crew bars, failed-switch recovery; e2e passes; [report](tasks/M8.03.md) |
+| M8.RT #102 retro | lead G8 PR | [retros/M8.md](retros/M8.md); lessons L-235 to L-238 |
+
+## Done in M10 Agent panel readability (owner request, 2026-11-08)
+
+Design: [agent panel readability](superpowers/specs/2026-11-08-agent-panel-readability-design.md).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M10.01 #474 feed rows never overlap | #481 | one-frame overlap fixed with a pre-paint re-measure; anchoring holds; [report](tasks/M10.01.md) |
+| M10.03 #476 shell, sticky header, Crew and Files | #479 | 440 px panel fitting its content, header and tabs stay, crew thread, contrast tokens per theme; [report](tasks/M10.03.md) |
+| M10.02 #475 Live tab as a logbook | #486 | one line per tool call with a status glyph and duration, details folded; [report](tasks/M10.02.md) |
+
+Also merged: M7.32 #472 (#490, spool lock safe when `mkdir` is not atomic: the real cause of the recurring shim flake), M9.11 #460 (#477, breaks tests under load), crews e2e update (#492). Follow-ups filed: #471, #473, #483, #485, #488, #489, #493, #494.
+
+Wave run on main 95d6d1e (push tier, each suite once in sequence): `pnpm check` 5,701 of 5,701; release 71 of 71; browser 1,110 of 1,110; app e2e all specs passed (breaks IDLE_FPS 21.0 locally, archives included); web smoke 4; crews 4 of 5 (broken by the intended logbook and panel changes, fixed in #492, then 5 of 5); permission replay 6; telemetry replay 7; clean-machine install PASS. CI flake: breaks idle fps 27 on CI (third time, M9.12 #494). NOT RUN: cross-browser, headed GPU fps, live Claude Code runs.
+
+## Done in follow-ups batch (2026-11-08)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.30 #434 hook shim posts only to a live engine | #456 | shim and OTel headers helper check `engine.json` (regular file, matching origin with localhost as 127.0.0.1, live pid of at most 7 digits) before reading the token; same-user limits and OTel header caching in `apps/cli/docs/hooks-security.md` (ARCHITECTURE section 13 left to the owner); security review PASS WITH FINDINGS (1 medium docs, 6 low); roborev 7378 medium fixed, 7389 PASS; [report](tasks/M7.30.md) |
+| M7.31 #435 dirty production refused, dirty on /health | #457 | `buildRelease` refuses a dirty production tree regardless of `--allow-dirty`; `/health` release carries `dirty: true`; protocol health schema accepts it (lead-approved edit outside Owns); runbook fresh-install rule; code review 3 mediums and roborev 7375 fixed, 7392 PASS; [report](tasks/M7.31.md) |
+| M9.09 #453 break time follow-ups | #458 | demo stamps `startAtMs + atMs/speed` so sped-up runs never run ahead of wall time; activity with returned work; strict e2e; a resting agent told to stay never stops on a held plaza node (seeded fuzz found two more cases; fifth recurrence of plaza sharing); roborev 7384 fixed, 7399 PASS; [report](tasks/M9.09.md) |
+| M9.10 #459 Live tab keeps a reader's scroll | #462 | wave and then CI failure of the LiveEvidenceWindow navigation test; debugger root cause: the follow effect pinned to the bottom on any commit that landed before the browser's scroll event, so a reader's first scroll could snap back (real product bug, not a clock dependency); fixed with a deterministic regression test; code review PASS WITH FINDINGS (5 low, pre-existing or optional); roborev 7407 PASS; [report](tasks/M9.10.md) |
+
+Wave run on main ef5ea0c, each suite once in sequence: `pnpm check` 5,461 of 5,461; release 71 of 71; browser 972 of 974 (BreakTime.chatter failed, passed alone: flake, second on record; LiveEvidenceWindow "loads new rows on navigation" failed again alone and then in CI: finding #459, fixed in M9.10); app e2e all specs passed except breaks (on-break count at chatter read 1, passed alone with IDLE_FPS 21.2: flake, #460); web smoke 4; crews 5; permission replay 6; telemetry replay 7 (exercises the new shim gate through a real engine); clean-machine install of a staging release PASS. NOT RUN: cross-browser, headed GPU fps, live Claude Code runs.
+
+## Done in M9 Break time (owner request, 2026-11-07)
+
+Design: [break time](superpowers/specs/2026-11-07-break-time-design.md); ARCHITECTURE sections 1, 2.2 and 2.3 updated (#444).
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M9.01 #437 break planner | #445 | pure, seeded; roborev 7275 one fixed, one answered (spot shift is the price of replay equals live); [report](tasks/M9.01.md) |
+| M9.02 #438 bar and smoke corner | #446 | dead-end break spots; roborev 7272 (walk through the bench) fixed; [report](tasks/M9.02.md) |
+| M9.06 #439 breaks demo scenario | #447 | `taskville demo --scenario breaks`; own source and ID prefix after roborev 7278, 7297; [report](tasks/M9.06.md) |
+| M9.03 #440 banter phrases and chatter bubbles | #448 | 8 headlines and reactions per theme; roborev 7317 PASS; [report](tasks/M9.03.md) |
+| M9.04 #441 Break time setting and on-break labels | #449 | Waiting or Idle plus "on break"; roborev 7320, 7328 fixed; [report](tasks/M9.04.md) |
+| M9.05 #442 navigator break trips, emotes, wobble | #450 | roborev 7314, 7331 fixed; [report](tasks/M9.05.md) |
+| M9.08 #451 wiring into city, labels, panel, bubbles | #452 | strict attribution, idle seeds, paused chatter; plaza sharing recurred four times and was root-caused by the debugger (one reservation source); [report](tasks/M9.08.md) |
+| M9.07 #443 e2e and idle fps | #454 | e2e passes; idle 21 fps on SwiftShader with 4 agents on break (target 20); [report](tasks/M9.07.md) |
+
+Wave run on main 3a4e3a4: `pnpm check` 5,382 of 5,383 (staging-worker budget timing test failed once, passed alone); browser 974 of 974; app e2e passed (including breaks); web smoke 4; crews 5; permission replay 6; telemetry replay 7. Flakes this wave: staging-worker budget (twice), ActionCard focus in CI (second on record), BreakTime.chatter browser (once, new test), shim spool concurrency in CI (second on record), unidentified `pnpm check` failures while three checks ran at once (L-214). NOT RUN: cross-browser, headed GPU fps, live Claude Code runs.
+
+## Done in M7 Private staging (close-out, 2026-11-07)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.06 #87 push tier and release security review | lead M7 close PR | release `14a645aaf0280aa8`: clean-machine install PASS, `pnpm check` 5,128 of 5,128, release 67 of 67, browser 939 of 940 (LiveFollowPins flake, passed alone), app e2e, web smoke 4, crews 5, permission replay 6, telemetry replay 7; security review PASS WITH FINDINGS (3 low, filed #434 and #435); manifest hashes and `pnpm audit --prod` clean; cross-browser and live runs NOT RUN; [report](tasks/M7.06.md) |
+| M7.05 #85 runbook | #429 | rehearsed locally per #432 D1 (upgrade, rollback, restore byte-identical); staging sections held; roborev 7251 high and 7252, 7255 mediums fixed, post-commit 7256 PASS; [report](tasks/M7.05.md) |
+| M7.29 #428 lockfile guard residue | #433 | platform-aware omissions, committed keys checked; roborev 7242 medium (unpinned platform on Linux CI) fixed, 7246 PASS; [report](tasks/M7.29.md) |
+| M7.04 #86 staging access control | none | held by the owner (decision #432); labeled blocked |
+| M7.RT #101 retro | lead M7 close PR | [retros/M7.md](retros/M7.md); lessons L-225 to L-228 |
+
+## Done in M7 Private staging (staging batch, 2026-11-07)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.28 #427 clean-machine install check | #430 | harness 10 of 10 locally twice; release workflow clean-install green on a fresh runner (54 s); roborev 7231 three mediums fixed, 7236 PASS; ActionCard focus browser test flaked once in CI (passed on rerun); [report](tasks/M7.28.md) |
+| M7.27 #425 lockfile guard compares integrity and importers | #426 | roborev 7219 two mediums fixed; 7224 two mediums after the cap moved to #428; [report](tasks/M7.27.md) |
+| M7.03 #84 staging Worker (code; deploy pending M7.04) | #422 | demo-backed read-only /v1, Access-verified /pair, single-use codes in a Durable Object, engine CSP, synthetic commands; code review (unsorted project, CPU) and security review (CSP, sessions) fixed test-first; security confirm PASS; roborev 7212 PASS; [report](tasks/M7.03.md) |
+| M7.02 #83 release packaging | #424 | one self-contained tarball, content-derived release id covering commit, dirty flag and lockfile, secrets scan over the staged tree, bundle guard; roborev 7199 two highs and security M1/M2 fixed; [report](tasks/M7.02.md) |
+| M7.26 #421 release identity on /health and in the header | #423 | badge and STAGING banner; code review High (bundled release path) fixed test-first; roborev 7191 PASS; [report](tasks/M7.26.md) |
+
+Not run: the push-tier full suite (once per wave, in M7.06 after the deploy).
+
+## Done in M7 Private staging (local-setup batch, 2026-11-06)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M7.25 #418 permission e2e open-only under load | #419 | test hold window 30 s for answer tests, 3 s kept for hold-end tests; reproduced with 25x CPU throttling; roborev 7178 PASS; [report](tasks/M7.25.md) |
+| M7.24 #413 main session named after the person running it | #417 | owner request; engine passes the OS username; ARCHITECTURE 8.1 sentence updated; roborev PASS; existing sessions keep their old name; [report](tasks/M7.24.md) |
+| M7.23 #412 main session leaves idle during a turn | #416 | REDUCER_VERSION 9; roborev High (Working label hid unknown, constitution) fixed by reverting the label; confirm PASS; [report](tasks/M7.23.md) |
+| M7.01 #81 staging spike | #414 | [S-3](spikes/S-3-staging.md): option C recommended; decision #415 open, #81 stays open until answered; three review rounds (6 medium, 1 low) fixed; [report](tasks/M7.01.md) |
+| M7.22 #405 default project by last activity | #410 | `lastEventAt` on /v1/projects; roborev 7124 PASS; [report](tasks/M7.22.md) |
+| M7.20 #402 CrewHighlight lift test on the owner's Mac | #407 | cause: SwiftShader draw gaps under load; tests pin the clock; roborev 7119 PASS; CI shim spool test flaked once (passed on rerun); [report](tasks/M7.20.md) |
+| M7.18 #399 global options before the command | #406 | roborev 7116 and 7132 fixed test-first; post-commit 7139 PASS (no third panel per cap); [report](tasks/M7.18.md) |
+| M7.19 #400 start pairs the opened browser (P0) | #409 | osascript stdin on macOS, 0600 redirect page elsewhere; recovery copy names p only with a key listener; roborev 7127 fixed, 7138 PASS; decision #408 closed; real owner-browser run pending owner; [report](tasks/M7.19.md) |
+
+Wave run on main bc0457f (M7 local-setup batch): `pnpm check` 4,927 of 4,927; browser 934 of 937, 3 load flakes (CityCrew.anchors, ConnectedPrivacySearch, LiveEvidenceWindow; all passed alone, 32 of 32); app e2e passed (first attempt blocked by an orphaned demo engine from 2026-11-04 holding port 4817, stopped); web smoke 4 of 4; crews 5 of 5; telemetry replay passed; permission e2e failed twice (finding #418, fixed in #419). The earlier attempt on 97c9243 hit the 1 hour background limit; its partial result (24 unit failures) did not reproduce on bc0457f.
+
+Earlier M7 merges: M7.07 to M7.17, M7.21 (see task reports).
 
 ## Done in M4 Stuck and interaction (awaiting owner review at G4)
 
@@ -29,6 +184,32 @@ Gate summary: [G4 #75](https://github.com/jfvorwald/taskville/issues/75). Retro:
 | M4.17 #309 security review fixes | #310 | [report](tasks/M4.17.md) |
 
 Wave run on main (a7d2d01): `pnpm check` 4,179 of 4,179; browser 335 of 345 with 10 load flakes (all 8 files passed alone); app e2e, permission replay and telemetry replay pass; web smoke theme switch failed twice: Settings unreachable while an agent is selected (#315, from the M5.07 sidebar composition).
+
+## Done in M5 Crews and code feed and M6 History (awaiting owner review at G5 and G6)
+
+Gate summaries: [G5 #76](https://github.com/jfvorwald/taskville/issues/76), [G6 #80](https://github.com/jfvorwald/taskville/issues/80). Retros: [retros/M5.md](retros/M5.md), [retros/M6.md](retros/M6.md). Lessons L-206 to L-215.
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M5.15 #285 feed closes every parallel call | #351 | idless frames, web consumers, closure before retention; confirming review CONFIRMED; [report](tasks/M5.15.md) |
+| M5.22 #337 highlight wrapper safety | #352 | [report](tasks/M5.22.md) |
+| M5.21 #334 attribution polish | #353 | [report](tasks/M5.21.md) |
+| M6.09 #311 history Escape | #354 | capture phase, dialogs keep Escape; [report](tasks/M6.09.md) |
+| M6.10 #312 card and header polish | #355 | three rounds on the lookup bound; follow-up #361; [report](tasks/M6.10.md) |
+| M6.12 #347 checkpoint hardening | #357 | allowlisted logs, streamed batches, validated backfill; follow-up #364; [report](tasks/M6.12.md) |
+| M6.07 #79 subagent run bars | #358 | debugger: mirror the domain via applyRegistration; follow-up #367; [report](tasks/M6.07.md) |
+| M5.13 #175 strict attribution | #359 | [report](tasks/M5.13.md) |
+| M5.26 #348 highlight test hook | #362 | [report](tasks/M5.26.md) |
+| M5.04 #63 teammate envelopes | #363 | card scroll descoped to #368; privacy and occlusion fixed; [report](tasks/M5.04.md) |
+| M6.05 #78 history entry from the agent panel | #326 | decision #325 scope; [report](tasks/M6.05.md) |
+| M5.12 #104 OTel receiver | #370 | security review fixes (loopback-only helper, project scope, uninstall); decisions #360, #374; follow-up #369; [report](tasks/M5.12.md) |
+| M5.27 #365 shim spool corruption | #371 | real stale-lock race, found from a CI failure; [report](tasks/M5.27.md) |
+| M6.13 #356 checkpoint test deflake | #372 | [report](tasks/M6.13.md) |
+| M5.RT #99, M6.RT #100 retros | #377 | |
+| Wave fixes | #378 | three browser tests broken by intended changes; [report](tasks/WAVE-M5M6.md) |
+| M5.14 #281 feed agent index | #375 (draft) | held for decision #376 |
+
+Wave run on main a93d5a1: `pnpm check` 4,493 of 4,493; app e2e, web smoke 4, crews 5, permission replay 6, telemetry replay 7 pass; browser 906 of 912, fixed in #378 and rerun 912 of 912.
 
 ## In progress: M5 Crews and code feed and M6 History
 
@@ -259,6 +440,8 @@ Targets in the spec are not measurements until a ticket records them here with t
 - Packages still carry M1.02 placeholder tests; owning tickets remove them when real tests land.
 
 ## Next
+
+2026-11-04: stopped at G5 #76 and G6 #80 for owner review. After the owner answers #376, #374 and #360, the open follow-ups are #361, #364, #367, #368, #369, #373, then M7 (only with the owner's authorization).
 
 2026-11-04 carry-over: M5.11, M5.24, M5.25 and M6.11 are merged. Next M5/M6 batch, disjoint Owns: M5.15 #285 and M5.14 #281 (engine feed, run in order, same paths), M6.09 #311 (history Escape), M5.21 #334 (crew attention), M5.22 #337 then M5.26 #348 (crew highlight), M6.12 #347 (checkpoint hardening). Then M5.04 #63, M5.13 #175, M6.07 #79, M6.10 #312, M5.12 #104, the M6.05 #78 draft (decision #325 scope), the M5 and M6 wave runs, retros #99 and #100, and the G5 #76 and G6 #80 summaries.
 

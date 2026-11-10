@@ -91,34 +91,23 @@ Four themes, switchable at any time without changing task state, selection, came
 Requirements: Node 26.8.x and pnpm 12.
 
 ```sh
-pnpm install
-pnpm --filter @taskville/web build      # the engine serves the built client
+pnpm bootstrap     # checks Node and pnpm, installs, builds the web client, offers a `taskville` command
+taskville start    # runs the engine and opens the browser to pair (without the link: pnpm taskville start)
 
-# Terminal 1: run the engine and note the one-time pairing link it prints
-pnpm taskville serve --headless          # listens on 127.0.0.1:4807 by default
-
-# Open the pairing link in a browser, then in Terminal 2 start the demo
-pnpm taskville project list              # the built-in "unsorted" project is always there
-pnpm taskville demo start --project unsorted --seed 7 --pace lively --duration 1h
-
-pnpm taskville status --project unsorted # the same agents, as a tree
+# In a Git repository you want to watch:
+taskville init     # adds the repository as a project and offers the Claude Code hooks
 ```
 
-To watch real Claude Code sessions, install the hook shim. It edits Claude Code's settings, so look at it first with `--dry-run`:
+No real session handy? `taskville demo` plays a seeded crew so you can see agents. If something is off, `taskville doctor` checks each piece and prints the command that fixes it.
 
-```sh
-pnpm taskville install claude-code --scope user --dry-run
-pnpm taskville install claude-code --scope user
-pnpm taskville uninstall claude-code --scope user   # to remove it again
-```
-
-Taskville state lives in `~/.taskville` (override with `--home` or `$TASKVILLE_HOME`).
+Full setup, pairing, privacy, and troubleshooting are in the **[user guide](docs/guide/README.md)**: [install](docs/guide/install.md), [pairing and answering prompts](docs/guide/pairing-and-prompts.md), [privacy](docs/guide/privacy.md), [agent teams](docs/guide/agent-teams.md), and [troubleshooting](docs/guide/troubleshooting.md).
 
 Run the project checks with `pnpm check` (typecheck, lint, and unit tests).
 
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md)
+- [Runbook](docs/RUNBOOK.md): backup, compatibility, rollback, and promotion
 - [UI models and mockup archive](docs/ui/README.md)
 - [Constitution](.specify/memory/constitution.md)
 - [Feature specs](specs/)

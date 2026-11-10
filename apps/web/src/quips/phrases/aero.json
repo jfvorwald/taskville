@@ -16,5 +16,39 @@
     "Parked at the gate",
     "Cruising and standing by",
     "Engines idle, awaiting orders"
-  ]
+  ],
+  "banter": {
+    "headlines": [
+      "Cloud 9 reports record number of clouds",
+      "Pilot's sandwich lands before the plane",
+      "Tower confirms the runway is still long",
+      "Seagull files a flight plan, ignored",
+      "Gate 4 moves to Gate 5, then back to 4",
+      "Propeller declares itself a fan",
+      "Turbulence cancelled, bumps rescheduled",
+      "Local runway wishes for more sunsets"
+    ],
+    "reactions": [
+      "Roger that",
+      "Copy, loud and clear",
+      "Smooth landing",
+      "Now boarding, wow",
+      "Over and out",
+      "Wings up",
+      "Cleared for gossip",
+      "Right on time"
+    ]
+  },
+  "activities": {
+    "bar": ["Cheers, ground crew", "A soda at the lounge, please", "Lounge snacks are the best"],
+    "smoke": ["Stepping out for fresh air", "Short layover, long breath", "Waiting for my gate"],
+    "stroll": ["Walking the terminal", "Stretching before takeoff", "A little taxi on foot"],
+    "juggle": ["Juggling three tiny planes", "Look, a baggage act!", "Keeping the props spinning"],
+    "stargaze": ["Flying high in my mind", "Stars make good waypoints", "Night sky, clear skies"],
+    "pigeons": [
+      "Feeding the runway pigeons",
+      "Pigeons on the apron again",
+      "Crumbs for the ground birds"
+    ]
+  }
 }

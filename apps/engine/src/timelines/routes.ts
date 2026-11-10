@@ -6,6 +6,7 @@ import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
 import type { UpkeepLogger } from "../storage/checkpoints.ts";
 import type { Storage } from "../storage/index.ts";
+import { ArchiveStates } from "./archive-state.ts";
 import { stateAtSequence } from "./checkpoints.ts";
 import { type Position, parsePosition } from "./position.ts";
 
@@ -14,8 +15,11 @@ import { type Position, parsePosition } from "./position.ts";
 // the only write is the disposable checkpoint cache, and nothing here can reach the command service.
 
 const LIVE_PREFIX = "live:";
+const ARCHIVE_PREFIX = "archive:";
+const ARCHIVE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
+const DEFAULT_REPLAY_CHUNK = 1000;
 const LIMIT = /^[1-9][0-9]{0,3}$/;
 const CURSOR_PREFIX = "tl1.";
 
@@ -25,14 +29,26 @@ export interface TimelineRouteOptions {
   now?: () => Date;
   /** Where checkpoint cache failures are logged. */
   logger?: UpkeepLogger;
+  /** Most archive positions read at once when replaying archive state (default 1,000). */
+  archiveReplayChunk?: number;
 }
 
 /** A timeline id that named a project, or why it did not. */
-type TimelineLookup = { projectId: string; head: number } | "not_found" | "unknown_project";
+type TimelineLookup =
+  | { projectId: string; head: number; archiveId?: string }
+  | "not_found"
+  | "unknown_project";
 
 const bad = (c: Context<AppEnv>, message: string) => apiError(c, 400, "bad_request", message);
 
 function lookup(storage: Storage, timelineId: string): TimelineLookup {
+  if (timelineId.startsWith(ARCHIVE_PREFIX)) {
+    const archiveId = timelineId.slice(ARCHIVE_PREFIX.length);
+    if (!ARCHIVE_ID.test(archiveId)) return "not_found";
+    const archive = storage.archives().get(archiveId);
+    if (archive?.status !== "done") return "not_found";
+    return { projectId: archive.projectId, head: archive.eventCount, archiveId };
+  }
   if (!timelineId.startsWith(LIVE_PREFIX) || timelineId.length === LIVE_PREFIX.length) {
     return "not_found";
   }
@@ -81,14 +97,35 @@ function scanTime(
 }
 
 /** The last sequence a position includes, from 0 (none) to the head. */
-function resolveUpTo(storage: Storage, projectId: string, head: number, at: Position): number {
+function resolveUpTo(
+  storage: Storage,
+  projectId: string,
+  head: number,
+  at: Position,
+  archiveId?: string,
+): number {
   if (at.kind === "sequence") return Math.min(at.sequence, head);
+  // An archive is sorted by occurredAt, so the clock is searched, not scanned.
+  if (archiveId) {
+    return storage.archives().positionAtOrBefore(archiveId, new Date(at.ms).toISOString());
+  }
   return scanTime(storage, projectId, at.ms, at.msCeil).atOrBefore;
 }
 
 /** The first sequence a position includes, from 1 to the head plus one (past the log). */
-function resolveFrom(storage: Storage, projectId: string, head: number, at: Position): number {
+function resolveFrom(
+  storage: Storage,
+  projectId: string,
+  head: number,
+  at: Position,
+  archiveId?: string,
+): number {
   if (at.kind === "sequence") return Math.max(at.sequence, 1);
+  if (archiveId) {
+    return (
+      storage.archives().positionAtOrBefore(archiveId, new Date(at.msCeil - 1).toISOString()) + 1
+    );
+  }
   return scanTime(storage, projectId, at.ms, at.msCeil).atOrAfter ?? head + 1;
 }
 
@@ -130,6 +167,10 @@ function decodeCursor(timelineId: string, cursor: string): CursorState | undefin
 export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRouteOptions): void {
   const { storage } = options;
   const now = options.now ?? (() => new Date());
+  const archiveStates = new ArchiveStates(storage, {
+    chunk: Math.max(1, Math.floor(options.archiveReplayChunk ?? DEFAULT_REPLAY_CHUNK)),
+    logger: options.logger,
+  });
 
   app.get("/v1/projects/:id/timelines", requireScope("read"), (c) => {
     const projectId = c.req.param("id");
@@ -137,10 +178,25 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     if (head === undefined) return apiError(c, 404, "unknown_project", "No project with this ID");
     const first = eventAt(storage, projectId, 1);
     const last = eventAt(storage, projectId, head);
+    const archives = storage
+      .archives()
+      .listDone(projectId)
+      .map((archive) => ({
+        id: `${ARCHIVE_PREFIX}${archive.id}`,
+        kind: "archive",
+        archiveKind: archive.kind,
+        label: archive.label,
+        projectId,
+        firstSequence: 1,
+        lastSequence: archive.eventCount,
+        firstAt: archive.firstAt,
+        lastAt: archive.lastAt,
+        eventCount: archive.eventCount,
+      }));
     return c.json({
       projectId,
-      timelines:
-        first && last
+      timelines: [
+        ...(first && last
           ? [
               {
                 id: `${LIVE_PREFIX}${projectId}`,
@@ -153,11 +209,13 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
                 eventCount: last.ingestSequence,
               },
             ]
-          : [],
+          : []),
+        ...archives,
+      ],
     });
   });
 
-  app.get("/v1/timelines/:id/state", requireScope("read"), (c) => {
+  app.get("/v1/timelines/:id/state", requireScope("read"), async (c) => {
     const timelineId = c.req.param("id");
     const found = lookup(storage, timelineId);
     if (typeof found === "string") return lookupError(c, found);
@@ -166,8 +224,23 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     if (!position) return bad(c, "at must be an ingest sequence or a zoned ISO 8601 timestamp");
 
     // Everything below is synchronous on the one connection, so no ingest lands in between.
-    const { projectId, head } = found;
-    const at = resolveUpTo(storage, projectId, head, position);
+    const { projectId, head, archiveId } = found;
+    const at = resolveUpTo(storage, projectId, head, position, archiveId);
+    if (archiveId) {
+      // The nearest archive checkpoint plus the events after it; no attention for history.
+      const state = await archiveStates.stateAt(archiveId, projectId, head, at);
+      if (!state) return apiError(c, 404, "not_found", "No timeline with this ID");
+      return c.json({
+        timelineId,
+        at,
+        cursor: at,
+        reducerVersion: state.reducerVersion,
+        stateHash: projectStateHash(state),
+        state,
+        attention: [],
+        computedAt: now().toISOString(),
+      });
+    }
     const atEvent = at === 0 ? undefined : eventAt(storage, projectId, at);
     const replayClock = atEvent ? Date.parse(atEvent.receivedAt) : now().getTime();
     // At the head the stored projection is the replay already done, if it is current.
@@ -193,7 +266,7 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     const timelineId = c.req.param("id");
     const found = lookup(storage, timelineId);
     if (typeof found === "string") return lookupError(c, found);
-    const { projectId, head } = found;
+    const { projectId, head, archiveId } = found;
 
     const rawLimit = c.req.query("limit");
     let limit = DEFAULT_LIMIT;
@@ -221,15 +294,24 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     // The cursor supersedes `from`, and carries the end as first resolved (`to`, else the head),
     // so later pages do not move when events are ingested between requests. A forged end past
     // the head is clamped to it, so the page that reaches the head is the last.
-    const first = resume?.next ?? (from ? resolveFrom(storage, projectId, head, from) : 1);
-    const pinned = resume ? resume.until : to ? resolveUpTo(storage, projectId, head, to) : head;
+    const first =
+      resume?.next ?? (from ? resolveFrom(storage, projectId, head, from, archiveId) : 1);
+    const pinned = resume
+      ? resume.until
+      : to
+        ? resolveUpTo(storage, projectId, head, to, archiveId)
+        : head;
     const last = Math.min(pinned, head);
 
-    const events: StoredEnvelope[] = [];
+    let events: StoredEnvelope[] = [];
     if (first <= last) {
-      for (const event of storage.events(projectId, first - 1)) {
-        if (event.ingestSequence > last || events.length >= limit) break;
-        events.push(event);
+      if (archiveId) {
+        events = storage.archives().events(archiveId, first, Math.min(last, first + limit - 1));
+      } else {
+        for (const event of storage.events(projectId, first - 1)) {
+          if (event.ingestSequence > last || events.length >= limit) break;
+          events.push(event);
+        }
       }
     }
     const lastSent = events.at(-1)?.ingestSequence;

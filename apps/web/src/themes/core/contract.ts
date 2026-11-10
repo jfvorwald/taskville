@@ -40,6 +40,9 @@ export const CITY_PALETTE_KEYS = [
   "lampGlow",
   "treeTrunk",
   "treeCrown",
+  "barCounter",
+  "barStool",
+  "smokeBench",
   "windowGlow",
 ] as const satisfies ReadonlyArray<keyof CityPalette>;
 
@@ -64,6 +67,12 @@ export const REQUIRED_TOKENS: readonly TokenName[] = [
   ...DOM_TOKENS,
   ...CITY_PALETTE_KEYS.map(cityToken),
 ];
+
+/**
+ * Tokens a theme may set but need not: the panel's "succeeded" color has a default in
+ * tokens.css, and a theme overrides it where the default is under 3:1 against its panel surface.
+ */
+export const OPTIONAL_TOKENS: readonly TokenName[] = ["--tv-ok"];
 
 /** Tokens whose value must be a `#rrggbb` color (everything but radius and font). */
 const NON_COLOR_TOKENS: ReadonlySet<string> = new Set(["--tv-radius", "--tv-font"]);
@@ -143,7 +152,12 @@ export function applyHistoryTint(palette: CityPalette, tint: string, amount: num
 /** Problems with a theme definition, as readable strings. Empty means valid. */
 export function validateTheme(theme: ThemeDefinition): string[] {
   const problems: string[] = [];
-  const known: ReadonlySet<string> = new Set(REQUIRED_TOKENS);
+  const known: ReadonlySet<string> = new Set([...REQUIRED_TOKENS, ...OPTIONAL_TOKENS]);
+  for (const name of OPTIONAL_TOKENS) {
+    const value = theme.tokens[name];
+    if (value !== undefined && !HEX_COLOR.test(value))
+      problems.push(`token ${name} is not a #rrggbb color: ${value}`);
+  }
   for (const name of REQUIRED_TOKENS) {
     const value = theme.tokens[name];
     if (value === undefined || value === "") problems.push(`missing token ${name}`);

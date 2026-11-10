@@ -1,0 +1,382 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "claude-code"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "2.1.0"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": {
+            "name": "com.anthropic.claude_code",
+            "version": "2.1.0"
+          },
+          "metrics": [
+            {
+              "name": "claude_code.token.usage",
+              "description": "synthesized",
+              "unit": "tokens",
+              "sum": {
+                "aggregationTemporality": 1,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-sonnet-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "input"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "300"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-sonnet-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "output"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "80"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-sonnet-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "cacheRead"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "1000"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-sonnet-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "cacheCreation"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "50"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "a0c1bc9a2c30e80b6"
+                        }
+                      },
+                      {
+                        "key": "parent_agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-haiku-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "input"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "120"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "a0c1bc9a2c30e80b6"
+                        }
+                      },
+                      {
+                        "key": "parent_agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-haiku-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "output"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "30"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "a0c1bc9a2c30e80b6"
+                        }
+                      },
+                      {
+                        "key": "parent_agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-haiku-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "cacheRead"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "400"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "a0c1bc9a2c30e80b6"
+                        }
+                      },
+                      {
+                        "key": "parent_agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-haiku-4-5"
+                        }
+                      },
+                      {
+                        "key": "type",
+                        "value": {
+                          "stringValue": "cacheCreation"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asInt": "20"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "claude_code.cost.usage",
+              "description": "synthesized",
+              "unit": "USD",
+              "sum": {
+                "aggregationTemporality": 1,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-sonnet-4-5"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asDouble": 0.09
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "session.id",
+                        "value": {
+                          "stringValue": "6effc000-24c8-436e-ae5e-33152b820f83"
+                        }
+                      },
+                      {
+                        "key": "agent_id",
+                        "value": {
+                          "stringValue": "a0c1bc9a2c30e80b6"
+                        }
+                      },
+                      {
+                        "key": "parent_agent_id",
+                        "value": {
+                          "stringValue": "ac5497782768787b9"
+                        }
+                      },
+                      {
+                        "key": "model",
+                        "value": {
+                          "stringValue": "claude-haiku-4-5"
+                        }
+                      }
+                    ],
+                    "startTimeUnixNano": "1793707200000000000",
+                    "timeUnixNano": "1793707200000000000",
+                    "asDouble": 0.02
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

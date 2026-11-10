@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
+import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Io, run } from "../src/main.ts";
@@ -25,6 +25,40 @@ export function freePort(): Promise<number> {
   });
 }
 
+/** `count` distinct ports, all held open together so none repeats. */
+export async function freePorts(count: number): Promise<number[]> {
+  const servers: Server[] = [];
+  try {
+    return await Promise.all(
+      Array.from(
+        { length: count },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            const server = createServer();
+            servers.push(server);
+            server.once("error", reject);
+            server.listen(0, "127.0.0.1", () => {
+              const address = server.address();
+              resolve(typeof address === "object" && address !== null ? address.port : 0);
+            });
+          }),
+      ),
+    );
+  } finally {
+    await Promise.all(servers.map((s) => new Promise((done) => s.close(done))));
+  }
+}
+
+let sandboxHome: string | undefined;
+/** An empty home shared by every test that names none, so no test reads the real ~/.taskville. */
+export function sandboxTaskvilleHome(): string {
+  if (sandboxHome === undefined) {
+    sandboxHome = mkdtempSync(join(tmpdir(), "taskville-cli-sandbox-"));
+    process.once("exit", () => rmSync(sandboxHome as string, { recursive: true, force: true }));
+  }
+  return sandboxHome;
+}
+
 export interface CliResult {
   code: number;
   stdout: string;
@@ -42,9 +76,14 @@ export async function cli(argv: string[], io: Partial<Io> = {}): Promise<CliResu
     stderr: (s) => {
       stderr += s;
     },
-    env: {},
     cwd: io.cwd ?? process.cwd(),
     ...io,
+    // Without --home or TASKVILLE_HOME the CLI would read the developer's real ~/.taskville.
+    // A test that sets HOME (the install tests) or TASKVILLE_HOME already names its own home.
+    env:
+      argv.includes("--home") || io.env?.HOME !== undefined || io.env?.TASKVILLE_HOME !== undefined
+        ? (io.env ?? {})
+        : { TASKVILLE_HOME: sandboxTaskvilleHome(), ...io.env },
   });
   return { code, stdout, stderr };
 }

@@ -21,7 +21,7 @@ describe("leadDotTargets on the S-2 in-process team", () => {
     bridge: (hook, state) =>
       hook.seq === 31 ? { agent: agentBySource(state, PIP), tool: "Bash" } : undefined,
   });
-  const lead = agentNamed(stuck.state, "lead", "proj");
+  const lead = agentNamed(stuck.state, "lead", "owner");
   const pip = agentNamed(stuck.state, "teammate", "pip");
 
   it("keeps a stuck teammate", () => {

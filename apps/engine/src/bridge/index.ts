@@ -3,14 +3,20 @@
 export {
   type BridgeDecision,
   createPermissionBridge,
+  DEFAULT_CODEX_HOLD_WINDOW_MS,
   DEFAULT_HOLD_WINDOW_MS,
   type HeldRequest,
   MAX_HELD,
   MAX_HELD_INPUT_BYTES,
   MAX_LOSSY_SESSIONS,
+  MAX_TRACKED_CODEX_CALLS,
   MAX_TRACKED_REQUESTS,
   PermissionBridge,
   type PermissionBridgeOptions,
 } from "./bridge.ts";
 export { commitEngineEvent, type EngineCommitOptions } from "./commit.ts";
-export { BRIDGE_PERMISSION_PATH, registerBridgeRoutes } from "./route.ts";
+export {
+  BRIDGE_PERMISSION_PATH,
+  CODEX_BRIDGE_PERMISSION_PATH,
+  registerBridgeRoutes,
+} from "./route.ts";

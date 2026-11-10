@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { LiveTab } from "../live/LiveTab.tsx";
-import { AGENT, articles, build, paint, seedStore } from "../live/liveKit.tsx";
+import { AGENT, articles, build, openDetails, paint, seedStore } from "../live/liveKit.tsx";
 import { fakeBackend } from "./codeKit.tsx";
 import { buildEditorLink } from "./editorLink.ts";
 import { createCodeHighlighter } from "./highlighter.ts";
@@ -58,8 +58,11 @@ async function show() {
 describe("Live tab code bodies go through ExpandableCode", () => {
   it("offers an Expand control on Edit and Write cards and loads the highlighter on first expand only", async () => {
     const { load, calls } = await show();
-    const edit = articles().filter({ hasText: "Edit" });
-    const write = articles().filter({ hasText: "Write" });
+    // M10.02: sentences read "Edited ..." and "Wrote ...", and the Expand controls sit in Details.
+    const edit = articles().filter({ hasText: "Edited" });
+    const write = articles().filter({ hasText: "Wrote" });
+    await openDetails(edit);
+    await openDetails(write);
     const expandEdit = edit.getByRole("button", { name: /^expand/i });
     const expandWrite = write.getByRole("button", { name: /^expand/i });
     await expect.element(expandEdit).toBeVisible();
@@ -80,7 +83,8 @@ describe("Live tab code bodies go through ExpandableCode", () => {
 
   it("links an expanded Edit to the editor with the encoded path", async () => {
     await show();
-    const edit = articles().filter({ hasText: "Edit" });
+    const edit = articles().filter({ hasText: "Edited" });
+    await openDetails(edit);
     await edit.getByRole("button", { name: /^expand/i }).click();
     const href = buildEditorLink(EDIT_PATH);
     expect(href).toBe("vscode://file/r/my%20src/edit%20%231.ts");

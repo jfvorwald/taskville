@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { articles, type CallSpec, paint, renderPlain } from "./liveKit.tsx";
+import { articles, type CallSpec, openDetails, paint, renderPlain } from "./liveKit.tsx";
 
 // M5.06 pin round 6: fixes that landed without a test. Everything here is synthetic.
 // Search group file lists (94154e8), group phases and the Edit cap with markers (d0dd2c4).
@@ -23,6 +23,8 @@ const read = (n: number, phase: NonNullable<CallSpec["phase"]>): CallSpec => ({
 const items = (card: Element) =>
   Array.from(card.querySelectorAll("li"), (li) => li.textContent?.trim() ?? "");
 const expand = async () => {
+  // M10.02: the group's inner controls sit inside its Details.
+  await openDetails(articles());
   await articles()
     .getByRole("button", { name: /expand/i })
     .click();

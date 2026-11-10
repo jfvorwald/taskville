@@ -104,14 +104,35 @@ describe("projects", () => {
     ).toEqual({ id: "tv", name: "T", roots: ["/r"], head: 1 });
   });
 
-  it("lists projects with builtin and head", () => {
+  it("lists projects with builtin, head, and last event time", () => {
     const body = {
-      projects: [{ id: "unsorted", name: "Unsorted", roots: [], builtin: true, head: 1 }],
+      projects: [
+        {
+          id: "unsorted",
+          name: "Unsorted",
+          roots: [],
+          builtin: true,
+          head: 1,
+          lastEventAt: "2026-10-30T12:00:00Z",
+        },
+      ],
     };
     expect(projectsResponseSchema.parse(body)).toEqual(body);
     expect(
       projectsResponseSchema.safeParse({ projects: [{ id: "x", name: "X", roots: [] }] }).success,
     ).toBe(false);
+  });
+
+  it("accepts a null lastEventAt and rejects a non-ISO one", () => {
+    const row = { id: "x", name: "X", roots: [], builtin: false, head: 0 };
+    expect(
+      projectsResponseSchema.safeParse({ projects: [{ ...row, lastEventAt: null }] }).success,
+    ).toBe(true);
+    expect(
+      projectsResponseSchema.safeParse({ projects: [{ ...row, lastEventAt: "yesterday" }] })
+        .success,
+    ).toBe(false);
+    expect(projectsResponseSchema.safeParse({ projects: [row] }).success).toBe(false);
   });
 });
 
@@ -172,6 +193,31 @@ describe("pairing and health", () => {
     expect(healthResponseSchema.parse(ok)).toEqual(ok);
     expect(healthResponseSchema.parse({ ...ok, status: "error", db: "error" })).toBeTruthy();
     expect(healthResponseSchema.safeParse({ ...ok, db: "maybe" }).success).toBe(false);
+  });
+
+  it("parses the release identity block (M7.26)", () => {
+    const base = { status: "ok", db: "ok", walMode: true, uptimeSeconds: 12, version: "0.0.0" };
+    for (const environment of ["development", "staging", "production"]) {
+      const body = { ...base, release: { id: "20261106-abc1234", version: "1.4.0", environment } };
+      expect(healthResponseSchema.parse(body)).toEqual(body);
+    }
+    // A body without it still parses (older engines), but the block is strict and validated.
+    expect(healthResponseSchema.safeParse(base).success).toBe(true);
+    const bad = (release: unknown) => healthResponseSchema.safeParse({ ...base, release }).success;
+    expect(bad({ id: "r", version: "1", environment: "moon" })).toBe(false);
+    expect(bad({ id: "", version: "1", environment: "staging" })).toBe(false);
+    expect(bad({ id: "r", version: "1", environment: "staging", commit: "abc" })).toBe(false);
+  });
+
+  it("accepts release.dirty: true on a dirty staging build (M7.31), and nothing looser", () => {
+    const base = { status: "ok", db: "ok", walMode: true, uptimeSeconds: 12, version: "0.0.0" };
+    const release = { id: "20261106-abc1234", version: "1.4.0", environment: "staging" };
+    const body = { ...base, release: { ...release, dirty: true } };
+    expect(healthResponseSchema.parse(body)).toEqual(body);
+    const ok = (r: unknown) => healthResponseSchema.safeParse({ ...base, release: r }).success;
+    expect(ok({ ...release, dirty: false })).toBe(false);
+    expect(ok({ ...release, dirty: "true" })).toBe(false);
+    expect(ok({ ...release, dirty: true, commit: "abc" })).toBe(false);
   });
 
   it("accepts the process-only health an engine reports before storage is wired", () => {
