@@ -113,3 +113,37 @@ describe("the frame pacer", () => {
     }
   });
 });
+
+// W1.04 roborev 7895: RenderPacer's idle wake was aimed at last draw + 50 ms, but the pacer
+// carries an absolute deadline, so after a late draw the next deadline can be earlier. The pacer
+// must expose that deadline: `nextDeadline(): number | null`, null before the first draw.
+describe("createFramePacer nextDeadline", () => {
+  it("is null before any draw", () => {
+    expect(createFramePacer().nextDeadline()).toBeNull();
+  });
+
+  it("returns the carried deadline on a 75 Hz display at 20 fps", () => {
+    const pacer = createFramePacer();
+    const tick = 1000 / 75;
+    expect(pacer.shouldRender(IDLE_FPS, 0)).toBe(true);
+    expect(pacer.nextDeadline()).toBeCloseTo(50, 9);
+
+    let expected = 50;
+    let draws = 0;
+    for (let i = 1; i <= 40; i++) {
+      const t = i * tick;
+      const deadline = pacer.nextDeadline() as number;
+      expect(deadline).toBeCloseTo(expected, 6);
+      const drew = pacer.shouldRender(IDLE_FPS, t);
+      // The first tick at or after the deadline (less the 2 ms tolerance) draws, none earlier.
+      expect(drew, `tick ${i} at ${t}`).toBe(t >= deadline - 2);
+      if (drew) {
+        draws++;
+        expected += 50;
+      }
+    }
+    // The deadline is absolute: it advanced by exactly 50 ms per draw, not from the draw time.
+    expect(draws).toBeGreaterThan(8);
+    expect(pacer.nextDeadline()).toBeCloseTo(expected, 6);
+  });
+});
