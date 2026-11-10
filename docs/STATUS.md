@@ -2,7 +2,20 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 UTC. **Main:** d44d41c. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 3 done: M7.35, M8.17, M10.04, M8.16, M9.13 merged; wave run clean. Open follow-ups: #471, #473, #523. Staging deploy still held (#432).
+**Updated:** 2026-11-09 UTC. **Main:** 5a69165. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 4 done: M10.05, M8.10, M8.18, M8.09 merged; wave run clean apart from one first-time flake. Open follow-ups: #531, #533. Staging deploy still held (#432).
+
+## Done in backlog wave 4 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M10.05 #523 many open previews | #528 | previews fetch only the input body; demand is granted within the 128-body cache; a preview past it shows "details not loaded" and recovers; [report](tasks/M10.05.md) |
+| M8.10 #473 transcript importer hardening | #527 | swapped-file check, one 100,000-node budget per line, 1,000 blocks per line, 1,000-event batches, capped maps, session-scoped keys, transactional line state; security review PASS WITH FINDINGS (M1, M2 fixed; L1, L2 to #529); [report](tasks/M8.10.md) |
+| M8.18 #529 one descriptor, no re-registration | #532 | one descriptor per file, the imported content's first cwd is validated, a cwd-free prefix is skipped after one batch, new sessions refused at the cap; security review PASS WITH FINDINGS (four lows to #533); [report](tasks/M8.18.md) |
+| M8.09 #471 archive seeks | #530 | measured 9 to 12 s near the end of a 200,000-event archive, blocking the event loop; archive checkpoints every 1,000 positions bring it to 15 to 27 ms; replays yield; upkeep shares a 250 ms lock-wait budget; first seek before checkpoints still 6.7 s (yielding), build-after-import filed as #531; [report](tasks/M8.09.md) |
+
+Follow-ups filed: #531 (build archive checkpoints right after import), #533 (validate each session's cwd where it is used).
+
+Wave run on main 5a69165 (push tier, each suite once in sequence): `pnpm check` 5,971 of 5,971; release 73 of 73; browser 1,147 of 1,148 (LiveFollow "scrolling up preserves the read position on append" read 62 against a bound of 3 after ResizeObserver loop errors, passed alone 22 of 22: flake, first time); app e2e all specs passed (breaks IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs.
 
 ## Done in backlog wave 3 (2026-11-09)
 
