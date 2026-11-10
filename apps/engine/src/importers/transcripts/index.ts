@@ -213,9 +213,10 @@ export function createTranscriptImporter(
         let bytes = 0;
         let lineNumber = 0;
         const take = (result: { events: ImportBatch["events"]; evidence?: ToolEvidence[] }) => {
-          batch.events.push(...result.events);
+          for (const event of result.events) batch.events.push(event);
           if (result.evidence !== undefined) {
-            batch.evidence = [...(batch.evidence ?? []), ...result.evidence];
+            batch.evidence ??= [];
+            for (const item of result.evidence) batch.evidence.push(item);
           }
           counts.imported += result.events.length;
         };

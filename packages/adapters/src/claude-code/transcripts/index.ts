@@ -67,6 +67,10 @@ const SPAWN_LINES_MAX = 10_000;
 const EVIDENCE_NODES_MAX = 100_000;
 /** Most entries of the `pending` and `sessions` maps; the oldest is evicted past it. */
 const STATE_MAX = 50_000;
+/** Most agents (main plus subagents) one session may register; a line past it is malformed. */
+const AGENTS_PER_SESSION_MAX = 10_000;
+/** Most tool_use or tool_result blocks one line contributes; the rest are dropped. */
+const TOOL_BLOCKS_PER_LINE_MAX = 1_000;
 
 interface SessionState {
   agents: Set<string>;
@@ -151,12 +155,27 @@ export function createTranscriptMapper(options: {
       } as InputEventWire);
     };
 
-    // Worked on as a copy and recorded only once the line succeeds, so a throw cannot lose the
-    // registrations this line would have emitted.
-    const session: SessionState = { agents: new Set(sessions.get(sessionId)?.agents) };
+    // This line's changes to shared state are collected here and applied only once the line
+    // succeeds, so a throw cannot lose a registration or leave a tool call half recorded. Nothing
+    // is copied: the lists are bounded by the line, not by the state.
+    const known = sessions.get(sessionId);
+    const newAgents: string[] = [];
+    const pendingOps = new Map<string, string | undefined>();
+    const pendingOwner = (key: string): string | undefined =>
+      pendingOps.has(key) ? pendingOps.get(key) : pending.get(key);
+    /** True when `id` is new to the session; throws (a malformed line) at the agent cap. */
+    const register = (id: string): boolean => {
+      if (known?.agents.has(id) === true || newAgents.includes(id)) return false;
+      if ((known?.agents.size ?? 0) + newAgents.length >= AGENTS_PER_SESSION_MAX) {
+        throw new RangeError("too many agents in one session");
+      }
+      newAgents.push(id);
+      return true;
+    };
+    /** Nodes of tool input and output still allowed on this line, shared by all its blocks. */
+    const budget = { nodes: EVIDENCE_NODES_MAX };
     const mainId = sessionAgentId(sessionId);
-    if (!session.agents.has(mainId)) {
-      session.agents.add(mainId);
+    if (register(mainId)) {
       emit(mainId, "agent.registered", {
         sourceAgentId: sessionId,
         displayName: "Claude Code",
@@ -174,8 +193,7 @@ export function createTranscriptMapper(options: {
     let agentId = mainId;
     if (sidechain && isHookId(sourceAgentId, MAX_AGENT_ID)) {
       agentId = subagentAgentId(sessionId, sourceAgentId);
-      if (!session.agents.has(agentId)) {
-        session.agents.add(agentId);
+      if (register(agentId)) {
         // The parent is only what the transcript records: the first sidechain line follows the
         // line that holds the Agent or Task call.
         const parentUuid = own(parsed, "parentUuid");
@@ -192,6 +210,7 @@ export function createTranscriptMapper(options: {
     }
 
     const blocks = typeof content === "string" ? [] : (content as unknown[]);
+    let toolBlocks = 0;
     if (type === "user") {
       let prompt = typeof content === "string";
       for (const block of blocks) {
@@ -199,15 +218,19 @@ export function createTranscriptMapper(options: {
           if (ownString(block, "type") === "text") prompt = true;
           continue;
         }
+        toolBlocks += 1;
+        if (toolBlocks > TOOL_BLOCKS_PER_LINE_MAX) continue;
         const toolCallId = own(block, "tool_use_id");
         if (!isHookId(toolCallId, MAX_TOOL_USE_ID)) continue;
-        const owner = pending.get(scoped(sessionId, toolCallId)) ?? agentId;
-        pending.delete(scoped(sessionId, toolCallId));
+        const key = scoped(sessionId, toolCallId);
+        const owner = pendingOwner(key) ?? agentId;
+        pendingOps.delete(key);
+        pendingOps.set(key, undefined);
         emit(owner, "tool_call.finished", {
           toolCallId,
           phase: own(block, "is_error") === true ? "failed" : "succeeded",
         });
-        const output = boundEvidence(own(block, "content"));
+        const output = boundEvidence(own(block, "content"), budget);
         if (output !== undefined) evidence.push({ toolCallId, output });
       }
       if (prompt && !sidechain && own(parsed, "isMeta") !== true) {
@@ -217,6 +240,8 @@ export function createTranscriptMapper(options: {
       let spawnsHere = false;
       for (const block of blocks) {
         if (ownString(block, "type") !== "tool_use") continue;
+        toolBlocks += 1;
+        if (toolBlocks > TOOL_BLOCKS_PER_LINE_MAX) continue;
         const toolCallId = own(block, "id");
         const rawName = ownString(block, "name");
         const toolName = cleanText(rawName, NAME_MAX);
@@ -228,14 +253,16 @@ export function createTranscriptMapper(options: {
           PATH_MAX,
         );
         const summary = toolSummary(input);
-        remember(pending, scoped(sessionId, toolCallId), agentId, STATE_MAX);
+        const key = scoped(sessionId, toolCallId);
+        pendingOps.delete(key);
+        pendingOps.set(key, agentId);
         emit(agentId, "tool_call.started", {
           toolCallId,
           toolName,
           ...(filePath === undefined ? {} : { filePaths: [filePath] }),
           ...(summary === undefined ? {} : { summary }),
         });
-        const bounded = boundEvidence(input);
+        const bounded = boundEvidence(input, budget);
         if (bounded !== undefined) evidence.push({ toolCallId, input: bounded });
       }
       if (own(message, "stop_reason") === "end_turn" && !sidechain) {
@@ -246,7 +273,13 @@ export function createTranscriptMapper(options: {
         spawns.set(scoped(sessionId, uuid), agentId);
       }
     }
-    remember(sessions, sessionId, session, STATE_MAX);
+    for (const [key, owner] of pendingOps) {
+      if (owner === undefined) pending.delete(key);
+      else remember(pending, key, owner, STATE_MAX);
+    }
+    const agents = known?.agents ?? new Set<string>();
+    for (const id of newAgents) agents.add(id);
+    remember(sessions, sessionId, { agents }, STATE_MAX);
     return done(events, evidence);
   }
 
@@ -287,30 +320,47 @@ function toolSummary(input: unknown): string | undefined {
  * after that are strings and keys cut. A cut can therefore never leave part of a secret. The line
  * cap bounds how large a string redaction sees.
  */
-function boundEvidence(value: unknown): unknown {
+function boundEvidence(value: unknown, budget: { nodes: number }): unknown {
   if (value === undefined) return undefined;
-  if (exceedsNodes(value, EVIDENCE_NODES_MAX)) {
-    return { truncated: true, reason: `more than ${EVIDENCE_NODES_MAX} nodes` };
+  const nodes = countNodes(value, budget.nodes);
+  if (nodes === undefined) {
+    // The rest of the line's blocks get nothing, so a line's total walking stays bounded.
+    budget.nodes = 0;
+    return { truncated: true, reason: `over the ${EVIDENCE_NODES_MAX} node limit for one line` };
   }
+  budget.nodes -= nodes;
   const cut = shorten(redactJson(limitDepth(value, 0)).value);
   const text = JSON.stringify(cut);
   if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return cut;
   return { truncated: true, preview: text.slice(0, EVIDENCE_STRING_MAX).toWellFormed() };
 }
 
-/** Whether `value` has more than `max` nodes; stops walking as soon as that is known. */
-function exceedsNodes(value: unknown, max: number): boolean {
-  let nodes = 0;
+/**
+ * The node count of `value`, or undefined once it passes `max`. Nodes are counted as they are
+ * pushed, so the walk stops at the cap and never holds more than `max` of them.
+ */
+function countNodes(value: unknown, max: number): number | undefined {
+  let nodes = 1;
+  if (nodes > max) return undefined;
   const stack: unknown[] = [value];
+  const push = (child: unknown): boolean => {
+    nodes += 1;
+    if (nodes > max) return false;
+    stack.push(child);
+    return true;
+  };
   while (stack.length > 0) {
     const current = stack.pop();
-    nodes += 1;
-    if (nodes > max) return true;
-    if (current !== null && typeof current === "object") {
-      for (const child of Object.values(current)) stack.push(child);
+    if (current === null || typeof current !== "object") continue;
+    if (Array.isArray(current)) {
+      for (let i = 0; i < current.length; i += 1) if (!push(current[i])) return undefined;
+    } else {
+      for (const key in current) {
+        if (!push((current as Record<string, unknown>)[key])) return undefined;
+      }
     }
   }
-  return false;
+  return nodes;
 }
 
 function limitDepth(value: unknown, depth: number): JsonValue {
