@@ -83,3 +83,44 @@ describe("event-count batch flush", () => {
     );
   });
 });
+
+describe("review M2: a line with an enormous number of blocks", () => {
+  it("completes the import instead of overflowing a spread", async () => {
+    const dir = join(
+      process.env.CLAUDE_CONFIG_DIR as string,
+      "projects",
+      root.replace(/[^A-Za-z0-9]/g, "-"),
+    );
+    mkdirSync(dir, { recursive: true });
+    const first = JSON.stringify(userPrompt("go", { ts: T(0), cwd: root }));
+    const line = assistantToolUse("x", "Read", {}, { ts: T(1), cwd: root }) as {
+      message: { content: unknown[] };
+    };
+    // About 6.6 MB: under the 8 MiB line cap, with far more blocks than a spread can take.
+    line.message.content = Array.from({ length: 160_000 }, () => ({
+      type: "tool_use",
+      id: "t",
+      name: "R",
+    }));
+    writeFileSync(join(dir, "session.jsonl"), `${first}\n${JSON.stringify(line)}\n`);
+
+    const gen = createTranscriptImporter().run({
+      projectId: "proj-1",
+      root,
+      signal: new AbortController().signal,
+      progress: () => {},
+    });
+    const batches: ImportBatch[] = [];
+    let counts: unknown;
+    for (;;) {
+      const next = await gen.next();
+      if (next.done) {
+        counts = next.value;
+        break;
+      }
+      batches.push(next.value);
+    }
+    expect((counts as { read: number }).read).toBe(2);
+    expect(Math.max(...batches.map((b) => b.events.length))).toBeLessThanOrEqual(1_100);
+  }, 60_000);
+});
