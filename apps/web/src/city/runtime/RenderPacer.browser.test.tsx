@@ -130,6 +130,26 @@ describe("RenderPacer idle wakeups", () => {
   });
 });
 
+// Idle must still draw at its 20 fps (ARCHITECTURE section 11). Sleeping on a timer between idle
+// checks must not skip frames: a headed run measured 18.9 fps because the timer starts after the
+// callback, the next animation frame lands on the following vsync, and a wake judged not yet due
+// sleeps another full period. The window is timed with setTimeout so the test adds no rAF callbacks.
+
+const IDLE_MIN_RENDERS_PER_SECOND = 19;
+const IDLE_RATE_WINDOW_MS = 3000;
+
+describe("RenderPacer idle frame rate", () => {
+  it("draws at least 19 renders per second after 1.5 s with nothing moving", async () => {
+    movementLabels.set([]);
+    await mountCity();
+    await sleep(IDLE_SETTLE_MS + 500);
+    const before = renders;
+    await sleep(IDLE_RATE_WINDOW_MS);
+    const perSecond = ((renders - before) * 1000) / IDLE_RATE_WINDOW_MS;
+    expect(perSecond).toBeGreaterThanOrEqual(IDLE_MIN_RENDERS_PER_SECOND);
+  });
+});
+
 // Responsiveness while idle: whatever the pacer does to stop polling, a change must still draw
 // within 2 animation frames. Each trial lands the change at a different phase of the 20 fps idle
 // cycle, because a pacer that sleeps between draws is latest for a change just after one.
