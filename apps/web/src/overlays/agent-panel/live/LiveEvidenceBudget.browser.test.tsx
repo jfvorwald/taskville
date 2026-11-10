@@ -251,7 +251,10 @@ it("never silently drops preview names when 14 open previews exceed the evidence
     );
   });
   const view = await render(
-    <div data-testid="agent-panel-tab-slot" style={{ height: 16000, width: 400, overflowY: "auto" }}>
+    <div
+      data-testid="agent-panel-tab-slot"
+      style={{ height: 16000, width: 400, overflowY: "auto" }}
+    >
       <SessionProvider value="synthetic-m1005-many-previews">
         <ConnectedLiveTab agentId={AGENT} store={seedStore()} select={vi.fn()} />
       </SessionProvider>
