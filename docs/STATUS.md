@@ -2,7 +2,17 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 09:00 UTC. **Main:** d971e75. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave done: Codex adapter merged (A1.00 to A1.02). Open follow-ups: #471, #473, #489, #497, #500, #509, #511, #512. Staging deploy still held (#432).
+**Updated:** 2026-11-09 UTC. **Main:** be5643e. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 2 done: M8.14, A1.03, M9.14 merged. Wave 3 in flight: M7.35 #515, M8.17 #517, M10.04 #489, M8.16 #509, M9.13 #497. Open follow-ups also: #471, #473. Staging deploy still held (#432).
+
+## Done in backlog wave 2 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M8.14 #500 strict archive evidence cap | #514 | cap checked per body; the new archive is committed before old evidence is pruned; an evicted archive's details read "no longer stored"; roborev 7668 high fixed, two failure-of-failure edges filed as #517; [report](tasks/M8.14.md) |
+| A1.03 #511 Codex forwarder shim test flake | #516 | a desktop app probed new loopback ports; the test listener now ignores non-curl clients like the shared harness; [report](tasks/A1.03.md) |
+| M9.14 #512 break-time chatter flake | #518 | a real bug: `useBreakPlan` read the clock during render, so a React bail-out render dropped Bubbles' plan effect; the clock is now read only when a tracked input changes; deterministic regression test; [report](tasks/M9.14.md) |
+
+Follow-ups filed: #515 (staging worker budget timing test flakes under load), #517 (archive pruning: atomic counts, no orphaned pointers on failure).
 
 ## Done in backlog wave (2026-11-09)
 
