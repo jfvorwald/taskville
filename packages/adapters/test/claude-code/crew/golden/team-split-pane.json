@@ -359,7 +359,8 @@
         "payload": {
           "to": "bo",
           "kind": "message",
-          "summary": "Greet bo as pip"
+          "summary": "Greet bo as pip",
+          "toolCallId": "toolu_01YBDH2ZYHUyR9Wk4PVuwcnk"
         },
         "provenance": "live",
         "late": false
@@ -481,7 +482,8 @@
         "payload": {
           "to": "pip",
           "kind": "message",
-          "summary": "hi pip"
+          "summary": "hi pip",
+          "toolCallId": "toolu_0149dS2i1KauETU366G1kLeM"
         },
         "provenance": "live",
         "late": false
@@ -615,7 +617,8 @@
         "payload": {
           "to": "bo",
           "kind": "message",
-          "summary": "Reply to bo's greeting"
+          "summary": "Reply to bo's greeting",
+          "toolCallId": "toolu_01QGFKkSzk52EL61JQU2uKv2"
         },
         "provenance": "live",
         "late": false
@@ -737,7 +740,8 @@
         "payload": {
           "to": "pip",
           "kind": "shutdown_request",
-          "summary": "Request pip shutdown after completed task"
+          "summary": "Request pip shutdown after completed task",
+          "toolCallId": "toolu_013aC2uK1qccp1eiG1gc7Wvi"
         },
         "provenance": "live",
         "late": false
@@ -766,7 +770,8 @@
         "payload": {
           "to": "bo",
           "kind": "shutdown_request",
-          "summary": "Request bo shutdown after completed task"
+          "summary": "Request bo shutdown after completed task",
+          "toolCallId": "toolu_013jms4ker9BpUBKHNoMgXi8"
         },
         "provenance": "live",
         "late": false
@@ -887,7 +892,8 @@
         "payload": {
           "to": "team-lead",
           "kind": "shutdown_response",
-          "summary": "Approve shutdown request"
+          "summary": "Approve shutdown request",
+          "toolCallId": "toolu_011NMjpe9Hyg77X8VCFu2PBF"
         },
         "provenance": "live",
         "late": false
@@ -982,7 +988,8 @@
         "payload": {
           "to": "team-lead",
           "kind": "message",
-          "summary": "bo approves the shutdown request. My steps are complete: notes.txt updated (gamma to GAMMA), wc -l gave 3, and hi pip was sent."
+          "summary": "bo approves the shutdown request. My steps are complete: notes.txt updated (gamma to GAMMA), wc -l gave 3, and hi pip was sent.",
+          "toolCallId": "toolu_017yfk2fHU2gSxqiq6m8bPYa"
         },
         "provenance": "live",
         "late": false

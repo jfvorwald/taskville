@@ -410,7 +410,8 @@
         "payload": {
           "to": "bo",
           "kind": "message",
-          "summary": "Greeting bo from pip"
+          "summary": "Greeting bo from pip",
+          "toolCallId": "toolu_01CixR9W9yBMHD4eoV17fmUd"
         },
         "provenance": "live",
         "late": false
@@ -457,7 +458,8 @@
         "payload": {
           "to": "pip",
           "kind": "message",
-          "summary": "Reply to pip's greeting"
+          "summary": "Reply to pip's greeting",
+          "toolCallId": "toolu_014H3srzTREADhBxHztDFt7N"
         },
         "provenance": "live",
         "late": false
@@ -680,7 +682,8 @@
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "pip",
-          "kind": "shutdown_request"
+          "kind": "shutdown_request",
+          "toolCallId": "toolu_01UXXH1Wvu1TZM38MPgKJLvs"
         },
         "provenance": "live",
         "late": false
@@ -708,7 +711,8 @@
         "sessionId": "cf46f41b-8048-4a06-b955-b342dd0c7f31",
         "payload": {
           "to": "bo",
-          "kind": "shutdown_request"
+          "kind": "shutdown_request",
+          "toolCallId": "toolu_01FzFji1EhWyFf6pU1C1Wowv"
         },
         "provenance": "live",
         "late": false
@@ -791,7 +795,8 @@
         "payload": {
           "to": "team-lead",
           "kind": "shutdown_response",
-          "summary": "Approve shutdown request"
+          "summary": "Approve shutdown request",
+          "toolCallId": "toolu_01MBCdTG1QGbCN3ktMWSDqxb"
         },
         "provenance": "live",
         "late": false
@@ -833,7 +838,8 @@
         "payload": {
           "to": "team-lead",
           "kind": "shutdown_response",
-          "summary": "Approve team-lead shutdown request"
+          "summary": "Approve team-lead shutdown request",
+          "toolCallId": "toolu_01J2gWTgM8pa4f62hwCLBmtH"
         },
         "provenance": "live",
         "late": false

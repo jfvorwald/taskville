@@ -60,6 +60,8 @@ const commonPayloadSchemas = {
     to: nonEmptyTextSchema,
     kind: z.enum(TEAM_MESSAGE_KINDS),
     summary: textSchema.optional(),
+    // The SendMessage tool-call id, so the Live feed can focus the exact card.
+    toolCallId: idSchema.optional(),
   }),
   "session.started": z.strictObject({ workingDirectory: textSchema.optional() }),
   "session.ended": z.strictObject({ outcome: textSchema.optional() }),

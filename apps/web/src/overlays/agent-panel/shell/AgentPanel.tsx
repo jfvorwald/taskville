@@ -124,22 +124,35 @@ export function AgentPanel({
   // A request made before the panel mounted still counts: the click that selected the agent may
   // have come first. Each request is acted on once, so nothing carries over to the next agent.
   const handledFocus = useRef<typeof focus>(null);
+  // The SendMessage call a clicked envelope named, kept until the Live tab has focused its card.
+  const [card, setCard] = useState<{ agentId: string; toolCallId: string } | null>(null);
   // A crumb press can remove the breadcrumb (the parent has no family of its own), which would
   // drop keyboard focus to the page: the heading takes it instead.
   const nameRef = useRef<HTMLHeadingElement>(null);
   const crumbPressed = useRef(false);
 
-  // A clicked envelope for the selected agent opens its Live tab. Scrolling to the exact message
-  // is follow-up #368. The selection may land a render after the request, so a request waits for
-  // its agent to be selected.
+  // A clicked envelope for the selected agent opens its Live tab, and the Live tab focuses
+  // its SendMessage card (M5.28). The selection may land a render after the request, so a request
+  // waits for its agent to be selected.
   useEffect(() => {
     if (focus === null || focus === handledFocus.current || focus.agentId !== selection.selectedId)
       return;
     handledFocus.current = focus;
     // Single use: consumed here, so a remount does not apply it again. A stale one is only dropped.
-    if (feedFocus.ageOf(focus) <= FEED_REQUEST_TTL_MS) setChosen("live");
+    if (feedFocus.ageOf(focus) <= FEED_REQUEST_TTL_MS) {
+      setChosen("live");
+      setCard(
+        focus.toolCallId === undefined
+          ? null
+          : { agentId: focus.agentId, toolCallId: focus.toolCallId },
+      );
+    }
     feedFocus.clear(focus);
   }, [focus, selection.selectedId, feedFocus]);
+  // A pending card belongs to its agent: showing another one drops it.
+  useEffect(() => {
+    setCard((old) => (old === null || old.agentId === selection.selectedId ? old : null));
+  }, [selection.selectedId]);
 
   useEffect(() => {
     setNowMs(store.now());
@@ -309,7 +322,13 @@ export function AgentPanel({
           {renderTab !== undefined ? (
             renderTab(active, agent.id)
           ) : active === "live" && mode === "live" ? (
-            <ConnectedLiveTab agentId={agent.id} store={store} select={select} />
+            <ConnectedLiveTab
+              agentId={agent.id}
+              store={store}
+              select={select}
+              {...(card?.agentId === agent.id ? { focusCall: card.toolCallId } : {})}
+              onFocusedCall={() => setCard(null)}
+            />
           ) : active === "live" ? (
             <p>Live cards are not available for this history view.</p>
           ) : active === "files" && mode === "live" ? (
