@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { render } from "vitest-browser-react";
 import { PROJECT } from "../../../test/data/fake-engine.ts";
-import { createDataStore } from "../../data/store.ts";
+import { createDataStore, type DataStore } from "../../data/store.ts";
 import {
   PresentedSidebar,
   presentedAgentPanelOverlay,
@@ -23,7 +24,8 @@ import {
   stateOf,
   WAITING_SINCE,
 } from "./harness.fixture.tsx";
-import type { AgentBreak, Conversation } from "./types.ts";
+import type { AgentBreak, BreakPlan, Conversation } from "./types.ts";
+import { useBreakPlan } from "./usePlan.ts";
 
 // M9.08: chatter, the Break time switch, the agent panel and history placement, wired to the city.
 // Same setup as BreakTime.browser.test.tsx: pinned data-store clock, reduced motion except where
@@ -160,6 +162,74 @@ describe("break chatter in the city", () => {
     expect(rowOf(h, a)?.status).toBe("Waiting");
     expect(h.emotesOf(a)).toEqual(expect.not.arrayContaining(["mug", "puff", "sparkle", "note"]));
   }, 240_000);
+});
+
+/**
+ * A plan consumer whose `[plan]` effect records every plan it ran for. `expose` hands out a bump:
+ * two state updates that cancel out, so React renders the consumer, finds no change, and bails out.
+ */
+function PlanConsumer({
+  store,
+  seen,
+  expose,
+}: {
+  store: DataStore;
+  seen: BreakPlan[];
+  expose: (bump: () => void) => void;
+}) {
+  const plan = useBreakPlan({ store });
+  const [, setX] = useState(0);
+  useEffect(() => {
+    expose(() => {
+      setX(1);
+      setX(0);
+    });
+  }, [expose]);
+  useEffect(() => {
+    seen.push(plan);
+  }, [plan, seen]);
+  return null;
+}
+
+describe("the break plan hook under a render React bails out of", () => {
+  // M9.14: the chatter tests failed under full-suite load with no bubble for 60 s. Bubbles calls a
+  // no-op setState often; when React renders for one and finds no state change it bails out, which
+  // keeps the hook state of that render but drops its effects. The plan hook read the clock during
+  // render, so such a render could return a new plan that the effects keyed on it never saw. Two
+  // updates that cancel out force that render deterministically, without load.
+  it("runs a consumer's plan effect for a clock change first seen in a no-op render", async () => {
+    const { a, b, at } = findPair();
+    const clock = { now: WAITING_SINCE + 9 * SECOND };
+    const store = createDataStore({ now: () => clock.now });
+    store.getState().reset(PROJECT);
+    store.getState().applySnapshotState(stateOf({ [a]: "waiting", [b]: "waiting" }));
+    const seen: BreakPlan[] = [];
+    const exposed: { bump?: () => void } = {};
+    const screen = await render(
+      <PlanConsumer
+        store={store}
+        seen={seen}
+        expose={(b) => {
+          exposed.bump = b;
+        }}
+      />,
+    );
+    try {
+      await expect.poll(() => seen.length, POLL).toBeGreaterThan(0);
+      const bump = exposed.bump;
+      if (bump === undefined) throw new Error("the consumer did not expose its bump");
+      expect(seen.at(-1)?.conversations).toEqual([]);
+
+      clock.now = at;
+      bump();
+
+      await expect
+        .poll(() => seen.at(-1)?.conversations.map((c) => [c.a, c.b]), POLL)
+        .toEqual([[a, b]]);
+    } finally {
+      await screen.unmount();
+    }
+  }, 120_000);
 });
 
 describe("break time in the agent panel", () => {
