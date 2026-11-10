@@ -226,3 +226,198 @@ describe("recordedCardTarget work bound", () => {
     }
   });
 });
+
+// M6.14 (#361): "resolve merged openings without a scan". The scan the issue means is the indexed
+// fallback in recordedCardTarget: when the 64-moment walk finds nothing, it bisects the agent's
+// request-opening index and then steps back through every opening, one by one, skipping each whose
+// request the replayed state no longer holds (it was merged away). With many openings merged into
+// one early retained request, every head change visits all of them. Work is counted as the number
+// of distinct moment objects whose fields are read, never as wall-clock time.
+describe("recordedCardTarget merged openings", () => {
+  function tracked(touched: Set<number>, sequence: number, agentId: string, requestId?: string) {
+    const seen = <T>(value: T): T => {
+      touched.add(sequence);
+      return value;
+    };
+    const out = {} as { sequence: number; agentId: string | undefined; requestId?: string };
+    Object.defineProperty(out, "sequence", {
+      enumerable: true,
+      get: () => seen(sequence),
+    });
+    Object.defineProperty(out, "agentId", {
+      enumerable: true,
+      get: () => seen(agentId),
+    });
+    Object.defineProperty(out, "requestId", {
+      enumerable: true,
+      get: () => seen(requestId),
+    });
+    return out;
+  }
+
+  it("visits a bounded number of moments per head change with many merged-away openings", () => {
+    const MERGED = 20_000;
+    const touched = new Set<number>();
+    const mergedIds = Array.from({ length: MERGED }, (_, i) => `r-merged-${i}`);
+    const moments = [tracked(touched, 5, ADA, "r-early")];
+    mergedIds.forEach((id, i) => {
+      moments.push(tracked(touched, 10 + i, ADA, id)); // same agent, merged into r-early
+    });
+    const last = 10 + MERGED - 1;
+    // Another agent's openings interleave and are retained, so they must not be returned for ADA.
+    const bea = Array.from({ length: 50 }, (_, i) => `b-${i}`);
+    bea.forEach((id, i) => {
+      moments.push(tracked(touched, last + 1 + i, BEA, id));
+    });
+    const retained = [
+      request("r-early", ADA, { mergedRequestIds: mergedIds }),
+      ...bea.map((id) => request(id, BEA)),
+    ];
+    const call = (head: number) =>
+      recordedCardTarget({ state: stateWith(head, retained), moments, selectedId: ADA });
+
+    call(15_000); // warm-up: building a per-list index on first use is allowed
+    for (const head of [last + 50, last, 15_000, 10_000, 5_000, 7]) {
+      touched.clear();
+      expect(call(head)?.requestId).toBe("r-early");
+      expect(touched.size).toBeLessThan(200);
+    }
+    touched.clear();
+    expect(call(4)).toBeNull(); // not yet opened at an earlier head
+    expect(touched.size).toBeLessThan(200);
+  });
+
+  // Correctness guard (passes today, must keep passing): merged-away openings are never targets,
+  // even when newer than every retained one; the answer is the latest retained opening at or
+  // before the head, exactly as before. A merged-away opening does not redirect to its host
+  // request when a different retained request opened later.
+  it("matches the brute-force result on every head of a log with merged-away openings", () => {
+    let seed = 7;
+    const next = (n: number) => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed % n;
+    };
+    const moments: ReturnType<typeof moment>[] = [];
+    const all: Request[] = [];
+    const hostByAgent = new Map<string, Request>();
+    for (let seq = 1; seq <= 400; seq += 1) {
+      const agent = next(2) === 0 ? ADA : BEA;
+      const kind = next(5);
+      if (kind === 0) {
+        moments.push(moment(seq, agent)); // no request
+      } else if (kind <= 2 || !hostByAgent.has(agent)) {
+        const r = request(`r-${seq}`, agent);
+        all.push(r);
+        hostByAgent.set(agent, r);
+        moments.push(moment(seq, agent, r.id));
+      } else {
+        const host = hostByAgent.get(agent) as Request;
+        const id = `m-${seq}`; // merged into an earlier retained request, absent from the state
+        (host.mergedRequestIds as string[]).push(id);
+        moments.push(moment(seq, agent, id));
+      }
+    }
+    const oracle = (head: number, agentId: string) => {
+      for (let i = moments.length - 1; i >= 0; i -= 1) {
+        const m = moments[i];
+        if (m === undefined || m.sequence > head || m.agentId !== agentId) continue;
+        if (m.requestId === undefined) continue;
+        const r = all.find((x) => x.id === m.requestId);
+        if (r !== undefined && r.agentId === agentId) return r.id;
+      }
+      return null;
+    };
+    for (let head = 0; head <= 400; head += 1) {
+      const present = all.filter((r) => Number(r.id.slice(2)) <= head);
+      for (const agentId of [ADA, BEA]) {
+        const got = recordedCardTarget({
+          state: stateWith(head, present),
+          moments,
+          selectedId: agentId,
+        });
+        expect(got?.requestId ?? null).toBe(oracle(head, agentId));
+      }
+    }
+  });
+
+  it("keeps the later retained request when an older host absorbed a newer opening", () => {
+    const state = stateWith(3, [
+      request("r-1", ADA, { mergedRequestIds: ["m-3"] }),
+      request("r-2", ADA),
+    ]);
+    const moments = [moment(1, ADA, "r-1"), moment(2, ADA, "r-2"), moment(3, ADA, "m-3")];
+    expect(recordedCardTarget({ state, moments, selectedId: ADA })?.requestId).toBe("r-2");
+  });
+
+  // Identity keying (second Scope bullet): a different array of the same length is a different
+  // recording and must not reuse the first one's index.
+  it("does not reuse an index across distinct moments arrays of equal length", () => {
+    const a = [moment(1, ADA, "r-a")];
+    const b = [moment(1, ADA, "r-b")];
+    const state = stateWith(1, [request("r-a", ADA), request("r-b", ADA)]);
+    expect(recordedCardTarget({ state, moments: a, selectedId: ADA })?.requestId).toBe("r-a");
+    expect(recordedCardTarget({ state, moments: b, selectedId: ADA })?.requestId).toBe("r-b");
+  });
+});
+
+// Roborev 7803 (M6.14 review round). Both cases are pinned against behaviour, not structure.
+describe("recordedCardTarget roborev 7803", () => {
+  // Finding 1. The domain reducer ignores a second request.opened whose id is already held or
+  // merged (findRequest in reducer/attention/requests.ts), so two openings never make two
+  // requests. The recording can still hold two accepted openings with one id: the replayed state
+  // holds the request from the first. The per-array index keeps only the later opening, so a head
+  // between the two openings, more than 64 moments after the first, lost the target.
+  it("finds the first opening of a duplicated request id at heads between and after both", () => {
+    const moments = [moment(1, ADA, "r-dup")];
+    for (let seq = 2; seq <= 200; seq += 1) moments.push(moment(seq, BEA));
+    moments.push(moment(201, ADA, "r-dup")); // accepted again, ignored by the reducer
+    for (let seq = 202; seq <= 300; seq += 1) moments.push(moment(seq, BEA));
+    const held = [request("r-dup", ADA)];
+    const oracle = (head: number) => {
+      for (let i = moments.length - 1; i >= 0; i -= 1) {
+        const m = moments[i];
+        if (m === undefined || m.sequence > head || m.agentId !== ADA) continue;
+        if (m.requestId !== undefined && held.some((r) => r.id === m.requestId)) return m.requestId;
+      }
+      return null;
+    };
+    for (const head of [1, 100, 150, 199, 200, 201, 250, 300]) {
+      const got = recordedCardTarget({ state: stateWith(head, held), moments, selectedId: ADA });
+      expect(got?.requestId ?? null).toBe(oracle(head));
+    }
+    // Spelled out: between the openings the first one is the answer.
+    expect(
+      recordedCardTarget({ state: stateWith(150, held), moments, selectedId: ADA })?.requestId,
+    ).toBe("r-dup");
+  });
+
+  // Finding 2. When the walk finds nothing, the fallback must not read other agents' requests.
+  it("reads a bounded number of request entries for an agent with only an old retained request", () => {
+    const OTHERS = 10_000;
+    const moments = [moment(5, ADA, "r-old")];
+    const requests: Request[] = [request("r-old", ADA)];
+    for (let i = 0; i < OTHERS; i += 1) {
+      const agent = `agent-other-${i}`;
+      const id = `o-${i}`;
+      moments.push(moment(10 + i, agent, id));
+      requests.push(request(id, agent));
+    }
+    const head = 10 + OTHERS;
+    let reads = 0;
+    const counted = new Proxy(Object.fromEntries(requests.map((r) => [r.id, r])), {
+      get(target, key, receiver) {
+        if (typeof key === "string") reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const state = { ...stateWith(head, requests), requests: counted } as ProjectState;
+    const call = (h: number) =>
+      recordedCardTarget({ state: { ...state, head: h }, moments, selectedId: ADA });
+    call(head - 1); // warm-up: building a per-list index on first use is allowed
+    for (const h of [head, head - 500, 5_000, 100]) {
+      reads = 0;
+      expect(call(h)?.requestId).toBe("r-old");
+      expect(reads).toBeLessThan(200);
+    }
+  });
+});

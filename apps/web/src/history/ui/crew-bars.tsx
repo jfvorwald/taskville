@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   applyRegistration,
   initialEntities,
@@ -33,7 +34,9 @@ export function crewRuns(
   events: readonly StoredEnvelope[],
   clock: (event: StoredEnvelope) => number = (event) => Date.parse(event.receivedAt),
 ): CrewRun[] {
-  let entities = initialEntities();
+  // Each agent's record depends only on its own registrations, so every agent folds its own
+  // state: one shared state would copy the whole agents map on every write.
+  const entities = new Map<string, ReturnType<typeof initialEntities>>();
   const opened = new Map<string, { sequence: number; at: number }>();
   const closed = new Map<string, { sequence: number; at: number }>();
   for (const event of events) {
@@ -41,8 +44,9 @@ export function crewRuns(
     if (!agentId) continue;
     const mark = { sequence: event.ingestSequence, at: clock(event) };
     if (event.type === "agent.registered") {
-      entities = applyRegistration(entities, event, agentId);
-      const seq = entities.agents[agentId]?.registeredSeq;
+      const next = applyRegistration(entities.get(agentId) ?? initialEntities(), event, agentId);
+      entities.set(agentId, next);
+      const seq = next.agents[agentId]?.registeredSeq;
       if (seq === event.ingestSequence && !opened.has(agentId)) opened.set(agentId, mark);
     } else if (event.type === "agent.finished" && !closed.has(agentId)) {
       closed.set(agentId, mark);
@@ -50,7 +54,7 @@ export function crewRuns(
   }
   const runs: CrewRun[] = [];
   for (const [agentId, open] of opened) {
-    const agent = entities.agents[agentId];
+    const agent = entities.get(agentId)?.agents[agentId];
     if (agent?.kind !== "subagent" || agent.parentAgentId === undefined) continue;
     const close = closed.get(agentId);
     // A finish recorded before the first registration also bounds the start.
@@ -69,15 +73,21 @@ export function crewRuns(
   return runs;
 }
 
-export function CrewBars({
-  runs,
-  parentId,
-  range,
-}: {
+interface CrewBarsProps {
   runs: readonly CrewRun[];
   parentId: string;
   range: { first: number; last: number };
-}) {
+}
+
+/**
+ * The bars for one parent. A plain function that hands off to a memoized body, so a playhead
+ * tick that leaves runs, parent and range unchanged never reaches the bars' markup.
+ */
+export function CrewBars(props: CrewBarsProps) {
+  return <Bars {...props} />;
+}
+
+const Bars = memo(function Bars({ runs, parentId, range }: CrewBarsProps) {
   const own = runs.filter((run) => run.parentId === parentId);
   if (!own.length) return null;
   const span = Math.max(1, range.last - range.first);
@@ -121,4 +131,4 @@ export function CrewBars({
       })}
     </div>
   );
-}
+});
