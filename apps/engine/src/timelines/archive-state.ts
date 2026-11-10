@@ -1,8 +1,9 @@
 import { canonicalJson, stateHash } from "@taskville/domain/hash";
 import type { ProjectState } from "@taskville/domain/reducer";
 import { domainReducer } from "../ingest/index.ts";
+import type { WaitBudget } from "../storage/archives.ts";
 import { trusted, type UpkeepLogger, upkeepFields } from "../storage/checkpoints.ts";
-import type { Storage } from "../storage/index.ts";
+import { type Storage, UPKEEP_WAIT_MS } from "../storage/index.ts";
 import { isBusy } from "../storage/rebuild.ts";
 
 // Archive state seeks (M8.09; ARCHITECTURE.md 7.4). An archive is immutable, so its checkpoints
@@ -45,10 +46,12 @@ export class ArchiveStates {
     head: number,
     upTo: number,
   ): Promise<ProjectState | undefined> {
-    const { state, base } = this.#nearest(archiveId, projectId, upTo);
+    // One short lock-wait budget for the upkeep this seek does (deletes, then the prune).
+    const budget = { remaining: UPKEEP_WAIT_MS };
+    const { state, base } = this.#nearest(archiveId, projectId, upTo, undefined, budget);
     const reduced = await this.#replay(archiveId, state, base, upTo, this.#chunk);
     if (!this.#storage.archives().get(archiveId)) return undefined;
-    this.#ensureBuilt(archiveId, projectId, head);
+    this.#ensureBuilt(archiveId, projectId, head, budget);
     return reduced;
   }
 
@@ -57,7 +60,8 @@ export class ArchiveStates {
     archiveId: string,
     projectId: string,
     upTo: number,
-    stored?: Set<number>,
+    stored: Set<number> | undefined,
+    budget: WaitBudget,
   ): { state: ProjectState; base: number } {
     const archives = this.#storage.archives();
     const version = domainReducer.version;
@@ -66,7 +70,7 @@ export class ArchiveStates {
       const row = archives.checkpoint(archiveId, position);
       const loaded = row && trusted(row, version, projectId);
       if (loaded) return { state: loaded, base: position };
-      this.#attempt(() => archives.deleteCheckpoint(archiveId, position));
+      this.#attempt(() => archives.deleteCheckpoint(archiveId, position, budget));
       stored?.delete(position);
     }
     return { state: domainReducer.initial(projectId), base: 0 };
@@ -99,12 +103,14 @@ export class ArchiveStates {
     return state;
   }
 
-  #ensureBuilt(archiveId: string, projectId: string, head: number): void {
+  #ensureBuilt(archiveId: string, projectId: string, head: number, budget: WaitBudget): void {
     if (this.#building.has(archiveId)) return;
     const archives = this.#storage.archives();
     const wanted = Math.floor(head / ARCHIVE_CHECKPOINT_INTERVAL);
     if (wanted === 0) return;
-    if (!this.#attempt(() => archives.pruneCheckpoints(archiveId, domainReducer.version))) return;
+    if (!this.#attempt(() => archives.pruneCheckpoints(archiveId, domainReducer.version, budget))) {
+      return;
+    }
     if (archives.checkpointPositions(archiveId).length >= wanted) return;
     const build = this.#build(archiveId, projectId, head)
       .catch((error: unknown) => {
@@ -120,6 +126,8 @@ export class ArchiveStates {
   async #build(archiveId: string, projectId: string, head: number): Promise<void> {
     const archives = this.#storage.archives();
     const version = domainReducer.version;
+    // The build has its own short budget for the lock waits of all its writes.
+    const budget = { remaining: UPKEEP_WAIT_MS };
     // Let the response that started the build go out first.
     await yieldToEventLoop();
     const stored = new Set(archives.checkpointPositions(archiveId));
@@ -129,16 +137,20 @@ export class ArchiveStates {
       missing += ARCHIVE_CHECKPOINT_INTERVAL;
     if (missing >= last) return;
     // Resume from the latest trusted checkpoint below the first gap.
-    const { state, base } = this.#nearest(archiveId, projectId, missing, stored);
+    const { state, base } = this.#nearest(archiveId, projectId, missing, stored, budget);
     const store = (at: ProjectState, position: number): boolean => {
       if (position % ARCHIVE_CHECKPOINT_INTERVAL !== 0 || stored.has(position)) return true;
       if (!archives.get(archiveId)) return false;
-      return archives.putCheckpoint(archiveId, {
-        sequence: position,
-        reducerVersion: version,
-        stateHash: stateHash(version, at),
-        stateJson: canonicalJson(at),
-      });
+      return archives.putCheckpoint(
+        archiveId,
+        {
+          sequence: position,
+          reducerVersion: version,
+          stateHash: stateHash(version, at),
+          stateJson: canonicalJson(at),
+        },
+        budget,
+      );
     };
     // Chunks of one interval from an aligned base end on a checkpoint position.
     await this.#replay(archiveId, state, base, last, ARCHIVE_CHECKPOINT_INTERVAL, store);

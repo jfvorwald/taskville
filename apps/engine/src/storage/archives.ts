@@ -61,6 +61,15 @@ export interface ArchiveEventWrite {
   envelope: StoredEnvelope;
 }
 
+/**
+ * What is left of the time cache upkeep may spend, in total, waiting on another connection's write
+ * lock (as `withWaitBudget` does for the live cache). Passed to each checkpoint write; once spent
+ * a write throws at once ("wait budget spent", which `isBusy` recognises) instead of waiting.
+ */
+export interface WaitBudget {
+  remaining: number;
+}
+
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const ZERO_COUNTS: ArchiveCounts = { read: 0, imported: 0, skipped: 0, malformed: 0 };
 
@@ -363,7 +372,7 @@ export class SqliteArchives {
   }
 
   /** Stores one checkpoint in its own transaction. False when the archive no longer exists. */
-  putCheckpoint(id: string, row: CheckpointRow): boolean {
+  putCheckpoint(id: string, row: CheckpointRow, budget?: WaitBudget): boolean {
     let written = false;
     this.#transaction(() => {
       written =
@@ -377,21 +386,21 @@ export class SqliteArchives {
             id,
           ).changes,
         ) > 0;
-    });
+    }, budget);
     return written;
   }
 
-  deleteCheckpoint(id: string, position: number): void {
-    this.#deleteCheckpoint.run(id, position);
+  deleteCheckpoint(id: string, position: number, budget?: WaitBudget): void {
+    this.#waiting(budget, () => this.#deleteCheckpoint.run(id, position));
   }
 
   /**
    * Drops checkpoints of another reducer version or whose state text is not a JSON object. A
    * read-only probe runs first, so a healthy cache takes no write lock.
    */
-  pruneCheckpoints(id: string, reducerVersion: number): void {
+  pruneCheckpoints(id: string, reducerVersion: number, budget?: WaitBudget): void {
     if (!this.#unusableCheckpoint.get(id, reducerVersion)) return;
-    this.#pruneCheckpoints.run(id, reducerVersion);
+    this.#waiting(budget, () => this.#pruneCheckpoints.run(id, reducerVersion));
   }
 
   #finishRow(
@@ -427,9 +436,29 @@ export class SqliteArchives {
     return archive;
   }
 
-  #transaction(work: () => void): void {
+  /**
+   * Runs `fn` waiting for a lock at most what is left of `budget` (the connection's busy timeout
+   * is lowered for it, never raised, and restored after); the time taken is subtracted. Throws at
+   * once when nothing is left. Without a budget the connection's own timeout applies.
+   */
+  #waiting<T>(budget: WaitBudget | undefined, fn: () => T): T {
+    if (!budget) return fn();
+    const remaining = Math.floor(budget.remaining);
+    if (remaining <= 0) throw new Error("checkpoint upkeep skipped: wait budget spent");
+    const previous = Number(this.#db.prepare("PRAGMA busy_timeout").get()?.timeout);
+    this.#db.exec(`PRAGMA busy_timeout = ${Math.min(previous, remaining)}`);
+    const began = performance.now();
+    try {
+      return fn();
+    } finally {
+      budget.remaining -= performance.now() - began;
+      this.#db.exec(`PRAGMA busy_timeout = ${previous}`);
+    }
+  }
+
+  #transaction(work: () => void, budget?: WaitBudget): void {
     if (this.#db.isTransaction) throw new StorageError("transactions cannot nest");
-    this.#db.exec("BEGIN IMMEDIATE");
+    this.#waiting(budget, () => this.#db.exec("BEGIN IMMEDIATE"));
     try {
       work();
       this.#db.exec("COMMIT");
