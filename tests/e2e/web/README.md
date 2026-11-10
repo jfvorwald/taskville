@@ -18,11 +18,28 @@ Prints fps with six demo agents moving and browser CPU after they settle. It ass
 
 ```sh
 pnpm --filter @taskville/web build
-node tests/e2e/web/measure.ts [--headed] [--moving 10] [--settle 8] [--idle 10] [--port 4886]
+node tests/e2e/web/measure.ts [--headed] [--moving 10] [--settle 8] [--idle 10] [--dpr 1] [--port 4886]
 ```
 
 Headless Chromium draws with software GL, so use `--headed` on the target machine for an
-integrated-GPU figure.
+integrated-GPU figure. `--dpr 2` samples a Retina-class canvas (the app caps dpr at 2). Use a
+temp `HOME` and `TASKVILLE_HOME` for the run (set `PLAYWRIGHT_BROWSERS_PATH` if the browsers
+live under the real home).
+
+How it measures:
+
+- **Frames** are WebGL `clear` calls (three.js clears once per render), timestamped in the page.
+  The report prints the count, the rate and the busiest one-second stretch. An idle window with no
+  full-rate segment keeps that busiest second near the idle rate (about 20 to 23 frames).
+- **requestAnimationFrame counter:** runs only in the moving window, to report the callback rate
+  and the display refresh estimate. It is off for the idle window: a loop of its own would hold
+  Blink at 60 Hz and inflate the idle CPU.
+- **Idle window:** the pointer is parked in the page corner before the settle time, not just before
+  the window. A pointer event holds the idle throttle at full rate for one second, which would
+  otherwise lift idle fps from 20 to 21 or more. The labels are read just before and after the
+  window, never during it.
+- **CPU** is the whole browser (every process, GPU included) from CDP `SystemInfo.getProcessInfo`,
+  as a percentage of one core. Expect about plus or minus 1 point of noise; note the machine load.
 
 ## Shared files
 
