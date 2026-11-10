@@ -4,7 +4,7 @@
 // it could not measure. Run it only on purpose, with the machine otherwise quiet:
 //
 //   pnpm --filter @taskville/web build
-//   node tests/e2e/web/measure.ts [--headed] [--moving 10] [--settle 8] [--idle 10] [--port 4886]
+//   node tests/e2e/web/measure.ts [--headed] [--moving 10] [--settle 8] [--idle 10] [--dpr 1] [--port 4886]
 //
 // It starts its own engine (apps/web/e2e/engine.ts, pairing code `web`) and Chromium, pairs, runs
 // the seeded demo, then samples. Headless Chromium uses software GL (SwiftShader), so the fps is a
@@ -25,6 +25,7 @@ const headed = process.argv.includes("--headed");
 const movingSeconds = flag("moving", 10);
 const settleSeconds = flag("settle", 8);
 const idleSeconds = flag("idle", 10);
+const dpr = flag("dpr", 1);
 const port = String(flag("port", 4886));
 const web = fileURLToPath(new URL("../../../apps/web", import.meta.url));
 
@@ -50,10 +51,12 @@ interface Fps {
   frames: number;
   worstFrameMs: number;
   p95FrameMs: number;
-  /** Raw requestAnimationFrame callbacks per second, whether or not the scene drew. */
-  rafRate: number;
-  /** Display refresh estimate: 1000 / the 10th percentile rAF gap (a throttled window reads low). */
-  refreshHz: number;
+  /** Frames in the busiest one second of the window (WebGL `clear` calls). */
+  busiestSecond: number;
+  /** Raw requestAnimationFrame callbacks per second; null when the window ran no counter. */
+  rafRate: number | null;
+  /** Display refresh estimate: 1000 / the 10th percentile rAF gap; null with no counter. */
+  refreshHz: number | null;
 }
 
 /** States in which an agent is still travelling (see PresentationState in the city's navigator). */
@@ -77,54 +80,67 @@ try {
   const context = await browser.newContext({
     baseURL: `http://127.0.0.1:${port}`,
     viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: dpr,
   });
-  // A rendered-frame counter. A frame counts when WebGL drew at least once since the last
-  // animation frame, so an idle loop that throttles itself shows its real rate (a bare
-  // requestAnimationFrame counter would read the browser's 60 Hz whatever the app does).
+  // A rendered-frame counter: every WebGL `clear` call is one drawn frame (three.js clears once per
+  // render), so an idle loop that throttles itself shows its real rate and the counter needs no
+  // requestAnimationFrame loop of its own. A separate requestAnimationFrame counter exists only
+  // for the moving window and is switched off for the idle window: it would hold Blink at 60 Hz
+  // and inflate the idle CPU. Frames are timestamped with performance.now().
   await context.addInitScript(() => {
-    const w = window as unknown as { __tvFrames: number[] };
+    const w = window as unknown as {
+      __tvFrames: number[];
+      __tvRaf: number[];
+      __tvRafOn: (on: boolean) => void;
+    };
     w.__tvFrames = [];
-    const raf: number[] = [];
-    (window as unknown as { __tvRaf: number[] }).__tvRaf = raf;
-    let drew = false;
+    w.__tvRaf = [];
     for (const proto of [WebGLRenderingContext.prototype, WebGL2RenderingContext.prototype]) {
-      for (const name of [
-        "drawElements",
-        "drawArrays",
-        "drawElementsInstanced",
-        "drawArraysInstanced",
-      ] as const) {
-        const original = proto[name] as (...args: unknown[]) => void;
-        (proto as unknown as Record<string, unknown>)[name] = function (...args: unknown[]) {
-          drew = true;
-          return original.apply(this, args);
-        };
-      }
+      const original = proto.clear as (...args: unknown[]) => void;
+      (proto as unknown as Record<string, unknown>).clear = function (...args: unknown[]) {
+        w.__tvFrames.push(performance.now());
+        return original.apply(this, args);
+      };
     }
+    let running = false;
     const tick = (t: number) => {
-      raf.push(t);
-      if (drew) {
-        w.__tvFrames.push(t);
-        drew = false;
-      }
+      if (!running) return;
+      w.__tvRaf.push(t);
       requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    w.__tvRafOn = (on: boolean) => {
+      if (on && !running) {
+        running = true;
+        requestAnimationFrame(tick);
+      }
+      running = on;
+    };
   });
   const page = await context.newPage();
   await page.goto(`/#pair=${code}`);
   await page.getByTestId("scene-root").waitFor({ timeout: 20_000 });
 
-  const sampleFps = async (seconds: number): Promise<Fps> => {
-    const startedAt = await page.evaluate(() => {
-      const w = window as unknown as { __tvFrames: number[]; __tvRaf: number[] };
+  /** `withRaf` runs the requestAnimationFrame counter for the window; the idle window passes false. */
+  const sampleFps = async (seconds: number, withRaf: boolean): Promise<Fps> => {
+    const startedAt = await page.evaluate((on) => {
+      const w = window as unknown as {
+        __tvFrames: number[];
+        __tvRaf: number[];
+        __tvRafOn: (on: boolean) => void;
+      };
       w.__tvFrames.length = 0;
       w.__tvRaf.length = 0;
+      w.__tvRafOn(on);
       return performance.now();
-    });
+    }, withRaf);
     await sleep(seconds * 1000);
     const { times, raf, endedAt } = await page.evaluate(() => {
-      const w = window as unknown as { __tvFrames: number[]; __tvRaf: number[] };
+      const w = window as unknown as {
+        __tvFrames: number[];
+        __tvRaf: number[];
+        __tvRafOn: (on: boolean) => void;
+      };
+      w.__tvRafOn(false);
       return { times: w.__tvFrames.slice(), raf: w.__tvRaf.slice(), endedAt: performance.now() };
     });
     const gapsOf = (ts: number[]) => ts.slice(1).map((t, i) => t - (ts[i] ?? t));
@@ -138,13 +154,21 @@ try {
     const sorted = gapsOf([startedAt, ...times, endedAt]).sort((a, b) => a - b);
     const rafGaps = gapsOf(raf).sort((a, b) => a - b);
     const fastGap = rafGaps[Math.floor(rafGaps.length * 0.1)] ?? 0;
+    // The most frames in any one second of the window: a full-rate segment (for example the second
+    // after a pointer event) shows here even when the window's average looks low.
+    let busiestSecond = 0;
+    for (let i = 0, j = 0; i < times.length; i++) {
+      while ((times[i] ?? 0) - (times[j] ?? 0) >= 1000) j++;
+      busiestSecond = Math.max(busiestSecond, i - j + 1);
+    }
     return {
+      busiestSecond,
       fps: rate(times),
       frames: times.length,
       worstFrameMs: sorted.at(-1) ?? 0,
       p95FrameMs: sorted[Math.floor(sorted.length * 0.95)] ?? 0,
-      rafRate: rate(raf),
-      refreshHz: fastGap > 0 ? 1000 / fastGap : 0,
+      rafRate: withRaf ? rate(raf) : null,
+      refreshHz: withRaf && fastGap > 0 ? 1000 / fastGap : null,
     };
   };
 
@@ -201,7 +225,7 @@ try {
   demoMustRun("before the moving window");
   await parkPointer();
   const movingCpuPromise = sampleCpu(movingSeconds);
-  const moving = await sampleFps(movingSeconds);
+  const moving = await sampleFps(movingSeconds, true);
   const movingCpu = await movingCpuPromise;
   demoMustRun("during the moving window, so the moving figures are not all moving");
   const movingNow = await travelling();
@@ -210,6 +234,9 @@ try {
   // its frame rate, then check they really are still before sampling.
   stop.abort();
   const demoExit = await demo;
+  // Park the pointer before the settle, not just before the window: a pointer event holds the idle
+  // throttle at full rate for one second, so it must be over long before the window opens.
+  await parkPointer();
   await sleep(settleSeconds * 1000);
   let stillSince = Date.now();
   const stillDeadline = Date.now() + 60_000;
@@ -220,12 +247,11 @@ try {
     }
     await sleep(250);
   }
-  await parkPointer();
   // Check the labels just before and just after the idle window, not during it: polling the page
   // while sampling would add renderer work to the measured idle CPU (roborev 5742).
   const moversBefore = (await travelling()).moving;
   const idleCpuPromise = sampleCpu(idleSeconds);
-  const idle = await sampleFps(idleSeconds);
+  const idle = await sampleFps(idleSeconds, false);
   const idleCpu = await idleCpuPromise;
   const moversAfter = (await travelling()).moving;
 
@@ -238,10 +264,10 @@ try {
     return `${f(Math.abs(pct))}% ${pct > 0 ? "above" : "below"} the ${what}`;
   };
   const rates = (r: Fps) =>
-    `  requestAnimationFrame ${f(r.rafRate)}/s, display refresh estimate ${f(r.refreshHz, 0)} Hz (rendered ${f(r.fps)} fps; ${r.frames} frames drawn)`;
+    `${r.rafRate === null ? "  no requestAnimationFrame counter in this window" : `  requestAnimationFrame ${f(r.rafRate)}/s, display refresh estimate ${f(r.refreshHz ?? 0, 0)} Hz`}\n  frames counted from WebGL clear: ${r.frames} (${f(r.fps)} fps), busiest second ${r.busiestSecond} frames`;
   console.log(`# Taskville web performance (${new Date().toISOString()})`);
   console.log(
-    `Chromium ${browser.version()} ${headed ? "headed (real GPU)" : "headless (software GL, worst case)"}, 1280x720, ${agents} agent labels, Node ${process.version}`,
+    `Chromium ${browser.version()} ${headed ? "headed (real GPU)" : "headless (software GL, worst case)"}, 1280x720 at dpr ${dpr}, ${agents} agent labels, Node ${process.version}`,
   );
   if (headed) console.log("Note: keep the real pointer off the browser window while it samples.");
   console.log(
