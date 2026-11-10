@@ -222,7 +222,14 @@ export function createTranscriptImporter(
                 }
                 validated = true;
               }
-              if (outside(result.sessionCwd)) {
+              // The stored value is the cleaned one, so the raw cwd on that line must be inside too.
+              const reportsSessionCwd =
+                result.sessionCwd !== undefined || result.sessionFirstCwd !== undefined;
+              if (
+                outside(result.sessionCwd) ||
+                outside(result.sessionFirstCwd) ||
+                (reportsSessionCwd && outside(result.cwd))
+              ) {
                 rejected = "outside-root";
                 break;
               }
