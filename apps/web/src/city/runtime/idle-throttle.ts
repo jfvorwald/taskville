@@ -5,7 +5,8 @@ export const IDLE_FPS = 20;
 export const IDLE_WAKE_MS = 1000 / IDLE_FPS;
 
 const DEFAULT_IDLE_AFTER_MS = 1000;
-const DISPLAY_FRAME_MS = 1000 / 60;
+/** One frame of a 60 Hz display. */
+export const DISPLAY_FRAME_MS = 1000 / 60;
 /** How early a display tick may land on a frame deadline: timer noise, not a free frame. */
 const PACER_TOLERANCE_MS = 2;
 

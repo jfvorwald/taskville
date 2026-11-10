@@ -3,7 +3,13 @@ import { useEffect } from "react";
 import { cameraRig } from "../interaction/index.ts";
 import { movementLabels } from "../movement/index.ts";
 import { presentationEpoch } from "./epoch.ts";
-import { createFramePacer, createIdleThrottle, IDLE_FPS, IDLE_WAKE_MS } from "./idle-throttle.ts";
+import {
+  createFramePacer,
+  createIdleThrottle,
+  DISPLAY_FRAME_MS,
+  IDLE_FPS,
+  IDLE_WAKE_MS,
+} from "./idle-throttle.ts";
 import { motionSignals } from "./motion-signals.ts";
 import { watchVisibility } from "./visibility.ts";
 
@@ -56,6 +62,7 @@ export function RenderPacer() {
     const loop = (t: number) => {
       raf = 0;
       let idle = false;
+      let drew = false;
       try {
         const view = cameraRig.getSnapshot();
         const cameraChanged =
@@ -75,14 +82,20 @@ export function RenderPacer() {
         touched = false;
         const fps = throttle.update(signals);
         idle = fps === IDLE_FPS;
-        if (pacer.shouldRender(fps, t)) invalidate();
+        drew = pacer.shouldRender(fps, t);
+        if (drew) invalidate();
       } finally {
-        if (idle) {
+        if (idle && drew) {
+          // Aim the wake at the vsync where the next idle frame is due: count from the frame
+          // timestamp, and land half a display frame early so timer jitter cannot slip a vsync.
+          const delay = Math.max(0, t + IDLE_WAKE_MS - DISPLAY_FRAME_MS / 2 - now());
           timer = setTimeout(() => {
             timer = undefined;
             wake();
-          }, IDLE_WAKE_MS);
+          }, delay);
         } else {
+          // Active, or idle and the next frame is not yet due: poll on the next display frame
+          // rather than sleeping a whole idle interval and skipping a frame.
           // After invalidate(): R3F's demand loop then runs ahead of this callback on the next
           // display frame, so a requested draw lands every frame instead of every other one.
           raf = requestAnimationFrame(loop);
