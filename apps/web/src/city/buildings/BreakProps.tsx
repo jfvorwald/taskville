@@ -51,7 +51,7 @@ export function BreakProps({
     };
   }, [layout]);
   return (
-    <group name="break-props">
+    <group name="break-props" matrixAutoUpdate={false}>
       <Instances
         geometry={geometry.counter}
         material={materials.lambert.barCounter}

@@ -6,7 +6,8 @@ export interface InstanceTransform {
   y: number;
   z: number;
   yaw?: number;
-  scale?: number;
+  /** One number for a uniform scale, or per-axis sizes for a stretched unit box. */
+  scale?: number | { x: number; y: number; z: number };
 }
 
 const scratch = new Object3D();
@@ -30,10 +31,14 @@ export function Instances({
   const place = useCallback(
     (mesh: InstancedMesh | null) => {
       if (!mesh) return;
+      // Static: the mesh sits at the origin, so its matrix is composed once and never again.
+      mesh.updateMatrix();
       items.forEach((item, i) => {
         scratch.position.set(item.x, item.y, item.z);
         scratch.rotation.set(0, item.yaw ?? 0, 0);
-        scratch.scale.setScalar(item.scale ?? 1);
+        const scale = item.scale ?? 1;
+        if (typeof scale === "number") scratch.scale.setScalar(scale);
+        else scratch.scale.set(scale.x, scale.y, scale.z);
         scratch.updateMatrix();
         mesh.setMatrixAt(i, scratch.matrix);
       });
@@ -49,6 +54,7 @@ export function Instances({
       ref={place}
       args={[geometry, material, Math.max(items.length, 1)]}
       frustumCulled={false}
+      matrixAutoUpdate={false}
     />
   );
 }
