@@ -336,3 +336,63 @@ describe("archive checkpoints are isolated from the live checkpoints", () => {
     expect(db().prepare("SELECT count(*) AS n FROM checkpoints").get()).toEqual({ n: 0 });
   });
 });
+
+describe("archive checkpoint upkeep (roborev 7753)", () => {
+  it("does not write on a seek of a healthy cache, so another writer's lock never blocks it", async () => {
+    makeArchive(ARCHIVE);
+    await build();
+    // Every row is at the current reducer version: nothing to prune, so a seek must not write.
+    expect(rows().every((r) => r.reducer_version === REDUCER_VERSION)).toBe(true);
+
+    // The engine's busy timeout is 5,000 ms (storage.ts default). A seek that takes the write
+    // lock would wait most of it; a read-only seek returns at once.
+    const BUSY_TIMEOUT_MS = 5000;
+    const other = new DatabaseSync(dbPath());
+    other.exec("PRAGMA busy_timeout = 0");
+    other.exec("BEGIN IMMEDIATE");
+    try {
+      const started = performance.now();
+      const { status, body } = await seek(2500);
+      const elapsed = performance.now() - started;
+      expect(status).toBe(200);
+      expect(body.state).toEqual(fullReplay(2500));
+      expect(elapsed).toBeLessThan(BUSY_TIMEOUT_MS / 5);
+    } finally {
+      other.exec("ROLLBACK");
+      other.close();
+    }
+  });
+
+  it("repairs a bad checkpoint followed by a missing one in a single build", async () => {
+    makeArchive(ARCHIVE);
+    await build();
+    db()
+      .prepare(
+        "UPDATE archive_checkpoints SET state_hash = ? WHERE archive_id = ? AND position = ?",
+      )
+      .run("0".repeat(64), ARCHIVE, 1000);
+    db()
+      .prepare("DELETE FROM archive_checkpoints WHERE archive_id = ? AND position = ?")
+      .run(ARCHIVE, 2000);
+
+    // One seek, and the build it starts; no further seeks.
+    const { body } = await seek(LENGTH);
+    expect(body.state).toEqual(fullReplay(LENGTH));
+
+    // Both 1000 and 2000 exist again and hold exactly the state a full replay reaches there.
+    await vi.waitFor(
+      () => {
+        const byPosition = new Map(rows().map((r) => [r.position, r]));
+        for (const position of [1000, 2000]) {
+          const row = byPosition.get(position);
+          expect(row, `checkpoint ${position} exists`).toBeDefined();
+          expect(row?.reducer_version).toBe(REDUCER_VERSION);
+          expect(JSON.parse(row?.state_json ?? "null")).toEqual(fullReplay(position));
+          expect(row?.state_hash).toBe(stateHash(REDUCER_VERSION, fullReplay(position)));
+        }
+      },
+      { timeout: 2000 },
+    );
+    expect(positions()).toEqual(multiples(LENGTH));
+  });
+});
