@@ -170,6 +170,15 @@ describe("team/in-process", () => {
     ]);
   });
 
+  it("gives each team.message the tool_use_id of its SendMessage hook", () => {
+    for (const seq of [40, 57, 70]) {
+      const line = readFixture("team/in-process").find((l) => l.seq === seq);
+      const sent = at(mapped, seq).events.find((e) => e.type === "team.message");
+      expect(typeof line?.input.tool_use_id).toBe("string");
+      expect(sent?.payload).toMatchObject({ toolCallId: line?.input.tool_use_id });
+    }
+  });
+
   it("marks nothing heuristic, since in-process attribution uses recorded fields only", () => {
     expect(JSON.stringify(events)).not.toContain("heuristic");
   });

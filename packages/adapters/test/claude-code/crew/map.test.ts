@@ -102,6 +102,20 @@ describe("SendMessage", () => {
     expect(events.map((e) => e.type)).toEqual(["team.message"]);
   });
 
+  it("carries the SendMessage tool_use_id as toolCallId", () => {
+    const events = valid(
+      post({ to: "bo", message: "hi" }, { success: true }, { tool_use_id: "toolu_01SendA" }),
+    );
+    expect(events).toMatchObject([
+      { type: "team.message", payload: { toolCallId: "toolu_01SendA" } },
+    ]);
+  });
+
+  it("leaves toolCallId out when the hook has no tool_use_id", () => {
+    const [event] = valid(post({ to: "bo", message: "hi" }, { success: true }));
+    expect(event?.payload).not.toHaveProperty("toolCallId");
+  });
+
   it("ignores prototype keys in the response", () => {
     const hostile = JSON.parse(
       '{"__proto__": {"success": true, "routing": {"sender": "pip"}}}',
