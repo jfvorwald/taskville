@@ -61,6 +61,9 @@ function seed(path: string): StoredEnvelope[] {
   return log;
 }
 
+/** Agentless events retention reads; the feed subset includes them for every agent (roborev 7827). */
+const RETENTION = new Set(["team.started", "team.ended", "request.expired"]);
+
 /** Turns the database into one written before the agent index (V6): no index, no trigger, version 6 not recorded. */
 function downgradeToV2(path: string): void {
   const raw = new DatabaseSync(path);
@@ -153,15 +156,21 @@ describe("migration V6: the agent index over an existing log", () => {
         .filter(
           (e) =>
             e.agentId === "a" ||
+            RETENTION.has(e.type) ||
             (e.agentId !== undefined && e.sessionId !== undefined && aSessions.has(e.sessionId)),
         )
         .map((e) => e.ingestSequence);
       expect(sequences(storage.agentFeedEvents("p1", "a"))).toEqual(wantA);
       expect(sequences(storage.agentFeedEvents("p1", "a", wantA[1]))).toEqual(wantA.slice(2));
       // Agent c has one event and no session.
-      expect(sequences(storage.agentFeedEvents("p1", "c"))).toEqual([4]);
+      expect(sequences(storage.agentFeedEvents("p1", "c"))).toEqual(
+        full.filter((e) => e.agentId === "c" || RETENTION.has(e.type)).map((e) => e.ingestSequence),
+      );
       expect(sequences(storage.agentEventsOfType("p1", "a", "tool_call.started"))).toEqual([3]);
-      expect(sequences(storage.agentFeedEvents("p1", "nobody"))).toEqual([]);
+      // An unknown agent still gets the project's agentless retention events (5 and 8), nothing else.
+      expect(sequences(storage.agentFeedEvents("p1", "nobody"))).toEqual(
+        full.filter((e) => RETENTION.has(e.type)).map((e) => e.ingestSequence),
+      );
     } finally {
       storage.close();
     }
@@ -183,7 +192,9 @@ describe("migration V6: the agent index over an existing log", () => {
         tx.appendEvent({ ...build(10, { type: "team.ended" }) }, HASH_A);
       });
       expect(storage.holdsAgent("p1", "late")).toBe(true);
-      expect(sequences(storage.agentFeedEvents("p1", "late"))).toEqual([9]);
+      // Agentless team.ended events (5, 8 and the new 10) are read by retention, so the feed fold
+      // includes them for every agent.
+      expect(sequences(storage.agentFeedEvents("p1", "late"))).toEqual([5, 8, 9, 10]);
     } finally {
       storage.close();
     }
