@@ -147,7 +147,15 @@ export function createTranscriptMapper(options: {
     if (typeof parsedCwd === "string" && parsedCwd !== "") lineCwd = parsedCwd;
     const type = ownString(parsed, "type");
     if (type === undefined) return malformed();
-    if (KNOWN_SKIPPED_TYPES.has(type)) return { outcome: "skipped", events: [] };
+    if (KNOWN_SKIPPED_TYPES.has(type)) {
+      // A skipped line can still carry the first cwd of a known session that registered without one.
+      const skippedId = own(parsed, "sessionId");
+      const state = isHookId(skippedId, MAX_SESSION_ID) ? sessions.get(skippedId) : undefined;
+      const firstCwd = state?.awaitingCwd === true ? cleanText(parsedCwd, PATH_MAX) : undefined;
+      if (state === undefined || firstCwd === undefined) return { outcome: "skipped", events: [] };
+      sessions.set(skippedId as string, { agents: state.agents, awaitingCwd: false });
+      return { outcome: "skipped", events: [], sessionFirstCwd: firstCwd };
+    }
     if (type !== "user" && type !== "assistant") return malformed();
 
     const sessionId = own(parsed, "sessionId");
