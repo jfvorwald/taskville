@@ -35,14 +35,36 @@ export interface StateAtOptions {
 }
 
 /** Runs cache upkeep; a cache that cannot be written costs speed, never correctness. Busy and spent-budget errors are silent; any other is logged once, errcode only. */
-function attempt(fn: () => void, logger: UpkeepLogger | undefined): boolean {
+function attempt(
+  fn: () => void,
+  logger: UpkeepLogger | undefined,
+  once?: WeakMap<UpkeepLogger, Set<unknown>>,
+): boolean {
   try {
     fn();
     return true;
   } catch (error) {
-    if (!isBusy(error)) logger?.warn(upkeepFields(error), "checkpoint cache upkeep failed");
+    if (!isBusy(error) && !(logger && once && alreadyLogged(once, logger, error))) {
+      logger?.warn(upkeepFields(error), "checkpoint cache upkeep failed");
+    }
     return false;
   }
+}
+
+/** Seek-path deletes repeat per untrusted row; each errcode is logged once per logger. */
+const loggedDeleteFailures = new WeakMap<UpkeepLogger, Set<unknown>>();
+
+function alreadyLogged(
+  once: WeakMap<UpkeepLogger, Set<unknown>>,
+  logger: UpkeepLogger,
+  error: unknown,
+): boolean {
+  const code = upkeepFields(error).errcode;
+  const seen = once.get(logger) ?? new Set<unknown>();
+  once.set(logger, seen);
+  if (seen.has(code)) return true;
+  seen.add(code);
+  return false;
 }
 
 /**
@@ -89,7 +111,7 @@ function stateAt(
       base = sequence;
       break;
     }
-    attempt(() => cache.delete(projectId, sequence), logger);
+    attempt(() => cache.delete(projectId, sequence), logger, loggedDeleteFailures);
     stored.delete(sequence);
   }
 
