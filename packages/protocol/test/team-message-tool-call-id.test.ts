@@ -5,7 +5,8 @@ import { wireEvent } from "./fixtures.ts";
 // M5.28 (decision #556): team.message may carry the SendMessage tool-call id, so the Live feed
 // can focus the exact card. Additive: events without it still parse.
 
-const parse = (payload: Record<string, unknown>) => parseInputEvent(wireEvent("team.message", payload));
+const parse = (payload: Record<string, unknown>) =>
+  parseInputEvent(wireEvent("team.message", payload));
 
 describe("team.message toolCallId", () => {
   it("accepts an optional toolCallId string and keeps it", () => {
