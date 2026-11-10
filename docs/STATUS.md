@@ -2,7 +2,29 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 UTC. **Main:** 939c3a1. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 6: M8.21, M6.14, M6.16 merged, wave run clean; M5.14 with the debugger. Open: #542, #364, #368, #268. Staging deploy still held (#432).
+**Updated:** 2026-11-10 UTC. **Main:** 3a34c80. **State:** no gate open. Web performance wave W1 done: moving 60 fps (was 33), idle 20 fps; idle CPU above the 5% budget on a quiet machine, accepted as the stated target by decision #560 (defaults, standing instruction). Backlog cleared except owner-held items: #84 and #86 (staging deploy held, #432), #69 (live permission run held by decision #289). Experiment #231 closed with its comparison report.
+
+## Done in web performance wave W1 and backlog wave 7 (2026-11-10)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| W1.01 #268 profile | #552 | moving shortfall is the pacer to R3F handoff (draws every other frame); idle CPU split into present, scene content and 60 Hz polling; [report](tasks/W1.01.md) |
+| W1.03 #547 measure.ts idle window | #553 | settle before the idle window, frames from WebGL clear, `--dpr`; roborev 7867 PASS; [report](tasks/W1.03.md) |
+| W1.02 #546 pacer draws every display frame | #554 | `invalidate()` before the next rAF: moving 33.3 to 60.0 fps; roborev 7873 PASS; [report](tasks/W1.02.md) |
+| W1.05 #549 static city draw calls | #555 | 54 to 20 static draw calls (merged building meshes, instanced ground); roborev 7880 PASS; [report](tasks/W1.05.md) |
+| W1.04 #548 idle pacing without 60 Hz polling | #557 | idle sleeps on a timer aimed at the frame pacer's deadline (at most 22 callbacks/s, was 60); first version dropped idle to 18.9 fps, caught by a new test and fixed; roborev 7895 medium (75 Hz deadline) fixed, 7913 PASS; CI-only idle test failures root-caused by the debugger to test settle timing and irregular SwiftShader frames, tests fixed; [report](tasks/W1.04.md) |
+| W1.07 #551 fewer DOM commits while moving | #559 | bounds already held (1 commit per frame in the real OverlayRoot); guard tests only; roborev 7907 PASS (one low); [report](tasks/W1.07.md) |
+| W1.08 #561 instructions per process in measure.ts | #562 | retired instructions/s and effective GHz per Chromium process (decision #560 D2); roborev 7921 medium (process set changes) fixed, 7925 PASS; [report](tasks/W1.08.md) |
+| M5.28 #368 envelope click focuses the exact card | #558 | optional `toolCallId` on `team.message` (decision #556), adapter sets it, Live tab focuses that card; roborev 7898 medium (engine masking) fixed, 7910 PASS; [report](tasks/M5.28.md) |
+| M5.14 #281 feed agent index | #375 | subset fold with a full-fold fallback after the debugger round; roborev 7848 PASS; [report](tasks/M5.14.md) |
+| M6.15 #364 checkpoint log dedupe | #544 | roborev 7854 PASS; [report](tasks/M6.15.md) |
+| M6.18 #542 checkpoint lock timing test | #545 | bounded by busy timeouts granted, not wall time; roborev 7859 low fixed; [report](tasks/M6.18.md) |
+| W1.06 #550, #560 idle frame budget decisions | none | defaults accepted per the owner's standing instruction: keep 20 fps idle; compare builds by instructions/s, since idle CPU % swings about 3x with clock state for the same work |
+| #231 orchestration experiment | none | comparison A (M3 teammates) vs B (M4 to M6 subagents) in taskville-benchmarks/runs/comparison-A-vs-B.md; summary on the issue |
+
+**Idle CPU (#268, closed):** the debugger showed the W1.01 profile's 6.8 to 8.7% came from a loaded machine whose hot cores ran the same work about 3x cheaper; retired instructions per second are flat across builds (W1.05 cut about 6%). Quiet M1: about 14 to 18% of one core idle at 20 fps; clock-pinned (the profile's condition): 5.0 to 6.5%. Reaching under 5% on a quiet machine needs fewer idle frames (decision #560 alternative).
+
+Wave run on the W1.04 head d55f61d (main plus W1.04, merged unchanged as 3a34c80; push tier, each suite once in sequence): `pnpm check` 6,071 of 6,071; release 73 of 73; browser 1,170 of 1,170; app e2e all specs passed (breaks IDLE_FPS 20.3); web smoke 4; crews 5 (first attempt ran against a build without test hooks: a run-script error, passed on the hooks build); permission replay 6; telemetry replay 7; clean-machine install of staging release 419f15599c09d101 PASS. Flakes: the W1.02 idle control browser test read 23 of 22 once in a local all-city run and passed alone (first on record). Final headed measure on main: moving 59.9 fps, idle 20.1 fps, idle CPU 19.1% quiet, 256 M instructions/s (unchanged by W1.04). NOT RUN: cross-browser, headed GPU fps on a reserved machine, live Claude Code and Codex runs.
 
 ## Done in backlog wave 6 (2026-11-09)
 

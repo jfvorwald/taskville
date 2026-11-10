@@ -20,6 +20,30 @@ Entry format:
 
 ## Entries
 
+### L-242: CPU percent is not a stable measure of work on Apple Silicon
+- **Date:** 2026-11-10 · **Milestone:** backlog · **Ticket:** #268, #561 · **Recorded by:** lead
+- **What happened:** Idle CPU read 6.8 to 8.7% in the W1.01 profile and 14 to 18% a day later for the same work. The debugger showed retired instructions were flat; the profile ran on a loaded machine whose hot P-cores ran the work at about 3 GHz instead of about 2 GHz on E-cores.
+- **Lesson:** Compare builds by retired instructions per second; report CPU % with the machine state (quiet or loaded) it was taken in.
+- **Action:** measure.ts prints instructions/s and effective GHz (#562); decision #560.
+
+### L-241: Browser timing tests need bounds relative to frames delivered and to when the loop started
+- **Date:** 2026-11-10 · **Milestone:** backlog · **Ticket:** #548 · **Recorded by:** lead
+- **What happened:** Idle pacer tests passed on an M1 and failed in CI, where ~80 WebGL files share SwiftShader: R3F mounted the pacer up to 1.5 s after `render()`, and frames arrived with 67 to 850 ms gaps.
+- **Lesson:** Start settle waits from the loop's first render, and bound render counts by frames actually delivered, not wall-clock rates. Reproduce CI with the whole directory in parallel, not the file alone.
+- **Action:** RenderPacer browser tests (#557).
+
+### L-240: A timer that sleeps between frames must aim at the pacer's deadline
+- **Date:** 2026-11-10 · **Milestone:** backlog · **Ticket:** #548 · **Recorded by:** lead
+- **What happened:** The first idle sleep ran 50 ms from when the callback ran and dropped idle to 18.9 fps; aiming from the rAF time still missed frames on a 75 Hz display (roborev 7895).
+- **Lesson:** Wake at the frame pacer's carried deadline minus its tolerance and a small margin, and poll per frame when a wake lands early.
+- **Action:** `FramePacer.nextDeadline()` (#557).
+
+### L-239: Guard hooks route harness and golden work to the test-writer or the lead
+- **Date:** 2026-11-10 · **Milestone:** backlog · **Ticket:** #368, #561 · **Recorded by:** lead
+- **What happened:** The implementer guard blocked golden regeneration (`vitest -u`) and any edit to tests/e2e/web/measure.ts, a measurement script under tests/.
+- **Lesson:** Brief golden regeneration to the lead (review the diff) and anything under tests/ to the test-writer, even when it asserts nothing.
+- **Action:** none, awareness only.
+
 ### L-238: A shared contract file lets dependent tickets start in parallel
 - **Date:** 2026-11-08 · **Milestone:** M8 · **Ticket:** #463 · **Recorded by:** lead
 - **What happened:** The lead pushed a design note and an `Importer` interface (3f20bb8) before any code; the Git importer, the transcript importer and the archive foundation branched from that commit and merged without conflicts.
