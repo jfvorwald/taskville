@@ -3,6 +3,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { DEFAULT_PROJECT_ID, selectProject } from "../../../data/project.ts";
 import { SessionProvider } from "../../../pairing/session.tsx";
+import { getSettingsStore } from "../../settings/store.ts";
 import { ConnectedLiveTab } from "./ConnectedLiveTab.tsx";
 import { AGENT, build, PROJECT, paint, seedStore } from "./liveKit.tsx";
 
@@ -113,6 +114,82 @@ it("loads the open preview's bodies although two expanded groups fill the cache"
         .toBe(true);
     }
   } finally {
+    await view.unmount();
+  }
+});
+
+// Finding 1 of roborev job 7699: under privacy an open, unexpanded group requests no preview
+// bodies, so it must reserve no budget. Seven open groups must not shrink the expanded group's
+// 32-row page (it showed 29 paths, "and 11 more", instead of 32, "and 8 more").
+it("under privacy open previews reserve nothing, so an expanded group shows 32 paths", async () => {
+  const specs = [
+    ...[0, 1, 2, 3, 4, 5, 6].flatMap((g) =>
+      Array.from({ length: 6 }, (_, n) =>
+        g % 2 === 0
+          ? { ...grep(g * 10 + n), filePaths: [`/synthetic/budget/s${g}-${n}.ts`] }
+          : { ...read(`r${g}`, n), filePaths: [`/synthetic/budget/r${g}-${n}.ts`] },
+      ),
+    ),
+    ...Array.from({ length: 40 }, (_, n) => ({
+      ...read("big", n),
+      filePaths: [`/synthetic/budget/big-${n}.ts`],
+    })),
+  ];
+  const { calls, evidence } = build(specs);
+  selectProject(PROJECT);
+  getSettingsStore().set("privacyMode", false);
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), location.origin);
+    if (url.pathname.startsWith("/v1/evidence/")) {
+      const id = decodeURIComponent(url.pathname.slice("/v1/evidence/".length));
+      return Response.json(evidence[id]);
+    }
+    if (!url.pathname.endsWith("/feed")) throw new Error("Unexpected synthetic route");
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          calls.forEach((data, index) => {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `id: ${index + 1}\nevent: toolcall\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          });
+        },
+      }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  });
+  const view = await render(
+    <div data-testid="agent-panel-tab-slot" style={{ height: 8000, width: 400, overflowY: "auto" }}>
+      <SessionProvider value="synthetic-m1004-privacy-budget">
+        <ConnectedLiveTab agentId={AGENT} store={seedStore()} select={vi.fn()} />
+      </SessionProvider>
+    </div>,
+  );
+  try {
+    const groups = page.getByTestId("agent-panel-tab-slot").getByRole("article");
+    await expect.poll(() => groups.elements().length).toBe(8);
+    for (let n = 0; n < 8; n++) {
+      const toggle = groups.nth(n).getByRole("button", { name: /^details\b/i });
+      if (toggle.element().getAttribute("aria-expanded") === "false") await toggle.click();
+    }
+    await groups
+      .nth(7)
+      .getByRole("button", { name: /^Expand paths$/ })
+      .click();
+    await paint();
+    getSettingsStore().set("privacyMode", true);
+    await paint();
+    await expect
+      .poll(() => groups.nth(7).element().textContent ?? "", { timeout: 5000 })
+      .toContain("Code hidden by the privacy setting");
+    const text = groups.nth(7).element().textContent ?? "";
+    expect(text).toContain("/synthetic/budget/big-31.ts");
+    expect(text).not.toContain("/synthetic/budget/big-32.ts");
+    expect(text).toContain("and 8 more");
+  } finally {
+    getSettingsStore().set("privacyMode", false);
     await view.unmount();
   }
 });

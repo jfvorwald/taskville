@@ -20,7 +20,7 @@ const states = () =>
 
 describe("a pending permission request with no identifiable running call", () => {
   const SINCE = "2026-11-08T12:00:00Z";
-  function pending(tool: string) {
+  function pending(tool: string | undefined) {
     const store = seedStore();
     const state = store.getState().state;
     if (!state) throw new Error("seed state absent");
@@ -45,7 +45,7 @@ describe("a pending permission request with no identifiable running call", () =>
           agentId: AGENT,
           sessionId: "nm-session",
           kind: "permission",
-          toolName: tool,
+          ...(tool === undefined ? {} : { toolName: tool }),
           answerable: true,
           openedAt: SINCE,
           state: "open",
@@ -68,7 +68,7 @@ describe("a pending permission request with no identifiable running call", () =>
     });
     return store;
   }
-  async function showPending(tool: string, specs: readonly CallSpec[]) {
+  async function showPending(tool: string | undefined, specs: readonly CallSpec[]) {
     await render(constrained(specs, pending(tool), 1200));
     await paint();
     await expect.poll(() => entries().elements().length).toBeGreaterThan(0);
@@ -102,5 +102,17 @@ describe("a pending permission request with no identifiable running call", () =>
       { state: "needs-you", sentence: "Needs you: Bash" },
     ]);
     expect(all.filter((s) => s.state === "running")).toHaveLength(1);
+  });
+
+  // Finding 2 of roborev job 7699: a request without a tool name (for example a teammate
+  // permission notification) still needs the user. Neutral label chosen: "Needs you: permission".
+  it("adds a neutral last Needs you entry when the request names no tool", async () => {
+    await showPending(undefined, [done("nm-d"), done("nm-e")]);
+    const all = states();
+    expect(all.filter((s) => s.state === "needs-you")).toEqual([
+      { state: "needs-you", sentence: "Needs you: permission" },
+    ]);
+    expect(all.at(-1)?.sentence).toBe("Needs you: permission");
+    expect(all.filter((s) => s.state === "running")).toHaveLength(0);
   });
 });
