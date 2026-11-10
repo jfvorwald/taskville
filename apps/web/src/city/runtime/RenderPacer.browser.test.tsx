@@ -1,6 +1,7 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
+import { cameraRig } from "../interaction/index.ts";
 import { movementLabels } from "../movement/index.ts";
 import { RenderPacer } from "./RenderPacer.tsx";
 
@@ -61,7 +62,9 @@ async function mountCity() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   movementLabels.set([]);
+  cameraRig.reset();
 });
 
 describe("RenderPacer frame rate", () => {
@@ -77,5 +80,109 @@ describe("RenderPacer frame rate", () => {
     await mountCity();
     await sleep(IDLE_SETTLE_MS + 500);
     expect(await rendersOverWindow()).toBeLessThanOrEqual(IDLE_MAX_RENDERS);
+  });
+});
+
+// W1.04 (#548): while nothing moves the pacer still woke up on every display frame (about 60
+// callbacks a second) to decide not to draw. Idle should wake about as often as it draws (20 fps).
+//
+// Callbacks are counted by spying on `window.requestAnimationFrame` and wrapping each callback, so
+// the count is callbacks that actually ran. Only the pacer's own are counted: R3F schedules a frame
+// of its own for every draw it is asked for (about 20 a second idle, measured), which no pacer
+// can avoid, so the spy keeps callbacks requested directly from RenderPacer.tsx or
+// idle-throttle.ts (the Owns files; R3F's are requested from inside invalidate()). Today that is about 60 a second. The window is timed with
+// setTimeout, never a test rAF, so the test adds no callbacks of its own.
+
+const IDLE_CALLBACKS_PER_SECOND_MAX = 22;
+const COUNT_WINDOW_MS = 1000;
+
+/** Animation-frame callbacks that ran during `ms` of wall time. */
+async function callbacksOver(ms: number): Promise<number> {
+  const original = window.requestAnimationFrame.bind(window);
+  let ran = 0;
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+    // The first stack frame that is neither this spy nor the spy library is whoever asked.
+    const caller =
+      (new Error().stack ?? "")
+        .split("\n")
+        .slice(1)
+        .find((line) => !/RenderPacer\.browser\.test|plugins\./.test(line)) ?? "";
+    const fromPacer = /RenderPacer\.tsx|idle-throttle\.ts/.test(caller);
+    return original((t) => {
+      if (fromPacer) ran += 1;
+      cb(t);
+    });
+  });
+  // A callback already scheduled before the spy runs uncounted and schedules the next one through
+  // the spy, so the chain is counted from its second callback on.
+  await sleep(ms);
+  vi.restoreAllMocks();
+  return ran;
+}
+
+describe("RenderPacer idle wakeups", () => {
+  it("runs at most 22 animation-frame callbacks per second after 1.5 s with nothing moving", async () => {
+    movementLabels.set([]);
+    await mountCity();
+    await sleep(IDLE_SETTLE_MS + 500);
+    const ran = await callbacksOver(COUNT_WINDOW_MS);
+    expect(ran).toBeLessThanOrEqual(IDLE_CALLBACKS_PER_SECOND_MAX);
+  });
+});
+
+// Responsiveness while idle: whatever the pacer does to stop polling, a change must still draw
+// within 2 animation frames. Each trial lands the change at a different phase of the 20 fps idle
+// cycle, because a pacer that sleeps between draws is latest for a change just after one.
+
+const RESPONSE_FRAMES_MAX = 2;
+const TRIAL_OFFSETS_MS = [0, 11, 23, 37, 52];
+
+/** Animation frames that pass after `change()` before a render happens (0 when none within 10). */
+async function framesUntilRender(change: () => void): Promise<number> {
+  await nextFrame();
+  const before = renders;
+  change();
+  for (let frames = 1; frames <= 10; frames++) {
+    await nextFrame();
+    if (renders > before) return frames;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+async function settleIdle() {
+  movementLabels.set([]);
+  await mountCity();
+  await sleep(IDLE_SETTLE_MS + 500);
+}
+
+describe("RenderPacer responsiveness while idle", () => {
+  it("renders within 2 animation frames of a pointermove", async () => {
+    await settleIdle();
+    for (const offset of TRIAL_OFFSETS_MS) {
+      await sleep(IDLE_SETTLE_MS + offset);
+      const frames = await framesUntilRender(() =>
+        window.dispatchEvent(new PointerEvent("pointermove", { clientX: 10, clientY: 10 })),
+      );
+      expect(frames, `offset ${offset} ms`).toBeLessThanOrEqual(RESPONSE_FRAMES_MAX);
+    }
+  });
+
+  it("renders within 2 animation frames of an agent starting to walk", async () => {
+    await settleIdle();
+    for (const offset of TRIAL_OFFSETS_MS) {
+      movementLabels.set([]);
+      await sleep(IDLE_SETTLE_MS + offset);
+      const frames = await framesUntilRender(() => movementLabels.set(WALKING));
+      expect(frames, `offset ${offset} ms`).toBeLessThanOrEqual(RESPONSE_FRAMES_MAX);
+    }
+  });
+
+  it("renders within 2 animation frames of a cameraRig change", async () => {
+    await settleIdle();
+    for (const offset of TRIAL_OFFSETS_MS) {
+      await sleep(IDLE_SETTLE_MS + offset);
+      const frames = await framesUntilRender(() => cameraRig.orbitBy(15));
+      expect(frames, `offset ${offset} ms`).toBeLessThanOrEqual(RESPONSE_FRAMES_MAX);
+    }
   });
 });
