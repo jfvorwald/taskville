@@ -6,6 +6,7 @@ import { projectStateHash, replay } from "@taskville/domain/reducer";
 import type { InputEventWire } from "@taskville/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ImportJobs, registerImportRoutes } from "../../src/importers/index.ts";
+import { ArchiveStates } from "../../src/timelines/archive-state.ts";
 import { bearer, CLI_TOKEN } from "../http/helpers.ts";
 import { addProject, BASE, bootInProcess, type Engine } from "../stream/helpers.ts";
 import { commitEvent, fakeImporter, type ImportsEnv, makeJobs, PROJECT } from "./helpers.ts";
@@ -34,6 +35,8 @@ vi.setConfig({ testTimeout: 30_000 });
 
 const INTERVAL = 1000;
 const LENGTH = 3500;
+// Long enough that the build is still going when a tiny newer import has finished and pruned it.
+const PRUNE_LENGTH = 20_500;
 const WAIT = { timeout: 5000, interval: 5 };
 const T_START = Date.parse("2026-11-01T10:00:00Z");
 
@@ -147,16 +150,47 @@ describe("archive checkpoints after an import", () => {
   it("shares the running build with a seek: each position is written once and rows are correct", async () => {
     const j = setup();
     const list = events("c");
-    const put = vi.spyOn(engine.storage.archives(), "putCheckpoint");
+    const archives = engine.storage.archives();
+    const realPut = archives.putCheckpoint.bind(archives);
+    let seek: Promise<Response> | undefined;
+    const put = vi.spyOn(archives, "putCheckpoint").mockImplementation((id, row, budget) => {
+      const result = realPut(id, row, budget);
+      // Deterministic interleaving: on the build's first write, issue the seek. The build yields
+      // between chunks, so the request runs while it is still going.
+      if (seek === undefined && id === importedId) {
+        seek = Promise.resolve(
+          app.request(`${BASE}/v1/timelines/archive:${id}/state?at=${LENGTH}`, {
+            headers: bearer(CLI_TOKEN),
+          }),
+        );
+      }
+      return result;
+    });
+    // Rows that exist at the moment the seek reaches the archive state code.
+    const rowsAtSeek: number[] = [];
+    const realStateAt = ArchiveStates.prototype.stateAt;
+    vi.spyOn(ArchiveStates.prototype, "stateAt").mockImplementation(function (
+      this: ArchiveStates,
+      id,
+      projectId,
+      head,
+      upTo,
+    ) {
+      rowsAtSeek.push(positions(id).length);
+      return realStateAt.call(this, id, projectId, head, upTo);
+    });
+    let importedId = "";
     const { archiveId, importId } = start(j, list);
+    importedId = archiveId;
     await j.settled(importId);
 
-    // The post-import build has started (first row written) with no seek issued yet.
-    await vi.waitFor(() => expect(positions(archiveId).length).toBeGreaterThan(0), WAIT);
+    await vi.waitFor(() => expect(seek).toBeDefined(), WAIT);
+    const res = await (seek as Promise<Response>);
+    // The race happened: the seek ran with the build under way (some rows) but not finished.
+    expect(rowsAtSeek).toHaveLength(1);
+    expect(rowsAtSeek[0]).toBeGreaterThan(0);
+    expect(rowsAtSeek[0]).toBeLessThan(multiples(LENGTH).length);
 
-    const res = await app.request(`${BASE}/v1/timelines/archive:${archiveId}/state?at=${LENGTH}`, {
-      headers: bearer(CLI_TOKEN),
-    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { stateHash: string };
     const stored = engine.storage.archives().events(archiveId, 1, LENGTH);
@@ -176,20 +210,41 @@ describe("archive checkpoints after an import", () => {
 
   it("survives its archive being pruned mid-build and leaves no rows for it", async () => {
     const j = setup(1);
-    const first = start(j, events("d1"));
-    await j.settled(first.importId);
-    // The first archive's build is under way (a row exists), with no seek.
-    await vi.waitFor(() => expect(positions(first.archiveId).length).toBeGreaterThan(0), WAIT);
+    const archives = engine.storage.archives();
+    const realPut = archives.putCheckpoint.bind(archives);
+    const realDelete = archives.delete.bind(archives);
+    let firstId = "";
+    let second: ReturnType<typeof start> | undefined;
+    vi.spyOn(archives, "putCheckpoint").mockImplementation((id, row, budget) => {
+      const result = realPut(id, row, budget);
+      // Deterministic interleaving: on the first archive's first write, start the newer import
+      // that prunes it. The build yields between chunks, so the prune lands mid-build.
+      if (second === undefined && id === firstId) second = start(j, events("d2", 10));
+      return result;
+    });
+    // Rows the first archive has at the moment it is pruned.
+    const rowsAtPrune: number[] = [];
+    vi.spyOn(archives, "delete").mockImplementation((id) => {
+      if (id === firstId) rowsAtPrune.push(positions(id).length);
+      realDelete(id);
+    });
 
-    // A newer import of the same kind and root prunes it (keepArchives is 1).
-    const second = start(j, events("d2", 2200));
-    const finished = await j.settled(second.importId);
+    const first = start(j, events("d1", PRUNE_LENGTH));
+    firstId = first.archiveId;
+    await j.settled(first.importId);
+    await vi.waitFor(() => expect(second).toBeDefined(), WAIT);
+    const newer = second as ReturnType<typeof start>;
+    const finished = await j.settled(newer.importId);
     expect(finished.status).toBe("done");
-    expect(engine.storage.archives().get(first.archiveId)).toBeUndefined();
+    expect(archives.get(first.archiveId)).toBeUndefined();
+
+    // The race happened: the prune ran with the first build under way but not finished.
+    expect(rowsAtPrune).toHaveLength(1);
+    expect(rowsAtPrune[0]).toBeGreaterThan(0);
+    expect(rowsAtPrune[0]).toBeLessThan(multiples(PRUNE_LENGTH).length);
 
     // Give the old build time to hit the missing archive; then nothing is left for it.
-    await vi.waitFor(() => expect(positions(second.archiveId)).toEqual(multiples(2200)), WAIT);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     expect(positions(first.archiveId)).toEqual([]);
     expect(warn).not.toHaveBeenCalledWith(expect.anything(), "archive checkpoint build failed");
   });
