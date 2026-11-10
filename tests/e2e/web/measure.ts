@@ -322,9 +322,21 @@ try {
     if (!a || !b) return "  instructions: unavailable";
     const seconds = (b.at - a.at) / 1000;
     const byType = new Map<string, { instructions: number; cycles: number; ns: number }>();
+    const missing = new Set<string>();
+    let started = 0;
+    let exited = 0;
+    for (const [pid, start] of a.procs) {
+      if (b.procs.has(pid)) continue;
+      exited++; // gone by the end snapshot: its final work is not readable
+      missing.add(start.type);
+    }
     for (const [pid, end] of b.procs) {
       const start = a.procs.get(pid);
-      if (!start) continue; // started inside the window: no baseline
+      if (!start) {
+        started++; // started inside the window: no baseline
+        missing.add(end.type);
+        continue;
+      }
       const sum = byType.get(end.type) ?? { instructions: 0, cycles: 0, ns: 0 };
       sum.instructions += end.instructions - start.instructions;
       sum.cycles += end.cycles - start.cycles;
@@ -340,9 +352,13 @@ try {
     }
     const line = (type: string, s: typeof total) =>
       `  instructions ${type}: ${s.instructions} ${f(s.instructions / seconds / 1e6, 0)} M/s, effective ${s.ns > 0 ? f(s.cycles / s.ns, 2) : "n/a"} GHz`;
+    const label =
+      started + exited === 0
+        ? "total"
+        : `total (incomplete: ${started} started, ${exited} exited; missing ${[...missing].join(", ")})`;
     return [...byType]
       .map(([type, s]) => line(type, s))
-      .concat(line("total", total))
+      .concat(line(label, total))
       .join("\n");
   };
   const rates = (r: Fps) =>
