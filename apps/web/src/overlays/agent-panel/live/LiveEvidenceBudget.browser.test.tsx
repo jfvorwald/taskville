@@ -301,3 +301,116 @@ it("never silently drops preview names when 14 open previews exceed the evidence
     await view.unmount();
   }
 });
+
+// M10.05 (#523) roborev 7738: previews now fetch only the input part (5 bodies each), so 14
+// previews (70 bodies) never reach the 128-body cap. 30 open five-call previews demand 150
+// distinct input bodies, so the cap path (grant stops at 128, "details not loaded" marker) runs.
+it("marks previews past the 128-body cap, then loads them once earlier previews collapse", async () => {
+  const GROUPS = 30;
+  const namesOf = (g: number) =>
+    Array.from({ length: 5 }, (_, n) =>
+      g % 2 === 0 ? `/synthetic/budget/q${g}-${n}.ts` : `needle-q${g}-${n}`,
+    );
+  const specs = Array.from({ length: GROUPS }, (_, g) =>
+    Array.from({ length: 5 }, (_, n) =>
+      g % 2 === 0
+        ? read(`q${g}`, n)
+        : {
+            id: `budget-q${g}-${n}`,
+            tool: "Grep",
+            input: { pattern: `needle-q${g}-${n}` },
+            output: { filenames: [`/synthetic/budget/hit-q${g}-${n}.ts`] },
+          },
+    ),
+  ).flat();
+  const { calls, evidence } = build(specs);
+  selectProject(PROJECT);
+  const requested = new Set<string>();
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), location.origin);
+    if (url.pathname.startsWith("/v1/evidence/")) {
+      const id = decodeURIComponent(url.pathname.slice("/v1/evidence/".length));
+      requested.add(id);
+      await gate;
+      return Response.json(evidence[id]);
+    }
+    if (!url.pathname.endsWith("/feed")) throw new Error("Unexpected synthetic route");
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          calls.forEach((data, index) => {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `id: ${index + 1}\nevent: toolcall\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          });
+        },
+      }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  });
+  // The tab slot is far taller than 30 open previews, so the virtualized list mounts them all;
+  // the poll below on 30 mounted articles proves it.
+  const view = await render(
+    <div
+      data-testid="agent-panel-tab-slot"
+      style={{ height: 40000, width: 400, overflowY: "auto" }}
+    >
+      <SessionProvider value="synthetic-m1005-cap-previews">
+        <ConnectedLiveTab agentId={AGENT} store={seedStore()} select={vi.fn()} />
+      </SessionProvider>
+    </div>,
+  );
+  try {
+    const groups = page.getByTestId("agent-panel-tab-slot").getByRole("article");
+    await expect.poll(() => groups.elements().length).toBe(GROUPS);
+    for (let g = 0; g < GROUPS; g++) {
+      const toggle = groups.nth(g).getByRole("button", { name: /^details\b/i });
+      if (toggle.element().getAttribute("aria-expanded") === "false") await toggle.click();
+    }
+    // Every preview is open and mounted: 30 x 5 = 150 input bodies are wanted, over the cap.
+    expect(groups.elements().length).toBe(GROUPS);
+    release();
+    const state = (g: number, closed: ReadonlySet<number>) => {
+      if (closed.has(g)) return "closed";
+      const text = groups.nth(g).element().textContent ?? "";
+      if (namesOf(g).every((name) => text.includes(name))) return "complete";
+      return /not loaded/i.test(text) ? "marked" : "silent";
+    };
+    const closed = new Set<number>();
+    const states = () => Array.from({ length: GROUPS }, (_, g) => state(g, closed));
+    await paint();
+    await expect
+      .poll(() => states().filter((s) => s === "silent").length, { timeout: 8000 })
+      .toBe(0);
+    await paint();
+    expect(states().filter((s) => s === "silent")).toEqual([]);
+    // The cap was reached: some preview is marked, and no more than 128 distinct bodies were asked for.
+    expect(states().filter((s) => s === "marked").length).toBeGreaterThan(0);
+    expect(requested.size).toBeLessThanOrEqual(128);
+    expect(requested.size).toBeGreaterThan(120);
+    // Recovery: collapse earlier loaded previews until demand (open x 5) is under 128.
+    const loaded = states().flatMap((s, g) => (s === "complete" ? [g] : []));
+    const toClose = Math.ceil((GROUPS * 5 - 127) / 5);
+    for (const g of loaded.slice(0, toClose)) {
+      await groups
+        .nth(g)
+        .getByRole("button", { name: /^details\b/i })
+        .click();
+      closed.add(g);
+    }
+    await paint();
+    await expect
+      .poll(() => states().filter((s) => s !== "complete" && s !== "closed"), { timeout: 8000 })
+      .toEqual([]);
+    for (let g = 0; g < GROUPS; g++)
+      if (!closed.has(g)) expect(groups.nth(g).element().textContent).not.toMatch(/not loaded/i);
+  } finally {
+    await view.unmount();
+  }
+});
