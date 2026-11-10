@@ -21,6 +21,17 @@ const BATCH_LINES = 500;
 const BATCH_EVENTS = 1000;
 /** Default bytes parsed before a batch is yielded, so a few huge lines do not hold the event loop. */
 const DEFAULT_YIELD_BYTES = 4 * 1024 * 1024;
+/**
+ * Before the first session's cwd is validated nothing is yielded, so the only limit is this many
+ * lines or bytes, whichever comes first. It bounds what is buffered for an unvalidated file.
+ */
+const ALLOWANCE_LINES = 5_000;
+const ALLOWANCE_BYTES = 16 * 1024 * 1024;
+/** Events buffered before validation; a few lines can map to many events. */
+const ALLOWANCE_EVENTS = 10_000;
+
+/** Why a file was skipped, reported through `onSkip`. */
+export type TranscriptSkipReason = "outside-root" | "no-cwd-in-allowance";
 
 /** Default cap on one line; a longer line is counted malformed and never buffered whole. */
 const DEFAULT_MAX_LINE_BYTES = 8 * 1024 * 1024;
@@ -122,23 +133,9 @@ async function* readLines(
 
 /** True when `cwd` is the root or a directory inside it (separator-aware, no prefix matching). */
 function isInside(root: string, cwd: string): boolean {
+  if (!isAbsolute(cwd)) return false;
   const rel = relative(root, cwd);
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-}
-
-/** The `cwd` a line records, or undefined if it has none (or is not JSON; the mapper counts it). */
-function lineCwd(line: string): string | undefined {
-  if (!line.includes('"cwd"')) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(line);
-    const cwd =
-      typeof parsed === "object" && parsed !== null && Object.hasOwn(parsed, "cwd")
-        ? (parsed as { cwd: unknown }).cwd
-        : undefined;
-    return typeof cwd === "string" && cwd !== "" ? cwd : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** A stable per-file id for `sourceEventId`: the basename, shortened with a hash if long. */
@@ -150,7 +147,12 @@ function fileIdOf(file: string): string {
 }
 
 export function createTranscriptImporter(
-  options: { maxLineBytes?: number; yieldBytes?: number } = {},
+  options: {
+    maxLineBytes?: number;
+    yieldBytes?: number;
+    /** Called once per skipped file whose skip has a reason (a cwd outside the root, or none). */
+    onSkip?: (skip: { reason: TranscriptSkipReason }) => void;
+  } = {},
 ): Importer {
   const maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
   const yieldBytes = options.yieldBytes ?? DEFAULT_YIELD_BYTES;
@@ -167,18 +169,21 @@ export function createTranscriptImporter(
         if (context.signal.aborted) break;
         // Slugs collide (`/w/my-app` and `/w/my/app`), so a file counts only if it started in
         // this root. One descriptor serves the whole import and the check runs on the lines
-        // actually imported: the first line with a cwd must be inside the root, and nothing is
-        // yielded before it, so a file rewritten in place cannot slip other content in. Later
-        // lines are not re-checked (scope is per file, by its first cwd). A file with no cwd, or
-        // a link or non-file, is skipped.
+        // actually imported: the first cwd any line reports, and every session's cwd as the mapper reports it for the session.started
+        // it emits, must be inside the root, and nothing is yielded before the first is checked, so
+        // a file rewritten in place cannot slip other content in. A file with an outside cwd
+        // is skipped (or, if part was already yielded, read no further); so is a file with no cwd
+        // in the allowance, or a link or non-file.
         const handle = await openRegular(file);
         if (handle === undefined) {
           counts.skipped += 1;
           continue;
         }
         const before = { ...counts };
+        // Counts as of the last yield; a mid-file rejection returns to them.
+        let restore = before;
         let validated = false;
-        let rejected = false;
+        let rejected: TranscriptSkipReason | undefined;
         const mapper = createTranscriptMapper({
           projectId: context.projectId,
           fileId: fileIdOf(file),
@@ -205,31 +210,44 @@ export function createTranscriptImporter(
               bytes += maxLineBytes;
             } else {
               bytes += Buffer.byteLength(raw);
-              if (!validated) {
-                const cwd = lineCwd(raw);
-                if (cwd !== undefined) {
-                  if (!isInside(context.root, cwd)) {
-                    rejected = true;
-                    break;
-                  }
-                  validated = true;
-                }
-              }
               const result = mapper.mapLine(raw, lineNumber);
+              // The first cwd any line reports validates the file; every session's own cwd is
+              // checked too. A session's cwd may change later, so other lines are not re-checked.
+              const outside = (cwd: string | undefined) =>
+                cwd !== undefined && !isInside(context.root, cwd);
+              if (!validated && result.cwd !== undefined) {
+                if (outside(result.cwd)) {
+                  rejected = "outside-root";
+                  break;
+                }
+                validated = true;
+              }
+              if (outside(result.sessionCwd)) {
+                rejected = "outside-root";
+                break;
+              }
               if (result.outcome === "skipped") counts.skipped += 1;
               if (result.outcome === "malformed") counts.malformed += 1;
               take(result);
             }
             lines += 1;
+            // A real transcript shows its cwd within the first few lines, so a file that shows none
+            // within the allowance is skipped. That bounds the buffering before validation.
+            if (!validated) {
+              if (
+                lines >= ALLOWANCE_LINES ||
+                bytes >= ALLOWANCE_BYTES ||
+                batch.events.length >= ALLOWANCE_EVENTS
+              ) {
+                rejected = "no-cwd-in-allowance";
+                break;
+              }
+              continue;
+            }
             const full =
               lines >= BATCH_LINES || bytes >= yieldBytes || batch.events.length >= BATCH_EVENTS;
-            // A real transcript shows its cwd within the first few lines, so a file that fills a
-            // batch without one is skipped. That bounds the buffering before validation at one batch.
-            if (!validated && full) {
-              rejected = true;
-              break;
-            }
             if (full) {
+              restore = { ...counts };
               report();
               yield batch;
               batch = { events: [] };
@@ -245,11 +263,16 @@ export function createTranscriptImporter(
           await handle.close();
         }
         // A cancelled file is partial; stop here.
-        if (aborted || context.signal.aborted) break;
-        if (rejected || !validated) {
-          // Nothing of this file was yielded; forget its counts and skip it.
-          Object.assign(counts, before);
+        if (aborted || context.signal.aborted) {
+          // A file never validated yielded nothing; do not count its lines.
+          if (!validated) Object.assign(counts, before);
+          break;
+        }
+        if (rejected !== undefined || !validated) {
+          // Forget the counts of what was not yielded (all of an unvalidated file) and skip it.
+          Object.assign(counts, restore);
           counts.skipped += 1;
+          options.onSkip?.({ reason: rejected ?? "no-cwd-in-allowance" });
           continue;
         }
         take(mapper.finish());
