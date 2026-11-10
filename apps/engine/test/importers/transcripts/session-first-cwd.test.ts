@@ -139,6 +139,56 @@ describe("a skipped-type line carrying an awaiting session's first cwd (roborev 
   }
 });
 
+// roborev 7824. cleanText cuts a path to 4,096 code points, so a long path can have a cleaned
+// prefix inside the root while the raw path resolves outside. The raw cwd must be checked too.
+// The sessionCwd case is covered for a registering line in an already validated file (as the
+// first line of the file, the raw cwd already validates the file).
+const longEscape = (): string => `${root}/${"a/".repeat(2100)}${"../".repeat(2100 + 3)}../outside`;
+
+describe("a long cwd whose truncated value is inside the root but whose raw path is outside (roborev 7824)", () => {
+  it("imports nothing of a cwd-less session from the line whose raw first cwd is outside", async () => {
+    const long = longEscape();
+    expect(Array.from(long).length).toBeGreaterThan(4096);
+    put(
+      jsonl([
+        userPrompt("a", { ts: T(0), cwd: root, sessionId: SESSION }),
+        userPrompt("b", { ts: T(1), cwd: null, sessionId: OTHER }),
+        userPrompt("c", { ts: T(2), cwd: long, sessionId: OTHER }),
+        userPrompt("d", { ts: T(3), cwd: null, sessionId: OTHER }),
+        userPrompt("e", { ts: T(4), cwd: root, sessionId: OTHER }),
+      ]),
+    );
+    const batches = await runImport();
+    expect(sessionEventsFrom(batches, OTHER, 3)).toEqual([]);
+  });
+
+  it("imports nothing from a registering line whose raw session cwd is outside, in a validated file", async () => {
+    const long = longEscape();
+    put(
+      jsonl([
+        userPrompt("a", { ts: T(0), cwd: root, sessionId: SESSION }),
+        userPrompt("b", { ts: T(1), cwd: long, sessionId: OTHER }),
+        userPrompt("c", { ts: T(2), cwd: root, sessionId: OTHER }),
+      ]),
+    );
+    const batches = await runImport();
+    expect(sessionEventsFrom(batches, OTHER, 2)).toEqual([]);
+  });
+
+  it("still imports a long first cwd whose raw path stays inside the root", async () => {
+    const long = `${root}/${"a/".repeat(2100)}${"../".repeat(2100)}sub`;
+    put(
+      jsonl([
+        userPrompt("a", { ts: T(0), cwd: root, sessionId: SESSION }),
+        userPrompt("b", { ts: T(1), cwd: null, sessionId: OTHER }),
+        userPrompt("c", { ts: T(2), cwd: long, sessionId: OTHER }),
+      ]),
+    );
+    const batches = await runImport();
+    expect(sessionEventsFrom(batches, OTHER, 3).length).toBeGreaterThan(0);
+  });
+});
+
 describe("controls", () => {
   it("imports a session registered without a cwd whose first later cwd is inside the root", async () => {
     put(
