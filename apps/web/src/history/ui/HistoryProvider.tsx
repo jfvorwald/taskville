@@ -383,10 +383,10 @@ export function HistoryProvider({
     }
     /**
      * Whether a run is still unresolved: a finish with no recorded registration (a heuristic one
-     * never forms a run), or a run that started before the window with no finish seen yet.
+     * never forms a run), or a run with no finish seen yet. A run registered inside the window may
+     * have finished earlier (the finish was recorded before its registration), so it counts too.
      */
     function unresolved(timeline: TimelineChoice) {
-      const start = published.moments[0]?.sequence ?? 1;
       const registered = new Set<string>();
       const finished = new Set<string>();
       for (const list of [crewHistory, published.recorded])
@@ -397,16 +397,22 @@ export function HistoryProvider({
           else if (event.type === "agent.finished") finished.add(event.agentId);
         }
       for (const id of finished) if (!registered.has(id)) return true;
-      return crewNow(timeline).some(
-        (run) => run.startSequence < start && run.finishedSequence === undefined,
-      );
+      return crewNow(timeline).some((run) => run.finishedSequence === undefined);
     }
     const agentList = () => [...agents.values()].map(({ id, name }) => ({ id, name }));
     /** Reads the events before the window, oldest first, until every finish has its registration. */
     async function scanCrew() {
       const timeline = loaded;
       const requestGeneration = generation;
-      if (!timeline || crewScanning || !unresolved(timeline)) return;
+      // Everything before the window already read is not read again, so a run that is really
+      // still going costs one scan per window start, not one per publish.
+      if (
+        !timeline ||
+        crewScanning ||
+        crewScanned >= (published.moments[0]?.sequence ?? 1) - 1 ||
+        !unresolved(timeline)
+      )
+        return;
       crewScanning = true;
       try {
         while (
