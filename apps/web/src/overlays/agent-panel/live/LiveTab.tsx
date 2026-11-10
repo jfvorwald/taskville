@@ -1138,7 +1138,7 @@ function LiveFeed({
       running.length === 1
         ? grouped.find((item) => item.kind === "call" && item.calls[0] === running[0])
         : undefined;
-    return { key: single?.key, tool: running.length > 0 && !single ? requested : undefined };
+    return { key: single?.key, tool: single ? undefined : requested };
   }, [calls, grouped, requested]);
   const items = useMemo<Item[]>(
     () =>
@@ -1235,13 +1235,21 @@ function LiveFeed({
   const expandedCount = virtualItems.filter(
     ({ index }) => items[index].kind !== "call" && expanded.has(items[index].key),
   ).length;
+  // Open previews that are not expanded also hold their first members' bodies.
+  const previewCount = virtualItems.reduce((sum, { index }) => {
+    const item = items[index];
+    return item.kind === "call" || item.kind === "request" || expanded.has(item.key)
+      ? sum
+      : sum + (opened.get(item.key) ? Math.min(PREVIEW, item.calls.length) : 0);
+  }, 0);
   // Reserve both body parts per call and share the remaining budget across presented groups.
   const detailPageSize = Math.max(
     1,
     Math.min(
       32,
       Math.floor(
-        (Math.floor(EVIDENCE_BODY_CAPACITY / 2) - singleCount) / Math.max(1, expandedCount),
+        (Math.floor(EVIDENCE_BODY_CAPACITY / 2) - singleCount - previewCount) /
+          Math.max(1, expandedCount),
       ),
     ),
   );
