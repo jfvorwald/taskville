@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { projectStateHash, replay } from "@taskville/domain/reducer";
 import type { InputEventWire } from "@taskville/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,17 +154,18 @@ describe("archive checkpoints after an import", () => {
     // The post-import build has started (first row written) with no seek issued yet.
     await vi.waitFor(() => expect(positions(archiveId).length).toBeGreaterThan(0), WAIT);
 
-    const res = await app.request(
-      `${BASE}/v1/timelines/archive:${archiveId}/state?at=${LENGTH}`,
-      { headers: bearer(CLI_TOKEN) },
-    );
+    const res = await app.request(`${BASE}/v1/timelines/archive:${archiveId}/state?at=${LENGTH}`, {
+      headers: bearer(CLI_TOKEN),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { stateHash: string };
     const stored = engine.storage.archives().events(archiveId, 1, LENGTH);
     expect(body.stateHash).toBe(projectStateHash(replay(PROJECT, stored)));
 
     await vi.waitFor(() => expect(positions(archiveId)).toEqual(multiples(LENGTH)), WAIT);
-    const written = put.mock.calls.filter(([id]) => id === archiveId).map(([, row]) => row.sequence);
+    const written = put.mock.calls
+      .filter(([id]) => id === archiveId)
+      .map(([, row]) => row.sequence);
     expect(written.slice().sort((a, b) => a - b)).toEqual(multiples(LENGTH));
     for (const row of headRows(archiveId)) {
       const state = replay(PROJECT, stored.slice(0, row.position));
