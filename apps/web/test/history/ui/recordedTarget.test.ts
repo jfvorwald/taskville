@@ -359,3 +359,65 @@ describe("recordedCardTarget merged openings", () => {
     expect(recordedCardTarget({ state, moments: b, selectedId: ADA })?.requestId).toBe("r-b");
   });
 });
+
+// Roborev 7803 (M6.14 review round). Both cases are pinned against behaviour, not structure.
+describe("recordedCardTarget roborev 7803", () => {
+  // Finding 1. The domain reducer ignores a second request.opened whose id is already held or
+  // merged (findRequest in reducer/attention/requests.ts), so two openings never make two
+  // requests. The recording can still hold two accepted openings with one id: the replayed state
+  // holds the request from the first. The per-array index keeps only the later opening, so a head
+  // between the two openings, more than 64 moments after the first, lost the target.
+  it("finds the first opening of a duplicated request id at heads between and after both", () => {
+    const moments = [moment(1, ADA, "r-dup")];
+    for (let seq = 2; seq <= 200; seq += 1) moments.push(moment(seq, BEA));
+    moments.push(moment(201, ADA, "r-dup")); // accepted again, ignored by the reducer
+    for (let seq = 202; seq <= 300; seq += 1) moments.push(moment(seq, BEA));
+    const held = [request("r-dup", ADA)];
+    const oracle = (head: number) => {
+      for (let i = moments.length - 1; i >= 0; i -= 1) {
+        const m = moments[i];
+        if (m === undefined || m.sequence > head || m.agentId !== ADA) continue;
+        if (m.requestId !== undefined && held.some((r) => r.id === m.requestId)) return m.requestId;
+      }
+      return null;
+    };
+    for (const head of [1, 100, 150, 199, 200, 201, 250, 300]) {
+      const got = recordedCardTarget({ state: stateWith(head, held), moments, selectedId: ADA });
+      expect(got?.requestId ?? null).toBe(oracle(head));
+    }
+    // Spelled out: between the openings the first one is the answer.
+    expect(
+      recordedCardTarget({ state: stateWith(150, held), moments, selectedId: ADA })?.requestId,
+    ).toBe("r-dup");
+  });
+
+  // Finding 2. When the walk finds nothing, the fallback must not read other agents' requests.
+  it("reads a bounded number of request entries for an agent with only an old retained request", () => {
+    const OTHERS = 10_000;
+    const moments = [moment(5, ADA, "r-old")];
+    const requests: Request[] = [request("r-old", ADA)];
+    for (let i = 0; i < OTHERS; i += 1) {
+      const agent = `agent-other-${i}`;
+      const id = `o-${i}`;
+      moments.push(moment(10 + i, agent, id));
+      requests.push(request(id, agent));
+    }
+    const head = 10 + OTHERS;
+    let reads = 0;
+    const counted = new Proxy(Object.fromEntries(requests.map((r) => [r.id, r])), {
+      get(target, key, receiver) {
+        if (typeof key === "string") reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const state = { ...stateWith(head, requests), requests: counted } as ProjectState;
+    const call = (h: number) =>
+      recordedCardTarget({ state: { ...state, head: h }, moments, selectedId: ADA });
+    call(head - 1); // warm-up: building a per-list index on first use is allowed
+    for (const h of [head, head - 500, 5_000, 100]) {
+      reads = 0;
+      expect(call(h)?.requestId).toBe("r-old");
+      expect(reads).toBeLessThan(200);
+    }
+  });
+});
