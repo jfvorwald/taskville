@@ -67,6 +67,8 @@ export interface LiveTabProps {
     calls: readonly ToolCallFrame[],
     /** Privacy only: calls of visible Search groups whose output part alone is needed. */
     outputOnly?: readonly ToolCallFrame[],
+    /** Open group previews: calls whose input part alone is needed, to name what they touched. */
+    inputOnly?: readonly ToolCallFrame[],
   ) => void;
   /** Evidence IDs the server answered 410 evidence_evicted for: the call happened, the body is gone. */
   evicted?: ReadonlySet<string>;
@@ -831,17 +833,15 @@ function GroupCard({
   const settled = calls.filter((call) => call.phase === "succeeded").length;
   // A short list of what the group touched, from the bodies that are loaded; none says nothing.
   // Read only while Details is open and the full list is not, so no body is held hot unasked.
-  const preview =
-    privacy || !open || expanded
-      ? []
-      : calls.slice(0, PREVIEW).flatMap((call) => {
-          const input = object(bodyValue(bodyOfCall(call, "input", evidence)));
-          const subject =
-            kind === "read"
-              ? (string(input.file_path) ?? call.filePaths[0])
-              : (string(input.pattern) ?? string(input.query));
-          return subject === undefined ? [] : [capLine(safe(subject))];
-        });
+  const previewed = privacy || !open || expanded ? [] : calls.slice(0, PREVIEW);
+  const preview = previewed.flatMap((call) => {
+    const input = object(bodyValue(bodyOfCall(call, "input", evidence)));
+    const subject =
+      kind === "read"
+        ? (string(input.file_path) ?? call.filePaths[0])
+        : (string(input.pattern) ?? string(input.query));
+    return subject === undefined ? [] : [capLine(safe(subject))];
+  });
   const sentence = [
     kind === "read" ? `Read ${calls.length} files` : `Searched ${calls.length} times`,
   ];
@@ -931,9 +931,13 @@ function GroupCard({
           {preview.length ? (
             <p>
               {kind === "read" ? "Files" : "Patterns"}: {preview.join(", ")}
-              {calls.length > preview.length ? ` and ${calls.length - preview.length} more` : null}
+              {calls.length > previewed.length
+                ? ` and ${calls.length - previewed.length} more`
+                : null}
             </p>
           ) : null}
+          {/* A name that is missing (never fetched, evicted or pending) is said, not dropped. */}
+          {preview.length < previewed.length ? <p>details not loaded</p> : null}
           {/* The name stays "Expand ..." in both states; aria-expanded carries the state. */}
           <Button
             aria-expanded={expanded}
@@ -1271,8 +1275,7 @@ function LiveFeed({
         if (privacy || item.kind === "request") return [];
         if (expanded.has(item.key))
           return groupDetails(item.calls, detailPages.get(item.key) ?? 0, detailPageSize).calls;
-        // An open group names its first members before its Expand control lists them all.
-        return opened.get(item.key) ? item.calls.slice(0, PREVIEW) : [];
+        return [];
       }),
       privacy
         ? privacyOutputs(
@@ -1280,6 +1283,16 @@ function LiveFeed({
             singleCount,
           )
         : [],
+      // An open group names its first members before its Expand control lists them all; the names
+      // come from the input part alone.
+      virtualItems.flatMap(({ index }) => {
+        const item = items[index];
+        return privacy || item.kind === "call" || item.kind === "request" || expanded.has(item.key)
+          ? []
+          : opened.get(item.key)
+            ? item.calls.slice(0, PREVIEW)
+            : [];
+      }),
     );
   });
   const onDetailPage = useCallback((id: string, page: number) => {

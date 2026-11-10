@@ -20,6 +20,7 @@ import { LiveTab, type LiveTabProps } from "./LiveTab.tsx";
 
 const BOTH = ["input", "output"] as const;
 const OUTPUT = ["output"] as const;
+const INPUT = ["input"] as const;
 
 class PairingBoundary extends Component<{ children: ReactNode }, { unavailable: boolean }> {
   override state = { unavailable: false };
@@ -77,11 +78,19 @@ function SelectedLive({
   const [bodies] = useState(createEvidenceBodyCache);
   const [, setBodyVersion] = useState(0);
   const visibleReader = useRef<
-    (calls: readonly ToolCallFrame[], outputOnly: readonly ToolCallFrame[]) => void
+    (
+      calls: readonly ToolCallFrame[],
+      outputOnly: readonly ToolCallFrame[],
+      inputOnly: readonly ToolCallFrame[],
+    ) => void
   >(() => {});
   const onVisibleCalls = useCallback(
-    (calls: readonly ToolCallFrame[], outputOnly: readonly ToolCallFrame[] = []) => {
-      visibleReader.current(calls, outputOnly);
+    (
+      calls: readonly ToolCallFrame[],
+      outputOnly: readonly ToolCallFrame[] = [],
+      inputOnly: readonly ToolCallFrame[] = [],
+    ) => {
+      visibleReader.current(calls, outputOnly, inputOnly);
     },
     [],
   );
@@ -208,9 +217,9 @@ function SelectedLive({
       }
       drain();
     }
-    visibleReader.current = (visible, outputOnly) => {
+    visibleReader.current = (visible, outputOnly, inputOnly) => {
       const next = new Map<string, object>();
-      // The bodies this window's other calls claim and the search outputs granted in it. Together
+      // The bodies this window's other calls claim and the single parts granted in it. Together
       // they fit the body cache; a window the reader has left releases its share.
       const claimed = new Set<string>();
       const granted = new Set<string>();
@@ -220,17 +229,21 @@ function SelectedLive({
           if (ref?.status === "stored" && typeof ref.id === "string") claimed.add(ref.id);
         }
       }
-      const allowed = outputOnly.filter((call) => {
-        const ref = call.evidence.output;
-        if (ref?.status !== "stored" || typeof ref.id !== "string") return false;
-        if (granted.has(ref.id)) return true;
-        if (granted.size + claimed.size >= EVIDENCE_BODY_CAPACITY) return false;
-        granted.add(ref.id);
-        return true;
-      });
+      const grant = (calls: readonly ToolCallFrame[], part: "input" | "output") =>
+        calls.filter((call) => {
+          const ref = call.evidence[part];
+          if (ref?.status !== "stored" || typeof ref.id !== "string") return false;
+          if (granted.has(ref.id)) return true;
+          // Demand past the cache is not requested, so nothing is evicted unseen. Those calls
+          // stay unloaded (and say so) until demand falls; they are requested then.
+          if (granted.size + claimed.size >= EVIDENCE_BODY_CAPACITY) return false;
+          granted.add(ref.id);
+          return true;
+        });
       const wants = [
         ...visible.map((call) => [call, BOTH] as const),
-        ...allowed.map((call) => [call, OUTPUT] as const),
+        ...grant(outputOnly, "output").map((call) => [call, OUTPUT] as const),
+        ...grant(inputOnly, "input").map((call) => [call, INPUT] as const),
       ];
       for (const [call, parts] of wants) {
         for (const part of parts) {
