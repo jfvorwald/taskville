@@ -776,7 +776,10 @@ function ToolCard({ privacy, ...props }: ToolCardProps) {
   );
 }
 
-/** A pending permission request that no single call can be matched to. It marks no call. */
+/**
+ * A pending request that no single call can be matched to. It marks no call. A request that names
+ * no tool (an elicitation, or a teammate notification) reads plainly "Needs you".
+ */
 function RequestEntry({ tool, position, size }: { tool: string; position: number; size: number }) {
   const heading = useId();
   return (
@@ -785,7 +788,7 @@ function RequestEntry({ tool, position, size }: { tool: string; position: number
       position={position}
       size={size}
       state="needs-you"
-      sentence={[`Needs you: ${tool}`]}
+      sentence={[tool === "" ? "Needs you" : `Needs you: ${tool}`]}
     />
   );
 }
@@ -1142,7 +1145,7 @@ function LiveFeed({
       running.length === 1
         ? grouped.find((item) => item.kind === "call" && item.calls[0] === running[0])
         : undefined;
-    return { key: single?.key, tool: single ? undefined : (requested ?? "permission") };
+    return { key: single?.key, tool: single ? undefined : (requested ?? "") };
   }, [calls, grouped, pendingRequest, requested]);
   const items = useMemo<Item[]>(
     () =>

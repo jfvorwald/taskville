@@ -105,14 +105,14 @@ describe("a pending permission request with no identifiable running call", () =>
   });
 
   // Finding 2 of roborev job 7699: a request without a tool name (for example a teammate
-  // permission notification) still needs the user. Neutral label chosen: "Needs you: permission".
+  // permission notification) still needs the user. Neutral label: plain "Needs you" (roborev 7713: the request may be an elicitation, not a permission).
   it("adds a neutral last Needs you entry when the request names no tool", async () => {
     await showPending(undefined, [done("nm-d"), done("nm-e")]);
     const all = states();
     expect(all.filter((s) => s.state === "needs-you")).toEqual([
-      { state: "needs-you", sentence: "Needs you: permission" },
+      { state: "needs-you", sentence: "Needs you" },
     ]);
-    expect(all.at(-1)?.sentence).toBe("Needs you: permission");
+    expect(all.at(-1)?.sentence).toBe("Needs you");
     expect(all.filter((s) => s.state === "running")).toHaveLength(0);
   });
 });
