@@ -1,4 +1,11 @@
-import { type BufferGeometry, type Material, Mesh, type Object3D, Vector3 } from "three";
+import {
+  BoxGeometry,
+  type BufferGeometry,
+  type Material,
+  Mesh,
+  type Object3D,
+  Vector3,
+} from "three";
 
 export interface Size3 {
   x: number;
@@ -38,6 +45,14 @@ function geometrySize(g: BufferGeometry, out: Size3): Size3 {
 }
 
 const sizeOut: Size3 = { x: 1, y: 1, z: 1 };
+
+/** A box inside a merged mesh, in the mesh's own space (`userData.boxes`). */
+interface HullBox {
+  position: Size3;
+  size: Size3;
+}
+
+const unitBox = new BoxGeometry(1, 1, 1);
 
 /**
  * The glow is an inverted hull, not bloom: a slightly larger copy of each mesh, drawn back faces
@@ -86,6 +101,25 @@ export function createHullGlow(material: Material, thickness: number): HullGlow 
         }
       });
       for (const mesh of meshes) {
+        // A merged mesh (a building) lists its boxes: one hull per box outlines each part, as
+        // when every box was its own mesh. Scaling the whole merged shape would not.
+        const boxes = mesh.userData.boxes as readonly HullBox[] | undefined;
+        if (boxes !== undefined) {
+          mesh.getWorldScale(worldScale);
+          for (const box of boxes) {
+            const boxHull = take();
+            boxHull.geometry = unitBox;
+            hullScale(box.size, worldScale, thickness, scaleOut);
+            boxHull.scale.set(
+              box.size.x * scaleOut.x,
+              box.size.y * scaleOut.y,
+              box.size.z * scaleOut.z,
+            );
+            boxHull.position.set(box.position.x, box.position.y, box.position.z);
+            mesh.add(boxHull);
+          }
+          continue;
+        }
         const hull = take();
         hull.geometry = mesh.geometry;
         mesh.getWorldScale(worldScale);
