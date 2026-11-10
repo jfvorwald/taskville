@@ -1,11 +1,14 @@
 /** ARCHITECTURE.md section 11: full rate while anything moves, 20 fps once nothing has. */
 export const FULL_FPS = 60;
 export const IDLE_FPS = 20;
+/** How long an idle pacer sleeps between checks: one idle frame. */
+export const IDLE_WAKE_MS = 1000 / IDLE_FPS;
 
 const DEFAULT_IDLE_AFTER_MS = 1000;
-const DISPLAY_FRAME_MS = 1000 / 60;
+/** One frame of a 60 Hz display. */
+export const DISPLAY_FRAME_MS = 1000 / 60;
 /** How early a display tick may land on a frame deadline: timer noise, not a free frame. */
-const PACER_TOLERANCE_MS = 2;
+export const PACER_TOLERANCE_MS = 2;
 
 /** What keeps the picture changing. Any one of them holds the full rate. */
 export interface MotionSignals {
@@ -61,6 +64,8 @@ export function shouldRenderFrame(
 export interface FramePacer {
   /** Called once per display tick; true when this tick should be drawn. */
   shouldRender(targetFps: number, now: number): boolean;
+  /** The carried deadline of the next frame; null before the first draw. */
+  nextDeadline(): number | null;
 }
 
 /**
@@ -86,6 +91,9 @@ export function createFramePacer(): FramePacer {
       if (deadline <= now) deadline = now + interval;
       lastDrawAt = now;
       return true;
+    },
+    nextDeadline() {
+      return deadline;
     },
   };
 }
