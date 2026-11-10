@@ -2,7 +2,19 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 UTC. **Main:** b038098. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 5 done: M8.19, M8.20 merged. Open follow-up: #537. Staging deploy still held (#432).
+**Updated:** 2026-11-09 UTC. **Main:** 939c3a1. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 6: M8.21, M6.14, M6.16 merged, wave run clean; M5.14 with the debugger. Open: #542, #364, #368, #268. Staging deploy still held (#432).
+
+## Done in backlog wave 6 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M8.21 #537 a session's first cwd | #540 | a session that registered without a cwd has its first later cwd checked (on any line carrying its id, skipped lines included), and the raw cwd is checked with every session cwd; roborev 7807 and 7824 (both high) fixed; [report](tasks/M8.21.md) |
+| M6.14 #361 recorded target without a scan | #539 | a per-array index of each agent's openings as primitive pairs; no moment reads, no iteration of other agents' requests, earliest duplicate opening kept; one medium accepted at the review cap with reasoning; [report](tasks/M6.14.md) |
+| M6.16 #367 linear crewRuns, memoized bars | #541 | per-agent fold instead of copying a shared agents map; bars skip re-rendering on playhead ticks; [report](tasks/M6.16.md) |
+
+In progress: M5.14 #281 (feed agent index, PR #375, resumed from 2026-11-04): merged with main (migration V6), measured (feed fold about 250 ms against tens of seconds on a spread-out day log); the subset fold drifted from the full fold three times on retention inputs (roborev 7827, 7838), so it is with the debugger for a principled fix. Follow-up filed: #542 (checkpoint foreign-lock timing test flakes under load; an archives-review timing test flaked once too).
+
+Wave run on main 939c3a1 (push tier, each suite once in sequence): `pnpm check` 6,016 of 6,016; release 73 of 73; browser 1,150 of 1,150; app e2e all specs passed (breaks IDLE_FPS 20.0); web smoke 4; crews 5; permission replay 6; telemetry replay 7; clean-machine install PASS. No flakes. NOT RUN: cross-browser, headed GPU fps, live Claude Code and Codex runs. This run also covers wave 5.
 
 ## Done in backlog wave 5 (2026-11-09)
 
