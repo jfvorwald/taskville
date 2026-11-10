@@ -4,14 +4,14 @@ import { type ProjectState, REDUCER_VERSION } from "@taskville/domain/reducer";
 import type { StoredEnvelope } from "@taskville/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { domainReducer } from "../../src/ingest/index.ts";
-import { SqliteCheckpoints } from "../../src/storage/checkpoints.ts";
+import { SqliteCheckpoints, trusted } from "../../src/storage/checkpoints.ts";
 import {
   type CheckpointRow,
   type ProjectionReducer,
   rebuildStaleProjections,
 } from "../../src/storage/index.ts";
 import { type StateAtOptions, stateAtSequence } from "../../src/timelines/checkpoints.ts";
-import { dayEvents, LIVELY, seedLog } from "./day-log.ts";
+import { CALM, dayEvents, LIVELY, seedLog } from "./day-log.ts";
 import { bootInProcess, type Engine, getJson, useDbPath } from "./helpers.ts";
 
 // M6.12 (#347): checkpoint cache hardening from the M6.11 reviews. RED phase tests.
@@ -636,5 +636,152 @@ describe("boot backfill: a failed read or reducer step is not a cache write fail
     expect(() => bootRebuild(storage(), domainReducer, { logger })).not.toThrow();
     expect(logger.calls()).toHaveLength(1);
     expectNoBodies(logger.calls());
+  });
+});
+
+// ---- M6.15 (#364): log dedupe on the seek path, and backfill pins ----
+//
+// Interface: dedupe is keyed by errcode and scoped to the logger it is given (a per-logger or
+// per-engine registry), so a persistent failure logs once per errcode however many deletes or
+// seeks hit it, while a different errcode still logs. Tests use a fresh logger each; a
+// process-global Set that is never reset would break the M6.12 tests above (they expect one log
+// per fresh failure with the same errcode), so scope the memory to the logger instead.
+
+describe("seek path: a persistent cache failure is logged once per errcode, not once per delete", () => {
+  beforeEach(() => seedLog(storage(), events));
+
+  /** Fills the cache, then breaks the rows at `sequences` so a seek tries to delete each. */
+  function breakRows(sequences: number[]) {
+    stateAtSequence(storage(), PROJECT, LOG_LENGTH);
+    for (const sequence of sequences) {
+      db()
+        .prepare("UPDATE checkpoints SET state_hash = 'bad' WHERE project_id = ? AND sequence = ?")
+        .run(PROJECT, sequence);
+    }
+  }
+
+  /** Deletes fail, and puts are swallowed so a seek cannot heal the broken row: it stays uncached. */
+  const failDeletes = (error: () => Error) => {
+    vi.spyOn(storage().checkpoints(), "put").mockImplementation(() => {});
+    return vi.spyOn(storage().checkpoints(), "delete").mockImplementation(() => {
+      throw error();
+    });
+  };
+
+  // FAILS on main: the delete loop logs once per failing delete (3 here).
+  it("one seek whose loop fails three deletes logs once", () => {
+    breakRows([1500, 2000, 2500]);
+    const del = failDeletes(FULL);
+    const logger = recordingLogger();
+    const state = stateAtSequence(storage(), PROJECT, LOG_LENGTH, { logger });
+    expect(del).toHaveBeenCalledTimes(3);
+    expect(state).toEqual(fullReplay(LOG_LENGTH));
+    expect(logger.calls()).toHaveLength(1);
+    expectNoBodies(logger.calls());
+  });
+
+  // FAILS on main: every uncached seek logs again (5 seeks, 5 logs).
+  it("five seeks that hit the same failing delete log once", () => {
+    breakRows([1000]);
+    const del = failDeletes(READONLY);
+    const logger = recordingLogger();
+    for (let i = 0; i < 5; i++) {
+      expect(stateAtSequence(storage(), PROJECT, 1250, { logger })).toEqual(fullReplay(1250));
+    }
+    expect(del).toHaveBeenCalledTimes(5); // the upkeep is still attempted every time
+    expect(logger.calls()).toHaveLength(1);
+    expectNoBodies(logger.calls());
+  });
+
+  // FAILS on main (6 lines): two errcodes, two lines, however many seeks.
+  it("a different errcode is still logged: SQLITE_FULL then SQLITE_READONLY give two lines", () => {
+    breakRows([1000]);
+    const logger = recordingLogger();
+    failDeletes(FULL);
+    for (let i = 0; i < 3; i++) stateAtSequence(storage(), PROJECT, 1250, { logger });
+    vi.restoreAllMocks();
+    failDeletes(READONLY);
+    for (let i = 0; i < 3; i++) stateAtSequence(storage(), PROJECT, 1250, { logger });
+    expect(logger.calls()).toHaveLength(2);
+    expectNoBodies(logger.calls());
+  });
+
+  // Pin: the first failure is never swallowed.
+  it("the first failing delete is logged", () => {
+    breakRows([1000]);
+    failDeletes(FULL);
+    const logger = recordingLogger();
+    stateAtSequence(storage(), PROJECT, 1250, { logger });
+    expect(logger.calls()).toHaveLength(1);
+  });
+});
+
+describe("boot backfill pins (M6.15): mid-way failure and another project's state", () => {
+  // Pin (passes on main): batches are separate puts, so a failure on the second keeps the first.
+  it("a put failing on the second batch keeps the first batch and logs one line", () => {
+    const lively = dayEvents(LIVELY); // 100 checkpoints at the 500 interval: five batches of 20
+    seedLog(storage(), lively);
+    db().exec("DELETE FROM checkpoints");
+    const logger = recordingLogger();
+    const real = SqliteCheckpoints.prototype.put;
+    let calls = 0;
+    vi.spyOn(SqliteCheckpoints.prototype, "put").mockImplementation(function (
+      this: SqliteCheckpoints,
+      projectId,
+      rows,
+    ) {
+      calls++;
+      if (calls === 2) throw FULL();
+      return real.call(this, projectId, rows);
+    });
+    expect(() => bootRebuild(storage(), domainReducer, { logger })).not.toThrow();
+    expect(calls).toBe(2); // the backfill stops after the failure
+    const kept = sequencesOf(PROJECT);
+    expect(kept).toHaveLength(MAX_BATCH);
+    expect(kept[0]).toBe(500);
+    expect(kept[MAX_BATCH - 1]).toBe(500 * MAX_BATCH);
+    expect(logger.calls()).toHaveLength(1);
+    expectNoBodies(logger.calls());
+  }, 120_000);
+
+  /** A self-consistent state (right version, head 1000, valid hash) of another project. */
+  const foreign = () => {
+    let state = domainReducer.initial("other-project");
+    for (const event of dayEvents(CALM, "other-project").slice(0, 1000)) {
+      state = domainReducer.apply(state, event);
+    }
+    expect(state.head).toBe(1000);
+    return state;
+  };
+
+  // Pin (passes on main): trusted() binds a row to its project.
+  it("trusted() rejects a row whose state belongs to another project", () => {
+    const state = foreign();
+    const row: CheckpointRow = {
+      sequence: 1000,
+      reducerVersion: REDUCER_VERSION,
+      stateHash: stateHash(REDUCER_VERSION, state),
+      stateJson: JSON.stringify(state),
+    };
+    expect(trusted(row, REDUCER_VERSION, "other-project")).toEqual(state); // sanity: valid there
+    expect(trusted(row, REDUCER_VERSION, PROJECT)).toBeUndefined();
+  });
+
+  // Pin (passes on main): the backfill replaces such a row, and a seek never loads it.
+  it("a stored row holding another project's state at 1000 is replaced at boot", () => {
+    seedLog(storage(), events);
+    rebuildStaleProjections(storage(), domainReducer);
+    const state = foreign();
+    db()
+      .prepare(
+        "UPDATE checkpoints SET state_json = ?, state_hash = ? WHERE project_id = ? AND sequence = 1000",
+      )
+      .run(JSON.stringify(state), stateHash(REDUCER_VERSION, state), PROJECT);
+    rebuildStaleProjections(storage(), domainReducer);
+    const row = db()
+      .prepare("SELECT state_json FROM checkpoints WHERE project_id = ? AND sequence = 1000")
+      .get(PROJECT) as unknown as { state_json: string };
+    expect(JSON.parse(row.state_json)).toEqual(fullReplay(1000));
+    expect(stateAtSequence(storage(), PROJECT, 1250)).toEqual(fullReplay(1250));
   });
 });
