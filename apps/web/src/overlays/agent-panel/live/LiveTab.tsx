@@ -1130,16 +1130,20 @@ function LiveFeed({
   // A pending permission request names a tool, not a call. Exactly one running call of that tool is
   // the one waiting, and takes the needs-you node. With several, or only inside a group, the call
   // cannot be told, so the request is its own last entry and no call is marked.
+  const pendingRequest = target !== undefined && target !== null;
   const requested = target?.toolName;
   const needs = useMemo(() => {
-    if (requested === undefined) return { key: undefined, tool: undefined };
-    const running = calls.filter((call) => call.phase === "running" && call.toolName === requested);
+    if (!pendingRequest) return { key: undefined, tool: undefined };
+    const running =
+      requested === undefined
+        ? []
+        : calls.filter((call) => call.phase === "running" && call.toolName === requested);
     const single =
       running.length === 1
         ? grouped.find((item) => item.kind === "call" && item.calls[0] === running[0])
         : undefined;
-    return { key: single?.key, tool: single ? undefined : requested };
-  }, [calls, grouped, requested]);
+    return { key: single?.key, tool: single ? undefined : (requested ?? "permission") };
+  }, [calls, grouped, pendingRequest, requested]);
   const items = useMemo<Item[]>(
     () =>
       needs.tool === undefined
@@ -1238,7 +1242,7 @@ function LiveFeed({
   // Open previews that are not expanded also hold their first members' bodies.
   const previewCount = virtualItems.reduce((sum, { index }) => {
     const item = items[index];
-    return item.kind === "call" || item.kind === "request" || expanded.has(item.key)
+    return privacy || item.kind === "call" || item.kind === "request" || expanded.has(item.key)
       ? sum
       : sum + (opened.get(item.key) ? Math.min(PREVIEW, item.calls.length) : 0);
   }, 0);
