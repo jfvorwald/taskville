@@ -1,6 +1,7 @@
 import {
   MAX_AGENT_ID,
   MAX_SOURCE_EVENT_ID,
+  MAX_TOOL_USE_ID,
   requestIdFor,
   SOURCE_ID,
   subagentAgentId,
@@ -316,11 +317,17 @@ function messageSent(p: unknown, who: Attribution): Draft[] | string {
         ? bodyType
         : "unknown";
   const summary = safeText(own(input, "summary"), SUMMARY_MAX);
+  const toolCallId = idToken(own(p, "tool_use_id"), MAX_TOOL_USE_ID);
   const drafts: Draft[] = [
     {
       type: "team.message",
       ...at(who),
-      payload: { to, kind, ...(summary === undefined ? {} : { summary }) },
+      payload: {
+        to,
+        kind,
+        ...(summary === undefined ? {} : { summary }),
+        ...(toolCallId === undefined ? {} : { toolCallId }),
+      },
     },
   ];
 

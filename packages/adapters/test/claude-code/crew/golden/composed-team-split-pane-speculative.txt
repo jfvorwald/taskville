@@ -74,7 +74,7 @@
   tool_call.started claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec {"toolCallId":"toolu_01CbqMoSTBh6wWtVhPqW7BxH","toolName":"SendMessage"}
 #34 PostToolUse
   tool_call.finished claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec {"toolCallId":"toolu_01CbqMoSTBh6wWtVhPqW7BxH","phase":"succeeded","durationMs":89}
-  team.message claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec {"to":"bo","kind":"message","summary":"Greeting to bo"}
+  team.message claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec {"to":"bo","kind":"message","summary":"Greeting to bo","toolCallId":"toolu_01CbqMoSTBh6wWtVhPqW7BxH"}
   agent.registered claude-code:cb581bf9-f41d-40bf-85fb-b4258ba029ec {"sourceAgentId":"cb581bf9-f41d-40bf-85fb-b4258ba029ec","displayName":"pip","role":"teammate","kind":"teammate","heuristic":true}
 #35 MessageDisplay  (ignored)
 #36 MessageDisplay  (ignored)
@@ -109,7 +109,7 @@
   tool_call.started claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"toolCallId":"toolu_01PHLKc36wt6iRgGnNzzBkUN","toolName":"SendMessage"}
 #53 PostToolUse
   tool_call.finished claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"toolCallId":"toolu_01PHLKc36wt6iRgGnNzzBkUN","phase":"succeeded","durationMs":35}
-  team.message claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"to":"pip","kind":"message","summary":"Greet pip per team-lead instructions"}
+  team.message claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"to":"pip","kind":"message","summary":"Greet pip per team-lead instructions","toolCallId":"toolu_01PHLKc36wt6iRgGnNzzBkUN"}
   agent.registered claude-code:404ff3da-af4b-4a7d-aca5-6cc063afc1e4 {"sourceAgentId":"404ff3da-af4b-4a7d-aca5-6cc063afc1e4","displayName":"bo","role":"teammate","kind":"teammate","heuristic":true}
 #54 MessageDisplay  (ignored)
 #55 MessageDisplay  (ignored)

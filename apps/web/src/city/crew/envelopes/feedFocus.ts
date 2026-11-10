@@ -4,10 +4,12 @@
 export interface FeedFocusRequest {
   readonly agentId: string;
   readonly eventId: string;
+  /** The SendMessage tool-call id of the clicked message, when its event carried one. */
+  readonly toolCallId?: string;
 }
 
 export interface FeedFocus {
-  request(agentId: string, eventId: string): void;
+  request(agentId: string, eventId: string, toolCallId?: string): void;
   /** Drops `request` once the panel has used it, so a later mount does not apply it again. */
   clear(request: FeedFocusRequest): void;
   /** Milliseconds since `request` was made (Infinity for one this store did not make). */
@@ -25,8 +27,8 @@ export function createFeedFocus(): FeedFocus {
   const madeAt = new WeakMap<FeedFocusRequest, number>();
   return {
     // Every request is a new snapshot, so asking again for the same message still reaches the panel.
-    request(agentId, eventId) {
-      current = { agentId, eventId };
+    request(agentId, eventId, toolCallId) {
+      current = { agentId, eventId, ...(toolCallId === undefined ? {} : { toolCallId }) };
       madeAt.set(current, Date.now());
       for (const listener of [...listeners]) listener();
     },

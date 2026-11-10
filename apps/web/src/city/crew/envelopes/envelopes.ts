@@ -18,6 +18,8 @@ export interface Envelope {
   to: string;
   kind: TeamMessageKind;
   summary?: string;
+  /** The SendMessage tool-call id, when the event carried one. */
+  toolCallId?: string;
   sentAt: number;
 }
 
@@ -46,7 +48,7 @@ export function envelopeFor(
   sentAt: number,
 ): Envelope | null {
   if (event.type !== "team.message" || event.agentId === undefined) return null;
-  const { to, kind, summary } = event.payload;
+  const { to, kind, summary, toolCallId } = event.payload;
   return {
     id: event.eventId,
     fromAgentId: event.agentId,
@@ -54,6 +56,7 @@ export function envelopeFor(
     to,
     kind,
     ...(summary === undefined ? {} : { summary }),
+    ...(toolCallId === undefined ? {} : { toolCallId }),
     sentAt,
   };
 }

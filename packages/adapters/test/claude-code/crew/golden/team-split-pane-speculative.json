@@ -291,7 +291,8 @@
         "payload": {
           "to": "bo",
           "kind": "message",
-          "summary": "Greeting to bo"
+          "summary": "Greeting to bo",
+          "toolCallId": "toolu_01CbqMoSTBh6wWtVhPqW7BxH"
         },
         "provenance": "live",
         "late": false
@@ -505,7 +506,8 @@
         "payload": {
           "to": "pip",
           "kind": "message",
-          "summary": "Greet pip per team-lead instructions"
+          "summary": "Greet pip per team-lead instructions",
+          "toolCallId": "toolu_01PHLKc36wt6iRgGnNzzBkUN"
         },
         "provenance": "live",
         "late": false

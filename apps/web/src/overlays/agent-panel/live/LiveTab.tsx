@@ -78,6 +78,10 @@ export interface LiveTabProps {
   highlighter?: CodeHighlighter;
   /** Editor link template with one {path}. Defaults to the VS Code one. */
   editorTemplate?: string;
+  /** The SendMessage call an envelope click named: its card takes focus once it is in the feed. */
+  focusCall?: string;
+  /** Called once `focusCall` has focus, so the request is not applied again. */
+  onFocusedCall?: () => void;
 }
 type Evicted = ReadonlySet<string>;
 /** Redacted, with hidden and reordering characters shown as <U+XXXX>. */
@@ -1108,6 +1112,8 @@ function LiveFeed({
   privacy = false,
   highlighter,
   editorTemplate,
+  focusCall,
+  onFocusedCall,
 }: LiveTabProps) {
   const feed = useRef<HTMLDivElement>(null);
   const rows = useRef<HTMLDivElement>(null);
@@ -1457,6 +1463,25 @@ function LiveFeed({
         focusNewest.current = false;
       }
     }
+  });
+  // An envelope click names one SendMessage call. Wait until its card is in the feed, bring it into
+  // the drawn rows, and focus it. Each commit looks again, so a card that arrives later still works.
+  useEffect(() => {
+    if (focusCall === undefined || !viewport) return;
+    const index = items.findIndex((item) => item.kind === "call" && item.key === focusCall);
+    if (index < 0) return;
+    if (followingRef.current) {
+      followingRef.current = false;
+      focusNewest.current = false;
+      setFollowing(false);
+    }
+    const card = rows.current?.querySelector<HTMLElement>(`[data-index="${index}"] article`);
+    if (!card) {
+      virtualizer.scrollToIndex(index, { align: "center" });
+      return;
+    }
+    card.focus();
+    onFocusedCall?.();
   });
   const toggleOpen = useCallback(
     (id: string, next: boolean) => {
