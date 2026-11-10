@@ -222,7 +222,7 @@ export function createTranscriptImporter(
                 }
                 validated = true;
               }
-              if (outside(result.sessionCwd)) {
+              if (outside(result.sessionCwd) || outside(result.sessionFirstCwd)) {
                 rejected = "outside-root";
                 break;
               }

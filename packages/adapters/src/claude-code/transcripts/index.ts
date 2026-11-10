@@ -37,6 +37,12 @@ export interface LineResult {
    * that line (so a later session in the same file reports its own), whatever the key's spelling.
    */
   sessionCwd?: string;
+  /**
+   * The cleaned cwd of the first line of a session that carries one, when that session
+   * registered without one (its `session.started` was `{}`). Set only on that line, so the
+   * importer can check it without checking every line.
+   */
+  sessionFirstCwd?: string;
 }
 
 export interface FinishResult {
@@ -85,6 +91,8 @@ const TOOL_BLOCKS_PER_LINE_MAX = 1_000;
 
 interface SessionState {
   agents: Set<string>;
+  /** True while the session registered without a cwd and no later line has carried one. */
+  awaitingCwd: boolean;
 }
 
 /** Key scoped by session, so two sessions sharing a uuid or tool-use id never meet. */
@@ -157,6 +165,7 @@ export function createTranscriptMapper(options: {
     const events: InputEventWire[] = [];
     const evidence: ToolEvidence[] = [];
     let sessionCwd: string | undefined;
+    let sessionFirstCwd: string | undefined;
     const emit = (agentId: string, eventType: EventType, payload: Record<string, unknown>) => {
       events.push({
         schemaVersion: 1,
@@ -178,6 +187,7 @@ export function createTranscriptMapper(options: {
     // succeeds, so a throw cannot lose a registration or leave a tool call half recorded. Nothing
     // is copied: the lists are bounded by the line, not by the state.
     const known = sessions.get(sessionId);
+    let awaitingCwd = known?.awaitingCwd ?? false;
     if (known === undefined && sessions.size >= STATE_MAX) {
       throw new RangeError("too many sessions in one file");
     }
@@ -207,7 +217,11 @@ export function createTranscriptMapper(options: {
       const rawCwd = own(parsed, "cwd");
       const cwd = cleanText(rawCwd, PATH_MAX);
       if (cwd !== undefined) sessionCwd = cwd;
+      awaitingCwd = cwd === undefined;
       emit(mainId, "session.started", cwd === undefined ? {} : { workingDirectory: cwd });
+    } else if (awaitingCwd) {
+      sessionFirstCwd = cleanText(own(parsed, "cwd"), PATH_MAX);
+      if (sessionFirstCwd !== undefined) awaitingCwd = false;
     }
 
     // A sidechain line belongs to a subagent of the same session; without a usable agentId it
@@ -303,9 +317,13 @@ export function createTranscriptMapper(options: {
     }
     const agents = known?.agents ?? new Set<string>();
     for (const id of newAgents) agents.add(id);
-    sessions.set(sessionId, { agents });
+    sessions.set(sessionId, { agents, awaitingCwd });
     const result = done(events, evidence);
-    return sessionCwd === undefined ? result : { ...result, sessionCwd };
+    return {
+      ...result,
+      ...(sessionCwd === undefined ? {} : { sessionCwd }),
+      ...(sessionFirstCwd === undefined ? {} : { sessionFirstCwd }),
+    };
   }
 
   function finish(): FinishResult {
