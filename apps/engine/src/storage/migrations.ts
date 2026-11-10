@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS archive_checkpoints (
 // Only events that name an agent are indexed. Nothing reads it for correctness except those
 // lookups; the log stays the record.
 const V6 = `
-CREATE TABLE agent_events (
+CREATE TABLE IF NOT EXISTS agent_events (
   project_id TEXT NOT NULL REFERENCES projects(id),
   agent_id TEXT NOT NULL,
   ingest_sequence INTEGER NOT NULL,
@@ -208,10 +208,10 @@ CREATE TABLE agent_events (
   PRIMARY KEY (project_id, agent_id, ingest_sequence)
 ) STRICT, WITHOUT ROWID;
 
-CREATE INDEX agent_events_by_session ON agent_events (project_id, session_id, ingest_sequence);
-CREATE INDEX agent_events_by_type ON agent_events (project_id, type, agent_id, ingest_sequence);
+CREATE INDEX IF NOT EXISTS agent_events_by_session ON agent_events (project_id, session_id, ingest_sequence);
+CREATE INDEX IF NOT EXISTS agent_events_by_type ON agent_events (project_id, type, agent_id, ingest_sequence);
 
-CREATE TRIGGER events_index_agent AFTER INSERT ON events
+CREATE TRIGGER IF NOT EXISTS events_index_agent AFTER INSERT ON events
 WHEN json_extract(NEW.envelope_json, '$.agentId') IS NOT NULL
 BEGIN
   INSERT INTO agent_events (project_id, agent_id, ingest_sequence, session_id, type)
@@ -219,7 +219,7 @@ BEGIN
     json_extract(NEW.envelope_json, '$.sessionId'), NEW.type);
 END;
 
-INSERT INTO agent_events (project_id, agent_id, ingest_sequence, session_id, type)
+INSERT OR IGNORE INTO agent_events (project_id, agent_id, ingest_sequence, session_id, type)
 SELECT project_id, json_extract(envelope_json, '$.agentId'), ingest_sequence,
   json_extract(envelope_json, '$.sessionId'), type
 FROM events WHERE json_extract(envelope_json, '$.agentId') IS NOT NULL;
