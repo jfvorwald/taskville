@@ -17,6 +17,8 @@ import type { ImportBatch, ImportContext, ImportCounts, Importer } from "../type
 
 /** Lines mapped before a batch is yielded, which is also how often abort is checked. */
 const BATCH_LINES = 500;
+/** Events in a batch that trigger a flush, checked after each line. */
+const BATCH_EVENTS = 1000;
 /** Default bytes parsed before a batch is yielded, so a few huge lines do not hold the event loop. */
 const DEFAULT_YIELD_BYTES = 4 * 1024 * 1024;
 
@@ -52,20 +54,24 @@ const OVERLONG = Symbol("overlong");
 /**
  * Opens a file without following a symlink, even one swapped in after listing: O_NOFOLLOW makes
  * the open fail, and the opened descriptor must be a regular file. O_NONBLOCK keeps a FIFO swapped
- * in after listing from blocking the open (it has no effect on regular files).
+ * in after listing from blocking the open (it has no effect on regular files). The device and
+ * inode are returned so a later reopen can be checked to be the same file.
  */
-async function openRegular(file: string): Promise<FileHandle | undefined> {
+async function openRegular(
+  file: string,
+): Promise<{ handle: FileHandle; dev: number; ino: number } | undefined> {
   let handle: FileHandle;
   try {
     handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch {
     return undefined;
   }
-  if (!(await handle.stat()).isFile()) {
+  const stat = await handle.stat();
+  if (!stat.isFile()) {
     await handle.close();
     return undefined;
   }
-  return handle;
+  return { handle, dev: stat.dev, ino: stat.ino };
 }
 
 /**
@@ -175,10 +181,10 @@ export function createTranscriptImporter(
         let inRoot = false;
         if (probe !== undefined) {
           try {
-            const cwd = await firstCwd(probe, maxLineBytes, context.signal);
+            const cwd = await firstCwd(probe.handle, maxLineBytes, context.signal);
             inRoot = cwd !== undefined && isInside(context.root, cwd);
           } finally {
-            await probe.close();
+            await probe.handle.close();
           }
         }
         if (context.signal.aborted) break;
@@ -186,11 +192,18 @@ export function createTranscriptImporter(
           counts.skipped += 1;
           continue;
         }
-        const handle = await openRegular(file);
-        if (handle === undefined) {
+        const opened = await openRegular(file);
+        if (opened === undefined) {
           counts.skipped += 1;
           continue;
         }
+        // A different file swapped in after the probe was never checked against the root.
+        if (probe === undefined || opened.dev !== probe.dev || opened.ino !== probe.ino) {
+          await opened.handle.close();
+          counts.skipped += 1;
+          continue;
+        }
+        const { handle } = opened;
         const mapper = createTranscriptMapper({
           projectId: context.projectId,
           fileId: fileIdOf(file),
@@ -200,9 +213,10 @@ export function createTranscriptImporter(
         let bytes = 0;
         let lineNumber = 0;
         const take = (result: { events: ImportBatch["events"]; evidence?: ToolEvidence[] }) => {
-          batch.events.push(...result.events);
+          for (const event of result.events) batch.events.push(event);
           if (result.evidence !== undefined) {
-            batch.evidence = [...(batch.evidence ?? []), ...result.evidence];
+            batch.evidence ??= [];
+            for (const item of result.evidence) batch.evidence.push(item);
           }
           counts.imported += result.events.length;
         };
@@ -222,7 +236,11 @@ export function createTranscriptImporter(
               take(result);
             }
             lines += 1;
-            if (lines >= BATCH_LINES || bytes >= yieldBytes) {
+            if (
+              lines >= BATCH_LINES ||
+              bytes >= yieldBytes ||
+              batch.events.length >= BATCH_EVENTS
+            ) {
               report();
               yield batch;
               batch = { events: [] };
