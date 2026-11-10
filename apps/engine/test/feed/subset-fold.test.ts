@@ -2,6 +2,8 @@ import type { SSEStreamingApi } from "hono/streaming";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeedSubscriber } from "../../src/feed/subscriber.ts";
 import { ToolCallTracker } from "../../src/feed/tool-calls.ts";
+import { domainReducer } from "../../src/ingest/index.ts";
+import { expireOpenRequests } from "../../src/stream/index.ts";
 import type { SseReader } from "../stream/helpers.ts";
 import { ingestRaw, SPIKE_CWD, useHarness } from "./helpers.ts";
 import { countRows } from "./subset-rows.ts";
@@ -212,6 +214,119 @@ describe("the subset fold equals the full fold", () => {
       phase: "running",
     });
     expect(await expectEquivalent(h, "c5")).toEqual([]);
+  });
+});
+
+// Roborev 7827: the reducer also keeps and drops agents on events that name NO agent. The index
+// holds only events with an agentId, so the subset must still bring these in. Found in
+// `packages/domain/src/reducer/retention.ts` and its inputs: `team.started` and `team.ended`
+// (a team that has not ended keeps its lead), and `request.resolved` and `request.expired` (engine
+// source; they close an open request, and an agent with an open request is kept) an agentless
+// (the bridge's `request.resolved` carries an agentId, so it is indexed; only the boot-time
+// `request.expired` is agentless in practice). Session events require an agentId at ingest. Task,
+// command, project and git events with no agent change nothing retention reads.
+type Loose = Omit<Raw, "agentId"> & { agentId?: string };
+const loose = (
+  type: string,
+  fields: { sessionId?: string },
+  payload: Record<string, unknown>,
+): Loose => ({
+  type,
+  ...(fields.sessionId === undefined ? {} : { sessionId: fields.sessionId }),
+  at: at(),
+  payload,
+});
+
+function ingestLoose(h: H, project: string, label: string, events: Loose[]): void {
+  for (let i = 0; i < events.length; i += 40) {
+    const response = h.engine.pipeline.ingest(
+      events.slice(i, i + 40).map((e, j) => ({
+        schemaVersion: 1,
+        projectId: project,
+        sourceId: "adapter:test",
+        sourceEventId: `${label}-${i}#${j}`,
+        occurredAt: e.at,
+        type: e.type,
+        ...(e.agentId === undefined ? {} : { agentId: e.agentId }),
+        ...(e.sessionId === undefined ? {} : { sessionId: e.sessionId }),
+        payload: e.payload,
+        provenance: "live",
+      })),
+    );
+    for (const result of response.results) {
+      if (result.status !== "accepted")
+        throw new Error(`ingest ${label}: ${JSON.stringify(result)}`);
+    }
+  }
+}
+
+describe("the subset fold equals the full fold: agentless retention events (roborev 7827)", () => {
+  const lastCall = (h: H, project: string, helper: string) =>
+    fullFold(h, project, helper, 0).at(-1);
+
+  it("case 6: an agentless team.started keeps a finished session owner through 55 later finishes", async () => {
+    const h = await start();
+    h.addProject("c6", SPIKE_CWD);
+    ingestLoose(h, "c6", "c6", [
+      loose("team.started", {}, { teamId: "c6-team", leadAgentId: "c6-owner" }),
+      ev("session.started", "c6-owner", "c6-s"),
+      ev("agent.finished", "c6-owner", "c6-s"),
+      call("c6-helper", "c6-s", "toolu_c6_a"),
+      ...finishers("c6"),
+      ev("session.turn_ended", "c6-other", "c6-s"),
+    ]);
+    // Premise: the team keeps the owner, so another agent's turn end closes nothing.
+    expect(lastCall(h, "c6", "c6-helper")).toMatchObject({
+      toolCallId: "toolu_c6_a",
+      phase: "running",
+    });
+    expect(await expectEquivalent(h, "c6")).toEqual([]);
+  });
+
+  it("case 7: an agentless team.started and team.ended release the owner again", async () => {
+    // Passes today (both are dropped); guards a fix that brings in team.started but not team.ended.
+    const h = await start();
+    h.addProject("c7", SPIKE_CWD);
+    ingestLoose(h, "c7", "c7", [
+      loose("team.started", {}, { teamId: "c7-team", leadAgentId: "c7-old" }),
+      ev("session.started", "c7-old", "c7-s"),
+      ev("agent.finished", "c7-old", "c7-s"),
+      loose("team.ended", {}, { teamId: "c7-team" }),
+      ...finishers("c7"),
+      ev("session.prompt_submitted", "c7-new", "c7-s"),
+      call("c7-helper", "c7-s", "toolu_c7_a"),
+      ev("session.turn_ended", "c7-new", "c7-s"),
+    ]);
+    expect(lastCall(h, "c7", "c7-helper")).toMatchObject({
+      toolCallId: "toolu_c7_a",
+      phase: "unfinished",
+    });
+    expect(await expectEquivalent(h, "c7")).toEqual([]);
+  });
+
+  it("case 8: an agentless request.expired (engine boot) releases the owner whose request it closed", async () => {
+    const h = await start();
+    h.addProject("c8", SPIKE_CWD);
+    ingestRaw(h, "c8", "c8-a", [
+      ev("session.started", "c8-old", "c8-s"),
+      ev("request.opened", "c8-old", "c8-s", { requestId: "c8-req", kind: "permission" }),
+      ev("agent.finished", "c8-old", "c8-s"),
+    ]);
+    // The engine's start rule appends `request.expired` from `taskville:engine`, with no agentId.
+    const expired = expireOpenRequests(h.engine.storage, domainReducer, {
+      now: () => new Date(at()),
+    });
+    expect(expired).toEqual([{ projectId: "c8", requestId: "c8-req" }]);
+    ingestAll(h, "c8", "c8-b", [
+      call("c8-helper", "c8-s", "toolu_c8_a"),
+      ...finishers("c8"),
+      ev("session.turn_ended", "c8-other", "c8-s"),
+    ]);
+    expect(lastCall(h, "c8", "c8-helper")).toMatchObject({
+      toolCallId: "toolu_c8_a",
+      phase: "unfinished",
+    });
+    expect(await expectEquivalent(h, "c8")).toEqual([]);
   });
 });
 
