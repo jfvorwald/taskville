@@ -210,6 +210,8 @@ CREATE TABLE IF NOT EXISTS agent_events (
 
 CREATE INDEX IF NOT EXISTS agent_events_by_session ON agent_events (project_id, session_id, ingest_sequence);
 CREATE INDEX IF NOT EXISTS agent_events_by_type ON agent_events (project_id, type, agent_id, ingest_sequence);
+-- Rare events that name no agent but that retention reads (teams and expired requests).
+CREATE INDEX IF NOT EXISTS events_by_type ON events (project_id, type, ingest_sequence);
 
 CREATE TRIGGER IF NOT EXISTS events_index_agent AFTER INSERT ON events
 WHEN json_extract(NEW.envelope_json, '$.agentId') IS NOT NULL

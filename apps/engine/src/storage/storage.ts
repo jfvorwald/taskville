@@ -204,6 +204,9 @@ function prepareStatements(db: Database) {
          UNION
          SELECT ingest_sequence FROM agent_events
          WHERE project_id = :p AND type IN ('agent.registered', 'agent.finished')
+         UNION
+         SELECT ingest_sequence FROM events
+         WHERE project_id = :p AND type IN ('team.started', 'team.ended', 'request.expired')
        )
        SELECT e.envelope_json FROM wanted w
        JOIN events e ON e.project_id = :p AND e.ingest_sequence = w.ingest_sequence
@@ -355,7 +358,8 @@ export class Storage implements StorageReads {
    * closes an unregistered helper's calls, and ownership is decided by who named the session
    * first), and every registration and finish in the project (retention drops a finished agent,
    * and with it the sessions it owns, by its rank among all finished agents and keeps the parent
-   * of any unfinished agent; a subagent never owns a session). The session set is the agent's as
+   * of any unfinished agent; a subagent never owns a session), and every `team.started`, `team.ended` and
+   * `request.expired` (no agent id, but retention reads them; `events_by_type`). The session set is the agent's as
    * of this read: a session the agent enters later needs its earlier events too, which is the
    * caller's to fold (`agentSessions`).
    */
