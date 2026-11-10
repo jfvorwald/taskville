@@ -34,24 +34,51 @@ function retainedFor(
   );
 }
 
-const indexes = new WeakMap<
-  readonly OpenedMoment[],
-  { length: number; byAgent: Map<string, OpenedMoment[]> }
->();
+/** Each agent's request-opening moments by request id, built once per published moments array. */
+type OpeningIndex = Map<string, Map<string, OpenedMoment>>;
 
-/** Each agent's request-opening moments, built once per moments list (rebuilt if it grows). */
-function agentIndex(moments: readonly OpenedMoment[]): Map<string, OpenedMoment[]> {
+// Keyed by array identity, never by length. A moments array is immutable once published: the
+// provider hands over a new array when the recording changes, and this index is never rebuilt.
+const indexes = new WeakMap<readonly OpenedMoment[], OpeningIndex>();
+
+function openingIndex(moments: readonly OpenedMoment[]): OpeningIndex {
   const cached = indexes.get(moments);
-  if (cached !== undefined && cached.length === moments.length) return cached.byAgent;
-  const byAgent = new Map<string, OpenedMoment[]>();
+  if (cached !== undefined) return cached;
+  const index: OpeningIndex = new Map();
   for (const moment of moments) {
     if (moment.requestId === undefined || moment.agentId === undefined) continue;
-    const list = byAgent.get(moment.agentId);
-    if (list === undefined) byAgent.set(moment.agentId, [moment]);
-    else list.push(moment);
+    const byRequest = index.get(moment.agentId);
+    if (byRequest === undefined) index.set(moment.agentId, new Map([[moment.requestId, moment]]));
+    else byRequest.set(moment.requestId, moment);
   }
-  indexes.set(moments, { length: moments.length, byAgent });
-  return byAgent;
+  indexes.set(moments, index);
+  return index;
+}
+
+/**
+ * The retained request of the agent whose opening moment has the greatest sequence at or before
+ * the head. Only requests the replayed state holds are looked at, so merged-away openings are
+ * never visited and the cost does not depend on how many there are.
+ */
+function latestRetained(
+  moments: readonly OpenedMoment[],
+  state: ProjectState,
+  agentId: string,
+): ProjectState["requests"][string] | undefined {
+  const openings = openingIndex(moments).get(agentId);
+  if (openings === undefined) return undefined;
+  let best: ProjectState["requests"][string] | undefined;
+  let bestSequence = Number.NEGATIVE_INFINITY;
+  for (const request of Object.values(state.requests)) {
+    if (request.agentId !== agentId) continue;
+    const opening = openings.get(request.id);
+    if (opening === undefined || opening.sequence > state.head) continue;
+    if (opening.sequence >= bestSequence) {
+      best = request;
+      bestSequence = opening.sequence;
+    }
+  }
+  return best;
 }
 
 /**
@@ -69,27 +96,23 @@ export function recordedCardTarget(args: {
   if (state === null || selectedId === null) return null;
   const head = state.head;
   // Moments are in ingest order. A short walk back from the head finds a recent request cheaply;
-  // when it does not, the agent's own request-opening moments are bisected instead, so an agent
-  // with no recent (or any) request never costs a walk over the whole log.
+  // when it does not, the agent's retained requests are resolved through the per-array index, so
+  // an agent with no recent (or any) request, or one whose openings were merged away, never costs
+  // a walk over the log.
   const start = lastAtOrBefore(moments, head);
-  let candidates: readonly OpenedMoment[] = moments;
-  let from = start;
   const stop = Math.max(0, start - WALK_BUDGET);
+  let request: ProjectState["requests"][string] | undefined;
+  let walked = false;
   for (let i = start - 1; i >= stop; i -= 1) {
-    if (retainedFor(moments[i], selectedId, state.requests)) break;
-    if (i === stop) {
-      candidates = agentIndex(moments).get(selectedId) ?? [];
-      from = lastAtOrBefore(candidates, head);
-    }
+    const candidate = moments[i];
+    if (!retainedFor(candidate, selectedId, state.requests)) continue;
+    const requestId = candidate?.requestId;
+    request = requestId === undefined ? undefined : state.requests[requestId];
+    walked = true;
+    break;
   }
-  for (let i = from - 1; i >= 0; i -= 1) {
-    const moment = candidates[i];
-    if (moment === undefined || moment.requestId === undefined || moment.agentId !== selectedId)
-      continue;
-    const request = Object.hasOwn(state.requests, moment.requestId)
-      ? state.requests[moment.requestId]
-      : undefined;
-    if (request === undefined || request.agentId !== selectedId) continue;
+  if (!walked) request = latestRetained(moments, state, selectedId);
+  if (request !== undefined) {
     return {
       agentId: selectedId,
       agentName: state.agents[selectedId]?.displayName ?? selectedId,
