@@ -63,9 +63,27 @@ const EVIDENCE_DEPTH_MAX = 32;
 const EVIDENCE_KEY_MAX = 256;
 /** Agent or Task call lines remembered to link a subagent to its spawn. */
 const SPAWN_LINES_MAX = 10_000;
+/** Most nodes of one tool input or output that redaction and copying ever see. */
+const EVIDENCE_NODES_MAX = 100_000;
+/** Most entries of the `pending` and `sessions` maps; the oldest is evicted past it. */
+const STATE_MAX = 50_000;
 
 interface SessionState {
   agents: Set<string>;
+}
+
+/** Key scoped by session, so two sessions sharing a uuid or tool-use id never meet. */
+const scoped = (sessionId: string, id: string): string => `${sessionId}\u0000${id}`;
+
+/** Sets a key as the newest entry, evicting the oldest while the map is over `max`. */
+function remember<V>(map: Map<string, V>, key: string, value: V, max: number): void {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > max) {
+    const oldest = map.keys().next();
+    if (oldest.done === true) break;
+    map.delete(oldest.value);
+  }
 }
 
 export function createTranscriptMapper(options: {
@@ -133,8 +151,9 @@ export function createTranscriptMapper(options: {
       } as InputEventWire);
     };
 
-    const session = sessions.get(sessionId) ?? { agents: new Set<string>() };
-    sessions.set(sessionId, session);
+    // Worked on as a copy and recorded only once the line succeeds, so a throw cannot lose the
+    // registrations this line would have emitted.
+    const session: SessionState = { agents: new Set(sessions.get(sessionId)?.agents) };
     const mainId = sessionAgentId(sessionId);
     if (!session.agents.has(mainId)) {
       session.agents.add(mainId);
@@ -160,7 +179,8 @@ export function createTranscriptMapper(options: {
         // The parent is only what the transcript records: the first sidechain line follows the
         // line that holds the Agent or Task call.
         const parentUuid = own(parsed, "parentUuid");
-        const parentAgentId = typeof parentUuid === "string" ? spawns.get(parentUuid) : undefined;
+        const parentAgentId =
+          typeof parentUuid === "string" ? spawns.get(scoped(sessionId, parentUuid)) : undefined;
         emit(agentId, "agent.registered", {
           sourceAgentId,
           displayName: "subagent",
@@ -181,8 +201,8 @@ export function createTranscriptMapper(options: {
         }
         const toolCallId = own(block, "tool_use_id");
         if (!isHookId(toolCallId, MAX_TOOL_USE_ID)) continue;
-        const owner = pending.get(toolCallId) ?? agentId;
-        pending.delete(toolCallId);
+        const owner = pending.get(scoped(sessionId, toolCallId)) ?? agentId;
+        pending.delete(scoped(sessionId, toolCallId));
         emit(owner, "tool_call.finished", {
           toolCallId,
           phase: own(block, "is_error") === true ? "failed" : "succeeded",
@@ -208,7 +228,7 @@ export function createTranscriptMapper(options: {
           PATH_MAX,
         );
         const summary = toolSummary(input);
-        pending.set(toolCallId, agentId);
+        remember(pending, scoped(sessionId, toolCallId), agentId, STATE_MAX);
         emit(agentId, "tool_call.started", {
           toolCallId,
           toolName,
@@ -223,9 +243,10 @@ export function createTranscriptMapper(options: {
       }
       const uuid = own(parsed, "uuid");
       if (typeof uuid === "string" && spawnsHere && spawns.size < SPAWN_LINES_MAX) {
-        spawns.set(uuid, agentId);
+        spawns.set(scoped(sessionId, uuid), agentId);
       }
     }
+    remember(sessions, sessionId, session, STATE_MAX);
     return done(events, evidence);
   }
 
@@ -268,10 +289,28 @@ function toolSummary(input: unknown): string | undefined {
  */
 function boundEvidence(value: unknown): unknown {
   if (value === undefined) return undefined;
+  if (exceedsNodes(value, EVIDENCE_NODES_MAX)) {
+    return { truncated: true, reason: `more than ${EVIDENCE_NODES_MAX} nodes` };
+  }
   const cut = shorten(redactJson(limitDepth(value, 0)).value);
   const text = JSON.stringify(cut);
   if (text === undefined || text.length <= EVIDENCE_TOTAL_MAX) return cut;
   return { truncated: true, preview: text.slice(0, EVIDENCE_STRING_MAX).toWellFormed() };
+}
+
+/** Whether `value` has more than `max` nodes; stops walking as soon as that is known. */
+function exceedsNodes(value: unknown, max: number): boolean {
+  let nodes = 0;
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    nodes += 1;
+    if (nodes > max) return true;
+    if (current !== null && typeof current === "object") {
+      for (const child of Object.values(current)) stack.push(child);
+    }
+  }
+  return false;
 }
 
 function limitDepth(value: unknown, depth: number): JsonValue {
