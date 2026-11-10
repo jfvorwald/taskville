@@ -124,3 +124,40 @@ describe("review M2: a line with an enormous number of blocks", () => {
     expect(Math.max(...batches.map((b) => b.events.length))).toBeLessThanOrEqual(1_100);
   }, 60_000);
 });
+
+describe("roborev 7754: a long prefix without a cwd", () => {
+  it("skips the file after one batch instead of buffering the whole prefix", async () => {
+    const dir = join(
+      process.env.CLAUDE_CONFIG_DIR as string,
+      "projects",
+      root.replace(/[^A-Za-z0-9]/g, "-"),
+    );
+    mkdirSync(dir, { recursive: true });
+    // 2,000 cwd-free lines (more than one 500-line batch), then a line inside the root.
+    const lines: object[] = Array.from({ length: 2_000 }, (_, i) =>
+      userPrompt(`p${i}`, { ts: T(i), cwd: null }),
+    );
+    lines.push(userPrompt("late", { ts: T(2_001), cwd: root }));
+    writeFileSync(join(dir, "session.jsonl"), jsonl(lines));
+
+    const gen = createTranscriptImporter().run({
+      projectId: "proj-1",
+      root,
+      signal: new AbortController().signal,
+      progress: () => {},
+    });
+    const batches: ImportBatch[] = [];
+    let counts: { skipped: number; imported: number } | undefined;
+    for (;;) {
+      const next = await gen.next();
+      if (next.done) {
+        counts = next.value as { skipped: number; imported: number };
+        break;
+      }
+      batches.push(next.value);
+    }
+    expect(batches.reduce((n, b) => n + b.events.length, 0)).toBe(0);
+    expect(counts?.imported).toBe(0);
+    expect(counts?.skipped).toBe(1);
+  });
+});

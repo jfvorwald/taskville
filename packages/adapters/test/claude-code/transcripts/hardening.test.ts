@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranscriptMapper } from "../../../src/claude-code/transcripts/index.ts";
 import { assistantToolUse, T, toolResult, userPrompt } from "./fixtures.ts";
 
+// Several cases build lines of a million nodes; under full-suite load they exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000 });
+
 // M8.10 (issue #473, M8.02 security confirm review findings L2 to L6), mapper side.
 // The redact module is wrapped (behavior unchanged) for two seams: `redactJson` records the node
 // count of every value it is handed, and throws when a value carries the marker key `__boom`
@@ -86,7 +89,7 @@ describe("item 3: mapper state is capped", () => {
   // Required: pending and sessions each hold at most 50_000 entries. Whether a full map evicts
   // the oldest entry or refuses the newest is open: the test only needs that not everything
   // stays remembered. Observable: a forgotten tool call's result lands on the result line's own
-  // agent, and a forgotten session registers again.
+  // agent. Sessions (M8.18): a session past the cap is refused, never evicted, so none registers again.
   const N = 60_000;
 
   it("does not remember more than 50_000 pending tool calls", () => {
@@ -110,7 +113,7 @@ describe("item 3: mapper state is capped", () => {
     expect(new Set(owners).size).toBe(2);
   }, 60_000);
 
-  it("does not remember more than 50_000 sessions", () => {
+  it("never registers a session again at the 50_000 cap", () => {
     const m = mapper();
     const ids = Array.from({ length: N }, (_, i) => `s${i}`);
     ids.forEach((sessionId, i) => {
@@ -120,8 +123,9 @@ describe("item 3: mapper state is capped", () => {
       const r = m.mapLine(JSON.stringify(userPrompt("again", { ts: T(1), sessionId })), N + 1 + k);
       return types(r.events).includes("agent.registered");
     });
-    // Unbounded state registers neither again; a cap forgets at least one of the two.
-    expect(registered).toContain(true);
+    // M8.18: a full map no longer forgets a session. The first stays known, and the last was
+    // refused (or flagged seen); neither registers again.
+    expect(registered).toEqual([false, false]);
   }, 60_000);
 });
 
