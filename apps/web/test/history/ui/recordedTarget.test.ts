@@ -226,3 +226,136 @@ describe("recordedCardTarget work bound", () => {
     }
   });
 });
+
+// M6.14 (#361): "resolve merged openings without a scan". The scan the issue means is the indexed
+// fallback in recordedCardTarget: when the 64-moment walk finds nothing, it bisects the agent's
+// request-opening index and then steps back through every opening, one by one, skipping each whose
+// request the replayed state no longer holds (it was merged away). With many openings merged into
+// one early retained request, every head change visits all of them. Work is counted as the number
+// of distinct moment objects whose fields are read, never as wall-clock time.
+describe("recordedCardTarget merged openings", () => {
+  function tracked(touched: Set<number>, sequence: number, agentId: string, requestId?: string) {
+    const seen = <T>(value: T): T => {
+      touched.add(sequence);
+      return value;
+    };
+    const out = {} as { sequence: number; agentId: string | undefined; requestId?: string };
+    Object.defineProperty(out, "sequence", {
+      enumerable: true,
+      get: () => seen(sequence),
+    });
+    Object.defineProperty(out, "agentId", {
+      enumerable: true,
+      get: () => seen(agentId),
+    });
+    Object.defineProperty(out, "requestId", {
+      enumerable: true,
+      get: () => seen(requestId),
+    });
+    return out;
+  }
+
+  it("visits a bounded number of moments per head change with many merged-away openings", () => {
+    const MERGED = 20_000;
+    const touched = new Set<number>();
+    const mergedIds = Array.from({ length: MERGED }, (_, i) => `r-merged-${i}`);
+    const moments = [tracked(touched, 5, ADA, "r-early")];
+    mergedIds.forEach((id, i) => {
+      moments.push(tracked(touched, 10 + i, ADA, id)); // same agent, merged into r-early
+    });
+    const last = 10 + MERGED - 1;
+    // Another agent's openings interleave and are retained, so they must not be returned for ADA.
+    const bea = Array.from({ length: 50 }, (_, i) => `b-${i}`);
+    bea.forEach((id, i) => {
+      moments.push(tracked(touched, last + 1 + i, BEA, id));
+    });
+    const retained = [
+      request("r-early", ADA, { mergedRequestIds: mergedIds }),
+      ...bea.map((id) => request(id, BEA)),
+    ];
+    const call = (head: number) =>
+      recordedCardTarget({ state: stateWith(head, retained), moments, selectedId: ADA });
+
+    call(15_000); // warm-up: building a per-list index on first use is allowed
+    for (const head of [last + 50, last, 15_000, 10_000, 5_000, 7]) {
+      touched.clear();
+      expect(call(head)?.requestId).toBe("r-early");
+      expect(touched.size).toBeLessThan(200);
+    }
+    touched.clear();
+    expect(call(4)).toBeNull(); // not yet opened at an earlier head
+    expect(touched.size).toBeLessThan(200);
+  });
+
+  // Correctness guard (passes today, must keep passing): merged-away openings are never targets,
+  // even when newer than every retained one; the answer is the latest retained opening at or
+  // before the head, exactly as before. A merged-away opening does not redirect to its host
+  // request when a different retained request opened later.
+  it("matches the brute-force result on every head of a log with merged-away openings", () => {
+    let seed = 7;
+    const next = (n: number) => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed % n;
+    };
+    const moments: ReturnType<typeof moment>[] = [];
+    const all: Request[] = [];
+    const hostByAgent = new Map<string, Request>();
+    for (let seq = 1; seq <= 400; seq += 1) {
+      const agent = next(2) === 0 ? ADA : BEA;
+      const kind = next(5);
+      if (kind === 0) {
+        moments.push(moment(seq, agent)); // no request
+      } else if (kind <= 2 || !hostByAgent.has(agent)) {
+        const r = request(`r-${seq}`, agent);
+        all.push(r);
+        hostByAgent.set(agent, r);
+        moments.push(moment(seq, agent, r.id));
+      } else {
+        const host = hostByAgent.get(agent) as Request;
+        const id = `m-${seq}`; // merged into an earlier retained request, absent from the state
+        (host.mergedRequestIds as string[]).push(id);
+        moments.push(moment(seq, agent, id));
+      }
+    }
+    const oracle = (head: number, agentId: string) => {
+      for (let i = moments.length - 1; i >= 0; i -= 1) {
+        const m = moments[i];
+        if (m === undefined || m.sequence > head || m.agentId !== agentId) continue;
+        if (m.requestId === undefined) continue;
+        const r = all.find((x) => x.id === m.requestId);
+        if (r !== undefined && r.agentId === agentId) return r.id;
+      }
+      return null;
+    };
+    for (let head = 0; head <= 400; head += 1) {
+      const present = all.filter((r) => Number(r.id.slice(2)) <= head);
+      for (const agentId of [ADA, BEA]) {
+        const got = recordedCardTarget({
+          state: stateWith(head, present),
+          moments,
+          selectedId: agentId,
+        });
+        expect(got?.requestId ?? null).toBe(oracle(head, agentId));
+      }
+    }
+  });
+
+  it("keeps the later retained request when an older host absorbed a newer opening", () => {
+    const state = stateWith(3, [
+      request("r-1", ADA, { mergedRequestIds: ["m-3"] }),
+      request("r-2", ADA),
+    ]);
+    const moments = [moment(1, ADA, "r-1"), moment(2, ADA, "r-2"), moment(3, ADA, "m-3")];
+    expect(recordedCardTarget({ state, moments, selectedId: ADA })?.requestId).toBe("r-2");
+  });
+
+  // Identity keying (second Scope bullet): a different array of the same length is a different
+  // recording and must not reuse the first one's index.
+  it("does not reuse an index across distinct moments arrays of equal length", () => {
+    const a = [moment(1, ADA, "r-a")];
+    const b = [moment(1, ADA, "r-b")];
+    const state = stateWith(1, [request("r-a", ADA), request("r-b", ADA)]);
+    expect(recordedCardTarget({ state, moments: a, selectedId: ADA })?.requestId).toBe("r-a");
+    expect(recordedCardTarget({ state, moments: b, selectedId: ADA })?.requestId).toBe("r-b");
+  });
+});
