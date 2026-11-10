@@ -221,10 +221,15 @@ export function createTranscriptImporter(
               take(result);
             }
             lines += 1;
-            if (
-              validated &&
-              (lines >= BATCH_LINES || bytes >= yieldBytes || batch.events.length >= BATCH_EVENTS)
-            ) {
+            const full =
+              lines >= BATCH_LINES || bytes >= yieldBytes || batch.events.length >= BATCH_EVENTS;
+            // A real transcript shows its cwd within the first few lines, so a file that fills a
+            // batch without one is skipped. That bounds the buffering before validation at one batch.
+            if (!validated && full) {
+              rejected = true;
+              break;
+            }
+            if (full) {
               report();
               yield batch;
               batch = { events: [] };
