@@ -10,7 +10,7 @@
 // the seeded demo, then samples. Headless Chromium uses software GL (SwiftShader), so the fps is a
 // worst case, not an integrated GPU figure; pass --headed on the target machine for that. In a
 // headed run keep the real pointer off the browser window, or hovering an agent redraws the scene.
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "./playwright.ts";
 import { runDemo, webCodes } from "./support.ts";
@@ -28,6 +28,27 @@ const idleSeconds = flag("idle", 10);
 const dpr = flag("dpr", 1);
 const port = String(flag("port", 4886));
 const web = fileURLToPath(new URL("../../../apps/web", import.meta.url));
+
+// macOS proc_pid_rusage(RUSAGE_INFO_V4) for the pids given as arguments; prints JSON
+// {pid: [instructions, cycles, cpu_ns]}. user and system time are mach absolute ticks, so they are
+// scaled by mach_timebase_info (about 41.7 ns per tick on Apple Silicon); unscaled, GHz is 42x off.
+const RUSAGE_PY = `
+import ctypes, json, sys
+lib = ctypes.CDLL("/usr/lib/libproc.dylib")
+class TB(ctypes.Structure):
+    _fields_ = [("n", ctypes.c_uint32), ("d", ctypes.c_uint32)]
+tb = TB()
+ctypes.CDLL("/usr/lib/libSystem.B.dylib").mach_timebase_info(ctypes.byref(tb))
+names = "user_time system_time pkg_idle_wkups interrupt_wkups pageins wired_size resident_size phys_footprint proc_start_abstime proc_exit_abstime child_user_time child_system_time child_pkg_idle_wkups child_interrupt_wkups child_pageins child_elapsed_abstime diskio_bytesread diskio_byteswritten cpu_time_qos_default cpu_time_qos_maintenance cpu_time_qos_background cpu_time_qos_utility cpu_time_qos_legacy cpu_time_qos_user_initiated cpu_time_qos_user_interactive billed_system_time serviced_system_time logical_writes lifetime_max_phys_footprint instructions cycles billed_energy serviced_energy interval_max_phys_footprint runnable_time".split()
+class V4(ctypes.Structure):
+    _fields_ = [("uuid", ctypes.c_uint8 * 16)] + [(n, ctypes.c_uint64) for n in names]
+out = {}
+for pid in sys.argv[1:]:
+    b = V4()
+    if lib.proc_pid_rusage(int(pid), 4, ctypes.byref(b)) == 0:
+        out[pid] = [b.instructions, b.cycles, (b.user_time + b.system_time) * tb.n // tb.d]
+print(json.dumps(out))
+`;
 
 const BUDGET = { movingFps: 60, idleCpuPercent: 5, idleFps: 20 };
 
@@ -193,6 +214,35 @@ try {
     };
     return processInfo.reduce((sum, p) => sum + p.cpuTime, 0);
   };
+  // Retired instructions, cycles and CPU time per Chromium process (macOS only; null elsewhere or on
+  // any failure), read for the same pids the CDP call returns.
+  interface Usage {
+    at: number;
+    procs: Map<string, { type: string; instructions: number; cycles: number; ns: number }>;
+  }
+  const usage = async (): Promise<Usage | null> => {
+    if (process.platform !== "darwin") return null;
+    try {
+      const { processInfo } = (await cdp.send("SystemInfo.getProcessInfo")) as {
+        processInfo: { type: string; id: number }[];
+      };
+      const out = execFileSync(
+        "python3",
+        ["-I", "-c", RUSAGE_PY, ...processInfo.map((p) => String(p.id))],
+        { encoding: "utf8", timeout: 10_000 },
+      );
+      const raw = JSON.parse(out) as Record<string, [number, number, number]>;
+      const procs: Usage["procs"] = new Map();
+      for (const p of processInfo) {
+        const r = raw[String(p.id)];
+        if (r)
+          procs.set(String(p.id), { type: p.type, instructions: r[0], cycles: r[1], ns: r[2] });
+      }
+      return procs.size > 0 ? { at: performance.now(), procs } : null;
+    } catch {
+      return null;
+    }
+  };
   const sampleCpu = async (seconds: number): Promise<number> => {
     const [c0, t0] = [await cpuSeconds(), performance.now()];
     await sleep(seconds * 1000);
@@ -224,9 +274,11 @@ try {
   await labels.nth(5).waitFor({ timeout: 30_000 });
   demoMustRun("before the moving window");
   await parkPointer();
+  const movingUsage0 = await usage();
   const movingCpuPromise = sampleCpu(movingSeconds);
   const moving = await sampleFps(movingSeconds, true);
   const movingCpu = await movingCpuPromise;
+  const movingUsage1 = await usage();
   demoMustRun("during the moving window, so the moving figures are not all moving");
   const movingNow = await travelling();
 
@@ -250,9 +302,11 @@ try {
   // Check the labels just before and just after the idle window, not during it: polling the page
   // while sampling would add renderer work to the measured idle CPU (roborev 5742).
   const moversBefore = (await travelling()).moving;
+  const idleUsage0 = await usage();
   const idleCpuPromise = sampleCpu(idleSeconds);
   const idle = await sampleFps(idleSeconds, false);
   const idleCpu = await idleCpuPromise;
+  const idleUsage1 = await usage();
   const moversAfter = (await travelling()).moving;
 
   const agents = await labels.count();
@@ -262,6 +316,50 @@ try {
     const pct = ((measured - target) / target) * 100;
     if (Math.abs(pct) < 0.05) return `exactly the ${what}`;
     return `${f(Math.abs(pct))}% ${pct > 0 ? "above" : "below"} the ${what}`;
+  };
+  /** Per process type and in total: instructions retired in the window, and cycles per CPU ns (GHz). */
+  const instructionLines = (a: Usage | null, b: Usage | null): string => {
+    if (!a || !b) return "  instructions: unavailable";
+    const seconds = (b.at - a.at) / 1000;
+    const byType = new Map<string, { instructions: number; cycles: number; ns: number }>();
+    const missing = new Set<string>();
+    let started = 0;
+    let exited = 0;
+    for (const [pid, start] of a.procs) {
+      if (b.procs.has(pid)) continue;
+      exited++; // gone by the end snapshot: its final work is not readable
+      missing.add(start.type);
+    }
+    for (const [pid, end] of b.procs) {
+      const start = a.procs.get(pid);
+      if (!start) {
+        started++; // started inside the window: no baseline
+        missing.add(end.type);
+        continue;
+      }
+      const sum = byType.get(end.type) ?? { instructions: 0, cycles: 0, ns: 0 };
+      sum.instructions += end.instructions - start.instructions;
+      sum.cycles += end.cycles - start.cycles;
+      sum.ns += end.ns - start.ns;
+      byType.set(end.type, sum);
+    }
+    if (byType.size === 0 || seconds <= 0) return "  instructions: unavailable";
+    const total = { instructions: 0, cycles: 0, ns: 0 };
+    for (const sum of byType.values()) {
+      total.instructions += sum.instructions;
+      total.cycles += sum.cycles;
+      total.ns += sum.ns;
+    }
+    const line = (type: string, s: typeof total) =>
+      `  instructions ${type}: ${s.instructions} ${f(s.instructions / seconds / 1e6, 0)} M/s, effective ${s.ns > 0 ? f(s.cycles / s.ns, 2) : "n/a"} GHz`;
+    const label =
+      started + exited === 0
+        ? "total"
+        : `total (incomplete: ${started} started, ${exited} exited; missing ${[...missing].join(", ")})`;
+    return [...byType]
+      .map(([type, s]) => line(type, s))
+      .concat(line(label, total))
+      .join("\n");
   };
   const rates = (r: Fps) =>
     `${r.rafRate === null ? "  no requestAnimationFrame counter in this window" : `  requestAnimationFrame ${f(r.rafRate)}/s, display refresh estimate ${f(r.refreshHz ?? 0, 0)} Hz`}\n  frames counted from WebGL clear: ${r.frames} (${f(r.fps)} fps), busiest second ${r.busiestSecond} frames`;
@@ -282,6 +380,7 @@ try {
   console.log(rates(moving));
   console.log(`  frame time p95 ${f(moving.p95FrameMs)} ms, worst ${f(moving.worstFrameMs)} ms`);
   console.log(`  browser CPU ${f(movingCpu)}% of one core (no moving CPU target)`);
+  console.log(instructionLines(movingUsage0, movingUsage1));
   console.log(`\nIdle (${idleSeconds} s after ${settleSeconds} s settle):`);
   console.log(
     `  agents travelling at the start and end of the idle window: ${moversBefore} and ${moversAfter}${moversBefore + moversAfter === 0 ? " (still)" : " (NOT STILL)"}`,
@@ -293,6 +392,7 @@ try {
   console.log(
     `  browser CPU ${f(idleCpu)}% of one core, target under ${BUDGET.idleCpuPercent}%: ${against(idleCpu, BUDGET.idleCpuPercent, "idle target")}`,
   );
+  console.log(instructionLines(idleUsage0, idleUsage1));
 } finally {
   stop.abort();
   await browser?.close().catch(() => {});
