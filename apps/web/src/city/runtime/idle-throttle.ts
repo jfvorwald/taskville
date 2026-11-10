@@ -8,7 +8,7 @@ const DEFAULT_IDLE_AFTER_MS = 1000;
 /** One frame of a 60 Hz display. */
 export const DISPLAY_FRAME_MS = 1000 / 60;
 /** How early a display tick may land on a frame deadline: timer noise, not a free frame. */
-const PACER_TOLERANCE_MS = 2;
+export const PACER_TOLERANCE_MS = 2;
 
 /** What keeps the picture changing. Any one of them holds the full rate. */
 export interface MotionSignals {
@@ -64,6 +64,8 @@ export function shouldRenderFrame(
 export interface FramePacer {
   /** Called once per display tick; true when this tick should be drawn. */
   shouldRender(targetFps: number, now: number): boolean;
+  /** The carried deadline of the next frame; null before the first draw. */
+  nextDeadline(): number | null;
 }
 
 /**
@@ -89,6 +91,9 @@ export function createFramePacer(): FramePacer {
       if (deadline <= now) deadline = now + interval;
       lastDrawAt = now;
       return true;
+    },
+    nextDeadline() {
+      return deadline;
     },
   };
 }

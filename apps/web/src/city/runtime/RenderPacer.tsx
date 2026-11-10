@@ -6,12 +6,14 @@ import { presentationEpoch } from "./epoch.ts";
 import {
   createFramePacer,
   createIdleThrottle,
-  DISPLAY_FRAME_MS,
   IDLE_FPS,
-  IDLE_WAKE_MS,
+  PACER_TOLERANCE_MS,
 } from "./idle-throttle.ts";
 import { motionSignals } from "./motion-signals.ts";
 import { watchVisibility } from "./visibility.ts";
+
+/** Extra lead on the idle timer, so its jitter does not carry the wake past the due vsync. */
+const WAKE_MARGIN_MS = 4;
 
 /**
  * Drives a `frameloop="demand"` canvas: a display-paced loop that asks for a frame at 60 fps
@@ -86,9 +88,10 @@ export function RenderPacer() {
         if (drew) invalidate();
       } finally {
         if (idle && drew) {
-          // Aim the wake at the vsync where the next idle frame is due: count from the frame
-          // timestamp, and land half a display frame early so timer jitter cannot slip a vsync.
-          const delay = Math.max(0, t + IDLE_WAKE_MS - DISPLAY_FRAME_MS / 2 - now());
+          // Aim the wake at the pacer's absolute deadline, early by its tolerance plus a margin,
+          // so timer jitter cannot slip past the vsync where the next idle frame is due.
+          const deadline = pacer.nextDeadline() ?? t;
+          const delay = Math.max(0, deadline - PACER_TOLERANCE_MS - WAKE_MARGIN_MS - now());
           timer = setTimeout(() => {
             timer = undefined;
             wake();
