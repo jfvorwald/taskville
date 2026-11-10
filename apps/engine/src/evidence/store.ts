@@ -209,6 +209,18 @@ export class EvidenceStore implements EvidenceSink {
     });
   }
 
+  /** The IDs of the archives that hold pointers for a project, including ones whose row is gone. */
+  archiveIds(projectId: string): string[] {
+    const low = `${projectId}${ARCHIVE_SEPARATOR}`;
+    const high = `${projectId}${ARCHIVE_SEPARATOR.slice(0, -1)}\u0002`;
+    const rows = this.#db
+      .prepare(
+        "SELECT DISTINCT project_id AS scope FROM tool_call_bodies WHERE project_id >= ? AND project_id < ?",
+      )
+      .all(low, high) as unknown as { scope: string }[];
+    return rows.map((row) => row.scope.slice(low.length));
+  }
+
   /** Removes every body and pointer of a project, archive scopes included. */
   deleteProject(projectId: string): void {
     // Archive scopes are `projectId + SEPARATOR + archiveId`: a range over the prefix (binary
