@@ -113,7 +113,7 @@ describe("item 3: mapper state is capped", () => {
     ids.forEach((sessionId, i) => {
       m.mapLine(JSON.stringify(userPrompt("hi", { ts: T(0), sessionId })), i + 1);
     });
-    const registered = [ids[0], ids[N - 1]].map((sessionId, k) => {
+    const registered = [`s0`, `s${N - 1}`].map((sessionId, k) => {
       const r = m.mapLine(JSON.stringify(userPrompt("again", { ts: T(1), sessionId })), N + 1 + k);
       return types(r.events).includes("agent.registered");
     });
