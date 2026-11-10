@@ -11,7 +11,7 @@ interface OpenedMoment {
 const WALK_BUDGET = 64;
 
 /** The count of leading moments whose sequence is at or before `head` (sequences ascend). */
-function lastAtOrBefore(list: readonly OpenedMoment[], head: number): number {
+function lastAtOrBefore(list: readonly { readonly sequence: number }[], head: number): number {
   let low = 0;
   let high = list.length;
   while (low < high) {
@@ -34,8 +34,14 @@ function retainedFor(
   );
 }
 
-/** Each agent's request-opening moments by request id, built once per published moments array. */
-type OpeningIndex = Map<string, Map<string, OpenedMoment>>;
+/** A request-opening moment reduced to primitives: its place in the log and the request it opened. */
+interface Opening {
+  readonly sequence: number;
+  readonly requestId: string;
+}
+
+/** Each agent's openings in ingest order (sequence ascending), built once per published array. */
+type OpeningIndex = Map<string, Opening[]>;
 
 // Keyed by array identity, never by length. A moments array is immutable once published: the
 // provider hands over a new array when the recording changes, and this index is never rebuilt.
@@ -47,18 +53,21 @@ function openingIndex(moments: readonly OpenedMoment[]): OpeningIndex {
   const index: OpeningIndex = new Map();
   for (const moment of moments) {
     if (moment.requestId === undefined || moment.agentId === undefined) continue;
-    const byRequest = index.get(moment.agentId);
-    if (byRequest === undefined) index.set(moment.agentId, new Map([[moment.requestId, moment]]));
-    else byRequest.set(moment.requestId, moment);
+    const opening = { sequence: moment.sequence, requestId: moment.requestId };
+    const list = index.get(moment.agentId);
+    if (list === undefined) index.set(moment.agentId, [opening]);
+    else list.push(opening);
   }
   indexes.set(moments, index);
   return index;
 }
 
 /**
- * The retained request of the agent whose opening moment has the greatest sequence at or before
- * the head. Only requests the replayed state holds are looked at, so merged-away openings are
- * never visited and the cost does not depend on how many there are.
+ * The agent's retained request opened latest at or before the head: bisect the agent's openings to
+ * the head, then walk back to the first whose request the replayed state holds for the agent.
+ * Every opening is kept, so a duplicated id (the reducer keeps the first) is found from the first.
+ * The leftover cost is O(the agent's own openings) primitive lookups with zero moment reads; other
+ * agents' requests and merged-away moments are never touched.
  */
 function latestRetained(
   moments: readonly OpenedMoment[],
@@ -67,18 +76,13 @@ function latestRetained(
 ): ProjectState["requests"][string] | undefined {
   const openings = openingIndex(moments).get(agentId);
   if (openings === undefined) return undefined;
-  let best: ProjectState["requests"][string] | undefined;
-  let bestSequence = Number.NEGATIVE_INFINITY;
-  for (const request of Object.values(state.requests)) {
-    if (request.agentId !== agentId) continue;
-    const opening = openings.get(request.id);
-    if (opening === undefined || opening.sequence > state.head) continue;
-    if (opening.sequence >= bestSequence) {
-      best = request;
-      bestSequence = opening.sequence;
-    }
+  for (let i = lastAtOrBefore(openings, state.head) - 1; i >= 0; i -= 1) {
+    const requestId = openings[i]?.requestId;
+    if (requestId === undefined || !Object.hasOwn(state.requests, requestId)) continue;
+    const request = state.requests[requestId];
+    if (request?.agentId === agentId) return request;
   }
-  return best;
+  return undefined;
 }
 
 /**
