@@ -13,6 +13,7 @@ import {
   openStorage,
   type ProjectionReducer,
   rebuildStaleProjections,
+  UPKEEP_WAIT_MS,
 } from "../../src/storage/index.ts";
 import { stateAtSequence } from "../../src/timelines/checkpoints.ts";
 import { seedLog } from "./day-log.ts";
@@ -156,6 +157,30 @@ function writeWaitMs(conn: ReturnType<typeof openStorage>): number {
   return performance.now() - started;
 }
 
+/**
+ * The busy timeouts that `run` set on any connection below the engine's own (5000 ms) default, in
+ * order: each is one upkeep step's grant from the shared budget. The restores back to the default
+ * are not grants and are left out.
+ */
+function grantedBusyTimeouts(run: () => void): number[] {
+  const granted: number[] = [];
+  const exec = DatabaseSync.prototype.exec;
+  const spy = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (
+    this: DatabaseSync,
+    sql: string,
+  ) {
+    const match = /^PRAGMA busy_timeout = (\d+)$/.exec(sql);
+    if (match && Number(match[1]) < 5000) granted.push(Number(match[1]));
+    return exec.call(this, sql);
+  });
+  try {
+    run();
+  } finally {
+    spy.mockRestore();
+  }
+  return granted;
+}
+
 // Passes on main (pins), except where noted per test.
 describe("busy_timeout is restored after stateAtSequence", () => {
   beforeEach(() => seedLog(storage(), events));
@@ -203,6 +228,25 @@ describe("busy_timeout is restored after stateAtSequence", () => {
       );
       expect(value).toEqual(fullReplay(LOG_LENGTH));
       expect(extra).toBeLessThan(BUDGET_CEILING_MS);
+
+      // The wall-clock ceiling is loose on purpose, so check the sharing itself: the busy timeouts
+      // the upkeep steps were granted (what the connection was told to wait) add up to at most the
+      // budget. Separate budgets per step would grant about 250 ms each, and this sum would be a
+      // multiple of it. Counted from PRAGMA statements, so machine load cannot move it.
+      damaged();
+      const granted = grantedBusyTimeouts(() => {
+        db().exec("BEGIN IMMEDIATE");
+        try {
+          stateAtSequence(storage(), PROJECT, LOG_LENGTH);
+        } finally {
+          db().exec("ROLLBACK");
+        }
+      });
+      expect(granted.length, "upkeep reached a blocking write").toBeGreaterThan(0);
+      expect(
+        granted.reduce((sum, ms) => sum + ms, 0),
+        `timeouts granted: ${granted.join(", ")}`,
+      ).toBeLessThanOrEqual(UPKEEP_WAIT_MS);
     },
     LOADED_TIMEOUT_MS,
   );
