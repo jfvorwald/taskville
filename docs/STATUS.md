@@ -2,7 +2,16 @@
 
 Lead-owned cross-session summary. Teammates write their own reports in [tasks/](tasks/).
 
-**Updated:** 2026-11-09 UTC. **Main:** 5a69165. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 4 done: M10.05, M8.10, M8.18, M8.09 merged; wave run clean apart from one first-time flake. Open follow-ups: #531, #533. Staging deploy still held (#432).
+**Updated:** 2026-11-09 UTC. **Main:** b038098. **State:** no gate open (G8 closed on the owner's standing instruction). Backlog wave 5 done: M8.19, M8.20 merged. Open follow-up: #537. Staging deploy still held (#432).
+
+## Done in backlog wave 5 (2026-11-09)
+
+| Ticket | PR | Outcome |
+| --- | --- | --- |
+| M8.19 #531 checkpoints after import | #535 | an import schedules its archive's checkpoint build (deferred, yielding); in-flight builds are shared per storage so the import and the timeline routes never build twice; a pruned archive stops quietly; [report](tasks/M8.19.md) |
+| M8.20 #533 per-session cwd check | #536 | the mapper reports each line's cwd and each session's cwd from one parse; the importer validates the file and every session against the root (absolute paths only, the stored value is the checked value); pre-validation allowance 5,000 lines, 16 MiB or 10,000 events with an `onSkip` reason; security review PASS WITH FINDINGS (one low filed as #537); [report](tasks/M8.20.md) |
+
+Follow-up filed: #537 (check a session's first cwd even when it registered without one). No push-tier run for this two-ticket wave (engine and adapter only, `pnpm check` 5,989 of 5,989 per ticket); the next batch's run covers it.
 
 ## Done in backlog wave 4 (2026-11-09)
 
