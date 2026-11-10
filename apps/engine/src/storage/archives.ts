@@ -1,4 +1,5 @@
 import type { StoredEnvelope } from "@taskville/protocol";
+import type { CheckpointRow } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import type { Database, Statement } from "./sqlite.ts";
 
@@ -121,6 +122,12 @@ export class SqliteArchives {
   readonly #events: Statement;
   readonly #eventAt: Statement;
   readonly #positionAtOrBefore: Statement;
+  readonly #deleteCheckpoints: Statement;
+  readonly #checkpointPositions: Statement;
+  readonly #checkpoint: Statement;
+  readonly #putCheckpoint: Statement;
+  readonly #deleteCheckpoint: Statement;
+  readonly #pruneCheckpoints: Statement;
 
   constructor(db: Database) {
     this.#db = db;
@@ -169,6 +176,27 @@ export class SqliteArchives {
       `SELECT coalesce(max(position), 0) AS position FROM archive_events
        WHERE archive_id = ? AND occurred_ms <= ?`,
     );
+    this.#deleteCheckpoints = db.prepare("DELETE FROM archive_checkpoints WHERE archive_id = ?");
+    this.#checkpointPositions = db.prepare(
+      "SELECT position FROM archive_checkpoints WHERE archive_id = ? ORDER BY position",
+    );
+    this.#checkpoint = db.prepare(
+      `SELECT position, reducer_version, state_hash, state_json FROM archive_checkpoints
+       WHERE archive_id = ? AND position = ?`,
+    );
+    // Writes only while the archive exists, so a build that outlives a prune leaves no orphan.
+    this.#putCheckpoint = db.prepare(
+      `INSERT OR REPLACE INTO archive_checkpoints
+         (archive_id, position, reducer_version, state_hash, state_json)
+       SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM archives WHERE id = ?)`,
+    );
+    this.#deleteCheckpoint = db.prepare(
+      "DELETE FROM archive_checkpoints WHERE archive_id = ? AND position = ?",
+    );
+    this.#pruneCheckpoints = db.prepare(
+      `DELETE FROM archive_checkpoints
+       WHERE archive_id = ? AND (reducer_version != ? OR substr(state_json, 1, 1) != '{')`,
+    );
   }
 
   /** Records a new archive as `running`. Fails for an unknown project. */
@@ -208,9 +236,10 @@ export class SqliteArchives {
     );
   }
 
-  /** Deletes an archive and its events. */
+  /** Deletes an archive, its events and its checkpoints. */
   delete(id: string): void {
     this.#transaction(() => {
+      this.#deleteCheckpoints.run(id);
       this.#deleteEvents.run(id);
       this.#deleteArchive.run(id);
     });
@@ -308,6 +337,55 @@ export class SqliteArchives {
   positionAtOrBefore(id: string, at: string): number {
     const row = this.#positionAtOrBefore.get(id, instantMs(at)) as { position: number };
     return Number(row.position);
+  }
+
+  /** Positions that hold a checkpoint for the archive, ascending. */
+  checkpointPositions(id: string): number[] {
+    return (this.#checkpointPositions.all(id) as unknown as { position: number }[]).map((row) =>
+      Number(row.position),
+    );
+  }
+
+  /** The stored checkpoint at `position` (`sequence` is the archive position), trusted or not. */
+  checkpoint(id: string, position: number): CheckpointRow | undefined {
+    const row = this.#checkpoint.get(id, position) as
+      | { position: number; reducer_version: number; state_hash: string; state_json: string }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      sequence: Number(row.position),
+      reducerVersion: Number(row.reducer_version),
+      stateHash: String(row.state_hash),
+      stateJson: String(row.state_json),
+    };
+  }
+
+  /** Stores one checkpoint in its own transaction. False when the archive no longer exists. */
+  putCheckpoint(id: string, row: CheckpointRow): boolean {
+    let written = false;
+    this.#transaction(() => {
+      written =
+        Number(
+          this.#putCheckpoint.run(
+            id,
+            row.sequence,
+            row.reducerVersion,
+            row.stateHash,
+            row.stateJson,
+            id,
+          ).changes,
+        ) > 0;
+    });
+    return written;
+  }
+
+  deleteCheckpoint(id: string, position: number): void {
+    this.#deleteCheckpoint.run(id, position);
+  }
+
+  /** Drops checkpoints of another reducer version or whose state text is not a JSON object. */
+  pruneCheckpoints(id: string, reducerVersion: number): void {
+    this.#pruneCheckpoints.run(id, reducerVersion);
   }
 
   #finishRow(
