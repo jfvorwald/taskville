@@ -513,3 +513,121 @@ describe("the row bound grows by the agent count and not the log", () => {
     expect(rows).toBeLessThanOrEqual(40 + 2 * AGENTS);
   });
 });
+
+// M5.14 regression cases from the debug round (reverse gap and live path of the full-fold
+// fallback). Each asserts the full fold's premise (the helper call's final phase) and that the
+// feed's frames equal the full fold's, for every agent of the project.
+describe("the subset fold equals the full fold: reverse gap and live path", () => {
+  const lastPhase = (h: H, project: string, helper: string, toolCallId: string) => {
+    const last = fullFold(h, project, helper, 0).at(-1);
+    return last?.toolCallId === toolCallId ? last.phase : undefined;
+  };
+  const permission = (agentId: string, sessionId: string, requestId: string): Raw =>
+    ev("request.opened", agentId, sessionId, { requestId, kind: "permission" });
+
+  it("R1 (reverse gap): another agent's turn end in the other session closes the owner's request", async () => {
+    const h = await start();
+    h.addProject("r1", SPIKE_CWD);
+    ingestAll(h, "r1", "r1", [
+      ev("session.started", "r1-owner", "r1-s"),
+      ev("session.started", "r1-owner", "r1-other"),
+      permission("r1-owner", "r1-other", "r1-req"),
+      ev("agent.finished", "r1-owner", "r1-s"),
+      ev("session.turn_ended", "r1-closer", "r1-other"),
+      call("r1-helper", "r1-s", "toolu_r1_a"),
+      ...finishers("r1"),
+      ev("session.turn_ended", "r1-intruder", "r1-s"),
+    ]);
+    expect(lastPhase(h, "r1", "r1-helper", "toolu_r1_a")).toBe("unfinished");
+    expect(await expectEquivalent(h, "r1")).toEqual([]);
+  });
+
+  it("R2: the owner's own tool_call.finished in the other session closes its request", async () => {
+    const h = await start();
+    h.addProject("r2", SPIKE_CWD);
+    ingestAll(h, "r2", "r2", [
+      ev("session.started", "r2-owner", "r2-s"),
+      ev("session.started", "r2-owner", "r2-other"),
+      permission("r2-owner", "r2-other", "r2-req"),
+      ev("agent.finished", "r2-owner", "r2-s"),
+      done("r2-owner", "r2-other", "toolu_r2_own"),
+      call("r2-helper", "r2-s", "toolu_r2_a"),
+      ...finishers("r2"),
+      ev("session.turn_ended", "r2-intruder", "r2-s"),
+    ]);
+    expect(lastPhase(h, "r2", "r2-helper", "toolu_r2_a")).toBe("unfinished");
+    expect(await expectEquivalent(h, "r2")).toEqual([]);
+  });
+
+  it("R3: a running call of the finished owner in another session keeps it", async () => {
+    const h = await start();
+    h.addProject("r3", SPIKE_CWD);
+    ingestAll(h, "r3", "r3", [
+      ev("session.started", "r3-owner", "r3-s"),
+      ev("agent.finished", "r3-owner", "r3-s"),
+      call("r3-owner", "r3-other", "toolu_r3_own"),
+      call("r3-helper", "r3-s", "toolu_r3_a"),
+      ...finishers("r3"),
+      ev("session.turn_ended", "r3-intruder", "r3-s"),
+    ]);
+    expect(lastPhase(h, "r3", "r3-helper", "toolu_r3_a")).toBe("running");
+    expect(await expectEquivalent(h, "r3")).toEqual([]);
+  });
+
+  it("R6: a subagent with an open request in another session is kept; its own turn end closes nothing", async () => {
+    const h = await start();
+    h.addProject("r6", SPIKE_CWD);
+    ingestAll(h, "r6", "r6", [
+      reg("r6-sub", "r6-s"),
+      call("r6-sub", "r6-s", "toolu_r6_sub"),
+      permission("r6-sub", "r6-sub-other", "r6-req"),
+      ev("agent.finished", "r6-sub", "r6-s"),
+      call("r6-helper", "r6-s", "toolu_r6_a"),
+      ...finishers("r6"),
+      ev("session.turn_ended", "r6-sub", "r6-s"),
+    ]);
+    expect(lastPhase(h, "r6", "r6-helper", "toolu_r6_a")).toBe("running");
+    expect(await expectEquivalent(h, "r6")).toEqual([]);
+  });
+
+  it("R5 (live path): frames sent live equal the full fold after an intruder and a helper turn end", async () => {
+    const h = await start({ heartbeatMs: 40 });
+    h.addProject("r5", SPIKE_CWD);
+    ingestAll(h, "r5", "r5", [
+      ev("session.started", "r5-owner", "r5-s"),
+      ev("session.started", "r5-owner", "r5-other-s"),
+      permission("r5-owner", "r5-other-s", "r5-req"),
+      ev("agent.finished", "r5-owner", "r5-s"),
+      call("r5-helper", "r5-s", "toolu_r5_a"),
+      ...finishers("r5"),
+    ]);
+    const reader: SseReader = await h.openFeed("r5-helper", "?projectId=r5");
+    const frames: { id: number; toolCallId: string; phase: string }[] = [];
+    const collect = async (count: number): Promise<void> => {
+      for (let i = 0; i < 100 && frames.length < count; i++) {
+        const frame = await reader.next(5000);
+        if (frame === null) return;
+        if (frame.event !== "toolcall") continue;
+        const d = frame.data as { toolCallId: string; phase: string };
+        frames.push({ id: frame.id ?? -1, toolCallId: d.toolCallId, phase: d.phase });
+      }
+    };
+    try {
+      await collect(1);
+      expect(frames.map((f) => `${f.id}:${f.phase}`)).toEqual(["6:running"]);
+      ingestRaw(h, "r5", "r5-live", [
+        ev("session.turn_ended", "r5-intruder", "r5-s"),
+        ev("session.turn_ended", "r5-helper", "r5-s"),
+      ]);
+      await collect(2);
+      // Settle: a wrongly closing fold would send its extra frame at once.
+      await new Promise<void>((r) => setTimeout(r, 300));
+      await collect(3);
+    } finally {
+      await reader.cancel();
+    }
+    const expected = fullFold(h, "r5", "r5-helper", 0).map((f) => `${f.id}:${f.phase}`);
+    expect(expected).toEqual(["6:running", "63:unfinished"]);
+    expect(frames.map((f) => `${f.id}:${f.phase}`)).toEqual(expected);
+  });
+});
