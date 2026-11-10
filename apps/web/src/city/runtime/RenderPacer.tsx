@@ -36,25 +36,29 @@ export function RenderPacer() {
     let raf = 0;
 
     const loop = (t: number) => {
-      raf = requestAnimationFrame(loop);
-      const view = cameraRig.getSnapshot();
-      const cameraChanged =
-        view !== lastView ||
-        camera.zoom !== lastZoom ||
-        camera.position.x !== lastX ||
-        camera.position.y !== lastY ||
-        camera.position.z !== lastZ;
-      lastView = view;
-      lastZoom = camera.zoom;
-      lastX = camera.position.x;
-      lastY = camera.position.y;
-      lastZ = camera.position.z;
-      // Working agents' loops draw at 20 fps by design (CTO decision): only walking, arriving and
-      // departing count as agents moving, which keeps the idle throttle effective.
-      const signals = motionSignals(movementLabels.getSnapshot(), cameraChanged, touched);
-      touched = false;
-      if (!pacer.shouldRender(throttle.update(signals), t)) return;
-      invalidate();
+      try {
+        const view = cameraRig.getSnapshot();
+        const cameraChanged =
+          view !== lastView ||
+          camera.zoom !== lastZoom ||
+          camera.position.x !== lastX ||
+          camera.position.y !== lastY ||
+          camera.position.z !== lastZ;
+        lastView = view;
+        lastZoom = camera.zoom;
+        lastX = camera.position.x;
+        lastY = camera.position.y;
+        lastZ = camera.position.z;
+        // Working agents' loops draw at 20 fps by design (CTO decision): only walking, arriving and
+        // departing count as agents moving, which keeps the idle throttle effective.
+        const signals = motionSignals(movementLabels.getSnapshot(), cameraChanged, touched);
+        touched = false;
+        if (pacer.shouldRender(throttle.update(signals), t)) invalidate();
+      } finally {
+        // After invalidate(): R3F's demand loop then runs ahead of this callback on the next
+        // display frame, so a requested draw lands every frame instead of every other one.
+        raf = requestAnimationFrame(loop);
+      }
     };
 
     const stopWatching = watchVisibility(document, {
