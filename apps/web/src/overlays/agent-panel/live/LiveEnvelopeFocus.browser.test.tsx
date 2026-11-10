@@ -79,13 +79,11 @@ function frames(agent: string, specs: readonly (string | { call: string; to: str
       };
       return { id: n, data: filler };
     }
-    const input = bodyOf(
-      spec.call,
-      "input",
-      JSON.stringify({ to: spec.to, message: "hi" }),
-      [],
-      PROJECT,
-    );
+    // Evidence ids are per agent here, so two agents reusing one call id (case c) keep their own bodies.
+    const input = {
+      ...bodyOf(spec.call, "input", JSON.stringify({ to: spec.to, message: "hi" }), [], PROJECT),
+      id: `${agent}:${spec.call}:input`,
+    };
     evidence[input.id] = input;
     const send: ToolCallFrame = {
       toolCallId: spec.call,

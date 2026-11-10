@@ -82,7 +82,7 @@
   tool_call.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"toolCallId":"toolu_01CixR9W9yBMHD4eoV17fmUd","toolName":"SendMessage"}
 #40 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"toolCallId":"toolu_01CixR9W9yBMHD4eoV17fmUd","phase":"succeeded","durationMs":24}
-  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"to":"bo","kind":"message","summary":"Greeting bo from pip"}
+  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"to":"bo","kind":"message","summary":"Greeting bo from pip","toolCallId":"toolu_01CixR9W9yBMHD4eoV17fmUd"}
 #41 SubagentStart  (ignored)
 #42 MessageDisplay  (ignored)
 #43 Stop
@@ -92,7 +92,7 @@
   tool_call.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"toolCallId":"toolu_014H3srzTREADhBxHztDFt7N","toolName":"SendMessage"}
 #45 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"toolCallId":"toolu_014H3srzTREADhBxHztDFt7N","phase":"succeeded","durationMs":10}
-  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"to":"pip","kind":"message","summary":"Reply to pip's greeting"}
+  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"to":"pip","kind":"message","summary":"Reply to pip's greeting","toolCallId":"toolu_014H3srzTREADhBxHztDFt7N"}
 #46 SubagentStop
   activity.ended claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {}
 #47 TeammateIdle
@@ -118,12 +118,12 @@
   tool_call.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01UXXH1Wvu1TZM38MPgKJLvs","toolName":"SendMessage"}
 #57 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01UXXH1Wvu1TZM38MPgKJLvs","phase":"succeeded","durationMs":20}
-  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"to":"pip","kind":"shutdown_request"}
+  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"to":"pip","kind":"shutdown_request","toolCallId":"toolu_01UXXH1Wvu1TZM38MPgKJLvs"}
 #58 PreToolUse
   tool_call.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01FzFji1EhWyFf6pU1C1Wowv","toolName":"SendMessage"}
 #59 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"toolCallId":"toolu_01FzFji1EhWyFf6pU1C1Wowv","phase":"succeeded","durationMs":17}
-  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"to":"bo","kind":"shutdown_request"}
+  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31 {"to":"bo","kind":"shutdown_request","toolCallId":"toolu_01FzFji1EhWyFf6pU1C1Wowv"}
 #60 SubagentStart  (ignored)
 #61 SubagentStart  (ignored)
 #62 MessageDisplay  (ignored)
@@ -140,12 +140,12 @@
   tool_call.started claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"toolCallId":"toolu_01J2gWTgM8pa4f62hwCLBmtH","toolName":"SendMessage"}
 #70 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"toolCallId":"toolu_01MBCdTG1QGbCN3ktMWSDqxb","phase":"succeeded","durationMs":88}
-  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"to":"team-lead","kind":"shutdown_response","summary":"Approve shutdown request"}
+  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {"to":"team-lead","kind":"shutdown_response","summary":"Approve shutdown request","toolCallId":"toolu_01MBCdTG1QGbCN3ktMWSDqxb"}
 #71 SubagentStop
   activity.ended claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:abo-4381c522227780d5 {}
 #72 PostToolUse
   tool_call.finished claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"toolCallId":"toolu_01J2gWTgM8pa4f62hwCLBmtH","phase":"succeeded","durationMs":76}
-  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"to":"team-lead","kind":"shutdown_response","summary":"Approve team-lead shutdown request"}
+  team.message claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {"to":"team-lead","kind":"shutdown_response","summary":"Approve team-lead shutdown request","toolCallId":"toolu_01J2gWTgM8pa4f62hwCLBmtH"}
 #73 SubagentStop
   activity.ended claude-code:cf46f41b-8048-4a06-b955-b342dd0c7f31:apip-5cb5e9bb3f2f1097 {}
 #74 MessageDisplay  (ignored)
