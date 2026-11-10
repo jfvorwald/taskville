@@ -395,4 +395,45 @@ describe("archive checkpoint upkeep (roborev 7753)", () => {
     );
     expect(positions()).toEqual(multiples(LENGTH));
   });
+
+  it("never blocks the event loop for the busy timeout while another writer holds the lock", async () => {
+    makeArchive(ARCHIVE);
+    // Fresh archive, no checkpoints: the first seek starts a build whose inserts need the write
+    // lock. The engine's busy timeout is 5,000 ms (storage.ts default); upkeep must share one
+    // short lock-wait budget (as CheckpointStore does) instead of waiting it out synchronously.
+    const BUSY_TIMEOUT_MS = 5000;
+    const other = new DatabaseSync(dbPath());
+    other.exec("PRAGMA busy_timeout = 0");
+    other.exec("BEGIN IMMEDIATE");
+    let maxGap = 0;
+    let last = performance.now();
+    // The ticker starts before the seek so a block inside the request itself is measured too.
+    const ticker = setInterval(() => {
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+    }, 10);
+    try {
+      const { status, body } = await seek(2500);
+      expect(status).toBe(200);
+      expect(body.state).toEqual(fullReplay(2500));
+      // Keep the lock held while the deferred build runs.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      maxGap = Math.max(maxGap, performance.now() - last);
+    } finally {
+      clearInterval(ticker);
+      other.exec("ROLLBACK");
+      other.close();
+    }
+    expect(maxGap).toBeLessThan(BUSY_TIMEOUT_MS / 5);
+
+    // Lock released: later seeks complete the build.
+    await vi.waitFor(
+      async () => {
+        await seek(LENGTH);
+        expect(positions()).toEqual(multiples(LENGTH));
+      },
+      { timeout: 5000, interval: 100 },
+    );
+  });
 });
