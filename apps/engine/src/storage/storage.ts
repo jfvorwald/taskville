@@ -25,6 +25,22 @@ export const JOURNAL_SIZE_LIMIT_BYTES = 4 * 1024 * 1024;
 /** The pragmas `Storage.pragma` reads back (tests and diagnostics). */
 export type StoragePragma = "cache_size" | "wal_autocheckpoint" | "journal_size_limit";
 
+/**
+ * Agent-named event types `agentFeedEvents` returns for the whole project, whatever agent or
+ * session. The feed's subset fold runs without retention (`ToolCallTracker`), and its fallback
+ * rule (`needsFullFold`) needs every finish (how many agents have finished, and which) and every
+ * registration (whether an agent naming one of the feed's sessions is a subagent, which never
+ * owns a session). Bounded by the agent count, not the log.
+ */
+export const FEED_PROJECT_WIDE_TYPES: ReadonlySet<string> = new Set([
+  "agent.registered",
+  "agent.finished",
+]);
+
+/** SQL list of fixed type names (constants, never input). */
+const sqlTypes = (types: Iterable<string>): string =>
+  [...types].map((t) => `'${t.replace(/'/g, "''")}'`).join(", ");
+
 /** A projection's stored version, head, and state hash, without its state. */
 export interface ProjectionMeta {
   reducerVersion: number;
@@ -203,7 +219,7 @@ function prepareStatements(db: Database) {
          WHERE project_id = :p AND session_id IN (SELECT session_id FROM sessions)
          UNION
          SELECT ingest_sequence FROM agent_events
-         WHERE project_id = :p AND type IN ('agent.registered', 'agent.finished')
+         WHERE project_id = :p AND type IN (${sqlTypes(FEED_PROJECT_WIDE_TYPES)})
          UNION
          SELECT ingest_sequence FROM events
          WHERE project_id = :p AND type IN ('team.started', 'team.ended', 'request.expired')
@@ -356,11 +372,12 @@ export class Storage implements StorageReads {
    * The events a feed for the agent must fold, above `afterSequence`, in sequence order: the
    * agent's own, every event in a session the agent has events in (a session owner's boundary
    * closes an unregistered helper's calls, and ownership is decided by who named the session
-   * first), and every registration and finish in the project (retention drops a finished agent,
-   * and with it the sessions it owns, by its rank among all finished agents and keeps the parent
-   * of any unfinished agent; a subagent never owns a session), and every `team.started`, `team.ended` and
-   * `request.expired` (no agent id, but retention reads them; `events_by_type`). The session set is the agent's as
-   * of this read: a session the agent enters later needs its earlier events too, which is the
+   * first), and every event of `FEED_PROJECT_WIDE_TYPES` in the project (the inputs of the feed's
+   * full-fold fallback rule; retention itself never runs on this subset, see `ToolCallTracker`).
+   * Also every agentless `team.started`, `team.ended` and `request.expired` (`events_by_type`):
+   * retention inputs from the roborev 7827 round, no longer read by the subset fold, kept so the
+   * result stays as `agent-index-migration.test.ts` pins it. The session set is the agent's as of
+   * this read: a session the agent enters later needs its earlier events too, which is the
    * caller's to fold (`agentSessions`).
    */
   *agentFeedEvents(

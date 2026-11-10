@@ -2,6 +2,7 @@ import {
   callsClosedAtBoundary,
   initialState,
   type ProjectState,
+  RETAIN_FINISHED_AGENTS,
   reduce,
   reduceEntities,
   type ToolCallState,
@@ -38,21 +39,73 @@ const snapshot = (call: FeedToolCall): FeedToolCall => ({
 });
 
 /**
+ * Subset mode (`ToolCallTracker` with a scope): the tracker folds only the events
+ * `Storage.agentFeedEvents` returns, and says when that can no longer match a fold of the whole
+ * log (`needsFullFold`).
+ */
+export interface SubsetScope {
+  /** Whether the subset holds every event of the session (the agent's sessions, see `agentSessions`). */
+  inScope(sessionId: string): boolean;
+}
+
+/**
  * Folds one agent's `tool_call.*` events, in ingest order, into its ToolCalls. Every event that can
  * matter to the agent must be applied, not only its own (`Storage.agentFeedEvents`): a session boundary closes calls with no result,
  * and which calls it closes is the domain reducer's rule, so the tracker runs the reducer beside
  * its own fold and reads the closure from the reducer's state rather than re-implementing it.
+ *
+ * With no scope it runs the whole reducer (`reduce`, retention included) and must be given every
+ * event of the project: that is the full fold, the reference the subset must equal. With a scope it
+ * folds a subset and runs the entity slice only, with NO retention. Retention ranks every finished
+ * agent of the project and keeps those with open requests, unended teams or running calls anywhere,
+ * so no bounded subset can reproduce its decisions (roborev 6880, 7827, 7838). It also does not need
+ * to: the frames read only this agent's calls, its `registered` flag, and who owns the sessions its
+ * calls are in. Retention changes those only by dropping a FINISHED agent X (finishedAt set, more
+ * than RETAIN_FINISHED_AGENTS finished), and the drop shows only at a later event that
+ * (a) names X when X is this agent (it comes back unregistered, case 1), or names X in an in-scope
+ * session that has no owner (X comes back with no kind, so it may now own it), or
+ * (b) is in an in-scope session whose owner is X (the session is gone, the next agent owns it).
+ * `needsFullFold` is true at the first such event; the caller then folds the whole log instead.
+ * Until then nothing a drop changes has been read, so the two folds give the same frames. The
+ * subset holds every `agent.finished` and `agent.registered` of the project (`agentFeedEvents`),
+ * so "finished" and "registered as a subagent" here are what the whole log says.
  */
 export class ToolCallTracker {
   readonly #agentId: string;
   readonly #calls = new Map<string, FeedToolCall>();
   /** IDs of this agent's calls still `running`, so a boundary checks only those. */
   readonly #open = new Set<string>();
+  readonly #scope: SubsetScope | undefined;
+  /** Agents with an `agent.finished` folded so far (never removed: retention is off in subset mode). */
+  readonly #finished = new Set<string>();
   #state: ProjectState;
 
-  constructor(projectId: string, agentId: string) {
+  constructor(projectId: string, agentId: string, scope?: SubsetScope) {
     this.#agentId = agentId;
+    this.#scope = scope;
     this.#state = initialState(projectId);
+  }
+
+  /**
+   * Subset mode only (always false for a full fold): whether a retention drop the full fold may
+   * have made could change what this event gives, so the subset must not fold it (see the class
+   * comment). Read before `applyAll`, on the state before the event; conservative, never misses.
+   */
+  needsFullFold(event: StoredEnvelope): boolean {
+    const scope = this.#scope;
+    // A drop needs more than RETAIN_FINISHED_AGENTS finished agents; the full fold's finished
+    // agents at any earlier point are among the agents that have finished by now.
+    if (scope === undefined || this.#finished.size <= RETAIN_FINISHED_AGENTS) return false;
+    const { agentId, sessionId } = event;
+    const inScope = sessionId !== undefined && scope.inScope(sessionId);
+    const sessions = this.#state.sessions;
+    const owner =
+      inScope && Object.hasOwn(sessions, sessionId) ? sessions[sessionId]?.agentId : undefined;
+    if (agentId !== undefined && this.#finished.has(agentId)) {
+      if (agentId === this.#agentId) return true;
+      if (inScope && owner === undefined) return true;
+    }
+    return owner !== undefined && this.#finished.has(owner);
   }
 
   /**
@@ -64,7 +117,10 @@ export class ToolCallTracker {
    */
   applyAll(event: StoredEnvelope): FeedToolCall[] {
     const before = this.#state;
-    this.#state = reduce(before, event);
+    this.#state = this.#scope === undefined ? reduce(before, event) : reduceEntities(before, event);
+    if (event.type === "agent.finished" && event.agentId !== undefined) {
+      this.#finished.add(event.agentId);
+    }
     const folded = this.#fold(event);
     const calls = folded === undefined ? this.#closedByBoundary(before, event) : [folded];
     for (const call of calls) {
