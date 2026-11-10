@@ -4,9 +4,9 @@ import type { StoredEnvelope } from "@taskville/protocol";
 import type { Context, Hono } from "hono";
 import { type AppEnv, requireScope } from "../http/app.ts";
 import { apiError } from "../http/errors.ts";
-import { domainReducer } from "../ingest/index.ts";
 import type { UpkeepLogger } from "../storage/checkpoints.ts";
 import type { Storage } from "../storage/index.ts";
+import { ArchiveStates } from "./archive-state.ts";
 import { stateAtSequence } from "./checkpoints.ts";
 import { type Position, parsePosition } from "./position.ts";
 
@@ -167,7 +167,10 @@ function decodeCursor(timelineId: string, cursor: string): CursorState | undefin
 export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRouteOptions): void {
   const { storage } = options;
   const now = options.now ?? (() => new Date());
-  const replayChunk = Math.max(1, Math.floor(options.archiveReplayChunk ?? DEFAULT_REPLAY_CHUNK));
+  const archiveStates = new ArchiveStates(storage, {
+    chunk: Math.max(1, Math.floor(options.archiveReplayChunk ?? DEFAULT_REPLAY_CHUNK)),
+    logger: options.logger,
+  });
 
   app.get("/v1/projects/:id/timelines", requireScope("read"), (c) => {
     const projectId = c.req.param("id");
@@ -212,7 +215,7 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     });
   });
 
-  app.get("/v1/timelines/:id/state", requireScope("read"), (c) => {
+  app.get("/v1/timelines/:id/state", requireScope("read"), async (c) => {
     const timelineId = c.req.param("id");
     const found = lookup(storage, timelineId);
     if (typeof found === "string") return lookupError(c, found);
@@ -224,15 +227,9 @@ export function registerTimelineRoutes(app: Hono<AppEnv>, options: TimelineRoute
     const { projectId, head, archiveId } = found;
     const at = resolveUpTo(storage, projectId, head, position, archiveId);
     if (archiveId) {
-      // Archives replay in full with the same reducer: no checkpoints, and no attention.
-      let state = domainReducer.initial(projectId);
-      // Read in bounded chunks, reducing as it goes, so memory does not grow with the archive.
-      for (let start = 1; start <= at; start += replayChunk) {
-        const stop = Math.min(at, start + replayChunk - 1);
-        for (const event of storage.archives().events(archiveId, start, stop)) {
-          state = domainReducer.apply(state, event);
-        }
-      }
+      // The nearest archive checkpoint plus the events after it; no attention for history.
+      const state = await archiveStates.stateAt(archiveId, projectId, head, at);
+      if (!state) return apiError(c, 404, "not_found", "No timeline with this ID");
       return c.json({
         timelineId,
         at,

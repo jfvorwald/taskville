@@ -1,4 +1,5 @@
 import type { StoredEnvelope } from "@taskville/protocol";
+import type { CheckpointRow } from "./checkpoints.ts";
 import { StorageError } from "./errors.ts";
 import type { Database, Statement } from "./sqlite.ts";
 
@@ -58,6 +59,15 @@ export interface NewArchive {
 export interface ArchiveEventWrite {
   contentHash: string;
   envelope: StoredEnvelope;
+}
+
+/**
+ * What is left of the time cache upkeep may spend, in total, waiting on another connection's write
+ * lock (as `withWaitBudget` does for the live cache). Passed to each checkpoint write; once spent
+ * a write throws at once ("wait budget spent", which `isBusy` recognises) instead of waiting.
+ */
+export interface WaitBudget {
+  remaining: number;
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -121,6 +131,13 @@ export class SqliteArchives {
   readonly #events: Statement;
   readonly #eventAt: Statement;
   readonly #positionAtOrBefore: Statement;
+  readonly #deleteCheckpoints: Statement;
+  readonly #checkpointPositions: Statement;
+  readonly #checkpoint: Statement;
+  readonly #putCheckpoint: Statement;
+  readonly #deleteCheckpoint: Statement;
+  readonly #pruneCheckpoints: Statement;
+  readonly #unusableCheckpoint: Statement;
 
   constructor(db: Database) {
     this.#db = db;
@@ -169,6 +186,28 @@ export class SqliteArchives {
       `SELECT coalesce(max(position), 0) AS position FROM archive_events
        WHERE archive_id = ? AND occurred_ms <= ?`,
     );
+    this.#deleteCheckpoints = db.prepare("DELETE FROM archive_checkpoints WHERE archive_id = ?");
+    this.#checkpointPositions = db.prepare(
+      "SELECT position FROM archive_checkpoints WHERE archive_id = ? ORDER BY position",
+    );
+    this.#checkpoint = db.prepare(
+      `SELECT position, reducer_version, state_hash, state_json FROM archive_checkpoints
+       WHERE archive_id = ? AND position = ?`,
+    );
+    // Writes only while the archive exists, so a build that outlives a prune leaves no orphan.
+    this.#putCheckpoint = db.prepare(
+      `INSERT OR REPLACE INTO archive_checkpoints
+         (archive_id, position, reducer_version, state_hash, state_json)
+       SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM archives WHERE id = ?)`,
+    );
+    this.#deleteCheckpoint = db.prepare(
+      "DELETE FROM archive_checkpoints WHERE archive_id = ? AND position = ?",
+    );
+    const unusable = `archive_id = ? AND (reducer_version != ? OR substr(state_json, 1, 1) != '{')`;
+    this.#unusableCheckpoint = db.prepare(
+      `SELECT 1 FROM archive_checkpoints WHERE ${unusable} LIMIT 1`,
+    );
+    this.#pruneCheckpoints = db.prepare(`DELETE FROM archive_checkpoints WHERE ${unusable}`);
   }
 
   /** Records a new archive as `running`. Fails for an unknown project. */
@@ -208,9 +247,10 @@ export class SqliteArchives {
     );
   }
 
-  /** Deletes an archive and its events. */
+  /** Deletes an archive, its events and its checkpoints. */
   delete(id: string): void {
     this.#transaction(() => {
+      this.#deleteCheckpoints.run(id);
       this.#deleteEvents.run(id);
       this.#deleteArchive.run(id);
     });
@@ -310,6 +350,59 @@ export class SqliteArchives {
     return Number(row.position);
   }
 
+  /** Positions that hold a checkpoint for the archive, ascending. */
+  checkpointPositions(id: string): number[] {
+    return (this.#checkpointPositions.all(id) as unknown as { position: number }[]).map((row) =>
+      Number(row.position),
+    );
+  }
+
+  /** The stored checkpoint at `position` (`sequence` is the archive position), trusted or not. */
+  checkpoint(id: string, position: number): CheckpointRow | undefined {
+    const row = this.#checkpoint.get(id, position) as
+      | { position: number; reducer_version: number; state_hash: string; state_json: string }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      sequence: Number(row.position),
+      reducerVersion: Number(row.reducer_version),
+      stateHash: String(row.state_hash),
+      stateJson: String(row.state_json),
+    };
+  }
+
+  /** Stores one checkpoint in its own transaction. False when the archive no longer exists. */
+  putCheckpoint(id: string, row: CheckpointRow, budget?: WaitBudget): boolean {
+    let written = false;
+    this.#transaction(() => {
+      written =
+        Number(
+          this.#putCheckpoint.run(
+            id,
+            row.sequence,
+            row.reducerVersion,
+            row.stateHash,
+            row.stateJson,
+            id,
+          ).changes,
+        ) > 0;
+    }, budget);
+    return written;
+  }
+
+  deleteCheckpoint(id: string, position: number, budget?: WaitBudget): void {
+    this.#waiting(budget, () => this.#deleteCheckpoint.run(id, position));
+  }
+
+  /**
+   * Drops checkpoints of another reducer version or whose state text is not a JSON object. A
+   * read-only probe runs first, so a healthy cache takes no write lock.
+   */
+  pruneCheckpoints(id: string, reducerVersion: number, budget?: WaitBudget): void {
+    if (!this.#unusableCheckpoint.get(id, reducerVersion)) return;
+    this.#waiting(budget, () => this.#pruneCheckpoints.run(id, reducerVersion));
+  }
+
   #finishRow(
     id: string,
     status: ArchiveStatus,
@@ -343,9 +436,29 @@ export class SqliteArchives {
     return archive;
   }
 
-  #transaction(work: () => void): void {
+  /**
+   * Runs `fn` waiting for a lock at most what is left of `budget` (the connection's busy timeout
+   * is lowered for it, never raised, and restored after); the time taken is subtracted. Throws at
+   * once when nothing is left. Without a budget the connection's own timeout applies.
+   */
+  #waiting<T>(budget: WaitBudget | undefined, fn: () => T): T {
+    if (!budget) return fn();
+    const remaining = Math.floor(budget.remaining);
+    if (remaining <= 0) throw new Error("checkpoint upkeep skipped: wait budget spent");
+    const previous = Number(this.#db.prepare("PRAGMA busy_timeout").get()?.timeout);
+    this.#db.exec(`PRAGMA busy_timeout = ${Math.min(previous, remaining)}`);
+    const began = performance.now();
+    try {
+      return fn();
+    } finally {
+      budget.remaining -= performance.now() - began;
+      this.#db.exec(`PRAGMA busy_timeout = ${previous}`);
+    }
+  }
+
+  #transaction(work: () => void, budget?: WaitBudget): void {
     if (this.#db.isTransaction) throw new StorageError("transactions cannot nest");
-    this.#db.exec("BEGIN IMMEDIATE");
+    this.#waiting(budget, () => this.#db.exec("BEGIN IMMEDIATE"));
     try {
       work();
       this.#db.exec("COMMIT");

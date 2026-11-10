@@ -178,7 +178,22 @@ CREATE TABLE archive_events (
 CREATE INDEX archive_events_time ON archive_events (archive_id, occurred_ms);
 `;
 
-const MIGRATIONS: readonly string[] = [V1, V2, V3, V4];
+// Archive checkpoints (M8.09): disposable caches of reducer state at every 1,000th position of an
+// archive, so a seek reduces at most 999 events. Keyed on the archive, never on the live
+// `(project_id, sequence)` of `checkpoints`; deleted with their archive. IF NOT EXISTS because
+// the migration tests rebuild an older schema by dropping only the tables they know of.
+const V5 = `
+CREATE TABLE IF NOT EXISTS archive_checkpoints (
+  archive_id TEXT NOT NULL REFERENCES archives(id),
+  position INTEGER NOT NULL CHECK (position >= 1),
+  reducer_version INTEGER NOT NULL,
+  state_hash TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  PRIMARY KEY (archive_id, position)
+) STRICT;
+`;
+
+const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 
