@@ -42,37 +42,33 @@ export interface CrewResponse {
 /** A project's state and the summary each agent's `agent.finished` recorded. */
 interface CrewInput {
   state: ProjectState;
-  summaries: ReadonlyMap<string, string>;
+  summaryOf: (agentId: string) => string | undefined;
 }
 
 /**
- * Reads the stored projection when it matches the log (else replays the log, writing nothing) and,
- * in the same pass over the log, collects the finish summaries: the projection keeps only when an
- * agent finished, not what it reported.
+ * Reads the stored projection when it matches the log (else replays the log, writing nothing). A
+ * finish summary is read from the agent index, one agent at a time: the projection keeps only when
+ * an agent finished, not what it reported.
  */
 function loadCrewInput(storage: Storage, projectId: string): CrewInput {
-  const summaries = new Map<string, string>();
-  function* events() {
-    for (const event of storage.events(projectId, 0)) {
-      if (event.type === "agent.finished" && event.agentId !== undefined) {
-        const summary = event.payload.summary;
-        if (summary !== undefined && summary !== "") summaries.set(event.agentId, summary);
-      }
-      yield event;
+  const summaryOf = (agentId: string): string | undefined => {
+    let summary: string | undefined;
+    for (const event of storage.agentEventsOfType(projectId, agentId, "agent.finished")) {
+      if (event.type !== "agent.finished") continue;
+      const reported = event.payload.summary;
+      if (reported !== undefined && reported !== "") summary = reported;
     }
-  }
+    return summary;
+  };
   const stored = storage.projection<ProjectState>(projectId);
   if (
     stored !== undefined &&
     stored.reducerVersion === domainReducer.version &&
     stored.head === storage.head(projectId)
   ) {
-    for (const _ of events()) {
-      // Only the summaries are wanted from this pass.
-    }
-    return { state: stored.state, summaries };
+    return { state: stored.state, summaryOf };
   }
-  return { state: replay(projectId, events()), summaries };
+  return { state: replay(projectId, storage.events(projectId, 0)), summaryOf };
 }
 
 const byRegistration = (a: Agent, b: Agent): number =>
@@ -93,7 +89,7 @@ export function buildCrew(
   agentId: string,
   now: Date,
 ): CrewResponse {
-  const { state, summaries } = loadCrewInput(storage, projectId);
+  const { state, summaryOf } = loadCrewInput(storage, projectId);
   const agents = Object.values(state.agents);
   const self = Object.hasOwn(state.agents, agentId) ? state.agents[agentId] : undefined;
   const teams = Object.values(state.teams);
@@ -124,7 +120,7 @@ export function buildCrew(
           : agent.finishedAt
         : (agent.finishedAt ?? teamEnd);
     const activity = Object.hasOwn(state.activity, agent.id) ? state.activity[agent.id] : undefined;
-    const summary = summaries.get(agent.id);
+    const summary = summaryOf(agent.id);
     const elapsed = Date.parse(finishedAt ?? now.toISOString()) - Date.parse(agent.firstSeenAt);
     const path = new Set(seen).add(agent.id);
     return {

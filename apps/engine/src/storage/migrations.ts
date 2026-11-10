@@ -193,7 +193,41 @@ CREATE TABLE IF NOT EXISTS archive_checkpoints (
 ) STRICT;
 `;
 
-const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5];
+// Agent index (M5.14): which events name which agent and session, so a feed, a crew and the
+// agent-to-project lookup read one agent's events and not the project's whole log. Derived from
+// the log by a trigger (so it holds for every connection) and backfilled for existing databases.
+// Only events that name an agent are indexed. Nothing reads it for correctness except those
+// lookups; the log stays the record.
+const V6 = `
+CREATE TABLE IF NOT EXISTS agent_events (
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  agent_id TEXT NOT NULL,
+  ingest_sequence INTEGER NOT NULL,
+  session_id TEXT,
+  type TEXT NOT NULL,
+  PRIMARY KEY (project_id, agent_id, ingest_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS agent_events_by_session ON agent_events (project_id, session_id, ingest_sequence);
+CREATE INDEX IF NOT EXISTS agent_events_by_type ON agent_events (project_id, type, agent_id, ingest_sequence);
+-- Rare events that name no agent but that retention reads (teams and expired requests).
+CREATE INDEX IF NOT EXISTS events_by_type ON events (project_id, type, ingest_sequence);
+
+CREATE TRIGGER IF NOT EXISTS events_index_agent AFTER INSERT ON events
+WHEN json_extract(NEW.envelope_json, '$.agentId') IS NOT NULL
+BEGIN
+  INSERT INTO agent_events (project_id, agent_id, ingest_sequence, session_id, type)
+  VALUES (NEW.project_id, json_extract(NEW.envelope_json, '$.agentId'), NEW.ingest_sequence,
+    json_extract(NEW.envelope_json, '$.sessionId'), NEW.type);
+END;
+
+INSERT OR IGNORE INTO agent_events (project_id, agent_id, ingest_sequence, session_id, type)
+SELECT project_id, json_extract(envelope_json, '$.agentId'), ingest_sequence,
+  json_extract(envelope_json, '$.sessionId'), type
+FROM events WHERE json_extract(envelope_json, '$.agentId') IS NOT NULL;
+`;
+
+const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5, V6];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;
 

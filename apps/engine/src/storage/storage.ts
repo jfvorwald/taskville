@@ -25,6 +25,22 @@ export const JOURNAL_SIZE_LIMIT_BYTES = 4 * 1024 * 1024;
 /** The pragmas `Storage.pragma` reads back (tests and diagnostics). */
 export type StoragePragma = "cache_size" | "wal_autocheckpoint" | "journal_size_limit";
 
+/**
+ * Agent-named event types `agentFeedEvents` returns for the whole project, whatever agent or
+ * session. The feed's subset fold runs without retention (`ToolCallTracker`), and its fallback
+ * rule (`needsFullFold`) needs every finish (how many agents have finished, and which) and every
+ * registration (whether an agent naming one of the feed's sessions is a subagent, which never
+ * owns a session). Bounded by the agent count, not the log.
+ */
+export const FEED_PROJECT_WIDE_TYPES: ReadonlySet<string> = new Set([
+  "agent.registered",
+  "agent.finished",
+]);
+
+/** SQL list of fixed type names (constants, never input). */
+const sqlTypes = (types: Iterable<string>): string =>
+  [...types].map((t) => `'${t.replace(/'/g, "''")}'`).join(", ");
+
 /** A projection's stored version, head, and state hash, without its state. */
 export interface ProjectionMeta {
   reducerVersion: number;
@@ -184,6 +200,42 @@ function prepareStatements(db: Database) {
       `SELECT envelope_json FROM events WHERE project_id = ? AND ingest_sequence > ?
        ORDER BY ingest_sequence`,
     ),
+    holdsAgent: prepare(
+      "SELECT 1 AS held FROM agent_events WHERE project_id = ? AND agent_id = ? LIMIT 1",
+    ),
+    agentEventsOfType: prepare(
+      `SELECT e.envelope_json FROM agent_events a
+       JOIN events e ON e.project_id = a.project_id AND e.ingest_sequence = a.ingest_sequence
+       WHERE a.project_id = ? AND a.type = ? AND a.agent_id = ? ORDER BY a.ingest_sequence`,
+    ),
+    agentFeedEvents: prepare(
+      `WITH sessions AS (
+         SELECT DISTINCT session_id FROM agent_events
+         WHERE project_id = :p AND agent_id = :a AND session_id IS NOT NULL
+       ), wanted AS (
+         SELECT ingest_sequence FROM agent_events WHERE project_id = :p AND agent_id = :a
+         UNION
+         SELECT ingest_sequence FROM agent_events
+         WHERE project_id = :p AND session_id IN (SELECT session_id FROM sessions)
+         UNION
+         SELECT ingest_sequence FROM agent_events
+         WHERE project_id = :p AND type IN (${sqlTypes(FEED_PROJECT_WIDE_TYPES)})
+         UNION
+         SELECT ingest_sequence FROM events
+         WHERE project_id = :p AND type IN ('team.started', 'team.ended', 'request.expired')
+       )
+       SELECT e.envelope_json FROM wanted w
+       JOIN events e ON e.project_id = :p AND e.ingest_sequence = w.ingest_sequence
+       WHERE w.ingest_sequence > :after ORDER BY w.ingest_sequence`,
+    ),
+    agentSessions: prepare(
+      `SELECT s.session_id, (
+         SELECT min(f.ingest_sequence) FROM agent_events f
+         WHERE f.project_id = :p AND f.session_id = s.session_id
+       ) AS first_sequence
+       FROM (SELECT DISTINCT session_id FROM agent_events
+             WHERE project_id = :p AND agent_id = :a AND session_id IS NOT NULL) s`,
+    ),
     appendEvent: prepare(
       `INSERT INTO events (project_id, ingest_sequence, event_id, source_id, source_event_id,
          source_sequence, occurred_at, received_at, type, schema_version, provenance,
@@ -297,6 +349,57 @@ export class Storage implements StorageReads {
       envelope_json: string;
     }>;
     for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
+  }
+
+  /** Whether the project has an event naming the agent (an index lookup, not a log read). */
+  holdsAgent(projectId: string, agentId: string): boolean {
+    return this.#stmt.holdsAgent.get(projectId, agentId) !== undefined;
+  }
+
+  /** The agent's events of one type, in sequence order (an index lookup). */
+  *agentEventsOfType(
+    projectId: string,
+    agentId: string,
+    type: string,
+  ): IterableIterator<StoredEnvelope> {
+    const rows = this.#stmt.agentEventsOfType.iterate(projectId, type, agentId) as Iterable<{
+      envelope_json: string;
+    }>;
+    for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
+  }
+
+  /**
+   * The events a feed for the agent must fold, above `afterSequence`, in sequence order: the
+   * agent's own, every event in a session the agent has events in (a session owner's boundary
+   * closes an unregistered helper's calls, and ownership is decided by who named the session
+   * first), and every event of `FEED_PROJECT_WIDE_TYPES` in the project (the inputs of the feed's
+   * full-fold fallback rule; retention itself never runs on this subset, see `ToolCallTracker`).
+   * Also every agentless `team.started`, `team.ended` and `request.expired` (`events_by_type`):
+   * retention inputs from the roborev 7827 round, no longer read by the subset fold, kept so the
+   * result stays as `agent-index-migration.test.ts` pins it. The session set is the agent's as of
+   * this read: a session the agent enters later needs its earlier events too, which is the
+   * caller's to fold (`agentSessions`).
+   */
+  *agentFeedEvents(
+    projectId: string,
+    agentId: string,
+    afterSequence = 0,
+  ): IterableIterator<StoredEnvelope> {
+    const rows = this.#stmt.agentFeedEvents.iterate({
+      p: projectId,
+      a: agentId,
+      after: afterSequence,
+    }) as Iterable<{ envelope_json: string }>;
+    for (const row of rows) yield JSON.parse(row.envelope_json) as StoredEnvelope;
+  }
+
+  /** The sessions the agent has events in, each with the first indexed sequence of the session. */
+  agentSessions(projectId: string, agentId: string): Map<string, number> {
+    const rows = this.#stmt.agentSessions.all({ p: projectId, a: agentId }) as unknown as {
+      session_id: string;
+      first_sequence: number;
+    }[];
+    return new Map(rows.map((row) => [row.session_id, row.first_sequence]));
   }
 
   /**
