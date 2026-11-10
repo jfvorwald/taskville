@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { LATEST_SCHEMA_VERSION, openStorage } from "../../src/storage/index.ts";
 import { envelope, HASH_A, useTempDir } from "./helpers.ts";
 
-// M5.14 (#281): migration V3 adds the agent index (`agent_events`), a trigger that keeps it, and a
+// M5.14 (#281): migration V6 (V3 before main gained V3 to V5) adds the agent index (`agent_events`), a trigger that keeps it, and a
 // backfill for databases that already hold events. V1 and V2 are not exported, so the V2 state is
 // built through the real migrate API: open at the latest schema, then with a raw connection drop
 // the V3 objects (trigger, table with its indexes) and the version-3 record, which is exactly
@@ -61,14 +61,14 @@ function seed(path: string): StoredEnvelope[] {
   return log;
 }
 
-/** Turns the database into one written by V2: no agent index, no trigger, version 3 not recorded. */
+/** Turns the database into one written before the agent index (V6): no index, no trigger, version 6 not recorded. */
 function downgradeToV2(path: string): void {
   const raw = new DatabaseSync(path);
   try {
     raw.exec("DROP TRIGGER events_index_agent");
     raw.exec("DROP TABLE agent_events");
-    raw.exec("DELETE FROM schema_migrations WHERE version = 3");
-    expect(raw.prepare("SELECT max(version) AS v FROM schema_migrations").get()?.v).toBe(2);
+    raw.exec("DELETE FROM schema_migrations WHERE version = 6");
+    expect(raw.prepare("SELECT max(version) AS v FROM schema_migrations").get()?.v).toBe(5);
   } finally {
     raw.close();
   }
@@ -108,8 +108,8 @@ function expectedRows(log: StoredEnvelope[], projectId = "p1"): unknown[] {
 
 const sequences = (events: Iterable<StoredEnvelope>) => [...events].map((e) => e.ingestSequence);
 
-describe("migration V3: the agent index over an existing log", () => {
-  it("backfills exactly the rows of the events that name an agent, and records version 3", () => {
+describe("migration V6: the agent index over an existing log", () => {
+  it("backfills exactly the rows of the events that name an agent, and records version 6", () => {
     const path = join(dir(), "taskville.db");
     const log = seed(path);
     downgradeToV2(path);
@@ -139,7 +139,7 @@ describe("migration V3: the agent index over an existing log", () => {
 
     const storage = openStorage(path);
     try {
-      expect(storage.schemaVersion()).toBe(3);
+      expect(storage.schemaVersion()).toBe(LATEST_SCHEMA_VERSION);
       for (const agent of ["a", "b", "c"]) expect(storage.holdsAgent("p1", agent)).toBe(true);
       expect(storage.holdsAgent("p1", "nobody")).toBe(false);
       expect(storage.holdsAgent("p2", "b")).toBe(false);
