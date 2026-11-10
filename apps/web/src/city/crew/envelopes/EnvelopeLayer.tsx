@@ -206,7 +206,7 @@ export function EnvelopeLayer({
       const envelope = log.live(store.now()).find((x) => x.id === id);
       if (envelope === undefined) return;
       selection.select(envelope.fromAgentId);
-      feedFocus.request(envelope.fromAgentId, envelope.id);
+      feedFocus.request(envelope.fromAgentId, envelope.id, envelope.toolCallId);
     };
     dom.addEventListener("pointermove", onMove);
     dom.addEventListener("pointerleave", hideTooltip);
