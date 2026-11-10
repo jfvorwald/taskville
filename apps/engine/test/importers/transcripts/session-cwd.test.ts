@@ -117,7 +117,9 @@ describe("F3: the pre-validation allowance and its skip reason", () => {
     const { batches, counts, skips } = await runImport();
     expect(counts.skipped).toBe(0);
     expect(counts.imported).toBeGreaterThan(1_000);
-    expect(workingDirectories(batches)).toContain(root);
+    // The session started on a cwd-free line, so its started event carries no folder (lead
+    // decision: session.started is unchanged); no event may carry an outside folder.
+    expect(workingDirectories(batches).filter((d) => d !== "" && !d.startsWith(root))).toEqual([]);
     expect(skips).toEqual([]);
   });
 

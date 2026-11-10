@@ -30,6 +30,13 @@ export interface LineResult {
   outcome: LineOutcome;
   events: InputEventWire[];
   evidence?: ToolEvidence[];
+  /** The raw `cwd` of any non-malformed line that carries one, whatever the key's spelling. */
+  cwd?: string;
+  /**
+   * The raw `cwd` the mapper used for the `session.started` it emitted on this line. Set only on
+   * that line (so a later session in the same file reports its own), whatever the key's spelling.
+   */
+  sessionCwd?: string;
 }
 
 export interface FinishResult {
@@ -106,9 +113,16 @@ export function createTranscriptMapper(options: {
   /** Line uuid to the agent whose Agent or Task tool_use it carries. */
   const spawns = new Map<string, string>();
 
+  /** The cwd of the line being mapped, set by `mapRecord` once the line parses. */
+  let lineCwd: string | undefined;
+
   function mapLine(raw: string, lineNumber: number): LineResult {
+    lineCwd = undefined;
     try {
-      return mapRecord(raw, lineNumber);
+      const result = mapRecord(raw, lineNumber);
+      return lineCwd === undefined || result.outcome === "malformed"
+        ? result
+        : { ...result, cwd: lineCwd };
     } catch {
       return malformed();
     }
@@ -123,6 +137,8 @@ export function createTranscriptMapper(options: {
       return malformed();
     }
     if (!isRecord(parsed)) return malformed();
+    const parsedCwd = own(parsed, "cwd");
+    if (typeof parsedCwd === "string" && parsedCwd !== "") lineCwd = parsedCwd;
     const type = ownString(parsed, "type");
     if (type === undefined) return malformed();
     if (KNOWN_SKIPPED_TYPES.has(type)) return { outcome: "skipped", events: [] };
@@ -142,6 +158,7 @@ export function createTranscriptMapper(options: {
 
     const events: InputEventWire[] = [];
     const evidence: ToolEvidence[] = [];
+    let sessionCwd: string | undefined;
     const emit = (agentId: string, eventType: EventType, payload: Record<string, unknown>) => {
       events.push({
         schemaVersion: 1,
@@ -189,7 +206,9 @@ export function createTranscriptMapper(options: {
         role: "main",
         kind: "session",
       });
-      const cwd = cleanText(own(parsed, "cwd"), PATH_MAX);
+      const rawCwd = own(parsed, "cwd");
+      const cwd = cleanText(rawCwd, PATH_MAX);
+      if (cwd !== undefined) sessionCwd = rawCwd as string;
       emit(mainId, "session.started", cwd === undefined ? {} : { workingDirectory: cwd });
     }
 
@@ -287,7 +306,8 @@ export function createTranscriptMapper(options: {
     const agents = known?.agents ?? new Set<string>();
     for (const id of newAgents) agents.add(id);
     sessions.set(sessionId, { agents });
-    return done(events, evidence);
+    const result = done(events, evidence);
+    return sessionCwd === undefined ? result : { ...result, sessionCwd };
   }
 
   function finish(): FinishResult {
