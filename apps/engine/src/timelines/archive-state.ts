@@ -57,6 +57,7 @@ export class ArchiveStates {
     archiveId: string,
     projectId: string,
     upTo: number,
+    stored?: Set<number>,
   ): { state: ProjectState; base: number } {
     const archives = this.#storage.archives();
     const version = domainReducer.version;
@@ -66,6 +67,7 @@ export class ArchiveStates {
       const loaded = row && trusted(row, version, projectId);
       if (loaded) return { state: loaded, base: position };
       this.#attempt(() => archives.deleteCheckpoint(archiveId, position));
+      stored?.delete(position);
     }
     return { state: domainReducer.initial(projectId), base: 0 };
   }
@@ -127,7 +129,7 @@ export class ArchiveStates {
       missing += ARCHIVE_CHECKPOINT_INTERVAL;
     if (missing >= last) return;
     // Resume from the latest trusted checkpoint below the first gap.
-    const { state, base } = this.#nearest(archiveId, projectId, missing);
+    const { state, base } = this.#nearest(archiveId, projectId, missing, stored);
     const store = (at: ProjectState, position: number): boolean => {
       if (position % ARCHIVE_CHECKPOINT_INTERVAL !== 0 || stored.has(position)) return true;
       if (!archives.get(archiveId)) return false;

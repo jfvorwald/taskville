@@ -128,6 +128,7 @@ export class SqliteArchives {
   readonly #putCheckpoint: Statement;
   readonly #deleteCheckpoint: Statement;
   readonly #pruneCheckpoints: Statement;
+  readonly #unusableCheckpoint: Statement;
 
   constructor(db: Database) {
     this.#db = db;
@@ -193,10 +194,11 @@ export class SqliteArchives {
     this.#deleteCheckpoint = db.prepare(
       "DELETE FROM archive_checkpoints WHERE archive_id = ? AND position = ?",
     );
-    this.#pruneCheckpoints = db.prepare(
-      `DELETE FROM archive_checkpoints
-       WHERE archive_id = ? AND (reducer_version != ? OR substr(state_json, 1, 1) != '{')`,
+    const unusable = `archive_id = ? AND (reducer_version != ? OR substr(state_json, 1, 1) != '{')`;
+    this.#unusableCheckpoint = db.prepare(
+      `SELECT 1 FROM archive_checkpoints WHERE ${unusable} LIMIT 1`,
     );
+    this.#pruneCheckpoints = db.prepare(`DELETE FROM archive_checkpoints WHERE ${unusable}`);
   }
 
   /** Records a new archive as `running`. Fails for an unknown project. */
@@ -383,8 +385,12 @@ export class SqliteArchives {
     this.#deleteCheckpoint.run(id, position);
   }
 
-  /** Drops checkpoints of another reducer version or whose state text is not a JSON object. */
+  /**
+   * Drops checkpoints of another reducer version or whose state text is not a JSON object. A
+   * read-only probe runs first, so a healthy cache takes no write lock.
+   */
   pruneCheckpoints(id: string, reducerVersion: number): void {
+    if (!this.#unusableCheckpoint.get(id, reducerVersion)) return;
     this.#pruneCheckpoints.run(id, reducerVersion);
   }
 
