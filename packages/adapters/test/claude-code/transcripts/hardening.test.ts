@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranscriptMapper } from "../../../src/claude-code/transcripts/index.ts";
 import { assistantToolUse, T, toolResult, userPrompt } from "./fixtures.ts";
 
+// Several cases build lines of a million nodes; under full-suite load they exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000 });
+
 // M8.10 (issue #473, M8.02 security confirm review findings L2 to L6), mapper side.
 // The redact module is wrapped (behavior unchanged) for two seams: `redactJson` records the node
 // count of every value it is handed, and throws when a value carries the marker key `__boom`
