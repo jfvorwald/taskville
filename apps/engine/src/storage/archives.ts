@@ -116,6 +116,7 @@ export class SqliteArchives {
   readonly #deleteArchive: Statement;
   readonly #finish: Statement;
   readonly #interrupt: Statement;
+  readonly #updateCounts: Statement;
   readonly #insertEvent: Statement;
   readonly #events: Statement;
   readonly #eventAt: Statement;
@@ -148,6 +149,9 @@ export class SqliteArchives {
     );
     this.#interrupt = db.prepare(
       `UPDATE archives SET status = 'failed', finished_at = ?, error = ? WHERE status = 'running'`,
+    );
+    this.#updateCounts = db.prepare(
+      "UPDATE archives SET counts_json = ? WHERE id = ? AND status = 'done'",
     );
     this.#insertEvent = db.prepare(
       `INSERT INTO archive_events (archive_id, position, event_id, source_id, source_event_id,
@@ -256,6 +260,12 @@ export class SqliteArchives {
       });
     });
     return this.#require(id);
+  }
+
+  /** Replaces the counts of a done archive (what is only known after its events were written). */
+  updateCounts(id: string, counts: ArchiveCounts): void {
+    const result = this.#updateCounts.run(JSON.stringify(counts), id);
+    if (Number(result.changes) === 0) throw new StorageError(`archive ${id} is not done`);
   }
 
   /** Marks a running archive `failed`. It keeps no events. */

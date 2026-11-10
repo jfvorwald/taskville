@@ -73,12 +73,18 @@ export interface ImportStatus {
 export interface ArchiveEvidenceSink {
   store(projectId: string, evidence: readonly ToolEvidence[], archiveId?: string): void;
   /**
-   * True once archive evidence has reached its cap; a new import's evidence is then dropped. The
-   * `excluding` archives are about to be pruned and do not count.
+   * The part of `evidence` that fits the archive evidence cap, checked body by body, and how many
+   * items lost a body to it. Those are dropped from the import and counted.
    */
-  archiveEvidenceFull?(excluding?: readonly { projectId: string; archiveId: string }[]): boolean;
-  /** Removes the evidence of one archive. */
-  deleteArchive?(projectId: string, archiveId: string): void;
+  fitArchiveEvidence?(evidence: readonly ToolEvidence[]): {
+    evidence: ToolEvidence[];
+    dropped: number;
+  };
+  /**
+   * Removes the evidence of one archive. With `keepPointers` the bodies go but the pointers stay,
+   * so a still-listed archive reads them as evicted.
+   */
+  deleteArchive?(projectId: string, archiveId: string, options?: { keepPointers?: boolean }): void;
 }
 
 export interface ImportJobsOptions {
@@ -365,9 +371,10 @@ export class ImportJobs {
       if (signal.aborted || final === undefined) {
         outcome = "cancel";
       } else {
-        this.#applyArchiveCap(projectId, job.kind, root, tally);
-        this.#write(id, final, tally);
+        const counts = this.#write(id, final, tally);
         this.#release(id, job);
+        // Only now, with the new archive committed, may old evidence be deleted to make room.
+        this.#applyArchiveCap(projectId, id, job.kind, root, tally, counts);
         this.#storeEvidence(projectId, id, tally);
         this.#prune(projectId, job.kind, root);
       }
@@ -527,7 +534,7 @@ export class ImportJobs {
   }
 
   /** Sorts, positions, and writes the archive in one transaction. */
-  #write(id: string, final: ImportCounts, tally: Tally): void {
+  #write(id: string, final: ImportCounts, tally: Tally): ArchiveCounts {
     const sorted = [...tally.kept].sort(
       (a, b) =>
         compare(a.ms, b.ms) ||
@@ -553,20 +560,51 @@ export class ImportJobs {
       this.#logger?.warn({ errName: errName(error) }, "archive write failed");
       throw new WriteFailure();
     }
+    return counts;
   }
 
-  /** Drops the staged evidence when archive evidence has already reached its cap. */
-  #applyArchiveCap(projectId: string, kind: ArchiveKind, root: string, tally: Tally): void {
-    if (tally.evidence.length === 0 || !this.#evidence?.archiveEvidenceFull) return;
-    // Archives that the new one will push out of retention make room for it.
-    const excluding = this.#storage
-      .archives()
-      .listDoneIds(projectId, kind, root)
-      .slice(Math.max(0, this.#keepArchives - 1))
-      .map((archiveId) => ({ projectId, archiveId }));
-    if (!this.#evidence.archiveEvidenceFull(excluding)) return;
-    tally.evidenceDropped += tally.evidence.length;
-    tally.evidence = [];
+  /**
+   * After the new archive is committed: drops the staged evidence bodies that do not fit what is
+   * left of the archive evidence cap, and records them in the archive's counts.
+   */
+  #applyArchiveCap(
+    projectId: string,
+    id: string,
+    kind: ArchiveKind,
+    root: string,
+    tally: Tally,
+    counts: ArchiveCounts,
+  ): void {
+    const evidence = this.#evidence;
+    if (tally.evidence.length === 0 || !evidence?.fitArchiveEvidence) return;
+    try {
+      // Archives beyond retention make room, but only once their evidence is actually deleted: a
+      // failed deletion credits nothing. Their rows go in `#prune`.
+      if (evidence.deleteArchive) {
+        for (const old of this.#storage
+          .archives()
+          .listDoneIds(projectId, kind, root)
+          .slice(this.#keepArchives)) {
+          try {
+            evidence.deleteArchive(projectId, old, { keepPointers: true });
+          } catch (error) {
+            this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
+          }
+        }
+      }
+      const fit = evidence.fitArchiveEvidence(tally.evidence);
+      tally.evidence = fit.evidence;
+      if (fit.dropped > 0) {
+        this.#storage.archives().updateCounts(id, {
+          ...counts,
+          evidenceDropped: (counts.evidenceDropped ?? 0) + fit.dropped,
+        });
+      }
+    } catch (error) {
+      // The archive is committed; its evidence is not stored rather than risk the cap.
+      this.#logger?.warn({ errName: errName(error) }, "import evidence not stored");
+      tally.evidence = [];
+    }
   }
 
   /** Deletes the done archives of this project, kind and root beyond the newest `keepArchives`. */
@@ -575,9 +613,11 @@ export class ImportJobs {
       const archives = this.#storage.archives();
       for (const id of archives.listDoneIds(projectId, kind, root).slice(this.#keepArchives)) {
         try {
-          // Evidence first: if it fails the row stays, and the next prune retries.
-          this.#evidence?.deleteArchive?.(projectId, id);
+          // Evidence first: if it fails the row stays, and the next prune retries. The pointers
+          // stay until the row is gone, so a surviving archive reads its bodies as evicted.
+          this.#evidence?.deleteArchive?.(projectId, id, { keepPointers: true });
           archives.delete(id);
+          this.#evidence?.deleteArchive?.(projectId, id);
         } catch (error) {
           this.#logger?.warn({ errName: errName(error) }, "archive retention failed");
         }
