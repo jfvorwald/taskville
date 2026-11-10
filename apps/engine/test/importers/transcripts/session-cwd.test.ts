@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -27,7 +27,7 @@ const saved = process.env.CLAUDE_CONFIG_DIR;
 const OTHER = "2f6c1d2e-0000-4000-8000-0000000000b2";
 
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "taskville-m820-"));
+  tmp = realpathSync(mkdtempSync(join(tmpdir(), "taskville-m820-")));
   root = join(tmp, "w", "app");
   outside = join(tmp, "elsewhere");
   mkdirSync(root, { recursive: true });
@@ -172,5 +172,96 @@ describe("F4: counts on the abort path for an unvalidated file", () => {
     expect(checks).toBeGreaterThan(4);
     expect(batches.flatMap((b) => b.events)).toEqual([]);
     expect(counts).toMatchObject({ read: 0, imported: 0, malformed: 0 });
+  });
+});
+
+// M8.20 review fixes (roborev 7782, security M1, L1, L3).
+describe("review: unsupported-type line carries the first cwd", () => {
+  it("skips a file whose first cwd, on an unsupported-type line, is outside the root", async () => {
+    const odd = { type: "unsupported-kind", cwd: outside, sessionId: SESSION };
+    put(`${JSON.stringify(odd)}\n${jsonl([userPrompt("second", { ts: T(1), cwd: root })])}`);
+
+    const { batches, counts, skips } = await runImport();
+    expect(batches.flatMap((b) => b.events)).toEqual([]);
+    expect(counts.skipped).toBe(1);
+    expect(skips).toEqual([{ reason: "outside-root" }]);
+  });
+});
+
+describe("review: event ceiling before validation", () => {
+  it("skips a cwd-free prefix that produces over 10,000 events, well under the line and byte limits", async () => {
+    const toolLine = (n: number) => ({
+      type: "assistant",
+      sessionId: SESSION,
+      timestamp: T(n),
+      uuid: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+      message: {
+        role: "assistant",
+        model: "claude-test",
+        stop_reason: "tool_use",
+        content: Array.from({ length: 1_000 }, (_, i) => ({
+          type: "tool_use",
+          id: `t${n}-${i}`,
+          name: "Bash",
+          input: {},
+        })),
+      },
+    });
+    // 12 lines of 1,000 tool blocks: over 10,000 events with no cwd, far below 5,000 lines.
+    const lines: object[] = Array.from({ length: 12 }, (_, n) => toolLine(n));
+    lines.push(userPrompt("late", { ts: T(100), cwd: root }));
+    put(jsonl(lines));
+
+    const { batches, counts, skips } = await runImport();
+    expect(batches.flatMap((b) => b.events)).toEqual([]);
+    expect(counts).toMatchObject({ imported: 0, skipped: 1 });
+    expect(skips).toEqual([{ reason: "no-cwd-in-allowance" }]);
+  }, 60_000);
+});
+
+describe("review: the checked cwd is the stored cwd", () => {
+  it("never imports an outside workingDirectory for a path cut at 4,096 code points", async () => {
+    const crafted = `${outside}/${"a/".repeat(2_100)}${"../".repeat(2_100)}../w/app`;
+    put(jsonl([userPrompt("go", { ts: T(0), cwd: crafted })]));
+
+    const { batches } = await runImport();
+    expect(workingDirectories(batches).filter((d) => d !== "" && !d.startsWith(root))).toEqual([]);
+  });
+});
+
+describe("review: a relative cwd never validates", () => {
+  for (const rel of [".", "sub"]) {
+    it(`does not validate a file by the relative cwd ${JSON.stringify(rel)}`, async () => {
+      mkdirSync(join(root, "sub"), { recursive: true });
+      const before = process.cwd();
+      process.chdir(root);
+      try {
+        put(jsonl([userPrompt("go", { ts: T(0), cwd: rel })]));
+        const { batches, counts } = await runImport();
+        expect(batches.flatMap((b) => b.events)).toEqual([]);
+        expect(counts.skipped).toBe(1);
+      } finally {
+        process.chdir(before);
+      }
+    });
+  }
+
+  it("does not import a session whose own cwd is relative", async () => {
+    const before = process.cwd();
+    process.chdir(root);
+    try {
+      put(
+        jsonl([
+          userPrompt("a", { ts: T(0), cwd: root, sessionId: SESSION }),
+          userPrompt("b", { ts: T(1), cwd: ".", sessionId: OTHER }),
+        ]),
+      );
+      const { batches } = await runImport();
+      expect(workingDirectories(batches).filter((d) => d !== "" && !d.startsWith(root))).toEqual(
+        [],
+      );
+    } finally {
+      process.chdir(before);
+    }
   });
 });

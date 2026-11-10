@@ -45,3 +45,36 @@ describe("sessionCwd on the line result", () => {
     expect((result as { sessionCwd?: string }).sessionCwd).toBe("/tmp/redacted/outside");
   });
 });
+
+// M8.20 review fixes (roborev 7782, security L1). API under test: LineResult.cwd is the first cwd
+// of any line that parses as a JSON object, even when the record is malformed; sessionCwd equals
+// the emitted workingDirectory (the cleaned, cut value), never the raw cwd.
+describe("review findings", () => {
+  it("reports the cwd of a valid JSON line of an unsupported type", () => {
+    const mapper = createTranscriptMapper({ projectId: "proj-1", fileId: "f" });
+    const result = map(
+      mapper,
+      { type: "unsupported-kind", cwd: "/tmp/redacted/outside", sessionId: SESSION },
+      1,
+    );
+    expect(result.outcome).toBe("malformed");
+    expect(result.cwd).toBe("/tmp/redacted/outside");
+  });
+
+  it("reports a cwd only for a line that parses as a JSON object", () => {
+    const mapper = createTranscriptMapper({ projectId: "proj-1", fileId: "f" });
+    expect(map(mapper, "[1]", 1).cwd).toBeUndefined();
+    expect(map(mapper, "not json", 2).cwd).toBeUndefined();
+  });
+
+  it("sessionCwd equals the emitted workingDirectory for an over-long cwd", () => {
+    const mapper = createTranscriptMapper({ projectId: "proj-1", fileId: "f" });
+    const long = `/tmp/redacted/outside/${"a/".repeat(2_100)}${"../".repeat(2_100)}../root`;
+    const result = map(mapper, userPrompt("go", { ts: T(0), cwd: long }), 1);
+    const started = result.events.find((e) => e.type === "session.started");
+    const emitted = (started?.payload as { workingDirectory?: string } | undefined)
+      ?.workingDirectory;
+    expect(emitted).toBeDefined();
+    expect((result as { sessionCwd?: string }).sessionCwd).toBe(emitted);
+  });
+});
