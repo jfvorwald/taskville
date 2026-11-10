@@ -30,10 +30,10 @@ export interface LineResult {
   outcome: LineOutcome;
   events: InputEventWire[];
   evidence?: ToolEvidence[];
-  /** The raw `cwd` of any non-malformed line that carries one, whatever the key's spelling. */
+  /** The raw `cwd` of any line that parses as a JSON object and carries one, whatever the key's spelling. */
   cwd?: string;
   /**
-   * The raw `cwd` the mapper used for the `session.started` it emitted on this line. Set only on
+   * The cwd the mapper used for the `session.started` it emitted on this line. Set only on
    * that line (so a later session in the same file reports its own), whatever the key's spelling.
    */
   sessionCwd?: string;
@@ -120,11 +120,9 @@ export function createTranscriptMapper(options: {
     lineCwd = undefined;
     try {
       const result = mapRecord(raw, lineNumber);
-      return lineCwd === undefined || result.outcome === "malformed"
-        ? result
-        : { ...result, cwd: lineCwd };
+      return lineCwd === undefined ? result : { ...result, cwd: lineCwd };
     } catch {
-      return malformed();
+      return lineCwd === undefined ? malformed() : { ...malformed(), cwd: lineCwd };
     }
   }
 
@@ -208,7 +206,7 @@ export function createTranscriptMapper(options: {
       });
       const rawCwd = own(parsed, "cwd");
       const cwd = cleanText(rawCwd, PATH_MAX);
-      if (cwd !== undefined) sessionCwd = rawCwd as string;
+      if (cwd !== undefined) sessionCwd = cwd;
       emit(mainId, "session.started", cwd === undefined ? {} : { workingDirectory: cwd });
     }
 

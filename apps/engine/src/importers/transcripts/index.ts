@@ -27,6 +27,8 @@ const DEFAULT_YIELD_BYTES = 4 * 1024 * 1024;
  */
 const ALLOWANCE_LINES = 5_000;
 const ALLOWANCE_BYTES = 16 * 1024 * 1024;
+/** Events buffered before validation; a few lines can map to many events. */
+const ALLOWANCE_EVENTS = 10_000;
 
 /** Why a file was skipped, reported through `onSkip`. */
 export type TranscriptSkipReason = "outside-root" | "no-cwd-in-allowance";
@@ -131,6 +133,7 @@ async function* readLines(
 
 /** True when `cwd` is the root or a directory inside it (separator-aware, no prefix matching). */
 function isInside(root: string, cwd: string): boolean {
+  if (!isAbsolute(cwd)) return false;
   const rel = relative(root, cwd);
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
@@ -231,7 +234,11 @@ export function createTranscriptImporter(
             // A real transcript shows its cwd within the first few lines, so a file that shows none
             // within the allowance is skipped. That bounds the buffering before validation.
             if (!validated) {
-              if (lines >= ALLOWANCE_LINES || bytes >= ALLOWANCE_BYTES) {
+              if (
+                lines >= ALLOWANCE_LINES ||
+                bytes >= ALLOWANCE_BYTES ||
+                batch.events.length >= ALLOWANCE_EVENTS
+              ) {
                 rejected = "no-cwd-in-allowance";
                 break;
               }
