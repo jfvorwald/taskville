@@ -65,7 +65,11 @@ const EVIDENCE_KEY_MAX = 256;
 const SPAWN_LINES_MAX = 10_000;
 /** Most nodes of one tool input or output that redaction and copying ever see. */
 const EVIDENCE_NODES_MAX = 100_000;
-/** Most entries of the `pending` and `sessions` maps; the oldest is evicted past it. */
+/**
+ * Most entries of the `pending` and `sessions` maps. `pending` evicts its oldest past it (a result
+ * then falls back to the line's agent). `sessions` never evicts, since a forgotten session would
+ * register its agents again: a new session past the cap is refused (its line is malformed).
+ */
 const STATE_MAX = 50_000;
 /** Most agents (main plus subagents) one session may register; a line past it is malformed. */
 const AGENTS_PER_SESSION_MAX = 10_000;
@@ -159,6 +163,9 @@ export function createTranscriptMapper(options: {
     // succeeds, so a throw cannot lose a registration or leave a tool call half recorded. Nothing
     // is copied: the lists are bounded by the line, not by the state.
     const known = sessions.get(sessionId);
+    if (known === undefined && sessions.size >= STATE_MAX) {
+      throw new RangeError("too many sessions in one file");
+    }
     const newAgents: string[] = [];
     const pendingOps = new Map<string, string | undefined>();
     const pendingOwner = (key: string): string | undefined =>
@@ -279,7 +286,7 @@ export function createTranscriptMapper(options: {
     }
     const agents = known?.agents ?? new Set<string>();
     for (const id of newAgents) agents.add(id);
-    remember(sessions, sessionId, { agents }, STATE_MAX);
+    sessions.set(sessionId, { agents });
     return done(events, evidence);
   }
 

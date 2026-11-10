@@ -54,12 +54,9 @@ const OVERLONG = Symbol("overlong");
 /**
  * Opens a file without following a symlink, even one swapped in after listing: O_NOFOLLOW makes
  * the open fail, and the opened descriptor must be a regular file. O_NONBLOCK keeps a FIFO swapped
- * in after listing from blocking the open (it has no effect on regular files). The device and
- * inode are returned so a later reopen can be checked to be the same file.
+ * in after listing from blocking the open (it has no effect on regular files).
  */
-async function openRegular(
-  file: string,
-): Promise<{ handle: FileHandle; dev: number; ino: number } | undefined> {
+async function openRegular(file: string): Promise<FileHandle | undefined> {
   let handle: FileHandle;
   try {
     handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -71,7 +68,7 @@ async function openRegular(
     await handle.close();
     return undefined;
   }
-  return { handle, dev: stat.dev, ino: stat.ino };
+  return handle;
 }
 
 /**
@@ -129,26 +126,19 @@ function isInside(root: string, cwd: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-/** The first `cwd` a file records, or undefined if no line has one. */
-async function firstCwd(
-  handle: FileHandle,
-  maxLineBytes: number,
-  signal: AbortSignal,
-): Promise<string | undefined> {
-  for await (const line of readLines(handle, maxLineBytes, signal)) {
-    if (line === OVERLONG || !line.includes('"cwd"')) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      const cwd =
-        typeof parsed === "object" && parsed !== null && Object.hasOwn(parsed, "cwd")
-          ? (parsed as { cwd: unknown }).cwd
-          : undefined;
-      if (typeof cwd === "string" && cwd !== "") return cwd;
-    } catch {
-      // not JSON; the mapper will count it
-    }
+/** The `cwd` a line records, or undefined if it has none (or is not JSON; the mapper counts it). */
+function lineCwd(line: string): string | undefined {
+  if (!line.includes('"cwd"')) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(line);
+    const cwd =
+      typeof parsed === "object" && parsed !== null && Object.hasOwn(parsed, "cwd")
+        ? (parsed as { cwd: unknown }).cwd
+        : undefined;
+    return typeof cwd === "string" && cwd !== "" ? cwd : undefined;
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 /** A stable per-file id for `sourceEventId`: the basename, shortened with a hash if long. */
@@ -176,34 +166,19 @@ export function createTranscriptImporter(
       for (const file of await transcriptFiles(context.root)) {
         if (context.signal.aborted) break;
         // Slugs collide (`/w/my-app` and `/w/my/app`), so a file counts only if it started in
-        // this root. A file with no cwd, or a link or non-file, is skipped.
-        const probe = await openRegular(file);
-        let inRoot = false;
-        if (probe !== undefined) {
-          try {
-            const cwd = await firstCwd(probe.handle, maxLineBytes, context.signal);
-            inRoot = cwd !== undefined && isInside(context.root, cwd);
-          } finally {
-            await probe.handle.close();
-          }
-        }
-        if (context.signal.aborted) break;
-        if (!inRoot) {
+        // this root. One descriptor serves the whole import and the check runs on the lines
+        // actually imported: the first line with a cwd must be inside the root, and nothing is
+        // yielded before it, so a file rewritten in place cannot slip other content in. Later
+        // lines are not re-checked (scope is per file, by its first cwd). A file with no cwd, or
+        // a link or non-file, is skipped.
+        const handle = await openRegular(file);
+        if (handle === undefined) {
           counts.skipped += 1;
           continue;
         }
-        const opened = await openRegular(file);
-        if (opened === undefined) {
-          counts.skipped += 1;
-          continue;
-        }
-        // A different file swapped in after the probe was never checked against the root.
-        if (probe === undefined || opened.dev !== probe.dev || opened.ino !== probe.ino) {
-          await opened.handle.close();
-          counts.skipped += 1;
-          continue;
-        }
-        const { handle } = opened;
+        const before = { ...counts };
+        let validated = false;
+        let rejected = false;
         const mapper = createTranscriptMapper({
           projectId: context.projectId,
           fileId: fileIdOf(file),
@@ -230,6 +205,16 @@ export function createTranscriptImporter(
               bytes += maxLineBytes;
             } else {
               bytes += Buffer.byteLength(raw);
+              if (!validated) {
+                const cwd = lineCwd(raw);
+                if (cwd !== undefined) {
+                  if (!isInside(context.root, cwd)) {
+                    rejected = true;
+                    break;
+                  }
+                  validated = true;
+                }
+              }
               const result = mapper.mapLine(raw, lineNumber);
               if (result.outcome === "skipped") counts.skipped += 1;
               if (result.outcome === "malformed") counts.malformed += 1;
@@ -237,9 +222,8 @@ export function createTranscriptImporter(
             }
             lines += 1;
             if (
-              lines >= BATCH_LINES ||
-              bytes >= yieldBytes ||
-              batch.events.length >= BATCH_EVENTS
+              validated &&
+              (lines >= BATCH_LINES || bytes >= yieldBytes || batch.events.length >= BATCH_EVENTS)
             ) {
               report();
               yield batch;
@@ -257,6 +241,12 @@ export function createTranscriptImporter(
         }
         // A cancelled file is partial; stop here.
         if (aborted || context.signal.aborted) break;
+        if (rejected || !validated) {
+          // Nothing of this file was yielded; forget its counts and skip it.
+          Object.assign(counts, before);
+          counts.skipped += 1;
+          continue;
+        }
         take(mapper.finish());
         report();
         yield batch;
