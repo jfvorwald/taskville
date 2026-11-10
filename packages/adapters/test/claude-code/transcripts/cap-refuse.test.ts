@@ -68,4 +68,29 @@ describe("the sessions cap does not let an existing session register again", () 
     expect(types(r.events)).not.toContain("agent.registered");
     expect(types(r.events)).not.toContain("session.started");
   }, 60_000);
+
+  it("counts the 50_001st new session malformed while a known session still maps", () => {
+    // roborev 7760: an unbounded map passes the tests above, so pin the cap itself.
+    const CAP = 50_000;
+    const m = createTranscriptMapper({ projectId: "proj-1" });
+    for (let i = 0; i < CAP; i += 1) {
+      const r = m.mapLine(
+        JSON.stringify(userPrompt("hi", { ts: T(0), sessionId: `s${i}` })),
+        i + 1,
+      );
+      expect(r.outcome).not.toBe("malformed");
+    }
+    const refused = m.mapLine(
+      JSON.stringify(userPrompt("new", { ts: T(1), sessionId: "s-over-cap" })),
+      CAP + 1,
+    );
+    expect(refused.outcome).toBe("malformed");
+    expect(refused.events).toEqual([]);
+    const known = m.mapLine(
+      JSON.stringify(userPrompt("again", { ts: T(1), sessionId: "s0" })),
+      CAP + 2,
+    );
+    expect(known.outcome).not.toBe("malformed");
+    expect(types(known.events)).toContain("session.prompt_submitted");
+  }, 60_000);
 });
