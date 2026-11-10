@@ -120,6 +120,25 @@ describe("a session registered without a cwd, then an outside cwd", () => {
   });
 });
 
+describe("a skipped-type line carrying an awaiting session's first cwd (roborev 7807)", () => {
+  for (const type of ["system", "summary"]) {
+    it(`imports nothing of that session from an outside ${type} line on`, async () => {
+      put(
+        jsonl([
+          userPrompt("a", { ts: T(0), cwd: root, sessionId: SESSION }),
+          userPrompt("b", { ts: T(1), cwd: null, sessionId: OTHER }),
+          { type, sessionId: OTHER, cwd: outside, timestamp: T(2), summary: "s", leafUuid: "x" },
+          userPrompt("c", { ts: T(3), cwd: null, sessionId: OTHER }),
+          userPrompt("d", { ts: T(4), cwd: root, sessionId: OTHER }),
+        ]),
+      );
+      const batches = await runImport();
+      expect(JSON.stringify(batches)).not.toContain(outside);
+      expect(sessionEventsFrom(batches, OTHER, 3)).toEqual([]);
+    });
+  }
+});
+
 describe("controls", () => {
   it("imports a session registered without a cwd whose first later cwd is inside the root", async () => {
     put(
@@ -157,5 +176,19 @@ describe("controls", () => {
     );
     const batches = await runImport();
     expect(sessionEventsFrom(batches, OTHER, 3).length).toBeGreaterThan(0);
+  });
+
+  it("imports a session's later events when a skipped line carries an in-root first cwd", async () => {
+    put(
+      jsonl([
+        userPrompt("a", { ts: T(0), cwd: root, sessionId: SESSION }),
+        userPrompt("b", { ts: T(1), cwd: null, sessionId: OTHER }),
+        { type: "system", sessionId: OTHER, cwd: join(root, "sub"), timestamp: T(2) },
+        userPrompt("c", { ts: T(3), cwd: null, sessionId: OTHER }),
+        userPrompt("d", { ts: T(4), cwd: root, sessionId: OTHER }),
+      ]),
+    );
+    const batches = await runImport();
+    expect(sessionEventsFrom(batches, OTHER, 4).length).toBeGreaterThan(0);
   });
 });

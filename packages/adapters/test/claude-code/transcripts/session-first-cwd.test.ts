@@ -42,4 +42,41 @@ describe("sessionFirstCwd on the line result", () => {
     );
     expect(later.sessionFirstCwd).toBe("/tmp/redacted/outside");
   });
+
+  it("reports the first cwd when it sits on a skipped-type line carrying the session id", () => {
+    for (const type of ["system", "summary"]) {
+      const mapper = createTranscriptMapper({ projectId: "proj-1", fileId: "f" });
+      map(mapper, userPrompt("a", { ts: T(0), cwd: null, sessionId: OTHER }), 1);
+      const skipped = map(
+        mapper,
+        { type, sessionId: OTHER, cwd: "/tmp/redacted/outside", timestamp: T(1) },
+        2,
+      );
+      const later = map(
+        mapper,
+        assistantText("b", { ts: T(2), cwd: "/tmp/redacted/other", sessionId: OTHER }),
+        3,
+      );
+      expect(skipped.outcome).toBe("skipped");
+      expect(skipped.sessionFirstCwd).toBe("/tmp/redacted/outside");
+      expect(later.sessionFirstCwd).toBeUndefined();
+    }
+  });
+
+  it("does not report a skipped line's cwd for a session that is not awaiting one", () => {
+    const mapper = createTranscriptMapper({ projectId: "proj-1", fileId: "f" });
+    map(mapper, userPrompt("a", { ts: T(0), cwd: "/tmp/redacted/root", sessionId: OTHER }), 1);
+    const skipped = map(
+      mapper,
+      { type: "system", sessionId: OTHER, cwd: "/tmp/redacted/outside", timestamp: T(1) },
+      2,
+    );
+    const unknown = map(
+      mapper,
+      { type: "system", sessionId: SESSION, cwd: "/tmp/redacted/outside", timestamp: T(1) },
+      3,
+    );
+    expect(skipped.sessionFirstCwd).toBeUndefined();
+    expect(unknown.sessionFirstCwd).toBeUndefined();
+  });
 });
