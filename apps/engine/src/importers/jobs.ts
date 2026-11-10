@@ -19,6 +19,7 @@ import {
   clientContentHash,
   type Storage,
 } from "../storage/index.ts";
+import { scheduleArchiveCheckpoints } from "../timelines/archive-state.ts";
 import type { ArchiveKind, ImportBatch, ImportCounts, Importer } from "./types.ts";
 
 // The import job runner (ARCHITECTURE.md 7.3, 7.4; imports design, Storage and Imports API): runs
@@ -380,6 +381,8 @@ export class ImportJobs {
         this.#storeEvidence(projectId, id, tally);
         this.#prune(projectId, job.kind, root);
         this.#sweepOrphans(projectId);
+        // Deferred and yielding: the job reports done first (M8.19).
+        scheduleArchiveCheckpoints(this.#storage, id, this.#logger);
       }
     } catch (error) {
       this.#logger?.warn({ errName: errName(error) }, "import failed");

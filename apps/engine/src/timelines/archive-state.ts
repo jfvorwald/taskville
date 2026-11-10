@@ -15,6 +15,21 @@ import { isBusy } from "../storage/rebuild.ts";
 
 export const ARCHIVE_CHECKPOINT_INTERVAL = 1000;
 
+/**
+ * In-flight builds per storage, so every ArchiveStates on one storage (the timeline routes and the
+ * import jobs each make their own) shares a build instead of running a second one (M8.19).
+ */
+const buildsByStorage = new WeakMap<Storage, Map<string, Promise<void>>>();
+
+function sharedBuilds(storage: Storage): Map<string, Promise<void>> {
+  let builds = buildsByStorage.get(storage);
+  if (!builds) {
+    builds = new Map();
+    buildsByStorage.set(storage, builds);
+  }
+  return builds;
+}
+
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 export interface ArchiveStateOptions {
@@ -27,13 +42,25 @@ export class ArchiveStates {
   readonly #storage: Storage;
   readonly #chunk: number;
   readonly #logger: UpkeepLogger | undefined;
-  /** One build per archive at a time: concurrent seeks share it. */
-  readonly #building = new Map<string, Promise<void>>();
+  /** One build per archive at a time, shared by seeks and the post-import build. */
+  readonly #building: Map<string, Promise<void>>;
 
   constructor(storage: Storage, options: ArchiveStateOptions) {
     this.#storage = storage;
     this.#chunk = options.chunk;
     this.#logger = options.logger;
+    this.#building = sharedBuilds(storage);
+  }
+
+  /**
+   * Starts the checkpoint build of a finished archive, without waiting for it and without a seek.
+   * The build is deferred and yields between chunks; a seek that arrives meanwhile shares it.
+   */
+  schedule(archiveId: string): void {
+    const archive = this.#storage.archives().get(archiveId);
+    if (archive === undefined || archive.status !== "done") return;
+    const budget = { remaining: UPKEEP_WAIT_MS };
+    this.#ensureBuilt(archiveId, archive.projectId, archive.eventCount, budget);
   }
 
   /**
@@ -114,12 +141,22 @@ export class ArchiveStates {
     if (archives.checkpointPositions(archiveId).length >= wanted) return;
     const build = this.#build(archiveId, projectId, head)
       .catch((error: unknown) => {
-        // A closed database or a busy lock ends the build; the next seek starts it again.
-        if (!isBusy(error))
+        // A closed database or a busy lock ends the build; the next seek starts it again. An
+        // archive pruned meanwhile is not a failure.
+        if (!isBusy(error) && !this.#pruned(archiveId))
           this.#logger?.warn(upkeepFields(error), "archive checkpoint build failed");
       })
       .finally(() => this.#building.delete(archiveId));
     this.#building.set(archiveId, build);
+  }
+
+  /** True when the archive row is gone; an unreadable database counts as not pruned. */
+  #pruned(archiveId: string): boolean {
+    try {
+      return this.#storage.archives().get(archiveId) === undefined;
+    } catch {
+      return false;
+    }
   }
 
   /** Stores the missing checkpoints, one small transaction each, stopping if the archive is pruned. */
@@ -164,5 +201,18 @@ export class ArchiveStates {
       if (!isBusy(error)) this.#logger?.warn(upkeepFields(error), "checkpoint cache upkeep failed");
       return false;
     }
+  }
+}
+
+/** Fire and forget: builds a done archive's checkpoints after its import (M8.19). */
+export function scheduleArchiveCheckpoints(
+  storage: Storage,
+  archiveId: string,
+  logger?: UpkeepLogger,
+): void {
+  try {
+    new ArchiveStates(storage, { chunk: ARCHIVE_CHECKPOINT_INTERVAL, logger }).schedule(archiveId);
+  } catch (error) {
+    if (!isBusy(error)) logger?.warn(upkeepFields(error), "archive checkpoint build failed");
   }
 }
